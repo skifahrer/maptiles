@@ -208,10 +208,29 @@ musia sedieť a nesúlad vyzerá ako pokazená trasa.
 | `workers/routing/profile.py` | z profilu `costing_options` (Valhalla) alebo `custom_model` (GraphHopper); `--check` je matica pokrytia, `--strict` padne na nepokrytej voľbe |
 | `workers/lint/routing.py` | kľúče Valhally proti zoznamu z jej zdrojáku, výrazy GraphHoppera proti jeho zakódovaným hodnotám, každá voľba má pre každý motor odpoveď |
 
-Nič z toho ešte nepočíta trasu – je to tá časť, ktorá musí byť správna **skôr**,
-než začne existovať graf, lebo inak sa napíše dvakrát.
+| `workers/data/routing-areas.json` | na aký rozsah sa graf stavia (a prečo nie po krajoch) |
+| `workers/routing/pbf.sh` | štátne extrakty z osm.fr, zliate `osmium merge`; **nič sa nereže** |
+| `workers/routing/graph.sh` | graf Valhally v Dockeri, overenie všetkých štyroch súborov, `graf.json` s verziou motora |
+| `.github/workflows/navigation.yml` | „Mapa · Build navigácia“ – graf, balík na Drive, zápis do `maps.json` |
+| `workers/lint/navigation.py` | rozsah má vlastný uzol v katalógu, PBF sa nereže, `admins.sqlite` sa nestratí, formulár sedí s číselníkom |
+| `workers/roads/*` | obmedzenia na ceste v DLAŽDICIACH (výška, šírka, hmotnosť, rýchlosť) – §1, „Áčko“ |
+
+Trasu už teda počítať **je z čoho**: graf existuje, dá sa postaviť a stiahnuť.
+Čo v ňom nie je: `multimodal` (autobus a vlak), lebo ten stojí na GTFS; a tri
+voľby pre auto plus známka po krajinách, kým nie je hotová záplata z §3.
+`graf.json` v balíku o sebe hovorí `multimodal: false`, aby to klient nemusel
+hádať.
+
+**Neoverené:** samotná stavba grafu nebežala – v tomto prostredí nie je
+dostupný Docker obraz Valhally ani PBF (odchádzajúca sieť je zúžená). Overené je
+všetko ostatné: číselníky, zápis do katalógu (skúšaný priamo, vrátane toho, že
+dva rozsahy si položku neprepíšu), balenie `publish-map.py --zip-only`
+a kontroly. Prvý beh má doplniť namerané časy a veľkosti do
+`routing-areas.json` – `graph.sh` ich vypíše.
 
 ```bash
+python3 workers/lint/navigation.py
+python3 workers/lint/roads.py
 python3 workers/routing/profile.py --list
 python3 workers/routing/profile.py --check
 python3 workers/routing/profile.py --mode=auto --engine=valhalla \

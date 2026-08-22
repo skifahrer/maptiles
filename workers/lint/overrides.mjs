@@ -117,6 +117,8 @@ for (const theme of Object.keys(THEMES)) {
         rocksUrl: "pmtiles://x/r.pmtiles",
         trailsUrl: "pmtiles://x/tr.pmtiles",
         featuresUrl: "pmtiles://x/f.pmtiles",
+    roadsUrl: "pmtiles://x/r.pmtiles",
+        roadsUrl: "pmtiles://x/r.pmtiles",
         // Tieňovanie zapnuté NASCHVÁL: vrstva `hillshade` je jediná s
         // vlastnosťou `hillshade-exaggeration` a bez nej by sa kopírovanie
         // štýlu na túto vlastnosť vôbec neskúsilo.
@@ -480,6 +482,7 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
     spriteUrl: "https://x/sprite",
     glyphsUrl: "https://x/{fontstack}/{range}.pbf",
     featuresUrl: "pmtiles://x/f.pmtiles",
+    roadsUrl: "pmtiles://x/r.pmtiles",
     regionOutline: { type: "FeatureCollection", features: [] },
     overrides: normalizeOverrides({ order }).overrides
   });

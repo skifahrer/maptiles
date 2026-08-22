@@ -105,7 +105,8 @@ check "$BASE/tiles/$REGION.pmtiles" 206 "pmtiles (Range request)" "-H Range:byte
 for pair in "${CONTOURS:-}:contours:vrstevnice" \
             "${ROCKS:-}:rocks:skaly" \
             "${TRAILS:-}:trails:značené trasy" \
-            "${FEATURES:-}:features:krajinné prvky"; do
+            "${FEATURES:-}:features:krajinné prvky" \
+            "${ROADS:-}:roads:obmedzenia na ceste"; do
   IFS=: read -r on src popis <<<"$pair"
   [ "$on" = 'true' ] || continue
   check "$BASE/tiles/$REGION-$src.pmtiles" 206 "$popis (Range request)" \

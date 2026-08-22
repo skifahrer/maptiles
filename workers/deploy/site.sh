@@ -82,6 +82,8 @@ jq -n \
   --argjson tcount "$TRAILS_COUNT" \
   --argjson features "$FEATURES_ENABLED" \
   --argjson fmaxzoom "$FEATURES_MAXZOOM" \
+  --argjson roads "$ROADS_ENABLED" \
+  --argjson rdmaxzoom "$ROADS_MAXZOOM" \
   --argjson contours "$CONTOURS_ENABLED" \
   --argjson cmaxzoom "$CONTOURS_MAXZOOM" \
   --argjson rocks "$ROCKS_ENABLED" \
@@ -151,6 +153,15 @@ jq -n \
       + (if $features then {
         features: ("tiles/" + $region + "-features.pmtiles"),
         features_maxzoom: $fmaxzoom
+      } else {} end)
+      # Obmedzenia na ceste – vlastný .pmtiles, takže vlastná položka
+      # a vlastný prepínač. `roads_maxzoom` tu MUSÍ byť: kto ho nenájde,
+      # dosadí `maxzoom` mapy (16) a nad skutočným stropom pýta neexistujúce
+      # dlaždice – štítky s výškou ticho zmiznú a vyzerá to ako pokazené
+      # ťuknutie do mapy, nie ako chýbajúce dáta.
+      + (if $roads then {
+        roads: ("tiles/" + $region + "-roads.pmtiles"),
+        roads_maxzoom: $rdmaxzoom
       } else {} end)
       # Hranica stiahnutého regiónu. Viewer podľa nej prekryje všetko za
       # regiónom – dlaždice sú orezané len po celých dlaždiciach, takže bez

@@ -228,6 +228,8 @@ def vrstvy():
         out.append("trasy")
     if env("FEATURES_ENABLED") == "true":
         out.append("prvky")
+    if env("ROADS_ENABLED") == "true":
+        out.append("obmedzenia")
     return out
 
 

@@ -224,6 +224,7 @@ try {
     spriteUrl: "https://x/sprite",
     glyphsUrl: "https://x/{fontstack}/{range}.pbf",
     featuresUrl: "pmtiles://x/f.pmtiles",
+    roadsUrl: "pmtiles://x/r.pmtiles",
     // Sprite zámerne BEZ vlastnej ikony – presne stav po jej nahratí v paneli.
     icons: ["mountain_11", "restaurant_11"],
     iconSet: "osm-liberty",
@@ -267,6 +268,7 @@ try {
     spriteUrl: "https://x/sprite",
     glyphsUrl: "https://x/{fontstack}/{range}.pbf",
     featuresUrl: "pmtiles://x/f.pmtiles",
+    roadsUrl: "pmtiles://x/r.pmtiles",
     icons: ["mountain_11"],
     overrides: normalizeOverrides({ poi: { hidden: ["spring"] } }).overrides
   });

@@ -514,6 +514,13 @@
       <input type="checkbox" id="features" checked />
       <label for="features" style="margin:0">Krajinné prvky</label>
     </div>
+    <!-- Výška podjazdov a tunelov, šírka, hmotnosť a maximálna rýchlosť.
+         Vrstva `transportation` OpenMapTiles z toho nenesie ani jednu
+         hodnotu, takže vlastný .pmtiles aj vlastný prepínač. -->
+    <div class="row" id="row-roads" hidden>
+      <input type="checkbox" id="roads" checked />
+      <label for="roads" style="margin:0">Obmedzenia na ceste</label>
+    </div>
     <div class="row" id="row-hillshade" hidden>
       <input type="checkbox" id="hillshade" />
       <label for="hillshade" style="margin:0">Tieňovanie reliéfu</label>

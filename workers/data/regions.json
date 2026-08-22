@@ -15,6 +15,22 @@
     "bbox": [-180, -85.05, 180, 85.05],
     "note": "Mapa sveta v podobe `basic` – iba hranice štátov a regióny sťahovania, bez vodstva a jazier (input `variant` vo world-map.yml, číselník workers/data/world-variants.json). VLASTNÝ KĽÚČ, nie prípona k `svet`, a je to pravidlo 2 z CLAUDE.md: meno je sľub o rozsahu, takže `basic` nesmie sadnúť na `svet.zip` ani na jeho uzol v `maps.json` – kto si podľa katalógu stiahne „mapu sveta“, nesmie dostať mapu bez morí. `country` je preto tiež `svet_basic`: balík leží vo vlastnom priečinku na Drive a v katalógu je vlastným koreňovým uzlom, vedľa `svet`."
   },
+  "navigacia_slovensko": {
+    "name": "Navigácia – Slovensko",
+    "country": "navigacia_slovensko",
+    "osm_name": "Slovensko",
+    "admin_level": 2,
+    "bbox": [16.83, 47.73, 22.57, 49.61],
+    "note": "Navigačný GRAF (Valhalla), nie mapa – `navigation.yml`, rozsah podľa workers/data/routing-areas.json. `osmfr` tu zámerne NIE JE: PBF si sťahuje `workers/routing/pbf.sh` podľa toho číselníka, lebo rozsah grafu je iná otázka než rozsah mapy – graf sa NEDELÍ po krajoch (rozpis tam). `admin_level: 2` znamená, že balík leží na Drive rovno v `navigacia_slovensko/`, bez úrovne kraja: kraj v ňom nie je a nemá byť. A `country` je ROVNAKÉ ako kľúč – nie spoločné `navigacia` pre všetky rozsahy: `admin_level: 2` spraví z krajiny aj uzol v katalógu, takže dva rozsahy pod jedným `navigacia` by si položku navzájom PREPISOVALI (balíky na Drive by ležali oba, katalóg by poznal ten druhý). To isté rozhodnutie a z toho istého dôvodu ako `svet_basic`."
+  },
+  "navigacia_slovensko_susedia": {
+    "name": "Navigácia – Slovensko a susedia",
+    "country": "navigacia_slovensko_susedia",
+    "osm_name": "Slovensko + CZ, AT, HU, PL, UA",
+    "admin_level": 2,
+    "bbox": [9.47, 45.38, 40.23, 55.05],
+    "note": "To isté ako `navigacia_slovensko`, len s grafom cez hranice – bez neho sa nedá jazdiť do Rakúska, teda ani vyhnúť sa tomu, že tam nemám diaľničnú známku. VLASTNÝ KĽÚČ, nie prípona (pravidlo 2): kto si podľa katalógu stiahne `navigacia_slovensko`, nesmie dostať graf, ktorý na hranici končí – ani naopak. Vlastné `country` (a teda vlastný uzol v katalógu) z toho istého dôvodu ako pri `navigacia_slovensko`."
+  },
   "slovensko": {
     "name": "Slovensko",
     "country": "slovensko",

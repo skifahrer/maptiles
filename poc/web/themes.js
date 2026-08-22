@@ -251,6 +251,7 @@ export const THEMES = {
     peakIcon: "#7a5a30",
     aerodromeIcon: "#6a6a80",
     onewayIcon: "#8a7a6a",
+    roadLimit: "#b02a1a",
     houseText: "#a09488",
     // Tematické body – každý typ mapy má svoju „hlavnú" skupinu bodov
     // (hrady, bane, vleky, pumpy), nech sa dá zvýrazniť zvlášť.
@@ -386,6 +387,7 @@ export const THEMES = {
     peakIcon: "#b09a70",
     aerodromeIcon: "#8a8ab0",
     onewayIcon: "#7a7a90",
+    roadLimit: "#c0503c",
     houseText: "#6a6678",
     historicPoi: "#d08a5a",
     miningPoi: "#9a9ab0",
@@ -514,6 +516,7 @@ export const THEMES = {
     peakIcon: "#8a3a10",
     aerodromeIcon: "#4a5a7a",
     onewayIcon: "#6a5a45",
+    roadLimit: "#8f2414",
     houseText: "#8a7a60",
     historicPoi: "#8a3a10",
     miningPoi: "#5a5548",
@@ -641,6 +644,7 @@ export const THEMES = {
     peakIcon: "#9a6a40",
     aerodromeIcon: "#7a7a95",
     onewayIcon: "#a89080",
+    roadLimit: "#d4604a",
     houseText: "#b0a294",
     historicPoi: "#a06a4a",
     miningPoi: "#8a8078",
@@ -897,7 +901,8 @@ export const PALETTE_GROUPS = [
       ["peakText", "Popisok vrcholu"],
       ["peakIcon", "Ikona vrcholu"],
       ["aerodromeIcon", "Ikona letiska"],
-      ["onewayIcon", "Šípka jednosmerky"]
+      ["onewayIcon", "Šípka jednosmerky"],
+      ["roadLimit", "Obmedzenie na ceste (výška, hmotnosť, rýchlosť)"]
     ]
   },
   {
@@ -2950,6 +2955,9 @@ export const SHIELD_DEFS = [
  * @param {string} [opts.featuresUrl]     pmtiles:// URL s krajinnými prvkami,
  *                                        ktoré schéma OpenMapTiles nemá
  * @param {number} [opts.featuresMaxzoom] najvyšší zoom dlaždíc s prvkami
+ * @param {string} [opts.roadsUrl]        pmtiles:// URL s obmedzeniami na ceste,
+ *                                        alebo null, keď ich beh nevyrobil
+ * @param {number} [opts.roadsMaxzoom]    najvyšší zoom dlaždíc s obmedzeniami
  * @param {string} [opts.demSource]       zdroj výšok (kľúč z DEM_SOURCES) –
  *                                        určuje atribúciu vrstevníc a skál
  * @param {string|null} [opts.demTiles]   raster-dem dlaždice pre hillshade
@@ -2992,6 +3000,8 @@ export function buildStyle({
   trailsMaxzoom = 14,
   featuresUrl = null,
   featuresMaxzoom = 15,
+  roadsUrl = null,
+  roadsMaxzoom = 15,
   demSource = DEFAULT_DEM_SOURCE,
   demTiles = DEFAULT_DEM_TILES,
   demTilesSource = null,
@@ -3119,6 +3129,19 @@ export function buildStyle({
       type: "vector",
       url: featuresUrl,
       maxzoom: featuresMaxzoom,
+      attribution:
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
+    };
+  }
+  // Obmedzenia na ceste (workers/roads/roads.yml) – výška podjazdov a tunelov,
+  // šírka, hmotnosť, maximálna rýchlosť. Vrstva `transportation` OpenMapTiles
+  // z toho nenesie ANI JEDNU hodnotu, takže je to – rovnako ako krajinné prvky
+  // – druhé čítanie toho istého PBF do vlastného .pmtiles.
+  if (roadsUrl) {
+    style.sources.roads = {
+      type: "vector",
+      url: roadsUrl,
+      maxzoom: roadsMaxzoom,
       attribution:
         '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
     };
@@ -5028,6 +5051,125 @@ export function buildStyle({
         shieldIcon
           ? { "text-color": textKey }
           : { "text-color": textKey, "text-halo-color": colorKey }
+      ]
+    );
+  }
+
+  // ================= obmedzenia na ceste =================
+  // Vlastný .pmtiles (workers/roads/roads.yml). Kreslia sa ZA štítkami
+  // s číslom cesty a PRED názvom ulice, a to poradie je rozhodnutie: MapLibre
+  // umiestňuje popisky v poradí vrstiev a kto je skôr, berie si miesto prvý.
+  // „Pod týmto mostom je 3,8 m" je pri hustej sieti dôležitejšie než meno
+  // ulice, ale číslo cesty (`D1`, `I/18`) je to, čím vodič naviguje.
+  //
+  // TEXT JE HODNOTA Z OSM, BEZ DOPISOVANEJ JEDNOTKY, a je to zámer. Tag môže
+  // mať jednotku už v sebe (`3.8 m`) aj byť v stopách (`12'6"`), takže
+  // dopísanie „ m" by z časti hodnôt spravilo `3.8 m m` a z časti nezmysel.
+  // Rozoznať to v štýle by chcelo `index-of`/`slice`, teda výrazy, na ktoré sa
+  // v statických štýloch pre MapLibre Native spoliehať nechceme – a mapa
+  // s číslom bez jednotky je presne to, čo je aj na tabuli. Číslo z tej
+  // hodnoty potrebuje len smerovanie („zmestí sa vozidlo?"), a to si ju
+  // parsuje samo (`docs/navigation.md`).
+  if (roadsUrl) {
+    // --- výška: to, kvôli čomu vrstva existuje ---
+    // Od z12, lebo obmedzenie výšky rozhoduje o tom, či tam vozidlo vôbec
+    // prejde – to sa má dať vidieť skôr, než človek dojde na križovatku.
+    add(
+      {
+        id: "road-limit-height",
+        type: "symbol",
+        source: "roads",
+        "source-layer": "road_limit",
+        minzoom: 12,
+        filter: ["any", ["has", "maxheight"], ["has", "maxheight_physical"]],
+        layout: {
+          "symbol-placement": "line",
+          "symbol-spacing": 220,
+          "text-field": ["coalesce",
+            ["get", "maxheight"], ["get", "maxheight_physical"]],
+          "text-font": REG,
+          "text-size": zl([[12, 10], [16, 13], [20, 17]])
+        },
+        paint: {
+          "text-color": c.roadLimit,
+          "text-halo-color": c.textHalo,
+          "text-halo-width": 1.6
+        }
+      },
+      [
+        "popisky",
+        "Obmedzenie výšky (podjazd, tunel)",
+        "text",
+        { "text-color": "roadLimit", "text-halo-color": "textHalo" }
+      ]
+    );
+
+    // --- hmotnosť a šírka ---
+    // Od z14: je to tá istá trieda údaja, ale pýta sa na ňu menej ľudí a na
+    // prehľadovom zoome by len brala miesto obmedzeniu výšky.
+    add(
+      {
+        id: "road-limit-mass",
+        type: "symbol",
+        source: "roads",
+        "source-layer": "road_limit",
+        minzoom: 14,
+        filter: ["all",
+          ["!", ["has", "maxheight"]],
+          ["!", ["has", "maxheight_physical"]],
+          ["any", ["has", "maxweight"], ["has", "maxwidth"]]],
+        layout: {
+          "symbol-placement": "line",
+          "symbol-spacing": 260,
+          "text-field": ["coalesce", ["get", "maxweight"], ["get", "maxwidth"]],
+          "text-font": REG,
+          "text-size": zl([[14, 9], [16, 11], [20, 14]])
+        },
+        paint: {
+          "text-color": c.roadLimit,
+          "text-halo-color": c.textHalo,
+          "text-halo-width": 1.4
+        }
+      },
+      [
+        "popisky",
+        "Obmedzenie hmotnosti a šírky",
+        "text",
+        { "text-color": "roadLimit", "text-halo-color": "textHalo" }
+      ]
+    );
+
+    // --- maximálna rýchlosť ---
+    // Až od z15 a menším písmom: `maxspeed` je takmer na každej ceste, takže
+    // na nižšom zoome by z nej bola šeď čísel cez celú mapu. Nie je to
+    // obmedzenie prejazdu, je to informácia – preto je posledná z troch.
+    add(
+      {
+        id: "road-maxspeed",
+        type: "symbol",
+        source: "roads",
+        "source-layer": "road_limit",
+        minzoom: 15,
+        filter: ["has", "maxspeed"],
+        layout: {
+          "symbol-placement": "line",
+          "symbol-spacing": 300,
+          "text-field": ["get", "maxspeed"],
+          "text-font": REG,
+          "text-size": zl([[15, 9], [17, 10], [20, 13]])
+        },
+        paint: {
+          "text-color": c.roadLimit,
+          "text-halo-color": c.textHalo,
+          "text-halo-width": 1.4,
+          "text-opacity": 0.85
+        }
+      },
+      [
+        "popisky",
+        "Maximálna rýchlosť",
+        "text",
+        { "text-color": "roadLimit", "text-halo-color": "textHalo" }
       ]
     );
   }

@@ -119,6 +119,18 @@ DEFAULTS = {
     # Vyhľadávací index: offline FTS5. Bez výberu zdroja - idú z toho istého
     # PBF ako mapa. Zapínač je tu namiesto vo formulári.
     "search": ("true", "generovať vyhľadávací index pre offline hľadávanie"),
+    # OBMEDZENIA NA CESTE (workers/roads/roads.yml): výška podjazdov a tunelov,
+    # šírka, hmotnosť, maximálna rýchlosť, jazdné pruhy, stúpanie. Tie hodnoty
+    # vrstva `transportation` OpenMapTiles nenesie vôbec, takže sa – rovnako
+    # ako trasy a krajinné prvky – ťahajú z toho istého PBF druhýkrát. Zapínač
+    # je tu a nie vo formulári, lebo `workflow_dispatch` má strop 10 inputov
+    # a ten je vyčerpaný.
+    "roads": ("true", "generovať obmedzenia na ceste (výška, šírka, rýchlosť)"),
+    # 15, nie 16: štítok s obmedzením je popisok pozdĺž čiary a na z16 už
+    # nepribúda, čo by ukázal – pribúdajú len bajty. Bloky schémy majú
+    # `min_zoom` 12 a 14, takže na tichú stratu (min_zoom nad maxzoomom) tu
+    # miesto nie je; build.sh to aj tak porovná a spadne.
+    "roads_maxzoom": ("15", "max zoom dlaždíc s obmedzeniami na ceste"),
     # INTERVAL VRSTEVNÍC. Bol to input vo formulári a presťahoval sa sem, keď
     # si miesto vzal switch `wikipedia` (ten sa medzitým odsťahoval do
     # `wiki.yml`) – `workflow_dispatch` dovolí najviac 10 inputov. Je to ten
@@ -428,6 +440,12 @@ def main():
         print(f"::error::Voľba „features“ musí byť true alebo false, "
               f"nie „{values['features']}“.", file=sys.stderr)
         return 1
+    # To isté pre obmedzenia na ceste – `roads=1` by ich ticho vyplo a zistilo
+    # by sa to až tým, že v mape nie je výška ani jedného podjazdu.
+    if values["roads"] not in ("true", "false"):
+        print(f"::error::Voľba „roads“ musí byť true alebo false, "
+              f"nie „{values['roads']}“.", file=sys.stderr)
+        return 1
     # To isté pre vyhľadávací index – `search=0` by ho ticho vyplo
     # a v aplikácii by chýbalo offline hľadávanie.
     if values["search"] not in ("true", "false"):
@@ -553,7 +571,8 @@ def main():
             print(f"  NEprepočíta sa {co} – {ako}")
     print(f"\nVrstevnice: {contour_src}   Skaly: {rock_src}   "
           f"Tieňovanie: {shading_src}   Trasy: {values['trails']}   "
-          f"Krajinné prvky: {values['features']}")
+          f"Krajinné prvky: {values['features']}   "
+          f"Obmedzenia na ceste: {values['roads']}")
     print("Rýchly test: " + (f"ZAPNUTÝ, terén (vrstevnice, skaly, tieňovanie) "
                              f"len na {values['test_km2']} km² zo stredu "
                              f"výrezu; mapa ostáva celý región a otvorí sa tam"
