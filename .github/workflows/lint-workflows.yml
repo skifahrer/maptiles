@@ -678,6 +678,17 @@ jobs:
       - name: "Mapa sveta: štýl kreslí to, čo schéma vyrába"
         run: python3 workers/lint/world.py
 
+      # Costing motora je slovník a NEZNÁMY KĽÚČ SA V ŇOM TICHO IGNORUJE:
+      # `top_speeed` namiesto `top_speed` vráti platnú trasu, len nie tú, ktorú
+      # si človek vypýtal. Kontrola preto drží kľúče Valhally proti zoznamu
+      # vyzobranému z jej zdrojáku, výrazy GraphHoppera proti jeho zakódovaným
+      # hodnotám, a hlavne to, že KAŽDÁ voľba má pre KAŽDÝ motor odpoveď –
+      # mapovanie alebo `unsupported` s dôvodom. Ticho zahodená voľba je tá
+      # istá trieda chyby ako neznámy `fill-pattern` (pravidlo 8).
+      # Rozpis: `workers/lint/routing.py`.
+      - name: "Navigácia: profil prejde do motora celý, alebo o sebe povie"
+        run: python3 workers/lint/routing.py
+
       # Kraj má na osm.fr vlastný súbor rezaný po jeho administratívnej
       # hranici, takže sa sťahuje priamo ten – nie 373 MB Slovenska, z ktorého
       # by sa kraj ešte raz vyrezával (pravidlo 7). Kontrola stráži, že sa tá
