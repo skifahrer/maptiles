@@ -40,6 +40,7 @@ ZNAME = {
     "trails": "job `trails`",
     "features": "job `features`",
     "search": "job `search` (vyhľadávací index)",
+    "routing": "profil navigácie (costing pre Valhallu / GraphHopper)",
     "tiles": "job `tiles`",
     "wiki": "workflow „Build wiki“ (wiki.yml)",
     "world": "workflow „Build svet“ (world-map.yml)",
