@@ -112,6 +112,7 @@ workers/rocks-shading/   `shading-rocks.yml`: dlaždice → raster → vektor
 workers/terrain/         job `terrain` (tieňovanie a 3D)
 workers/trails/          job `trails`      workers/features/  job `features`
 workers/search/          job `search`: vyhľadávací index (SQLite FTS5) z PBF
+workers/routing/         profil navigácie: čo si vypýtaš → costing motora
 workers/wiki/            `wiki.yml`: články z Wikipédie k objektom mapy
 workers/world/           `world-map.yml`: základná mapa sveta (podklad pod výber)
 workers/tiles/           job `tiles`       workers/assets/    job `assets`
@@ -1076,6 +1077,45 @@ a pri každom druhu trasy tvar značky –
 (`overrides.trails.types[<druh>].mark`). Tie tri odpovede sa nedajú stlačiť do
 dvoch: „taká, aká je v OSM" nie je meno tvaru.
 
+## Navigácia: profil je jeden, motory sú dva
+
+Zadanie (auto, pešo, bicykel, autobus, vlak; pri aute obchádzanie tried ciest,
+mýta, maximálna rýchlosť a diaľničná známka po krajinách) a celý rozpis toho,
+čo na to treba, je v [`docs/navigation.md`](docs/navigation.md). Tu je len to,
+čo platí pri každej zmene:
+
+**Voľba je napísaná RAZ a k nej stojí, ako sa prekladá do každého motora.**
+Číselník je `workers/data/routing-profiles.json` (a `vignettes.json` pri
+známkach), skladá z neho `workers/routing/profile.py`. Dva profily vedľa seba –
+jeden pre Valhallu, jeden pre GraphHopper – by boli dve pravdy o jednej otázke
+a rozišli by sa TICHO: oba sú samy o sebe platné a trasa sa spočíta, len by
+jedna obchádzala diaľnicu a druhá nie.
+
+**Čo motor nevie, musí byť napísané, nie vynechané.** Pri každej voľbe je pre
+každý motor buď mapovanie, alebo `unsupported` s dôvodom; `profile.py` to dá do
+`_nepokryte` aj na chybový výstup a `--strict` na tom padne. Ticho zahodená
+voľba je pravidlo 8 v čistej podobe – používateľ si odškrtne „vyhnúť sa cestám
+I. triedy", trasa ho po nich povedie a nič o tom nepovie. **A vo Valhalle sú
+tri také voľby naozaj** (I., II. a III. trieda) plus známka: `use_highways` len
+škáluje pevnú tabuľku `kHighwayFactor[]`, ktorá má pri Primary aj nižšie nulu,
+takže účinok nie je slabý, ale nulový. Rozpis aj cesta von (záplata) je
+v `docs/navigation.md`.
+
+**Neznámy kľúč costingu sa TICHO ignoruje** – `top_speeed` namiesto `top_speed`
+vráti platnú trasu, len nie tú vypýtanú. Preto `workers/lint/routing.py` drží
+kľúče Valhally proti zoznamu vyzobranému z jej zdrojáku a výrazy GraphHoppera
+proti jeho zakódovaným hodnotám.
+
+**Známka nie je mýto.** `toll=yes` je platba za prejazd (brána, tunel) a rieši
+ju `avoid_toll`; známka sa platí za čas a platí na sieť. A odpovede o nej sú
+TRI – „mám do…", „nemám" a „táto krajina známku nepozná" –, plus štvrtá
+„nevieme", ktorá sa nesmie dosadiť potichu ani na jednu stranu: „mám" vypíše
+pokutu, „nemám" pošle sto kilometrov po okreskách.
+
+**Graf sa NEDELÍ po krajoch, ako sa delí mapa.** Známka po krajinách má zmysel
+len vtedy, keď trasa smie prejsť hranicu, takže navigačný balík patrí na štát
+a jeho susedov. Publikuje sa ako ďalší balík na Drive, nie na Pages.
+
 ## Build svet: vlastná pipeline, `svet.zip` a `svet.aar`
 
 `world-map.yml` robí **základnú mapu celého sveta** – vodstvo, hranice štátov
@@ -1200,6 +1240,8 @@ node    workers/lint/overrides.mjs     # úprava z developer módu prejde normal
 python3 workers/trails/tags.py --osmc=red:white:red_bar --route=hiking  # akú značku z toho
 python3 workers/lint/features.py       # predfilter pustí, čo schéma prvkov chce
 node    workers/lint/trails.mjs        # strana a odstup trás držia naprieč súbormi
+python3 workers/lint/routing.py        # profil navigácie prejde do motora celý
+python3 workers/routing/profile.py --check  # ktorú voľbu ktorý motor vie
 python3 workers/lint/world.py          # štýl sveta kreslí to, čo schéma vyrába
 python3 workers/lint/planetiler.py     # kto púšťa Planetiler, má aj Javu 21
 python3 workers/lint/pbf-source.py     # kraj sa reže z rodiča a dopĺňa členov plôch

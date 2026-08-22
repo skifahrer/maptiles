@@ -1,0 +1,145 @@
+{
+  "_comment": [
+    "KDE TREBA DIAĽNIČNÚ ZNÁMKU – a na ktoré cesty sadne. Číselník k voľbe",
+    "`vignettes` v `routing-profiles.json`; rozoberá ho",
+    "`workers/routing/profile.py`, stráži `workers/lint/routing.py`.",
+    "",
+    "ČO JE TU A ČO NIE. Tu je len to, čo sa nemení pri každej ceste: či tá",
+    "krajina známku pozná a na aké cesty platí. Či ju POUŽÍVATEĽ MÁ a dokedy,",
+    "tu nie je a byť nesmie – to je stav aplikácie, nie repozitára, a mieša sa",
+    "s tým až v `profile.py`.",
+    "",
+    "ZNÁMKA NIE JE MÝTO. Známka sa platí za ČAS (10 dní, mesiac, rok) a platí",
+    "na sieť; mýto sa platí za PREJAZD a v OSM je `toll=yes`. Preto sú to dve",
+    "voľby: `avoid_toll` obchádza mýtne brány, `vignettes` obchádza sieť",
+    "v krajine, kde známku nemám. Kto ich zlúči, dostane nezmysel v oboch",
+    "smeroch – s ročnou známkou by sa vyhýbal diaľnici, ktorú má zaplatenú,",
+    "a bez známky by cez tunel s mýtom prešiel.",
+    "",
+    "TIETO ÚDAJE SA MENIA ZÁKONOM, NIE PRISPIEVATEĽMI OSM. Preto má každý",
+    "záznam `zdroj` (primárny, nie Wikipédia) a `stav`: `overene` znamená",
+    "„niekto to porovnal so zdrojom a napísal si dátum“, `doplnit` znamená",
+    "„toto som nikde neoveril a musí sa to spraviť, kým to niekto pustí do",
+    "aplikácie“. Tichý omyl by tu bol drahý inak než inde v pipeline: nesprávne",
+    "`ma_znamku: false` pošle človeka po okreskách zbytočných sto kilometrov,",
+    "nesprávne `true` mu vypíše pokutu.",
+    "",
+    "`required_on` SÚ OSM TRIEDY, nie právne kategórie tej krajiny. Je to",
+    "úmyselné: graf pozná `highway=*`, nie „Schnellstraße“. Kde tie dve veci",
+    "nesedia (Rakúsko má úsekové mýto na niektorých tuneloch NAVYŠE k známke),",
+    "je to v `pozn` a rieši to `avoid_toll`, nie tento súbor."
+  ],
+
+  "_stavy": {
+    "overene": "porovnané s primárnym zdrojom – v `overene_dna` je kedy",
+    "doplnit": "NEOVERENÉ. Kým je tu toto, do aplikácie sa to pustiť nesmie."
+  },
+
+  "countries": {
+    "SK": {
+      "alpha3": "SVK",
+      "name": "Slovensko",
+      "ma_znamku": true,
+      "system": "elektronická diaľničná známka",
+      "required_on": ["motorway", "trunk"],
+      "zdroj": "https://eznamka.sk/",
+      "stav": "doplnit",
+      "pozn": [
+        "Známka je na vozidlá do 3,5 t; nad to je mýto podľa prejazdených",
+        "kilometrov, čo je iná otázka a v tomto číselníku nie je.",
+        "Niektoré úseky diaľnic sú od známky oslobodené (obchvaty miest) –",
+        "to sa z `highway=*` nedá prečítať a musí prísť z `toll=no` na tých",
+        "úsekoch v OSM. Kým to tam nie je, obchádzka bude miestami zbytočná."
+      ]
+    },
+    "CZ": {
+      "alpha3": "CZE",
+      "name": "Česko",
+      "ma_znamku": true,
+      "system": "elektronická dálniční známka",
+      "required_on": ["motorway"],
+      "zdroj": "https://edalnice.cz/",
+      "stav": "doplnit"
+    },
+    "AT": {
+      "alpha3": "AUT",
+      "name": "Rakúsko",
+      "ma_znamku": true,
+      "system": "Vignette (nálepka alebo digitálna)",
+      "required_on": ["motorway", "trunk"],
+      "zdroj": "https://www.asfinag.at/",
+      "stav": "doplnit",
+      "pozn": [
+        "NAVYŠE k známke je na niektorých úsekoch úsekové mýto (Brenner,",
+        "Tauern, Arlberg). To je `toll=yes` a rieši ho `avoid_toll` – kto má",
+        "známku, nemá tým zaplatené tie tunely."
+      ]
+    },
+    "HU": {
+      "alpha3": "HUN",
+      "name": "Maďarsko",
+      "ma_znamku": true,
+      "system": "e-matrica (aj krajské známky)",
+      "required_on": ["motorway", "trunk"],
+      "zdroj": "https://nemzetiutdij.hu/",
+      "stav": "doplnit",
+      "pozn": [
+        "Maďarsko predáva aj KRAJSKÉ známky (jeden župný celok), takže „mám",
+        "známku“ tam nie je jedna odpoveď na celú krajinu. Tento číselník to",
+        "zatiaľ nevie povedať a berie známku ako celoštátnu – kto jazdí na",
+        "krajskú, dostane trasu, ktorá si myslí, že smie viac než smie."
+      ]
+    },
+    "SI": {
+      "alpha3": "SVN",
+      "name": "Slovinsko",
+      "ma_znamku": true,
+      "system": "e-vinjeta",
+      "required_on": ["motorway", "trunk"],
+      "zdroj": "https://evinjeta.dars.si/",
+      "stav": "doplnit"
+    },
+    "CH": {
+      "alpha3": "CHE",
+      "name": "Švajčiarsko",
+      "ma_znamku": true,
+      "system": "Autobahnvignette (ročná, nie krátkodobá)",
+      "required_on": ["motorway", "trunk"],
+      "zdroj": "https://www.bazg.admin.ch/",
+      "stav": "doplnit",
+      "pozn": ["Krátkodobá známka neexistuje – predáva sa len ročná."]
+    },
+    "PL": {
+      "alpha3": "POL",
+      "name": "Poľsko",
+      "ma_znamku": false,
+      "system": "žiadna známka; na časti diaľnic mýto za prejazd",
+      "required_on": [],
+      "zdroj": "https://www.gov.pl/web/infrastruktura",
+      "stav": "doplnit",
+      "pozn": [
+        "TOTO JE TRETIA ODPOVEĎ, nie „známku nemám“. V Poľsku sa diaľnici",
+        "netreba vyhýbať vôbec; spoplatnené úseky sú `toll=yes` a patria",
+        "voľbe `avoid_toll`."
+      ]
+    },
+    "DE": {
+      "alpha3": "DEU",
+      "name": "Nemecko",
+      "ma_znamku": false,
+      "system": "pre osobné vozidlá žiadna",
+      "required_on": [],
+      "zdroj": "https://www.bmdv.bund.de/",
+      "stav": "doplnit"
+    },
+    "UA": {
+      "alpha3": "UKR",
+      "name": "Ukrajina",
+      "ma_znamku": false,
+      "system": "žiadna",
+      "required_on": [],
+      "zdroj": "https://ukravtodor.gov.ua/",
+      "stav": "doplnit"
+    }
+  }
+}

@@ -1,0 +1,332 @@
+{
+  "_comment": [
+    "ČO SI POUŽÍVATEĽ VYPÝTA OD NAVIGÁCIE – a je to JEDNO miesto (pravidlo 1).",
+    "Voľba („vyhnúť sa diaľniciam“) je tu napísaná RAZ a k nej stojí, ako sa",
+    "prekladá do každého motora. Rozoberá to `workers/routing/profile.py`",
+    "a stráži `workers/lint/routing.py`.",
+    "",
+    "PREČO ČÍSELNÍK A NIE COSTING JSON PRE JEDEN MOTOR. Motory hovoria o tej",
+    "istej veci úplne inými slovami: „vyhnúť sa diaľniciam“ je vo Valhalle",
+    "`exclude_highways: true`, v GraphHopperi `road_class == MOTORWAY →",
+    "multiply_by 0`. Keby si každý motor niesol vlastný profil, boli by to dve",
+    "pravdy o jednej otázke a pri prvej zmene by sa rozišli – a rozišli by sa",
+    "TICHO: obidva profily sú samy o sebe platné a trasa sa vypočíta. Len by",
+    "jedna obchádzala diaľnicu a druhá nie.",
+    "",
+    "A PRETO JE TU AJ TO, ČO MOTOR NEVIE. `unsupported` s dôvodom nie je",
+    "výhovorka, je to jediný spôsob, ako tú dieru UVIDIEŤ (pravidlo 8): keby",
+    "sa nepokrytá voľba len vynechala, používateľ by si odškrtol „vyhnúť sa",
+    "cestám I. triedy“, trasa by ho po nich viedla a nič by o tom nepovedalo.",
+    "`profile.py --strict` na takej voľbe spadne, inak ju vypíše do",
+    "`_nepokryte` a na chybový výstup.",
+    "",
+    "NAMERANÉ / OVERENÉ V ZDROJÁKU VALHALLY (master, august 2026):",
+    "",
+    "  `exclude_highways` je PRESNE `RoadClass::kMotorway` – teda diaľnice",
+    "  a nič viac (valhalla/sif/dynamiccost.h, riadok ~403). Na rýchlostné",
+    "  cesty teda nesadne.",
+    "",
+    "  `use_highways` len škáluje pevnú tabuľku `kHighwayFactor[]`",
+    "  (src/sif/autocost.cc, riadok 76) a tá je:",
+    "      Motorway 1,0 · Trunk 0,5 · Primary 0,0 · Secondary 0,0",
+    "      Tertiary 0,0 · Unclassified 0,0 · Residential 0,0 · Service 0,0",
+    "  Na cesty I., II. a III. triedy má teda `use_highways` NULOVÝ účinok –",
+    "  nie slabý, nulový. Tie tri voľby sa vo Valhalle dnes povedať NEDAJÚ",
+    "  žiadnou kombináciou parametrov; je na to potrebná záplata, ktorá tú",
+    "  tabuľku spraví nastaviteľnou (rozpis v `docs/navigation.md`).",
+    "",
+    "  Vlastný model GraphHoppera pokrýva všetky voľby tohto zoznamu vrátane",
+    "  `country` – teda aj diaľničnú známku po krajinách (`vignettes.json`).",
+    "",
+    "TRIEDA CESTY JE SLOVENSKÁ, TAG JE OSM – a to nie je to isté. „Cesta I.",
+    "triedy“ je právna kategória, ktorú nesie číslo (`ref` = `I/18`), kým",
+    "`highway=primary` je odhad významu, ktorý spravil mapér. Väčšinou si",
+    "sadnú, ale nie vždy: časť ciest I. triedy je `highway=trunk`. Preto má",
+    "každá voľba `osm` (čo sa berie z tagov) aj `ref` (predpona čísla) a to,",
+    "ČO Z TOHO PLATÍ, rozhoduje jedno miesto – transformácia tagov pri stavbe",
+    "grafu. Nepíš pravidlo o slovenskom číslovaní nikam inam: profil sa",
+    "stavia aj nad Rakúskom, kde je „A1“ diaľnica a „B1“ hlavná cesta."
+  ],
+
+  "engines": {
+    "valhalla": {
+      "name": "Valhalla",
+      "lang": "C++",
+      "kde": "v telefóne aj na serveri",
+      "dialect": "costing_options",
+      "note": [
+        "Jediný z dvojice, ktorý beží OFFLINE V TELEFÓNE – a to je pri tejto",
+        "mape ten dôvod, prečo je prvý: celá aplikácia je postavená na tom, že",
+        "si človek región stiahne a otvorí ho bez signálu. Dlaždice grafu sú",
+        "navyše ten istý druh veci ako naše mapové dlaždice: región sa dá",
+        "stiahnuť a zvyšok sveta nie.",
+        "Cena je, že tri voľby z formulára pre auto (I., II., III. trieda)",
+        "a diaľničná známka po krajinách sa v ňom dnes povedať nedajú."
+      ]
+    },
+    "graphhopper": {
+      "name": "GraphHopper",
+      "lang": "Java",
+      "kde": "len na serveri",
+      "dialect": "custom_model",
+      "note": [
+        "Vlastný model je DEKLARATÍVNY a pokrýva celý zoznam volieb vrátane",
+        "`country`, teda aj známku po krajinách – bez jediného riadku C++.",
+        "Cena je, že je to JVM: do iOS sa nedostane, takže je to cesta „so",
+        "signálom“, nie offline v horách."
+      ]
+    }
+  },
+
+  "modes": {
+    "auto": {
+      "name": "Autom",
+      "costing": { "valhalla": "auto", "graphhopper": "car" },
+      "options": [
+        "avoid_motorway",
+        "avoid_trunk",
+        "avoid_toll",
+        "avoid_primary",
+        "avoid_secondary",
+        "avoid_tertiary",
+        "avoid_track",
+        "top_speed",
+        "vignettes"
+      ]
+    },
+    "bus": {
+      "name": "Autobusom (vozidlo, nie linka)",
+      "costing": { "valhalla": "bus", "graphhopper": "car" },
+      "options": ["avoid_motorway", "avoid_trunk", "avoid_toll", "avoid_track", "top_speed"],
+      "note": [
+        "POZOR, TOTO NIE JE CESTOVANIE AUTOBUSOM. `bus` je v motore VOZIDLO –",
+        "trasa pre autobus ako pre auto s inými rozmermi a zákazmi. Kto sa",
+        "chce dať odviezť linkou, potrebuje `transit` nižšie, a to sú",
+        "cestovné poriadky (GTFS), nie OSM."
+      ]
+    },
+    "bicycle": {
+      "name": "Bicyklom",
+      "costing": { "valhalla": "bicycle", "graphhopper": "bike" },
+      "options": ["bicycle_type", "use_roads", "use_hills", "avoid_bad_surfaces"]
+    },
+    "pedestrian": {
+      "name": "Pešo",
+      "costing": { "valhalla": "pedestrian", "graphhopper": "foot" },
+      "options": ["walking_speed", "use_hills", "max_hiking_difficulty"],
+      "note": [
+        "ZÁMERNE NEDOKONČENÉ. Zadanie pre peších ešte len príde; toto sú tri",
+        "voľby, ktoré Valhalla má a ktoré na turistickej mape dávajú zmysel",
+        "hneď (`max_hiking_difficulty` je SAC stupnica z `sac_scale`).",
+        "Doplnenie je riadok v tomto číselníku, nie zmena kódu."
+      ]
+    },
+    "transit": {
+      "name": "Verejnou dopravou (autobus, vlak)",
+      "costing": { "valhalla": "multimodal", "graphhopper": "pt" },
+      "options": ["walking_speed"],
+      "needs_gtfs": true,
+      "note": [
+        "STOJÍ TO NA CESTOVNÝCH PORIADKOCH, NIE NA OSM – a to je jediná časť",
+        "tohto zadania, ktorá sa nedá postaviť z dát, ktoré pipeline už má.",
+        "OSM vie, kde koľaj vedie a kde je zastávka; kedy tam čo ide, v ňom",
+        "nie je. Bez GTFS zdroja je `transit` prázdna schránka – preto má",
+        "`needs_gtfs` a preto o ňom `profile.py` povie, že nie je z čoho.",
+        "Rozpis stavu slovenských dát je v `docs/navigation.md`."
+      ]
+    }
+  },
+
+  "options": {
+    "avoid_motorway": {
+      "name": "Vyhnúť sa diaľniciam",
+      "type": "switch",
+      "osm": ["highway=motorway", "highway=motorway_link"],
+      "ref": "D",
+      "valhalla": { "set": { "exclude_highways": true } },
+      "graphhopper": { "priority": [{ "if": "road_class == MOTORWAY", "multiply_by": "0" }] }
+    },
+    "avoid_trunk": {
+      "name": "Vyhnúť sa rýchlostným cestám",
+      "type": "switch",
+      "osm": ["highway=trunk", "highway=trunk_link"],
+      "ref": "R",
+      "valhalla": {
+        "soft": { "use_highways": 0.0 },
+        "note": [
+          "LEN ODRADENIE, NIE VYLÚČENIE. `exclude_highways` je vo Valhalle",
+          "presne `kMotorway`, takže na rýchlostnú cestu nesadne; ostáva",
+          "`use_highways: 0`, čo jej cez `kHighwayFactor` (Trunk = 0,5) zdvihne",
+          "cenu, ale nezakáže ju. Keď iná cesta nie je, trasa po nej pôjde.",
+          "Rovnaké odradenie pritom dostane aj diaľnica (Motorway = 1,0)."
+        ]
+      },
+      "graphhopper": { "priority": [{ "if": "road_class == TRUNK", "multiply_by": "0" }] }
+    },
+    "avoid_toll": {
+      "name": "Vyhnúť sa spoplatneným cestám",
+      "type": "switch",
+      "osm": ["toll=yes"],
+      "valhalla": { "set": { "exclude_tolls": true } },
+      "graphhopper": { "priority": [{ "if": "toll != NO", "multiply_by": "0" }] },
+      "note": [
+        "SPOPLATNENÉ ≠ SO ZNÁMKOU. `toll=yes` je mýto, ktoré sa platí za",
+        "prejazd (brána, tunel, most). Diaľničná známka je iná otázka a má",
+        "vlastnú voľbu `vignettes` – kto má známku, nechce sa vyhnúť",
+        "diaľnici, len tej krajine, kde ju nemá."
+      ]
+    },
+    "avoid_primary": {
+      "name": "Vyhnúť sa cestám I. triedy",
+      "type": "switch",
+      "osm": ["highway=primary", "highway=primary_link"],
+      "ref": "I/",
+      "valhalla": {
+        "unsupported": [
+          "Valhalla to dnes nevie povedať vôbec. `use_highways` škáluje pevnú",
+          "tabuľku `kHighwayFactor[]` a tá má pri Primary 0,0 – teda účinok",
+          "presne nula, nie malý. Treba záplatu (docs/navigation.md, „Záplata",
+          "kHighwayFactor“)."
+        ]
+      },
+      "graphhopper": { "priority": [{ "if": "road_class == PRIMARY", "multiply_by": "0" }] }
+    },
+    "avoid_secondary": {
+      "name": "Vyhnúť sa cestám II. triedy",
+      "type": "switch",
+      "osm": ["highway=secondary", "highway=secondary_link"],
+      "ref": "II/",
+      "valhalla": {
+        "unsupported": [
+          "To isté ako pri I. triede: `kHighwayFactor[Secondary] = 0,0`."
+        ]
+      },
+      "graphhopper": { "priority": [{ "if": "road_class == SECONDARY", "multiply_by": "0" }] }
+    },
+    "avoid_tertiary": {
+      "name": "Vyhnúť sa cestám III. triedy",
+      "type": "switch",
+      "osm": ["highway=tertiary", "highway=tertiary_link"],
+      "ref": "III/",
+      "valhalla": {
+        "unsupported": [
+          "To isté ako pri I. triede: `kHighwayFactor[Tertiary] = 0,0`."
+        ]
+      },
+      "graphhopper": { "priority": [{ "if": "road_class == TERTIARY", "multiply_by": "0" }] }
+    },
+    "avoid_track": {
+      "name": "Vyhnúť sa lesným cestám a chodníkom",
+      "type": "switch",
+      "osm": ["highway=track", "highway=path", "highway=bridleway"],
+      "valhalla": {
+        "set": { "use_tracks": 0.0, "exclude_unpaved": true },
+        "note": [
+          "`use_tracks: 0` je odradenie (násobí cenu hrany s `Use::kTrack`),",
+          "`exclude_unpaved` je tvrdý zákaz nespevneného povrchu. Spolu to",
+          "sedí na to, čo človek myslí „lesnou cestou“ – ale nie sú to tie isté",
+          "dva pojmy, takže spevnená lesná cesta odradením prejde."
+        ]
+      },
+      "graphhopper": {
+        "priority": [
+          { "if": "road_class == TRACK", "multiply_by": "0" },
+          { "if": "road_class == PATH", "multiply_by": "0" },
+          { "if": "road_class == BRIDLEWAY", "multiply_by": "0" }
+        ]
+      }
+    },
+    "top_speed": {
+      "name": "Maximálna rýchlosť vozidla",
+      "type": "speed",
+      "unit": "km/h",
+      "range": [30, 140],
+      "default": null,
+      "valhalla": { "set_value": "top_speed" },
+      "graphhopper": { "speed": [{ "if": "true", "limit_to": "{value}" }] },
+      "note": [
+        "NIE JE TO OBMEDZENIE NA CESTE, JE TO VOZIDLO. Hovorí „takto rýchlo",
+        "idem“ – teda ovplyvní ČAS a tým aj to, ktorá trasa vyjde rýchlejšie.",
+        "Karavan so stovkou na tachometri má diaľnicu prestať vyhrávať sám,",
+        "bez toho, aby sa jej musel vyhýbať."
+      ]
+    },
+    "vignettes": {
+      "name": "Diaľničná známka po krajinách",
+      "type": "vignettes",
+      "data": "workers/data/vignettes.json",
+      "valhalla": {
+        "unsupported": [
+          "Valhalla nemá v costingu pojem krajiny (má len",
+          "`country_crossing_penalty`, teda cenu za prechod hranice), takže",
+          "pravidlo „na Slovensku diaľnicu smiem, v Rakúsku nie“ sa v nej",
+          "vysloviť nedá. Tá istá záplata ako pri triedach ciest."
+        ]
+      },
+      "graphhopper": {
+        "priority_template": [
+          { "if": "country == {alpha3} && ({classes})", "multiply_by": "0" }
+        ]
+      },
+      "note": [
+        "TRI ODPOVEDE, NIE DVE (tá istá úvaha ako pri tvare značky trasy):",
+        "„známku mám do 30. 9.“, „známku nemám“ a „táto krajina známku",
+        "nepozná“. Prostredná a tretia sa nesmú stlačiť do jednej – v Poľsku",
+        "sa diaľnici netreba vyhýbať preto, že tam známka neexistuje, kým",
+        "v Rakúsku bez nej treba.",
+        "A ROZHODUJE DÁTUM JAZDY, nie dnešok: kto plánuje cestu na budúci",
+        "mesiac, má vedieť, že mu známka dovtedy vyprší."
+      ]
+    },
+
+    "bicycle_type": {
+      "name": "Typ bicykla",
+      "type": "enum",
+      "values": ["road", "hybrid", "city", "cross", "mountain"],
+      "default": "hybrid",
+      "valhalla": { "set_value": "bicycle_type" },
+      "graphhopper": { "unsupported": ["Vlastný model typ bicykla nepozná – rieši sa výberom profilu (`bike`, `mtb`, `racingbike`)."] }
+    },
+    "use_roads": {
+      "name": "Ochota ísť po ceste s autami",
+      "type": "factor",
+      "range": [0, 1],
+      "default": 0.5,
+      "valhalla": { "set_value": "use_roads" },
+      "graphhopper": { "unsupported": ["Vyjadruje sa to inak – násobičom priority podľa `road_class`, nie jedným číslom."] }
+    },
+    "use_hills": {
+      "name": "Ochota ísť do kopca",
+      "type": "factor",
+      "range": [0, 1],
+      "default": 0.5,
+      "valhalla": { "set_value": "use_hills" },
+      "graphhopper": { "unsupported": ["Prevýšenie sa v GraphHopperi zapína pri stavbe grafu (`graph.elevation`), nie voľbou trasy."] }
+    },
+    "avoid_bad_surfaces": {
+      "name": "Vyhnúť sa zlému povrchu",
+      "type": "factor",
+      "range": [0, 1],
+      "default": 0.25,
+      "valhalla": { "set_value": "avoid_bad_surfaces" },
+      "graphhopper": { "priority": [{ "if": "surface != PAVED", "multiply_by": "0.2" }] }
+    },
+    "walking_speed": {
+      "name": "Rýchlosť chôdze",
+      "type": "speed",
+      "unit": "km/h",
+      "range": [1, 8],
+      "default": 5.1,
+      "valhalla": { "set_value": "walking_speed" },
+      "graphhopper": { "speed": [{ "if": "true", "limit_to": "{value}" }] }
+    },
+    "max_hiking_difficulty": {
+      "name": "Najvyššia obtiažnosť chodníka (SAC)",
+      "type": "int",
+      "range": [0, 6],
+      "default": 1,
+      "valhalla": { "set_value": "max_hiking_difficulty" },
+      "graphhopper": { "unsupported": ["`sac_scale` nie je medzi zakódovanými hodnotami GraphHoppera."] }
+    }
+  }
+}
