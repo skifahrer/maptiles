@@ -37,6 +37,7 @@ const contoursCheck = $("contours");
 const rocksCheck = $("rocks");
 const trailsCheck = $("trails");
 const featuresCheck = $("features");
+const roadsCheck = $("roads");
 const terrainCheck = $("terrain");
 const hillshadeCheck = $("hillshade");
 const devCheck = $("devmode");
@@ -225,6 +226,13 @@ function styleFor(manifest) {
         ? `pmtiles://${baseUrl}/${region.features}`
         : null,
     featuresMaxzoom: region.features_maxzoom || 15,
+    // Obmedzenia na ceste – výška podjazdov a tunelov, šírka, hmotnosť,
+    // maximálna rýchlosť. Vlastný .pmtiles (workers/roads/roads.yml).
+    roadsUrl:
+      region.roads && roadsCheck.checked
+        ? `pmtiles://${baseUrl}/${region.roads}`
+        : null,
+    roadsMaxzoom: region.roads_maxzoom || 15,
     demSource: region.dem_source || DEFAULT_DEM_SOURCE,
     demTiles,
     // Tieňovanie má vo formulári pipeline vlastný výber modelu, takže
@@ -588,6 +596,7 @@ async function main() {
     $("row-rocks").hidden = !region.rocks;
     $("row-trails").hidden = !region.trails;
     $("row-features").hidden = !region.features;
+    $("row-roads").hidden = !region.roads;
     $("row-terrain").hidden = manifest.dem === null;
     $("row-hillshade").hidden = manifest.dem === null;
   };
@@ -617,6 +626,9 @@ async function main() {
     dev?.refresh();
   });
   featuresCheck.addEventListener("change", () => {
+    applyStyle(manifest);
+  });
+  roadsCheck.addEventListener("change", () => {
     applyStyle(manifest);
   });
   trailsCheck.addEventListener("change", () => {

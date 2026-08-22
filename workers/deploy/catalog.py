@@ -110,7 +110,7 @@ def region_entry(man):
 # Ktoré vrstvy sú v balíku ako `.pmtiles` a pod akou cestou. Mená kľúčov sú tie
 # isté ako v `manifest.json`, lebo odtiaľ to ide – dva slovníky pre tú istú vec
 # by sa raz rozišli.
-VRSTVY_TILES = ("pmtiles", "contours", "rocks", "trails", "features")
+VRSTVY_TILES = ("pmtiles", "contours", "rocks", "trails", "features", "roads")
 
 
 def tiles_paths(man, reg):
@@ -381,7 +381,7 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
     # inak by atribúcia mapy tvrdila DMR 5.0 nad reliéfom zo Sonnyho.
     for k in ("bbox", "maxzoom", "contours_maxzoom", "contour_interval",
               "rocks_maxzoom", "rock_slope", "dem_source", "rock_source",
-              "trails_maxzoom", "features_maxzoom"):
+              "trails_maxzoom", "features_maxzoom", "roads_maxzoom"):
         if reg.get(k) is not None:
             polozka[k] = reg[k]
     # Cesty k dlaždiciam v balíku – NEODVODZUJÚ sa z kľúča uzla (rozpis pri

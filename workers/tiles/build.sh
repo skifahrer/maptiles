@@ -37,9 +37,9 @@ if [ "$MAXZOOM" -lt 8 ]; then MAXZOOM=8; fi
 # na konci overí, že súčet naozaj sedí.
 LIMIT_MB="$SIZE_LIMIT_MB"
 case "$LIMIT_MB" in ''|*[!0-9]*) LIMIT_MB=900 ;; esac
-OTHERS_MB=$(( LIMIT_MB * (BUDGET_CONTOURS_PCT + BUDGET_TERRAIN_PCT + BUDGET_TRAILS_PCT + BUDGET_FEATURES_PCT) / 100 + BUDGET_ASSETS_MB ))
+OTHERS_MB=$(( LIMIT_MB * (BUDGET_CONTOURS_PCT + BUDGET_TERRAIN_PCT + BUDGET_TRAILS_PCT + BUDGET_FEATURES_PCT + BUDGET_ROADS_PCT) / 100 + BUDGET_ASSETS_MB ))
 BUDGET_MB=$(( LIMIT_MB - OTHERS_MB ))
-echo "Rozpočet stránky ${LIMIT_MB} MB − vrstevnice ${BUDGET_CONTOURS_PCT} % − terén ${BUDGET_TERRAIN_PCT} % − trasy ${BUDGET_TRAILS_PCT} % − krajinné prvky ${BUDGET_FEATURES_PCT} % − ikonky a fonty ${BUDGET_ASSETS_MB} MB = ${BUDGET_MB} MB na dlaždice"
+echo "Rozpočet stránky ${LIMIT_MB} MB − vrstevnice ${BUDGET_CONTOURS_PCT} % − terén ${BUDGET_TERRAIN_PCT} % − trasy ${BUDGET_TRAILS_PCT} % − krajinné prvky ${BUDGET_FEATURES_PCT} % − obmedzenia na ceste ${BUDGET_ROADS_PCT} % − ikonky a fonty ${BUDGET_ASSETS_MB} MB = ${BUDGET_MB} MB na dlaždice"
 
 if [ "$BUDGET_MB" -lt 50 ]; then
   echo "::error::Na dlaždice zostáva len ${BUDGET_MB} MB. Zdvihni size_limit_mb alebo uber podiel vrstevniciam a terénu (BUDGET_*_PCT v env)."

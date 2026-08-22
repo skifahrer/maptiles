@@ -15,6 +15,9 @@
  *   --fonts-dir  … adresár s glyfmi na Pages – z neho sa vyberú fontstacky
  *   --overrides  … úpravy z developer módu (poc/web/style-overrides.json)
  *   --trails     … značené trasy z OSM relácií (vlastný .pmtiles)
+ *   --roads      … obmedzenia na ceste (výška podjazdov a tunelov, šírka,
+ *                  hmotnosť, maximálna rýchlosť), ktoré vrstva
+ *                  `transportation` OpenMapTiles nenesie vôbec
  *   --features   … krajinné prvky, ktoré schéma OpenMapTiles nemá –
  *                  násypy, múry, vedenia, pramene, zjazdovky (vlastný .pmtiles)
  *   --dem-source … model, z ktorého sú vrstevnice a skaly – ide do atribúcie
@@ -83,6 +86,10 @@ const hasTrails = args.trails === "true" || args.trails === "1";
 // Krajinné prvky – to isté: vlastný .pmtiles, vlastný maxzoom, voliteľné.
 const featuresMaxzoom = Number(args["features-maxzoom"] || 15);
 const hasFeatures = args.features === "true" || args.features === "1";
+// Obmedzenia na ceste (výška podjazdov, šírka, hmotnosť, maximálna rýchlosť)
+// – opäť vlastný .pmtiles, vlastný maxzoom a voliteľné.
+const roadsMaxzoom = Number(args["roads-maxzoom"] || 15);
+const hasRoads = args.roads === "true" || args.roads === "1";
 // Zdroj výšok ovplyvňuje atribúciu vrstevníc a skál v štýle.
 const demSource = DEM_SOURCES[args["dem-source"]]
   ? args["dem-source"]
@@ -331,6 +338,10 @@ for (const type of MAP_TYPES) {
         ? `pmtiles://${baseUrl}/tiles/${region}-features.pmtiles`
         : null,
       featuresMaxzoom,
+      roadsUrl: hasRoads
+        ? `pmtiles://${baseUrl}/tiles/${region}-roads.pmtiles`
+        : null,
+      roadsMaxzoom,
       demSource,
       demTiles,
       demTilesSource,
@@ -368,6 +379,7 @@ console.log(
 console.log(
   `Značené trasy: ${hasTrails ? `áno (do z${trailsMaxzoom})` : "nie"}, ` +
   `Krajinné prvky: ${hasFeatures ? `áno (do z${featuresMaxzoom})` : "nie"}, ` +
+  `Obmedzenia na ceste: ${hasRoads ? `áno (do z${roadsMaxzoom})` : "nie"}, ` +
   `Vrstevnice: ${
     hasContours ? `áno (do z${contoursMaxzoom}, výšky: ${DEM_SOURCES[demSource].label})` : "nie"
   }, ` +

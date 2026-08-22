@@ -22,7 +22,7 @@
 #   REGION_KEY AREA_KEY AREA_BBOX TEST_KM2 TILES_MAXZOOM
 #   CONTOURS_ENABLED CONTOURS_SOURCE CONTOUR_INTERVAL
 #   ROCKS_ENABLED ROCKS_SOURCE TERRAIN_ENABLED TERRAIN_SOURCE
-#   TRAILS_ENABLED FEATURES_ENABLED CUSTOM_NAME CUSTOM_PBF_URL
+#   TRAILS_ENABLED FEATURES_ENABLED ROADS_ENABLED CUSTOM_NAME CUSTOM_PBF_URL
 # – prípadne `MAP_LAYERS`, keď mapu nerobil Build map a tie vrstvy na ňu
 # nesadajú (mapa sveta z `world-map.yml`). MUSÍ tu byť tá istá hodnota ako
 # v jobe, čo nahral ZIP: položka katalógu sa tu prepisuje navrch, takže inou

@@ -689,6 +689,15 @@ jobs:
       - name: "Navigácia: profil prejde do motora celý, alebo o sebe povie"
         run: python3 workers/lint/routing.py
 
+      # Obmedzenia na ceste: job `roads` čítá PBF dvakrát (osmium tags-filter,
+      # potom Planetiler), takže to isté rozhodnutie je na dvoch miestach.
+      # A hodnota s jednotkou (`3.8 m`, `12'6"`) sa NESMIE zmeniť na číslo:
+      # Planetiler parsuje `NumberFormat.parse`, ktorý vezme číslo zo začiatku
+      # a jednotku zahodí – z 3,8 m by bolo 12 m, potichu.
+      # Rozpis: `workers/lint/roads.py`.
+      - name: "Obmedzenia na ceste: filter, jednotky a výlučnosť blokov"
+        run: python3 workers/lint/roads.py
+
       # Kraj má na osm.fr vlastný súbor rezaný po jeho administratívnej
       # hranici, takže sa sťahuje priamo ten – nie 373 MB Slovenska, z ktorého
       # by sa kraj ešte raz vyrezával (pravidlo 7). Kontrola stráži, že sa tá
@@ -790,46 +799,13 @@ jobs:
       # actionlint kontroluje schému a výrazy, ale nie to, či `needs.X.outputs.Y`
       # naozaj existuje ako výstup jobu X. To je vlastná kontrola – práve na
       # tomto sa dá po rozdelení na joby ticho pomýliť.
+      # Neexistujúci výstup nie je chyba behu – GitHub ho vyhodnotí ako PRÁZDNY
+      # REŤAZEC, takže `if:` na ňom vyjde nepravdivo, vrstva sa nepridá a beh
+      # zazelená. Kontrola hľadá výstupy na dvoch miestach: pri obyčajnom jobe
+      # v jeho `outputs:`, pri jobe s `uses:` v `on.workflow_call.outputs`
+      # volaného súboru. Rozpis: `workers/lint/job-refs.py`.
       - name: Odkazy medzi jobmi
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import glob, re, sys, yaml
-          errs = 0
-          for path in sorted(glob.glob(".github/workflows/*.yml")):
-              txt = open(path).read()
-              # Komentáre preč – kontrola je textová, takže by inak našla
-              # `needs.…` aj v komentári, ktorý JU SAMU popisuje. (Presne
-              # to sa aj stalo.) Zahadzujú sa len celé zakomentované riadky,
-              # nie `#` uprostred príkazu, kde môže byť súčasťou textu.
-              txt = re.sub(r"^[ \t]*#.*$", "", txt, flags=re.M)
-              jobs = (yaml.safe_load(txt) or {}).get("jobs") or {}
-              starts = {}
-              for j in jobs:
-                  m = re.search(r"^  " + re.escape(j) + r":$", txt, re.M)
-                  if m:
-                      starts[j] = m.start()
-              if not starts:
-                  continue
-              def job_of(pos):
-                  return max(((j, p) for j, p in starts.items() if p < pos),
-                             key=lambda x: x[1])[0]
-              for m in re.finditer(r"needs\.([a-zA-Z0-9_-]+)\.(outputs\.([a-zA-Z0-9_]+)|result)", txt):
-                  tgt, cur = m.group(1), job_of(m.start())
-                  needs = jobs[cur].get("needs") or []
-                  if isinstance(needs, str):
-                      needs = [needs]
-                  if tgt not in needs:
-                      print(f"::error file={path}::job '{cur}' používa needs.{tgt}, ale nemá ho v needs")
-                      errs += 1
-                      continue
-                  key = m.group(3)
-                  if key and key not in (jobs[tgt].get("outputs") or {}):
-                      print(f"::error file={path}::job '{tgt}' nemá výstup '{key}' (chce ho '{cur}')")
-                      errs += 1
-          print(f"odkazov medzi jobmi: {errs} chýb")
-          sys.exit(1 if errs else 0)
-          PY
+        run: python3 workers/lint/job-refs.py
 
       # DĹŽKA SÚBORU. Dlhý súbor sa nedá naraz prehliadnuť: ďalšia zmena v ňom
       # nevidí, čo tam už je, a pridáva vedľa namiesto toho, aby to použila
