@@ -31,6 +31,7 @@ a v každej patria kusy k sebe. Toto je celý obrázok:
         │   ┌── Mapa ─── čo z regiónu vypadne von ──────────────────┐
         ├──►│ Build map      PBF → dlaždice → _site + ZIPy          │──► Pages
         ├──►│ Build wiki     objekty s wikipedia/wikidata → články  │──► Drive
+        ├──►│ Build navigácia PBF štátov → graf Valhally            │──► Drive
         ├──►│ Build svet     vodstvo, hranice, regióny sťahovania   │──► Drive
         └──►│ úpravy štýlu   style-overrides.json z developer módu  │──► repozitár
             └───────────────────────────────────────────────────────┘
@@ -64,6 +65,8 @@ map`; z toho sa nedalo prečítať, čo je vstup, čo výstup a čo tam nemá č
 | `build-map.yml` | Mapa · Build map | **áno** – toto je tá pipeline |
 | `wiki.yml` | Mapa · Build wiki | áno, vedľa mapy toho istého regiónu |
 | `world-map.yml` | Mapa · Build svet | áno, ale raz za dlho – svet sa nemení |
+| `roads.yml` | Mapa · obmedzenia ciest | nie – volá si ho Build map |
+| `navigation.yml` | Mapa · Build navigácia | áno, ale raz za dlho – cestná sieť sa nemení pri štýle |
 | `save-style-overrides.yml` | Mapa · úpravy štýlu | áno, po ladení štýlu v developer móde |
 | `update-dem.yml` | Dáta · výškové modely | volá si ho Build map (aj ručne) |
 | `dmr5-drive.yml` | Dáta · DMR 5.0 | volá si ho Build map, dvoma jobmi |
@@ -112,7 +115,8 @@ workers/rocks-shading/   `shading-rocks.yml`: dlaždice → raster → vektor
 workers/terrain/         job `terrain` (tieňovanie a 3D)
 workers/trails/          job `trails`      workers/features/  job `features`
 workers/search/          job `search`: vyhľadávací index (SQLite FTS5) z PBF
-workers/routing/         profil navigácie: čo si vypýtaš → costing motora
+workers/roads/           `roads.yml`: obmedzenia na ceste (výška, šírka, rýchlosť)
+workers/routing/         navigácia: profil (costing) a graf Valhally
 workers/wiki/            `wiki.yml`: články z Wikipédie k objektom mapy
 workers/world/           `world-map.yml`: základná mapa sveta (podklad pod výber)
 workers/tiles/           job `tiles`       workers/assets/    job `assets`
@@ -1114,7 +1118,39 @@ pokutu, „nemám" pošle sto kilometrov po okreskách.
 
 **Graf sa NEDELÍ po krajoch, ako sa delí mapa.** Známka po krajinách má zmysel
 len vtedy, keď trasa smie prejsť hranicu, takže navigačný balík patrí na štát
-a jeho susedov. Publikuje sa ako ďalší balík na Drive, nie na Pages.
+a jeho susedov (`workers/data/routing-areas.json`, workflow `navigation.yml`).
+Publikuje sa ako ďalší balík na Drive, nie na Pages – jedným packerom
+(`publish-map.py`), tak ako mapa sveta.
+
+**A PBF sa preň NEREŽE.** Pri mape je orez na hranicu podstatný, tu by bol
+chybou: hrana, ktorej chýba druhý koniec, je slepá ulica a trasa cez ňu
+neprejde – graf sa pritom postaví a beh zazelená. Rovnako sa nesmie stratiť
+`admins.sqlite`: bez neho Valhalla nevie, v ktorej krajine hrana leží, takže
+nefunguje prechod hranice ani strana jazdy, a nefunguje to TICHO. Oboje stráži
+`workers/lint/navigation.py` – aj to, že každý rozsah má **vlastné `country`**
+v `regions.json`: pri `admin_level: 2` je krajina zároveň uzol v `maps.json`,
+takže dva rozsahy pod jedným menom si položku navzájom prepíšu (tá istá úvaha
+ako `svet_basic`).
+
+## Obmedzenia na ceste: hodnota ide do dlaždice tak, ako je v OSM
+
+Výška podjazdov a tunelov, šírka, hmotnosť, maximálna rýchlosť, jazdné pruhy
+a stúpanie – vrstva `transportation` OpenMapTiles z toho nenesie **ani jednu**
+hodnotu, takže sa to isté PBF čítá druhýkrát vlastnou schémou
+(`workers/roads/roads.yml`), presne ako trasy a krajinné prvky.
+
+**Hodnota je REŤAZEC a `tag_mappings: double` je chyba.** Planetiler parsuje
+číslo cez `NumberFormat.parse`, ktorý vezme číslo zo ZAČIATKU a jednotku
+zahodí: z `12'6"` (3,8 m) je 12 a z `50 mph` je 50 – bez jedinej hlášky. Do
+dlaždice preto ide to, čo je v OSM, a mapa kreslí presne to, čo je na tabuli.
+Číslo z tej hodnoty potrebuje len smerovanie a to si ju parsuje samo.
+
+**Dva bloky, dva zoomy, a musia sa vylučovať.** Rozmer a hmotnosť od z12
+(rozhodujú, či tam vozidlo prejde), rýchlosť a pruhy od z14 (sú takmer na
+každej ceste). Druhý blok má `__not__` nad zoznamom rozmerov – bez neho by
+cesta s výškou aj rýchlosťou vypadla dvakrát a štítok by sa kreslil cez seba.
+Stráži to `workers/lint/roads.py`, a samotnú schému **testy v nej**
+(`java -jar planetiler.jar verify workers/roads/roads.yml`).
 
 ## Build svet: vlastná pipeline, `svet.zip` a `svet.aar`
 
@@ -1241,6 +1277,10 @@ python3 workers/trails/tags.py --osmc=red:white:red_bar --route=hiking  # akú z
 python3 workers/lint/features.py       # predfilter pustí, čo schéma prvkov chce
 node    workers/lint/trails.mjs        # strana a odstup trás držia naprieč súbormi
 python3 workers/lint/routing.py        # profil navigácie prejde do motora celý
+python3 workers/lint/navigation.py     # graf: rozsah, uzol v katalógu, celý balík
+python3 workers/lint/roads.py          # obmedzenia na ceste: filter, jednotky, bloky
+python3 workers/lint/job-refs.py       # needs.*.outputs.* mieri na existujúci výstup
+java -jar planetiler.jar verify workers/roads/roads.yml  # testy schémy obmedzení
 python3 workers/routing/profile.py --check  # ktorú voľbu ktorý motor vie
 python3 workers/lint/world.py          # štýl sveta kreslí to, čo schéma vyrába
 python3 workers/lint/planetiler.py     # kto púšťa Planetiler, má aj Javu 21

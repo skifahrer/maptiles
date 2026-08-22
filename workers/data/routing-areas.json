@@ -1,0 +1,76 @@
+{
+  "_comment": [
+    "NA AKÝ ROZSAH SA STAVIA NAVIGAČNÝ GRAF – a je to iná otázka než „aká mapa“,",
+    "preto vlastný číselník a nie ďalší kľúč v `areas.json`. Rozoberá ho",
+    "`workers/routing/pbf.sh` a `graph.sh`, stráži `workers/lint/navigation.py`.",
+    "",
+    "GRAF SA NEDELÍ PO KRAJOCH, ako sa delí mapa – a nie je to pohodlie, je to",
+    "priamy dôsledok zadania. Diaľničná známka po krajinách má zmysel len vtedy,",
+    "keď trasa SMIE prejsť hranicu; graf jedného kraja nevie ani doviezť človeka",
+    "do Rakúska, takže sa v ňom nedá ani vyhnúť tomu, že tam známku nemá. Mapa",
+    "na pozeranie a graf na smerovanie sú dva rôzne rozsahy toho istého územia.",
+    "",
+    "A PRETO SÚ TU DVE MOŽNOSTI, nie jedna. Pravidlo 7 (nikdy nesťahuj viac, než",
+    "treba) tu stojí proti zadaniu: cezhraničná trasa chce susedov, ale susedia",
+    "sú niekoľko GB PBF a hodiny stavby, kým runner má ~60 GB voľných a strop",
+    "360 minút na job. Kto navigáciu skúša alebo jazdí doma, postaví",
+    "`slovensko`; kto ide do Rakúska, zaplatí `slovensko_susedia`.",
+    "",
+    "ČASY A VEĽKOSTI SA MAJÚ DOPLNIŤ Z PRVÉHO BEHU. Zámerne tu nie sú",
+    "odhadnuté: číslo v komentári tohto repozitára znamená namerané, a hádaná",
+    "hodnota by sa od skutočnej nedala odlíšiť. `graph.sh` ich vypíše do súhrnu",
+    "behu aj do `obsah.json` v balíku."
+  ],
+  "_pbf": [
+    "Zdroj PBF je ten istý ako pri mape – osm.fr (`OSMFR_BASE`), lebo tam chodí",
+    "celá pipeline a jeden zdroj sa nemá zdvojovať. Cesty sú BEZ prípony",
+    "`-latest.osm.pbf`; dopĺňa ju `pbf.sh`, aby sa nepísala pri každom riadku."
+  ],
+  "areas": {
+    "slovensko": {
+      "name": "Slovensko",
+      "region_key": "navigacia_slovensko",
+      "pbf": [
+        "europe/slovakia"
+      ],
+      "countries": [
+        "SK"
+      ],
+      "note": [
+        "Predvolené. Trasa neprejde hranicu, takže voľba `vignettes` má v tomto",
+        "grafe zmysel len pre SK – a `profile.py` to povie, lebo krajiny berie",
+        "z `vignettes.json`, nie z grafu."
+      ]
+    },
+    "slovensko_susedia": {
+      "name": "Slovensko a susedia",
+      "region_key": "navigacia_slovensko_susedia",
+      "pbf": [
+        "europe/slovakia",
+        "europe/czech_republic",
+        "europe/austria",
+        "europe/hungary",
+        "europe/poland",
+        "europe/ukraine"
+      ],
+      "countries": [
+        "SK",
+        "CZ",
+        "AT",
+        "HU",
+        "PL",
+        "UA"
+      ],
+      "note": [
+        "TOTO JE DRAHÝ BEH a je to jediná podoba, v ktorej má známka po krajinách",
+        "plný zmysel. Poľsko a Ukrajina sú pritom najväčšie kusy a pre cestu do",
+        "Rakúska netreba ani jeden – keď sa ukáže, že sa to nevojde do stropov",
+        "runnera, správna odpoveď je ĎALŠIA POLOŽKA tu (napr. `slovensko_at_cz`),",
+        "nie tichý orez tejto.",
+        "MENO JE SĽUB O ROZSAHU (pravidlo 2): keby sa zo zoznamu potichu vypustil",
+        "štát, balík by sa stále volal `…_susedia` a trasa by v ňom končila na",
+        "hranici bez vysvetlenia."
+      ]
+    }
+  }
+}

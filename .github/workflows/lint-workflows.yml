@@ -689,6 +689,14 @@ jobs:
       - name: "Navigácia: profil prejde do motora celý, alebo o sebe povie"
         run: python3 workers/lint/routing.py
 
+      # Navigačný graf: dva rozsahy pod jedným `country` si položku v katalógu
+      # navzájom prepíšu (`admin_level: 2` z krajiny robí uzol), rezaný PBF má
+      # na hranici slepé ulice a bez `admins.sqlite` nefunguje ani prechod
+      # hranice, ani strana jazdy – a nič z toho nespadne.
+      # Rozpis: `workers/lint/navigation.py`.
+      - name: "Navigácia: rozsah, uzol v katalógu a celý graf"
+        run: python3 workers/lint/navigation.py
+
       # Obmedzenia na ceste: job `roads` čítá PBF dvakrát (osmium tags-filter,
       # potom Planetiler), takže to isté rozhodnutie je na dvoch miestach.
       # A hodnota s jednotkou (`3.8 m`, `12'6"`) sa NESMIE zmeniť na číslo:
