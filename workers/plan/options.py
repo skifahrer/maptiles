@@ -126,16 +126,21 @@ DEFAULTS = {
     # je tu a nie vo formulári, lebo `workflow_dispatch` má strop 10 inputov
     # a ten je vyčerpaný.
     "roads": ("true", "generovať obmedzenia na ceste (výška, šírka, rýchlosť)"),
-    # NAVIGAČNÝ GRAF (Valhalla) rovno z Build map – a PREDVOLENE VYPNUTÝ.
-    # Nie je to nedôvera k tomu kroku: graf je CELOŠTÁTNY, kým mapa je kraj,
-    # takže pri každom builde štýlu by to boli hodiny práce za výsledok, ktorý
-    # sa nezmenil (cestná sieť sa pri farbe čiary nemení). Kto ho chce, zapne
-    # `navigation=true` a dostane graf aj mapu z jedného behu; kto ho nechce,
-    # nemá dôvod o ňom vedieť. Rozsah je vlastná voľba, lebo „Slovensko“ a
-    # „Slovensko a susedia“ sa líšia hodinami a gigabajtmi – zoznam je vo
-    # `workers/data/routing-areas.json`.
-    "navigation": ("false", "postaviť aj navigačný graf (Valhalla) – hodiny práce"),
+    # NAVIGAČNÝ GRAF: zapnutie je SWITCH VO FORMULÁRI (`inputs.navigation`),
+    # tu je len jeho rozsah. Je to to isté rozdelenie ako pri rýchlom teste
+    # (`test` switch, `test_km2` voľba): zapína sa to pri behu, rozsah sa mení
+    # skoro nikdy. Zoznam rozsahov je vo `workers/data/routing-areas.json`
+    # a `slovensko` je predvolený, lebo susedia sú hodiny a gigabajty navyše.
     "navigation_area": ("slovensko", "rozsah navigačného grafu (routing-areas.json)"),
+    # PRAH SKLONU PRE SKALY. Bol to input vo formulári a presťahoval sa sem,
+    # keď si desiate miesto vzal switch `navigation` – `workflow_dispatch`
+    # dovolí najviac 10 inputov (overené: actionlint na jedenástom spadne).
+    # Je to ten istý výmenný obchod, aký spravil `test_km2`: navigácia sa
+    # zapína a vypína pri behu, kým prah sklonu sa prestavuje len vtedy, keď
+    # niekto ladí skaly – a vtedy sa aj tak siaha na `rock_res`, ktorý je tu
+    # už dávno. Dva knoflíky tej istej vrstvy tak konečne stoja na jednom
+    # mieste namiesto rozdelenia medzi formulár a voľby.
+    "rock_slope": ("50", "prah sklonu pre skaly v stupňoch"),
     # 15, nie 16: štítok s obmedzením je popisok pozdĺž čiary a na z16 už
     # nepribúda, čo by ukázal – pribúdajú len bajty. Bloky schémy majú
     # `min_zoom` 12 a 14, takže na tichú stratu (min_zoom nad maxzoomom) tu
@@ -205,6 +210,12 @@ MOVED = {
     "publish_pages": "je switch vo formulári (nasadiť na GitHub Pages), "
                      "nie voľba. Publikovanie na Drive je samostatná voľba "
                      "`publish`",
+    # Zapnutie grafu si vzalo desiate miesto vo formulári (a `rock_slope` sa
+    # zaň presťahoval sem). Kto sem napíše `navigation=true`, čakal by graf –
+    # a nedostal by ho, lebo túto voľbu už nikto nečíta. To je presne ten
+    # tichý omyl, kvôli ktorému tento zoznam existuje.
+    "navigation": "je switch vo formulári (postaviť aj navigačný graf), nie "
+                  "voľba. Rozsah grafu ostáva voľbou `navigation_area`",
     # Články z Wikipédie majú od vytiahnutia z Build map VLASTNÝ workflow
     # (`.github/workflows/wiki.yml`) a s ním vlastné inputy. Kto sem napíše
     # `wiki_langs=…`, čakal by, že build stiahne články – a ten ich už nerobí.
@@ -319,6 +330,8 @@ def main():
     ap.add_argument("--test", default="false",
                     help="switch rýchleho testu: true = počítať len štvorec "
                          "s `test_km2` km²")
+    ap.add_argument("--navigation", default="false",
+                    help="switch `navigation` z formulára (postaviť graf)")
     ap.add_argument("--publish-pages", default="true",
                     help="switch nasadenia na GitHub Pages: false = mapa sa "
                          "postaví a skontroluje, ale nenasadí")
@@ -456,15 +469,19 @@ def main():
         print(f"::error::Voľba „roads“ musí byť true alebo false, "
               f"nie „{values['roads']}“.", file=sys.stderr)
         return 1
-    # To isté pre navigačný graf. A k tomu rozsah: preklep v `navigation_area`
-    # by inak spadol až v jobe, ktorý sa spustí po celej príprave – a pri behu,
-    # čo má hodiny, je rozdiel medzi „spadne v druhej sekunde“ a „spadne za
-    # dvadsať minút“ ten celý rozdiel (pravidlo 4: s čím beh ide, má byť vidieť
-    # skôr, než sa začne počítať).
-    if values["navigation"] not in ("true", "false"):
-        print(f"::error::Voľba „navigation“ musí byť true alebo false, "
-              f"nie „{values['navigation']}“.", file=sys.stderr)
+    # NAVIGAČNÝ GRAF. Zapnutie je switch vo formulári, takže sem chodí hotové
+    # true/false z `inputs` – kontroluje sa aj tak, lebo skript sa dá spustiť
+    # ručne a `--navigation=hej` by inak ticho znamenalo „nestavaj".
+    nav_on = (args.navigation or "false").strip().lower()
+    if nav_on not in ("true", "false"):
+        print(f"::error::Switch „navigation“ musí byť true alebo false, "
+              f"nie „{args.navigation}“.", file=sys.stderr)
         return 1
+    values["navigation"] = nav_on
+    # A k tomu rozsah: preklep v `navigation_area` by inak spadol až v jobe,
+    # ktorý sa spustí po celej príprave – a pri behu, čo má hodiny, je rozdiel
+    # medzi „spadne v druhej sekunde“ a „spadne za dvadsať minút“ ten celý
+    # rozdiel (pravidlo 4: s čím beh ide, má byť vidieť skôr, než sa počíta).
     if values["navigation"] == "true":
         try:
             with open(os.path.join(_DATA, "routing-areas.json"),
@@ -507,6 +524,20 @@ def main():
               f"nie „{args.publish_pages}“.", file=sys.stderr)
         return 1
     values["publish_pages"] = pages_on
+
+    # Prah sklonu je odteraz voľba, takže sa kontroluje tu – `rock_slope=päť`
+    # by inak spadlo až v `gdal_dem`, po hodine sťahovania DEM.
+    try:
+        slope = float(values["rock_slope"])
+    except ValueError:
+        print(f"::error::Voľba „rock_slope“ musí byť číslo v stupňoch, "
+              f"nie „{values['rock_slope']}“.", file=sys.stderr)
+        return 1
+    if not 0 < slope < 90:
+        print(f"::error::Voľba „rock_slope“ má byť medzi 0 a 90 stupňami, "
+              f"nie {slope}. Zvislá stena je 90°, takže prah nad ňou nenájde "
+              f"nič.", file=sys.stderr)
+        return 1
 
     # Interval vrstevníc je voľba (miesto vo formulári si vzal switch
     # `wikipedia`), takže sa musí kontrolovať tu – `contour_interval=päť` by

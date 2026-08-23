@@ -1130,9 +1130,14 @@ TRI – „mám do…", „nemám" a „táto krajina známku nepozná" –, plu
 „nevieme", ktorá sa nesmie dosadiť potichu ani na jednu stranu: „mám" vypíše
 pokutu, „nemám" pošle sto kilometrov po okreskách.
 
-**Build map ho vie postaviť tiež, ale PREDVOLENE NIE.** Prepínač `navigation`
-(a `navigation_area`) je vo voľbách vypnutý, lebo graf je celoštátny, kým mapa
-je kraj: pri každom builde štýlu by to boli hodiny za výsledok, ktorý sa
+**Build map ho vie postaviť tiež, ale PREDVOLENE NIE.** Zapnutie je **switch
+vo formulári** (`navigation`), rozsah voľba (`navigation_area`) – to isté
+rozdelenie ako `test` a `test_km2`: zapína sa to pri behu, rozsah sa mení skoro
+nikdy. Desiate miesto vo formulári mu uvolnil `rock_slope`, ktorý je odteraz
+voľba a stojí vedľa `rock_res`, teda pri druhom knoflíku tej istej vrstvy
+(`workflow_dispatch` dovolí najviac 10 inputov – overené, actionlint na
+jedenástom spadne). Vypnuté je to preto, že graf je celoštátny, kým mapa je
+kraj: pri každom builde štýlu by to boli hodiny za výsledok, ktorý sa
 nezmenil – cestná sieť sa pri farbe čiary nemení. Kto ho zapne, dostane graf aj
 mapu z jedného behu. Že sa ten prepínač k jobu naozaj dostane (voľba → výstup
 jobu `plan` → `with:` volaného workflowu, aj `secrets: inherit`), stráži

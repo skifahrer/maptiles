@@ -151,19 +151,21 @@ on:
       # o ostrý build alebo ladenie terénu, a to je práca pre zaškrtávatko.
       # Predvolene ZAPNUTÉ: kraj je pri dávkach po päťdesiatich otázka sekúnd
       # (namerané 18 ms na článok), takže sa nemá čo šetriť.
-      rock_slope:
-        description: "Od akého sklonu (°) je terén skala (50 = steny, 40 = aj strmé svahy)"
+      # ZAPNUTIE NAVIGAČNÉHO GRAFU. Desiate miesto formulára (strop
+      # `workflow_dispatch` je 10 inputov) si vzalo odtiaľto `rock_slope`,
+      # ktorý je odteraz voľba: navigácia sa zapína pri behu, prah sklonu sa
+      # prestavuje len pri ladení skál – a vtedy sa aj tak siaha na `rock_res`,
+      # ktorý je vo voľbách už dávno.
+      #
+      # PREDVOLENE VYPNUTÉ, a nie z opatrnosti: graf je CELOŠTÁTNY, kým mapa je
+      # kraj, takže pri každom builde štýlu by to boli hodiny za výsledok, ktorý
+      # sa nezmenil. Rozsah je voľba `navigation_area` (číselník
+      # `workers/data/routing-areas.json`), rozpis v `navigation.yml`.
+      navigation:
+        description: "Postaviť aj navigačný graf (Valhalla) – hodiny navyše"
         required: false
-        default: "50"
-        type: string
-      # Zmaže cache aj uloženú verziu v sklade. Pri zapnutom switchi `test`
-      # sa pregenerúva vždy všetko, nech neladíš na výsledku z cache – toto
-      # pole je vtedy jedno.
-      # `tienovanie` sa volalo `teren` – jediné miesto, kde sa tá vrstva volala
-      # inak než vo `shading_source`, v balíku `-tienovanie.zip` a v katalógu.
-      # Staré meno ostáva prijímané (`REBUILD_ALIAS` v plan/options.py), len sa
-      # už neponúka. `skaly` od tej istej zmeny zahodí aj rozrobené obrysy
-      # podpipeline tieňovania. Rozpis a strážca: `workers/lint/rebuild.py`.
+        default: false
+        type: boolean
       rebuild:
         description: "Čo pregenerovať nanovo, aj keď to už je v cache"
         required: false
@@ -457,6 +459,7 @@ jobs:
           OPT_ROCK_SOURCE: ${{ inputs.rock_source }}
           OPT_SHADING_SOURCE: ${{ inputs.shading_source }}
           OPT_TEST: ${{ inputs.test }}
+          OPT_NAVIGATION: ${{ inputs.navigation }}
           OPT_PUBLISH_PAGES: ${{ inputs.publish_pages }}
         run: workers/plan/settings.sh
 
@@ -765,7 +768,7 @@ jobs:
       opt_terrain_maxzoom: ${{ steps.opts.outputs.opt_terrain_maxzoom }}
       opt_terrain_3d: ${{ steps.opts.outputs.opt_terrain_3d }}
       opt_rocks: ${{ steps.opts.outputs.opt_rocks }}
-      opt_rock_slope: ${{ inputs.rock_slope }}
+      opt_rock_slope: ${{ steps.opts.outputs.opt_rock_slope }}
       opt_rock_res: ${{ steps.opts.outputs.opt_rock_res }}
       opt_rock_img_asset: ${{ steps.opts.outputs.opt_rock_img_asset }}
       opt_rock_img_zoom: ${{ steps.opts.outputs.opt_rock_img_zoom }}
@@ -876,6 +879,7 @@ jobs:
             --rock-source='${{ inputs.rock_source }}' \
             --shading-source='${{ inputs.shading_source }}' \
             --test='${{ inputs.test }}' \
+            --navigation='${{ inputs.navigation }}' \
             --publish-pages='${{ inputs.publish_pages }}' \
             --out="$GITHUB_OUTPUT"
 
@@ -1116,7 +1120,7 @@ jobs:
           OPT_ROCK_ZAPLN_DIERY: ${{ needs.plan.outputs.opt_rock_zapln_diery }}
           OPT_SHADING_SOURCE: ${{ needs.plan.outputs.opt_shading_source }}
           OPT_TERRAIN_MAXZOOM: ${{ needs.plan.outputs.opt_terrain_maxzoom }}
-          ROCK_SLOPE: ${{ inputs.rock_slope }}
+          ROCK_SLOPE: ${{ needs.plan.outputs.opt_rock_slope }}
           # `contours-build.sh` je v otlačku tiež: je to on, kto vrstevnice
           # zjednodušuje a zaobľuje, takže jeho zmena mení obsah dlaždíc.
           # Kým v ňom nebol, dala sa zmeniť tolerancia a beh vrátil z cache
@@ -1290,7 +1294,7 @@ jobs:
           OPT_ROCK_MAXZOOM: ${{ needs.plan.outputs.opt_rock_maxzoom }}
           OPT_ROCK_PLNE: ${{ needs.plan.outputs.opt_rock_plne }}
           OPT_ROCK_ZAPLN_DIERY: ${{ needs.plan.outputs.opt_rock_zapln_diery }}
-          ROCK_SLOPE_IN: ${{ inputs.rock_slope }}
+          ROCK_SLOPE_IN: ${{ needs.plan.outputs.opt_rock_slope }}
           ROCK_RES_IN: ${{ needs.plan.outputs.opt_rock_res }}
           OPT_ROCKS: ${{ needs.plan.outputs.opt_rocks }}
           OPT_ROCK_DEM: ${{ needs.plan.outputs.opt_rock_dem }}
@@ -1370,7 +1374,7 @@ jobs:
         continue-on-error: true
         env:
           CO: teren
-          NAZOV: teren-${{ needs.plan.outputs.key }}-s${{ inputs.rock_slope }}-g${{ needs.plan.outputs.opt_rock_res }}
+          NAZOV: teren-${{ needs.plan.outputs.key }}-s${{ needs.plan.outputs.opt_rock_slope }}-g${{ needs.plan.outputs.opt_rock_res }}
         run: workers/deploy/publish-results.sh
 
       # Časti stránky si joby posielajú artefaktom – každý vyrobí svoj kus
@@ -1498,7 +1502,7 @@ jobs:
           OPT_ROCK_MAXZOOM: ${{ needs.plan.outputs.opt_rock_maxzoom }}
           OPT_ROCK_PLNE: ${{ needs.plan.outputs.opt_rock_plne }}
           OPT_ROCK_ZAPLN_DIERY: ${{ needs.plan.outputs.opt_rock_zapln_diery }}
-          ROCK_SLOPE_IN: ${{ inputs.rock_slope }}
+          ROCK_SLOPE_IN: ${{ needs.plan.outputs.opt_rock_slope }}
           ROCK_RES_IN: ${{ needs.plan.outputs.opt_rock_res }}
           OPT_ROCKS: ${{ needs.plan.outputs.opt_rocks }}
           OPT_ROCK_DEM: ${{ needs.plan.outputs.opt_rock_dem }}
@@ -1569,7 +1573,7 @@ jobs:
         continue-on-error: true
         env:
           CO: teren
-          NAZOV: skaly-${{ needs.plan.outputs.key }}-s${{ inputs.rock_slope }}-g${{ needs.plan.outputs.opt_rock_res }}
+          NAZOV: skaly-${{ needs.plan.outputs.key }}-s${{ needs.plan.outputs.opt_rock_slope }}-g${{ needs.plan.outputs.opt_rock_res }}
         run: workers/deploy/publish-results.sh
 
       - name: Odlož časť stránky

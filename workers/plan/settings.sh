@@ -36,6 +36,7 @@ python3 workers/plan/options.py \
   --rock-source="$OPT_ROCK_SOURCE" \
   --shading-source="$OPT_SHADING_SOURCE" \
   --test="$OPT_TEST" \
+  --navigation="$OPT_NAVIGATION" \
   --publish-pages="$OPT_PUBLISH_PAGES" \
   --summary="$OUT"
 

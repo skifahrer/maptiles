@@ -146,19 +146,29 @@ def main():
     # --- 5. prepínač sa musí dostať až k jobu ---
     #
     # TÁ ISTÁ TICHÁ CHYBA AKO PRI `rebuild` (viď `workers/lint/rebuild.py`):
-    # voľba je v `options.py`, ale `plan` ju nevydá ako výstup, alebo ju
-    # volajúci job nepodá ďalej – a vtedy sa NESTANE NIČ. Beh je zelený, len
-    # graf nikde nie je a nikto nepovie prečo.
+    # prepínač je vo formulári, ale nedorazí k jobu – a vtedy sa NESTANE NIČ.
+    # Beh je zelený, len graf nikde nie je a nikto nepovie prečo. Ciest, kde sa
+    # môže prerušiť, je päť: formulár → `options.py` → výstup jobu `plan` →
+    # `with:` volaného workflowu → `secrets`.
     opts_py = os.path.join(_WORKERS, "plan", "options.py")
     if os.path.exists(opts_py):
         opts = open(opts_py, encoding="utf-8").read()
-        for volba in ("navigation", "navigation_area"):
-            if f'"{volba}": (' not in opts:
-                err("workers/plan/options.py",
-                    f"voľba `{volba}` v číselníku predvolieb nie je – bez nej "
-                    f"ju `plan` nevydá ako `opt_{volba}` a job sa nemá ako "
-                    f"zapnúť.")
-        # Predvolený rozsah musí existovať, inak zapnutie padne na strážcovi.
+        if '"navigation_area": (' not in opts:
+            err("workers/plan/options.py",
+                "voľba `navigation_area` v číselníku predvolieb nie je – bez "
+                "nej `plan` nevydá `opt_navigation_area` a graf by sa staval "
+                "na predvolenom rozsahu, nie na vypýtanom.")
+        if '"--navigation"' not in opts:
+            err("workers/plan/options.py",
+                "`options.py` neprijíma `--navigation`, takže sa k nemu switch "
+                "z formulára nedostane a `opt_navigation` bude vždy `false`.")
+        # Starý zápis vo `options` musí PADNÚŤ, nie prejsť ako neznámy kľúč
+        # (a už vôbec nie ako platná voľba, ktorú nikto nečíta).
+        if '"navigation": "je switch' not in opts:
+            err("workers/plan/options.py",
+                "`navigation` nie je medzi presunutými kľúčmi (`NEPOUZIVANE`). "
+                "Kto napíše `navigation=true` do `options`, čakal by graf – "
+                "a mlčky by ho nedostal.")
         m = re.search(r'"navigation_area": \("([^"]+)"', opts)
         if m and m.group(1) not in areas:
             err("workers/plan/options.py",
@@ -168,7 +178,35 @@ def main():
     build = os.path.join(".github", "workflows", "build-map.yml")
     if os.path.exists(build):
         txt = open(build, encoding="utf-8").read()
+        with open(build, encoding="utf-8") as f:
+            wf = yaml.safe_load(f)
+        on_b = wf.get("on", wf.get(True)) or {}
+        inputs = ((on_b.get("workflow_dispatch") or {}).get("inputs") or {})
+        nav = inputs.get("navigation")
+        if not nav:
+            err(".github/workflows/build-map.yml",
+                "vo formulári nie je switch `navigation` – graf sa z Build map "
+                "nedá zapnúť.")
+        elif nav.get("type") != "boolean":
+            err(".github/workflows/build-map.yml",
+                f"switch `navigation` má `type: {nav.get('type')}`, čakám "
+                f"`boolean` – inak to nie je odškrtávacie pole.")
+        elif nav.get("default") not in (False, "false"):
+            err(".github/workflows/build-map.yml",
+                "switch `navigation` je predvolene ZAPNUTÝ. Graf je celoštátny, "
+                "kým mapa je kraj – pri každom builde štýlu by to boli hodiny "
+                "za výsledok, ktorý sa nezmenil. Ak to má tak byť, zmeň aj "
+                "túto kontrolu a napíš prečo.")
+        # Strop `workflow_dispatch` je 10 inputov a je SKUTOČNÝ (actionlint na
+        # jedenástom spadne). Keby sa prekročil, GitHub workflow neprijme.
+        if len(inputs) > 10:
+            err(".github/workflows/build-map.yml",
+                f"formulár má {len(inputs)} inputov, strop je 10. Ďalší "
+                f"prepínač musí ísť do voľby `options` – a niečo odtiaľ von.")
         for potrebne, preco in (
+                ("--navigation=", "podanie switchu do `options.py` (a musí byť "
+                                  "na OBOCH miestach, kde sa volá: v jobe "
+                                  "`settings` cez env a v jobe `plan`)"),
                 ("opt_navigation:", "výstup jobu `plan` – bez neho je `if:` "
                                     "volajúceho jobu vždy nepravdivé"),
                 ("opt_navigation_area:", "výstup jobu `plan` s rozsahom"),
@@ -179,6 +217,11 @@ def main():
             if potrebne not in txt:
                 err(".github/workflows/build-map.yml",
                     f"chýba `{potrebne}` ({preco}).")
+        if "OPT_NAVIGATION:" not in txt:
+            err(".github/workflows/build-map.yml",
+                "job `settings` nedostáva `OPT_NAVIGATION`, takže vypíše "
+                "formulár, v ktorom graf chýba – a s čím beh ide, má byť "
+                "vidieť skôr, než sa začne počítať (pravidlo 4).")
         # `workflow_call` NEDEDÍ secrets – bez nich sa balík nemá kam nahrať
         # a job spadne až na konci, po celej stavbe grafu.
         m = re.search(r"\n  navigacia:\n(.*?)(?=\n  [a-z0-9_-]+:\n)", txt,
