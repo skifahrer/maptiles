@@ -456,6 +456,33 @@ takže 3D reliéf nedvíha koruny stromov, kým vrstevnice vedú po zemi.
   (MapLibre ju hľadá sám, `TerrainSourceCache.getSourceTile`). Nižný kraj tak
   neplatí štvornásobkom dlaždíc za každý ďalší zoom nad rovinou a rozpočet
   ostane horám. Minzoom sa nevynecháva nikdy – je to koreň tej pyramídy.
+- **Kde model dáta nemá, sa nevyrobí hladina mora.** Terrarium je RGB a nemá
+  podobu „hodnota tu nie je“, takže sa do dlaždice niečo zapísať MUSÍ – a dlho
+  to bola nula (`gdalwarp -dstnodata 0`). Tým sa „model tu nemáme“ zmenilo na
+  „nula metrov nad morom“ a hillshade (derivácia výšky) z toho na hranici dát
+  nakreslil **stenu**: namerané na publikovanom
+  `bratislavsky_test4-terrain.pmtiles` skok 668 m na 407 m/px, čo je sklon
+  **59°** – ostrá svetlo-tmavá čiara cez mapu na mieste, kde o žiadnu hranicu
+  nejde. Za ňou bola rovina, čiže plocha **bez tieňovania**: na z5 malo 99,6 %
+  dlaždice presne 0 m, na z9 43 %, na z10 35 %.
+
+  Odteraz je `NODATA` sentinel mimo rozsahu skutočných výšok (−9999),
+  chýbajúce hodnoty dopĺňa `vypln_nodata` **najbližšou platnou** – to isté, čo
+  robí `gdal_fillnodata`, len štyrmi priechodmi indexov, aby sa kvôli tomu
+  nemusel prepisovať súbor. Konštanta by stenu nezrušila, len znížila; okolím
+  doplnená výška za hranicou plynulo pokračuje tou, ktorá je na hranici, takže
+  z nej hillshade nemá čo nakresliť (namerané na napodobenine dlaždice:
+  57–68° → 6°, platné výšky nedotknuté). Dlaždica bez jediného platného pixela
+  sa **nezapíše vôbec** – nie je to rovina, je to územie, o ktorom model nič
+  nehovorí. Stráži to [workers/lint/terrain-nodata.py](lint/terrain-nodata.py).
+- **Rozsah v hlavičke `.pmtiles` je bbox behu**, nie zjednotenie dlaždíc
+  (`pack.py --clip-bbox`). Zjednotenie je totiž rozsah tej NAJVÄČŠEJ dlaždice
+  a tá na z5 má 11,25°, takže sa pyramída nad jedným krajom vykázala ako pol
+  Európy: hlavička hovorila `11,25 / 40,98 / 22,50 / 48,92`, kým mapa bola
+  `17,167 / 48,321 / 17,195 / 48,340` – **182 751× väčšia plocha**, než akú
+  archív popisuje. Klientovi to neuberie ani jednu dlaždicu: MapLibre porovnáva
+  `bounds` s dlaždicou prienikom, takže tá z5, do ktorej kraj padne, ostáva
+  v rozsahu.
 - **Zoom je `auto`** (`terrain_maxzoom`): najnižší, na ktorom je pixel
   dlaždice jemnejší než bunka modelu – Sonny (20 m) → **z13**, DMR 3.5 (10 m)
   → **z14**, DMR 5.0 (5 m) → **z15**. Pevná trinástka tu bola dovtedy, kým bol

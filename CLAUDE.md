@@ -960,6 +960,42 @@ bez krajinnej pokrývky. Reliéf sa alfou nestratí (rozdiel medzi stranami je
 41 jednotiek L*, viac, než oko na tvar potrebuje); ubudlo len to, čo tvar
 nenieslo.
 
+**Tam, kde model dáta NEMÁ, sa nevyrobí hladina mora.** Terrarium je RGB
+a nemá podobu „hodnota tu nie je“, takže do dlaždice sa niečo zapísať musí –
+a `gdalwarp` na to dlho dostával `-dstnodata 0`. Z „model tu nemáme“ sa tým
+stalo „nula metrov nad morom“ a vyšli z toho tri veci naraz, ani jedna hlasná
+(namerané na publikovanom `bratislavsky_test4-terrain.pmtiles`):
+
+| | |
+|---|---|
+| stena na hranici dát | skok 668 m na 407 m/px = **sklon 59°** (na z9 69°) |
+| plocha bez tieňovania za ňou | z5 **99,6 %** dlaždice presne 0 m, z9 43 %, z10 35 % |
+| hlavička sľubovala cudzie územie | `11,25 / 40,98 / 22,50 / 48,92` nad mapou `17,167 / 48,321 / 17,195 / 48,340`, teda **182 751× väčšia plocha** |
+
+Hillshade je derivácia výšky, takže tá stena nie je kozmetika: nakreslí sa ako
+ostrá svetlo-tmavá čiara cez mapu na mieste, kde o žiadnu hranicu nejde, a za
+ňou je rovina – čiže plocha, ktorá tieňovanie NEMÁ. Odteraz je `NODATA`
+sentinel mimo rozsahu skutočných výšok (−9999), chýbajúce hodnoty dopĺňa
+`vypln_nodata` NAJBLIŽŠOU platnou (to isté, čo robí `gdal_fillnodata`, len
+štyrmi priechodmi indexov) a dlaždica bez jediného platného pixela sa
+**nezapíše vôbec** – nie je to rovina, je to územie, o ktorom model nič
+nehovorí (pravidlo 2: rozsah je sľub).
+
+**Konštanta by stenu nezrušila, len znížila**, preto sa dopĺňa okolím: výška
+za hranicou plynulo pokračuje tou, ktorá je na hranici, takže z nej hillshade
+nemá čo nakresliť. Namerané na napodobenine dlaždice: sklon steny 57–68° → 6°
+a platné výšky ostávajú nedotknuté. Dopĺňa sa **najprv po riadkoch, potom po
+stĺpcoch** – pixel v rohu nemá platného suseda ani vo svojom riadku, ani vo
+svojom stĺpci, takže z „to bližšie z oboch osí“ by vyšiel nedoplnený a v mape
+by ostal sentinel, čiže −9999 m vedľa 600 m.
+
+**Rozsah v hlavičke `.pmtiles` sa reže na bbox behu** (`pack.py --clip-bbox`).
+Zjednotenie CELÝCH dlaždíc je totiž rozsah tej najväčšej z nich a dlaždica na
+z5 má 11,25° – pyramída nad jedným krajom sa ním vykázala ako pol Európy.
+Klientovi to neuberie ani jednu dlaždicu: MapLibre porovnáva `bounds`
+s dlaždicou PRIENIKOM, takže tá z5, do ktorej kraj padne, ostáva v rozsahu.
+Stráži to `workers/lint/terrain-nodata.py`.
+
 **A svetlo svieti od severozápadu a drží sa terénu.** MapLibre má predvolene
 335° (25° od severu – práve preto boli najbielejšie SEVERNÉ svahy) a
 `illumination-anchor: viewport`, teda svetlo priviazané k obrazovke: pri
@@ -1264,6 +1300,7 @@ python3 workers/lint/catalog.py        # katalóg drží tvar; test je v maps-te
 python3 workers/lint/rebuild.py        # `rebuild` prepočíta to, čo sľubuje
 python3 workers/lint/dem-empty.py      # prázdny stupeň sa overuje presne
 python3 workers/lint/terrain.py        # tieňovanie nestráca zvislú presnosť
+python3 workers/lint/terrain-nodata.py # tam, kde model nie je, sa nevyrobí hladina mora
 python3 workers/lint/dem-resampling.py # kernel DEM vyberá lib/cell.py, nie autor riadku
 python3 workers/lint/geojson-srs.py    # GeoJSON výstup bez SRS – inak sú z metrov stupne
 python3 workers/dem/measure-resampling.py  # čím prevzorkovať, aby v tieni nebola mriežka
@@ -1326,6 +1363,11 @@ SRS** (`workers/lint/geojson-srs.py` – ovládač podľa neho súradnice PREPO�
 do WGS84, takže `-a_srs EPSG:3035` z metrov spraví stupne a ogr2ogr pri tom
 skončí úspechom; raz z toho mala každá skala 1e-9 m² a filter ich vyhodil
 všetky, raz vyšla únia švov v stupňoch a zahodila sa ako „stratená plocha"),
+že **tam, kde výškový model dáta nemá, sa nevyrobí hladina mora**
+(`workers/lint/terrain-nodata.py` – `-dstnodata 0` znamenalo „model tu
+nemáme“ = „nula metrov n. m.“, takže na hranici dát stála stena so sklonom
+59°, za ňou plocha bez tieňovania a `.pmtiles` sa tými dlaždicami vykázal ako
+rozsahom: hlavička sľubovala 182-tisíckrát väčšie územie, než popisuje),
 že **predfilter PBF pustí
 všetko, čo si schéma krajinných prvkov vyžiada** (`workers/lint/features.py` –
 to isté rozhodnutie je v `filter.txt` aj `features.yml` a keď sa rozídu,

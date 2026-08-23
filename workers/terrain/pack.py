@@ -89,6 +89,10 @@ def main():
                     help="adresár s dlaždicami {z}/{x}/{y}.png")
     ap.add_argument("--out", dest="dst", required=True, help="cieľový .pmtiles")
     ap.add_argument("--name", default="terrain", help="meno do metadát")
+    ap.add_argument("--clip-bbox", default="",
+                    help="west,south,east,north – rozsah, na ktorý sa hlavička "
+                         "oreže (bbox behu). Bez neho sa berie celý rozsah "
+                         "dlaždíc, čiže na nízkom zoome pol Európy.")
     ap.add_argument("--source", default="",
                     help="kľúč výškového modelu (`sonny`, `dmr5`…) do metadát")
     args = ap.parse_args()
@@ -119,6 +123,27 @@ def main():
         s = ts if s is None else min(s, ts)
         e = te if e is None else max(e, te)
         n = tn if n is None else max(n, tn)
+
+    # A POTOM SA TO OREŽE NA BBOX BEHU. Rozsah dlaždíc je zjednotenie CELÝCH
+    # dlaždíc, a dlaždica na z5 má 11,25° – pyramída nad jedným krajom sa ním
+    # teda vykáže ako pol Európy. Namerané na publikovanom
+    # `bratislavsky_test4-terrain.pmtiles`: hlavička hovorila
+    # 11,25 / 40,98 / 22,50 / 48,92, kým mapa je 17,167 / 48,321 / 17,195 /
+    # 48,340 – rozsah 350-tisíckrát väčší než územie, ktoré popisuje.
+    #
+    # Klientovi to NEUBERIE ani jednu dlaždicu: MapLibre porovnáva `bounds`
+    # s dlaždicou PRIENIKOM (`TileBounds.contains` si z bboxu spočíta rozsah
+    # x/y na danom zoome), takže dlaždica z5, do ktorej kraj padne, ostáva
+    # v rozsahu aj po orezaní. Ubudne len sľub o území, ktoré v archíve nie je.
+    if args.clip_bbox:
+        cw, cs, ce, cn = (float(v) for v in args.clip_bbox.split(","))
+        w, s = max(w, cw), max(s, cs)
+        e, n = min(e, ce), min(n, cn)
+        if e <= w or n <= s:
+            print(f"::error::Orez hlavičky na {args.clip_bbox} nepretína "
+                  f"rozsah dlaždíc – to znamená, že dlaždice sú z iného "
+                  f"územia, než hovorí bbox behu.", file=sys.stderr)
+            return 1
 
     surovo = 0
     with open(args.dst, "wb") as f:

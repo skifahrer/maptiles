@@ -633,6 +633,15 @@ jobs:
       - name: Tieňovanie nestráca presnosť, ktorou stojí a padá
         run: python3 workers/lint/terrain.py
 
+      # A druhá vec o tom istom kódovaní: čo sa zapíše tam, kde model dáta
+      # NEMÁ. `-dstnodata 0` z toho spravilo hladinu mora, takže na hranici
+      # dát stála stena (nameraných 668 m na 407 m/px = 59°), za ňou bola
+      # plocha bez tieňovania a `.pmtiles` sa tými dlaždicami vykázal ako
+      # rozsahom – hlavička sľubovala 11,25–22,50° nad mapou 0,027° širokou.
+      # Nespadlo nič. Rozpis: `workers/lint/terrain-nodata.py`.
+      - name: Tieňovanie nevyrába terén tam, kde model nie je
+        run: python3 workers/lint/terrain-nodata.py
+
       # A to isté o jeden krok skôr, v samotnom MODELI. Tieňovanie sa opravilo
       # dvakrát a mriežka v mape ostala – lebo nevznikala pri robení dlaždíc,
       # ale už pri čítaní DMR 5.0 z Drive: zo 4 m pyramídy na 5 m bunky
