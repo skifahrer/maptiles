@@ -2160,7 +2160,7 @@ a označí, čo bolo iné než predvolené:
 | `region` | `presovsky` | default |
 | `area` | `mala_fatra` | **iné než default** |
 | `test` | `true` | default |
-| `rock_slope` | `45` | **iné než default** |
+| `shading_source` | `sonny` | **iné než default** |
 
 Je to preto, že formulár *Run workflow* sa vždy otvorí s predvolenými
 hodnotami – GitHub si nepamätá, s čím si beh pustil naposledy, a v API to
@@ -2996,10 +2996,9 @@ pre celé Slovensko nechaj pipeline zvoliť najvyšší zoom, ktorý sa zmestí.
    | `contour_source` | **výber** | odkiaľ **vrstevnice**: `sonny` (20 m), `dmr35` (10 m), `dmr5` (LiDAR – s výrezom 1 m, inak 5 m), `ziadne` |
    | `rock_source` | **výber** | odkiaľ **skaly**: ten istý zoznam modelov (počíta sa sklon), alebo `tienovanie` (hotové polygóny z tieňovaných dlaždíc), alebo `ziadne` |
    | `shading_source` | **výber** | odkiaľ **tieňovanie a 3D terén**: `sonny`, `dmr35`, `dmr5`, `ziadne` |
-   | `wikipedia` | **switch** | stiahnuť **články z Wikipédie** k objektom v regióne (vlastný ZIP na Drive; predvolene zapnuté) |
-   | `rock_slope` | text | od akého sklonu (°) je terén skala |
+   | `navigation` | **switch** | postaviť aj **navigačný graf** (Valhalla) – predvolene **odškrtnutý**, lebo graf je celoštátny, kým mapa je kraj, takže by to boli hodiny navyše pri každom builde štýlu. Rozsah je voľba `navigation_area` |
    | `rebuild` | výber | `nic` / `vrstevnice` / `skaly` / `tienovanie` / `vsetko` (staré `teren` sa ešte prijme, ale už sa neponúka) |
-   | `options` | text | zriedka menené nastavenia ako `kľúč=hodnota` (napr. veľkosť testu `test_km2=5`, mriežka na obrys skál `rock_res=1`) |
+   | `options` | text | zriedka menené nastavenia ako `kľúč=hodnota` (napr. veľkosť testu `test_km2=5`, prah sklonu skál `rock_slope=45`, mriežka na obrys skál `rock_res=1`, rozsah grafu `navigation_area=slovensko_susedia`) |
 
    **Defaulty sú jedno rozhodnutie, nie tri nezávislé voľby** – Bratislavský
    kraj (najmenší), `cely_region` a odškrtnutý test, čiže predvolené spustenie
