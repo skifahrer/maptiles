@@ -211,7 +211,8 @@ musia sedieť a nesúlad vyzerá ako pokazená trasa.
 | `workers/data/routing-areas.json` | na aký rozsah sa graf stavia (a prečo nie po krajoch) |
 | `workers/routing/pbf.sh` | štátne extrakty z osm.fr, zliate `osmium merge`; **nič sa nereže** |
 | `workers/routing/graph.sh` | graf Valhally v Dockeri, overenie všetkých štyroch súborov, `graf.json` s verziou motora |
-| `.github/workflows/navigation.yml` | „Mapa · Build navigácia“ – graf, balík na Drive, zápis do `maps.json` |
+| `.github/workflows/navigation.yml` | „Mapa · Build navigácia“ – graf, balík na Drive, zápis do `maps.json`; dá sa spustiť sám aj z `Build map` (`workflow_call`) |
+| `build-map.yml`, job `navigacia` | prepínač `navigation` vo voľbách, **predvolene vypnutý** – graf je celoštátny, mapa je kraj |
 | `workers/lint/navigation.py` | rozsah má vlastný uzol v katalógu, PBF sa nereže, `admins.sqlite` sa nestratí, formulár sedí s číselníkom |
 | `workers/roads/*` | obmedzenia na ceste v DLAŽDICIACH (výška, šírka, hmotnosť, rýchlosť) – §1, „Áčko“ |
 

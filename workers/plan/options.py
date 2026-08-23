@@ -126,6 +126,16 @@ DEFAULTS = {
     # je tu a nie vo formulári, lebo `workflow_dispatch` má strop 10 inputov
     # a ten je vyčerpaný.
     "roads": ("true", "generovať obmedzenia na ceste (výška, šírka, rýchlosť)"),
+    # NAVIGAČNÝ GRAF (Valhalla) rovno z Build map – a PREDVOLENE VYPNUTÝ.
+    # Nie je to nedôvera k tomu kroku: graf je CELOŠTÁTNY, kým mapa je kraj,
+    # takže pri každom builde štýlu by to boli hodiny práce za výsledok, ktorý
+    # sa nezmenil (cestná sieť sa pri farbe čiary nemení). Kto ho chce, zapne
+    # `navigation=true` a dostane graf aj mapu z jedného behu; kto ho nechce,
+    # nemá dôvod o ňom vedieť. Rozsah je vlastná voľba, lebo „Slovensko“ a
+    # „Slovensko a susedia“ sa líšia hodinami a gigabajtmi – zoznam je vo
+    # `workers/data/routing-areas.json`.
+    "navigation": ("false", "postaviť aj navigačný graf (Valhalla) – hodiny práce"),
+    "navigation_area": ("slovensko", "rozsah navigačného grafu (routing-areas.json)"),
     # 15, nie 16: štítok s obmedzením je popisok pozdĺž čiary a na z16 už
     # nepribúda, čo by ukázal – pribúdajú len bajty. Bloky schémy majú
     # `min_zoom` 12 a 14, takže na tichú stratu (min_zoom nad maxzoomom) tu
@@ -446,6 +456,31 @@ def main():
         print(f"::error::Voľba „roads“ musí byť true alebo false, "
               f"nie „{values['roads']}“.", file=sys.stderr)
         return 1
+    # To isté pre navigačný graf. A k tomu rozsah: preklep v `navigation_area`
+    # by inak spadol až v jobe, ktorý sa spustí po celej príprave – a pri behu,
+    # čo má hodiny, je rozdiel medzi „spadne v druhej sekunde“ a „spadne za
+    # dvadsať minút“ ten celý rozdiel (pravidlo 4: s čím beh ide, má byť vidieť
+    # skôr, než sa začne počítať).
+    if values["navigation"] not in ("true", "false"):
+        print(f"::error::Voľba „navigation“ musí byť true alebo false, "
+              f"nie „{values['navigation']}“.", file=sys.stderr)
+        return 1
+    if values["navigation"] == "true":
+        try:
+            with open(os.path.join(_DATA, "routing-areas.json"),
+                      encoding="utf-8") as f:
+                rozsahy = json.load(f)["areas"]
+        except (OSError, ValueError) as exc:
+            print(f"::error::`workers/data/routing-areas.json` sa nedá "
+                  f"prečítať ({exc}) – bez neho sa rozsah grafu overiť nedá.",
+                  file=sys.stderr)
+            return 1
+        if values["navigation_area"] not in rozsahy:
+            print(f"::error::Rozsah navigačného grafu „"
+                  f"{values['navigation_area']}“ neexistuje. Známe: "
+                  f"{', '.join(sorted(rozsahy))} (workers/data/"
+                  f"routing-areas.json).", file=sys.stderr)
+            return 1
     # To isté pre vyhľadávací index – `search=0` by ho ticho vyplo
     # a v aplikácii by chýbalo offline hľadávanie.
     if values["search"] not in ("true", "false"):
@@ -573,6 +608,9 @@ def main():
           f"Tieňovanie: {shading_src}   Trasy: {values['trails']}   "
           f"Krajinné prvky: {values['features']}   "
           f"Obmedzenia na ceste: {values['roads']}")
+    if values["navigation"] == "true":
+        print(f"Navigačný graf: ÁNO, rozsah {values['navigation_area']} – "
+              f"pozor, je to hodiny práce navyše")
     print("Rýchly test: " + (f"ZAPNUTÝ, terén (vrstevnice, skaly, tieňovanie) "
                              f"len na {values['test_km2']} km² zo stredu "
                              f"výrezu; mapa ostáva celý región a otvorí sa tam"

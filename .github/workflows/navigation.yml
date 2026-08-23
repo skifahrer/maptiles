@@ -57,6 +57,45 @@ on:
         default: true
         type: boolean
 
+  # A TO ISTÉ AKO JOB V `Build map`. Graf je celoštátny, kým mapa je kraj, takže
+  # to NIE JE vec, ktorá má bežať pri každom builde štýlu – je to hodiny práce
+  # za výsledok, ktorý sa nezmenil. V `build-map.yml` ho preto zapína prepínač
+  # `navigation` a je PREDVOLENE VYPNUTÝ; kto ho zapne, dostane graf a mapu
+  # z jedného behu (a jedného kliknutia), čo je presne to, na čo tá cesta je.
+  #
+  # `workflow_call` nepozná `type: choice`, tak sem chodia tie isté hodnoty ako
+  # holé reťazce – rovnako ako pri `shading-rocks.yml`. Že sa nerozídu
+  # s číselníkom, stráži `workers/lint/navigation.py`.
+  workflow_call:
+    inputs:
+      area:
+        required: false
+        default: "slovensko"
+        type: string
+      valhalla_image:
+        required: false
+        default: "ghcr.io/valhalla/valhalla-scripted:latest"
+        type: string
+      publish:
+        required: false
+        default: true
+        type: boolean
+    outputs:
+      region_key:
+        description: "Kľúč regiónu, pod ktorým balík leží v katalógu"
+        value: ${{ jobs.graf.outputs.region_key }}
+      graph_mb:
+        description: "Veľkosť grafu v MB"
+        value: ${{ jobs.graf.outputs.graph_mb }}
+    # `workflow_call` nededí secrets sám – bez nich sa balík nemá kam nahrať.
+    secrets:
+      GDRIVE_CREDENTIALS:
+        required: false
+      DRIVE_SECRET:
+        required: false
+      DRIVE_REFRESH:
+        required: false
+
 # Drive: sem ide hotový balík. Prihlásenie pre celý workflow, nie po kroku –
 # rovnako ako v `build-map.yml`, a z toho istého dôvodu (stráži to
 # „Kontrola · lint workflowov").
@@ -71,6 +110,9 @@ jobs:
   graf:
     name: Navigačný graf
     runs-on: ubuntu-latest
+    outputs:
+      region_key: ${{ steps.kat.outputs.region_key }}
+      graph_mb: ${{ steps.graph.outputs.graph_mb }}
     permissions:
       # `write` z toho istého dôvodu ako v `deploy`: `maps.json` je jediné
       # miesto, kde beh zapisuje do repozitára – zoznam, ktorý sa inak bez

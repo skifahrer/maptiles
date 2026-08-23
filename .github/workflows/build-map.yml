@@ -408,8 +408,7 @@ env:
   # Krajinné prvky (workers/features/features.yml) sú línie, body a pár plôch. Plotov
   # je v OSM veľa, ale idú až od z15 a lepia sa – 4 % je s rezervou.
   BUDGET_FEATURES_PCT: "4"
-  # Obmedzenia na ceste: číta to job `tiles` (koľko mu zostalo) aj `roads.yml`,
-  # ktorý ho dostane inputom – `workflow_call` `env` nededí.
+  # Číta to `tiles` (koľko mu zostalo) aj `roads.yml` (inputom – `env` sa nededí).
   BUDGET_ROADS_PCT: "2"
   BUDGET_ASSETS_MB: "40"
 
@@ -760,6 +759,8 @@ jobs:
       opt_features_maxzoom: ${{ steps.opts.outputs.opt_features_maxzoom }}
       opt_roads: ${{ steps.opts.outputs.opt_roads }}
       opt_roads_maxzoom: ${{ steps.opts.outputs.opt_roads_maxzoom }}
+      opt_navigation: ${{ steps.opts.outputs.opt_navigation }}
+      opt_navigation_area: ${{ steps.opts.outputs.opt_navigation_area }}
       budget_roads_pct: ${{ env.BUDGET_ROADS_PCT }}
       opt_terrain_maxzoom: ${{ steps.opts.outputs.opt_terrain_maxzoom }}
       opt_terrain_3d: ${{ steps.opts.outputs.opt_terrain_3d }}
@@ -1925,6 +1926,19 @@ jobs:
       size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
       budget_pct: ${{ needs.plan.outputs.budget_roads_pct }}
       day: ${{ needs.plan.outputs.day }}
+
+  # Navigačný graf. PREDVOLENE VYPNUTÝ: graf je celoštátny, mapa je kraj, takže
+  # pri každom builde štýlu by to boli hodiny za nezmenené. Viď `navigation.yml`.
+  navigacia:
+    name: Navigačný graf
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.opt_navigation == 'true' }}
+    permissions:
+      contents: write     # `maps.json`, ako v `deploy`
+    uses: ./.github/workflows/navigation.yml
+    secrets: inherit      # Drive; `env` sa nededí
+    with:
+      area: ${{ needs.plan.outputs.opt_navigation_area }}
 
   # ---------- vyhľadávací index ----------
   # Beží súbežne s inými jobami. Čítame predfiltrovaný PBF a budujeme

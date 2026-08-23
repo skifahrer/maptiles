@@ -143,7 +143,63 @@ def main():
     else:
         err("workers/routing/graph.sh", "skript neexistuje.")
 
-    # --- 5. formulár vs. číselník ---
+    # --- 5. prepínač sa musí dostať až k jobu ---
+    #
+    # TÁ ISTÁ TICHÁ CHYBA AKO PRI `rebuild` (viď `workers/lint/rebuild.py`):
+    # voľba je v `options.py`, ale `plan` ju nevydá ako výstup, alebo ju
+    # volajúci job nepodá ďalej – a vtedy sa NESTANE NIČ. Beh je zelený, len
+    # graf nikde nie je a nikto nepovie prečo.
+    opts_py = os.path.join(_WORKERS, "plan", "options.py")
+    if os.path.exists(opts_py):
+        opts = open(opts_py, encoding="utf-8").read()
+        for volba in ("navigation", "navigation_area"):
+            if f'"{volba}": (' not in opts:
+                err("workers/plan/options.py",
+                    f"voľba `{volba}` v číselníku predvolieb nie je – bez nej "
+                    f"ju `plan` nevydá ako `opt_{volba}` a job sa nemá ako "
+                    f"zapnúť.")
+        # Predvolený rozsah musí existovať, inak zapnutie padne na strážcovi.
+        m = re.search(r'"navigation_area": \("([^"]+)"', opts)
+        if m and m.group(1) not in areas:
+            err("workers/plan/options.py",
+                f"predvolený rozsah `{m.group(1)}` nie je v číselníku "
+                f"({', '.join(sorted(areas))}).")
+
+    build = os.path.join(".github", "workflows", "build-map.yml")
+    if os.path.exists(build):
+        txt = open(build, encoding="utf-8").read()
+        for potrebne, preco in (
+                ("opt_navigation:", "výstup jobu `plan` – bez neho je `if:` "
+                                    "volajúceho jobu vždy nepravdivé"),
+                ("opt_navigation_area:", "výstup jobu `plan` s rozsahom"),
+                ("./.github/workflows/navigation.yml", "volanie workflowu"),
+                ("needs.plan.outputs.opt_navigation_area", "podanie rozsahu "
+                 "volanému workflowu – bez neho by staval predvolený rozsah, "
+                 "nie ten vypýtaný")):
+            if potrebne not in txt:
+                err(".github/workflows/build-map.yml",
+                    f"chýba `{potrebne}` ({preco}).")
+        # `workflow_call` NEDEDÍ secrets – bez nich sa balík nemá kam nahrať
+        # a job spadne až na konci, po celej stavbe grafu.
+        m = re.search(r"\n  navigacia:\n(.*?)(?=\n  [a-z0-9_-]+:\n)", txt,
+                      re.S)
+        if m and "secrets: inherit" not in m.group(1):
+            err(".github/workflows/build-map.yml",
+                "job `navigacia` nemá `secrets: inherit` – `workflow_call` "
+                "secrets nededí, takže by sa graf postavil (hodiny) a až potom "
+                "by sa nemal kam nahrať.")
+
+    # --- 6. volať sa to musí dať ---
+    if os.path.exists(WORKFLOW):
+        with open(WORKFLOW, encoding="utf-8") as f:
+            doc = yaml.safe_load(f)
+        on_ = doc.get("on", doc.get(True)) or {}
+        if "workflow_call" not in on_:
+            err(".github/workflows/navigation.yml",
+                "workflow sa nedá zavolať (`workflow_call` chýba), takže "
+                "`Build map` ho zapnúť nemôže.")
+
+    # --- 7. formulár vs. číselník ---
     if os.path.exists(WORKFLOW):
         with open(WORKFLOW, encoding="utf-8") as f:
             wf = yaml.safe_load(f)

@@ -66,7 +66,7 @@ map`; z toho sa nedalo prečítať, čo je vstup, čo výstup a čo tam nemá č
 | `wiki.yml` | Mapa · Build wiki | áno, vedľa mapy toho istého regiónu |
 | `world-map.yml` | Mapa · Build svet | áno, ale raz za dlho – svet sa nemení |
 | `roads.yml` | Mapa · obmedzenia ciest | nie – volá si ho Build map |
-| `navigation.yml` | Mapa · Build navigácia | áno, ale raz za dlho – cestná sieť sa nemení pri štýle |
+| `navigation.yml` | Mapa · Build navigácia | áno, ale raz za dlho – alebo si ho zapneš v Build map (`navigation=true`) |
 | `save-style-overrides.yml` | Mapa · úpravy štýlu | áno, po ladení štýlu v developer móde |
 | `update-dem.yml` | Dáta · výškové modely | volá si ho Build map (aj ručne) |
 | `dmr5-drive.yml` | Dáta · DMR 5.0 | volá si ho Build map, dvoma jobmi |
@@ -1115,6 +1115,15 @@ ju `avoid_toll`; známka sa platí za čas a platí na sieť. A odpovede o nej s
 TRI – „mám do…", „nemám" a „táto krajina známku nepozná" –, plus štvrtá
 „nevieme", ktorá sa nesmie dosadiť potichu ani na jednu stranu: „mám" vypíše
 pokutu, „nemám" pošle sto kilometrov po okreskách.
+
+**Build map ho vie postaviť tiež, ale PREDVOLENE NIE.** Prepínač `navigation`
+(a `navigation_area`) je vo voľbách vypnutý, lebo graf je celoštátny, kým mapa
+je kraj: pri každom builde štýlu by to boli hodiny za výsledok, ktorý sa
+nezmenil – cestná sieť sa pri farbe čiary nemení. Kto ho zapne, dostane graf aj
+mapu z jedného behu. Že sa ten prepínač k jobu naozaj dostane (voľba → výstup
+jobu `plan` → `with:` volaného workflowu, aj `secrets: inherit`), stráži
+`workers/lint/navigation.py` – je to tá istá tichá chyba ako pri `rebuild`:
+voľba existuje, k jobu nedorazí a nestane sa nič.
 
 **Graf sa NEDELÍ po krajoch, ako sa delí mapa.** Známka po krajinách má zmysel
 len vtedy, keď trasa smie prejsť hranicu, takže navigačný balík patrí na štát
