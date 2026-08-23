@@ -99,10 +99,17 @@ celé mimo kraja sú po vynulovaní rovina a `je_rovina` ich vynechá – na sk�
 behu nad bboxom Prešovského kraja (umelý DEM s reliéfom všade, do z11) ich bolo
 144 namiesto 172 a 3,5 MB namiesto 4,8 MB.
 
-Rovina je výška 0, teda to isté, čo dáva `-dstnodata 0` za okrajom modelu.
-Hrana medzi terénom a rovinou je pritom pre hillshade zvislá stena, takže
-NESMIE stáť presne na hranici kraja – bol by z nej svetlý či tmavý prstenec po
-jej vnútornej strane, čiže v mape. `--edge` ju posunie pár pixelov ZA hranicu,
+Rovina je výška 0 – ale POZOR, to už NIE JE to isté, čo dáva `gdalwarp` za
+okrajom modelu. Boli to dve odpovede pod jednou hodnotou: „sme za hranicou
+kraja" je rozhodnutie, ktoré robíme my a vieme ho posunúť `--edge`-om tam, kde
+ho maska schová, kým „model tu nemá dáta" je fakt o modeli a stenu si bral aj
+DOVNÚTRA kraja, kde ju neschová nič. `-dstnodata` je preto sentinel `NODATA`
+a chýbajúce hodnoty dopĺňa `vypln_nodata` okolím; nula ostala len orezaniu na
+kraj.
+
+Hrana medzi terénom a rovinou je pre hillshade zvislá stena, takže NESMIE
+stáť presne na hranici kraja – bol by z nej svetlý či tmavý prstenec po jej
+vnútornej strane, čiže v mape. `--edge` ju posunie pár pixelov ZA hranicu,
 kde ju prekrýva plocha `mimo`.
 
 Použitie:
@@ -250,17 +257,97 @@ def je_rovina(vysky, px_m):
             and float(np.abs(np.diff(vysky, axis=0)).max()) <= strop)
 
 
+# Hodnota, ktorou `gdalwarp` označí „tu model nie je". Musí byť mimo
+# rozsahu skutočných výšok (Zem má −430 m až 8849 m) a NESMIE to byť 0:
+# nula je platná výška a v terrariu sa nedá odlíšiť od chýbajúcej hodnoty.
+NODATA = -9999.0
+
+
+def vypln_nodata(grid, chyba):
+    """Chýbajúce výšky doplní NAJBLIŽŠOU platnou, nie konštantou.
+
+    PREČO VÔBEC NIEČO. Terrarium je RGB a nemá podobu „hodnota tu nie je" –
+    do dlaždice sa teda niečo zapísať MUSÍ. Otázka je len čo, a sú dve
+    možnosti: konštanta, alebo okolie.
+
+    KONŠTANTA ROBÍ STENU. Tá stena je presne to, čo bolo v mape vidieť ako
+    „divný orez": na hranici modelu spadne výška zo 600 m na konštantu, čo je
+    pre hillshade (derivácia výšky) zvislý útes, a nakreslí sa ako ostrá
+    čiara cez celú mapu. Za ňou je rovina, teda plocha BEZ tieňovania.
+
+    OKOLIE ŽIADNU NEROBÍ: výška za hranicou plynulo pokračuje tou, ktorá je
+    na hranici. Nie je to vymyslený terén – je to jediný spôsob, ako povedať
+    „ďalej nevieme" bez toho, aby z toho hillshade nakreslil útvar. Presne to
+    isté robí `gdal_fillnodata`; tu je to štyrmi priechodmi indexov (O(n)),
+    lebo GDAL by kvôli tomu musel súbor prepísať.
+
+    `chyba` je maska „tu nie je hodnota". Vracia doplnenú mriežku; keď nie je
+    z čoho dopĺňať (celý pás je bez dát), vracia ju nezmenenú.
+    """
+    if not chyba.any() or chyba.all():
+        return grid
+    g = grid
+    plati = ~chyba
+    # NAJPRV PO RIADKOCH, POTOM PO STĹPCOCH – nie obe osi naraz a to bližšie
+    # z nich. Pixel v rohu, ďaleko od okna s dátami, nemá platného suseda ani
+    # vo svojom riadku, ani vo svojom stĺpci, takže by z takého porovnania
+    # vyšiel nedoplnený – a v dlaždici by ostal sentinel, čiže −9999 m vedľa
+    # 600 m: stena stokrát vyššia než tá, ktorú to má odstrániť. Po riadkovom
+    # priechode už každý stĺpec, ktorý dáta pretínajú, platné hodnoty MÁ,
+    # takže ich stĺpcový priechod roznesie do zvyšku.
+    for axis in (1, 0):
+        n = g.shape[axis]
+        tvar = [1, 1]
+        tvar[axis] = n
+        idx = np.broadcast_to(np.arange(n).reshape(tvar), g.shape)
+        dopredu = np.maximum.accumulate(np.where(plati, idx, -1), axis=axis)
+        spat = np.flip(np.minimum.accumulate(
+            np.flip(np.where(plati, idx, n), axis=axis), axis=axis), axis=axis)
+        d_dop = np.where(dopredu < 0, n + 1, idx - dopredu)
+        d_spat = np.where(spat >= n, n + 1, spat - idx)
+        v_dop = np.take_along_axis(g, dopredu.clip(0, n - 1), axis)
+        v_spat = np.take_along_axis(g, spat.clip(0, n - 1), axis)
+        je_dop, je_spat = d_dop <= n, d_spat <= n
+        # KEĎ SÚ PLATNÉ OBE STRANY, PRECHÁDZA SA MEDZI NIMI LINEÁRNE, nie
+        # skokom na tú bližšiu. Pri diere V MODELI (nie za jeho okrajom) sa
+        # totiž výplne z oboch strán stretnú v jej strede a „tá bližšia" tam
+        # spraví šev – teda opäť stenu, len menšiu. Namerané na 70 px diere
+        # medzi svahmi, ktoré sa líšia o ~300 m: skokom 298 m (36°),
+        # lineárne 0 m. Za okrajom modelu je platná len jedna strana, takže
+        # tam z toho vyjde presne to isté, čo predtým – rovné pokračovanie.
+        sucet = np.where(je_dop, d_dop, 0) + np.where(je_spat, d_spat, 0)
+        podiel = np.divide(np.where(je_spat, d_spat, 0), np.maximum(sucet, 1),
+                           dtype=np.float64)
+        oboje = je_dop & je_spat
+        hodnota = np.where(oboje, v_dop * podiel + v_spat * (1.0 - podiel),
+                           np.where(je_dop, v_dop, v_spat))
+        naslo = je_dop | je_spat
+        g = np.where(plati, g, np.where(naslo, hodnota.astype(g.dtype), g))
+        plati = plati | naslo
+    return g
+
+
 def warp_level(dem, path, minx, miny, maxx, maxy, width, height, resample):
     """Prevzorkuje DEM do mriežky presne zarovnanej na dlaždice daného zoomu.
 
     `Float32`, nie `Int16`: zlomok výšky musí prežiť až po kódovanie, inak
     je krok metrový bez ohľadu na to, koľko bitov mu potom dáme.
+
+    `-dstnodata` JE SENTINEL, NIE NULA. Kým tu stála nula, znamenalo „model tu
+    nemáme" to isté, čo „hladina mora" – a terrarium nemá ako povedať, že
+    hodnota nie je. Mimo modelu tým vznikla vyrobená rovina v nulovej výške
+    a na jej hranici stena. Namerané na publikovanom
+    `bratislavsky_test4-terrain.pmtiles`: dlaždica z5 mala 99,6 % plochy
+    presne 0 m, z9 43 %, z10 35 %, a najväčší skok medzi susednými pixelmi
+    bol 668 m na 407 m/px, čo je sklon 59° – hillshade z toho nakreslí ostrú
+    svetlo-tmavú čiaru tam, kde končia dáta, a za ňou nekreslí nič. Odteraz
+    je nodata rozoznateľná a `vypln_nodata` ju doplní okolím.
     """
     subprocess.run(
         ["gdalwarp", "-q", "-overwrite", "-t_srs", "EPSG:3857",
          "-te", *map(repr, (minx, miny, maxx, maxy)),
          "-ts", str(width), str(height),
-         "-r", resample, "-ot", "Float32", "-dstnodata", "0",
+         "-r", resample, "-ot", "Float32", "-dstnodata", str(NODATA),
          "-of", "ENVI", dem, path],
         check=True,
     )
@@ -362,6 +449,7 @@ def main():
     rovin = 0
     cut_px = 0          # pixelov mimo kraja, ktoré dostali rovinu
     all_px = 0
+    bez_modelu = 0      # dlaždíc, kde model nemá ANI JEDEN platný pixel
     made = args.minzoom - 1
     # Koľko z naplánovaných dlaždíc naozaj vzniklo. Rovina ostáva rovinou aj
     # o zoom vyššie, takže je to jediný podložený odhad toho, koľko ich
@@ -423,6 +511,7 @@ def main():
         nx, ny = x1 - x0 + 1, y1 - y0 + 1
         skipped_before = skipped
         rovin_before = rovin
+        bez_modelu_before = bez_modelu
         zapisanych = 0
 
         # Po pásoch, nech pamäť nerastie s veľkosťou územia.
@@ -439,12 +528,32 @@ def main():
             warp_level(args.dem, "/tmp/level.raw", minx, miny, maxx, maxy,
                        width, height, resample)
             grid = np.fromfile("/tmp/level.raw", dtype="<f4").reshape(height, width)
+            # DVE RÔZNE OTÁZKY NAD JEDNOU MRIEŽKOU, A V TOMTO PORADÍ:
+            # najprv „kde model dáta NEMÁ" (doplní sa okolím), až potom
+            # „kde sme za hranicou kraja" (zrovná sa na rovinu). Opačne by
+            # výplň roznášala nuly z orezania ďalej do kraja.
+            #
+            # KDE MODEL NIE JE, SA NEVYMÝŠĽA VÝŠKA. `-dstnodata` je preto
+            # sentinel mimo rozsahu skutočných výšok, nie nula: nula je platná
+            # výška a v terrariu sa od chýbajúcej hodnoty neodlíši. Kým ňou
+            # bola, robila na hranici modelu stenu – namerané na publikovanom
+            # `bratislavsky_test4-terrain.pmtiles` 668 m na 407 m/px, čiže
+            # sklon 59°, a za ňou plochu bez tieňovania (z5 mala 99,6 %
+            # dlaždice presne 0 m). Maska sa drží zvlášť: doplnená mriežka sa
+            # už od skutočnej nedá odlíšiť, a pritom treba vedieť, ktorá
+            # dlaždica nemá ani jeden platný pixel.
+            chyba = grid <= NODATA + 1.0
+            grid = vypln_nodata(grid, chyba)
+
             # MIMO KRAJA JE ROVINA. Hillshade kreslí krytím podľa SKLONU,
             # takže z roviny nenakreslí nič – tým sa tieňovanie zastaví na
             # hranici kraja aj vnútri dlaždice, ktorá cez ňu prečnieva.
-            # Rovina je výška 0, teda to isté, čo dáva `-dstnodata 0` za
-            # okrajom modelu (za štátnou hranicou je DMR 5.0 prázdne už dnes)
-            # – jedna hodnota, nie druhá konvencia.
+            #
+            # NULA JE TU INÁ ODPOVEĎ NEŽ NODATA, a je to zámer: „sme za
+            # hranicou kraja" je rozhodnutie, ktoré robíme my, kým „model tu
+            # nemá dáta" je fakt o modeli. Kým bola nodata tiež nula, boli to
+            # dve odpovede pod jednou hodnotou a tá druhá si brala stenu aj
+            # dovnútra kraja, kde ju maska neschová.
             #
             # `--edge` PIXELOV ZA HRANICU. Hrana medzi terénom a rovinou je pre
             # hillshade zvislá stena, čiže najsilnejší sklon v dlaždici; keby
@@ -457,6 +566,10 @@ def main():
                 cut_px += int(keep.size - keep.sum())
                 all_px += keep.size
                 grid[~keep] = 0.0
+                # Zrovnané na rovinu je odpoveď, nie chýbajúce dáta – inak by
+                # sa dlaždica tesne za hranicou zahodila ako „bez modelu"
+                # a hillshade by pod ňou siahol po rodičovi s terénom.
+                chyba = chyba & keep
 
             for ty in range(ry, ry_end + 1):
                 for tx in range(x0, x1 + 1):
@@ -467,6 +580,17 @@ def main():
                     # z prázdneho DEM za hranicou.
                     if mask and not rm.tile_touches(mask, z, tx, ty, args.grow):
                         skipped += 1
+                        continue
+                    # DLAŽDICA BEZ JEDINÉHO PLATNÉHO PIXELA SA NEZAPÍŠE, a to
+                    # ani na minzoome. Nie je to rovina – je to územie, o ktorom
+                    # model nič nehovorí, a zapísať doň čokoľvek znamená tvrdiť,
+                    # že tam terén je (pravidlo 2: rozsah je sľub). Kým sa
+                    # nodata kódovala ako nula, vznikala z nej hladina mora –
+                    # v archíve teda ležali dlaždice na pol Európy a hlavička
+                    # `.pmtiles` sa nimi vykázala ako rozsah tieňovania.
+                    if chyba[(ty - ry) * TILE:(ty - ry + 1) * TILE,
+                             (tx - x0) * TILE:(tx - x0 + 1) * TILE].all():
+                        bez_modelu += 1
                         continue
                     # Kóduje sa PO DLAŽDICIACH, nie celý pás naraz: pás má na
                     # z15 aj 33 miliónov pixelov a medzikroky kódovania by
@@ -508,7 +632,9 @@ def main():
               + (f", mimo kraja {skipped - skipped_before}"
                  if mask and skipped > skipped_before else "")
               + (f", bez reliéfu {rovin - rovin_before}"
-                 if rovin > rovin_before else ""), flush=True)
+                 if rovin > rovin_before else "")
+              + (f", bez modelu {bez_modelu - bez_modelu_before}"
+                 if bez_modelu > bez_modelu_before else ""), flush=True)
 
     # PRÁZDNA VRSTVA MUSÍ SPADNÚŤ, NIE ZAZELENAŤ. Odkedy je mimo kraja rovina,
     # sa dá vyrobiť nula dlaždíc aj z behu, ktorý prebehol celý: keď výrez
@@ -540,7 +666,10 @@ def main():
           + (f"; bez reliéfu vynechaných {rovin} dlaždíc "
              f"({100 * rovin / (total_tiles + rovin):.0f} %) – na ich mieste "
              f"kreslí klient rodiča"
-             if rovin else ""))
+             if rovin else "")
+          + (f"; bez modelu vynechaných {bez_modelu} dlaždíc – tam výškový "
+             f"model nemá dáta, takže sa tam tieňovanie nekreslí"
+             if bez_modelu else ""))
     return 0
 
 

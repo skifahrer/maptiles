@@ -150,8 +150,12 @@ if ! have_tiles; then
   # pack.py` – aj to, prečo sa zapisuje v Hilbertovom poradí.
   python3 -m pip install --quiet pmtiles
   mkdir -p terrain-out
+  # `--clip-bbox`: hlavička `.pmtiles` má povedať územie behu, nie zjednotenie
+  # celých dlaždíc – tá na z5 má 11,25°, takže by pyramída nad jedným krajom
+  # sľubovala pol Európy. Rozpis vo `workers/terrain/pack.py`.
   python3 workers/terrain/pack.py --in=terrain-png \
-    --out=terrain-out/terrain.pmtiles --name="$REGION_KEY" --source="$TDEM"
+    --out=terrain-out/terrain.pmtiles --name="$REGION_KEY" --source="$TDEM" \
+    --clip-bbox="$BBOX"
   echo "$TZ" > terrain-out/maxzoom.txt
   # Strom PNG sa maže hneď: pri kraji je to desaťtisíce súborov a disk
   # runnera nemá dôvod ich držať, keď je archív hotový.
