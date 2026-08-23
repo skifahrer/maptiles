@@ -2,7 +2,7 @@
 # Základná mapa sveta → `_site` (dlaždice, štýly, glyfy, manifest).
 #
 # PREČO SAMOSTATNÝ SKRIPT A NIE `run:` VO WORKFLOWE: súbor s workflowom má
-# strop 128 KiB a nad ním ho GitHub ticho NEPRIJME (pravidlo 3 v CLAUDE.md).
+# strop 500 kB a nad ním ho GitHub ticho NEPRIJME (pravidlo 3 v CLAUDE.md).
 # Bokom od toho sa to takto dá spustiť lokálne a nie „pushni a pozri sa".
 #
 # ČO ROBÍ, V PORADÍ:

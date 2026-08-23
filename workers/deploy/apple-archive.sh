@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Balíky mapy ešte raz ako Apple Archive (`.aar`) a hore na Drive.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map.yml` má strop 128 KiB a nad ním ho GitHub
+# PREČO SAMOSTATNÝ SKRIPT: `build-map.yml` má strop 500 kB a nad ním ho GitHub
 # ticho NEPRIJME – po pushi vznikne beh bez jobov s prázdnym logom. Job, ktorý
 # toto volá, pridal do súboru dva kilobajty a bol už na 125; rozpis teda patrí
 # sem (stráži to `Kontrola · lint workflowov`).

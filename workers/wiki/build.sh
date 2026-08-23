@@ -2,7 +2,7 @@
 # Články z Wikipédie ku všetkému, čo v regióne odkazuje na wiki.
 #
 # PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: `build-map.yml` má strop
-# 128 KiB a nad ním ho GitHub ticho neprijme (stráži to „Kontrola · lint workflowov").
+# 500 kB a nad ním ho GitHub ticho neprijme (stráži to „Kontrola · lint workflowov").
 #
 # ČO TU JE a čo je vo `collect.py`: tu inštalácia, voľby z formulára a výstupy
 # pre ďalšie joby; tam celý výpočet (hľadanie odkazov, wikidata, sťahovanie).

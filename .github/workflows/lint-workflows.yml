@@ -81,22 +81,30 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
-      # Strop na veľkosť súboru s workflowom je 128 KiB. Nad ním ho GitHub
-      # NEPRIJME – a nepovie to: po pushi vznikne beh bez jobov, pomenovaný
-      # cestou k súboru, s červeným krížikom, aj keď má workflow len
-      # `workflow_dispatch`. Vyzerá to, že sa spustil sám po mergi.
+      # Strop na veľkosť súboru s workflowom je 500 kB: „Each workflow file in
+      # the .github/workflows directory must be 500 KB or smaller to trigger
+      # a run." Nad ním ho GitHub NEPRIJME – a nepovie to: po pushi vznikne beh
+      # bez jobov, pomenovaný cestou k súboru, s červeným krížikom, aj keď má
+      # workflow len `workflow_dispatch`. Vyzerá to, že sa spustil sám po mergi.
       #
-      # `build-map.yml` cez ten strop prešiel o 122 bajtov (beh 33) a stálo
-      # to šesť kôl sond, kým sa to našlo: actionlint ani JSON schéma
-      # o veľkosti nevedia. Preto radšej varovanie už od 120 KiB – veľký
-      # `run:` blok patrí do `workers/`, nie do YAMLu.
+      # TU BOLO 128 KiB A BOLO TO ZLE. Číslo pochádzalo z behu 33, kde
+      # `build-map.yml` „prešiel o 122 bajtov" – ale dokumentovaný limit je
+      # 500 kB, teda skoro štvornásobok, takže veľkosť vtedy nemohla byť
+      # príčina. Podozrivé je, že KROK NIŽŠIE (`}}` v shellovom bloku bez
+      # `${{` pred ním) popisuje presne ten istý príznak slovo za slovom
+      # a našiel sa AŽ POTOM: pravdepodobne to bol on a veľkosť dostala vinu
+      # za cudzí problém. To nie je overené – overený je len ten limit.
+      #
+      # Kontrola tu ostáva, lebo ten strop je skutočný a mlčí. Len prestala
+      # tlačiť na to, aby sa joby rezali kvôli miestu, ktoré nechýba: to je
+      # rozhodnutie o prehľadnosti (pravidlo 3 a 5), nie o bajtoch.
       - name: Veľkosť súborov workflowov
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import glob, os, sys
-          LIMIT = 128 * 1024
-          WARN = 120 * 1024
+          LIMIT = 500 * 1024
+          WARN = 400 * 1024
           bad = 0
           for path in sorted(glob.glob(".github/workflows/*.yml")):
               n = os.path.getsize(path)
@@ -309,7 +317,7 @@ jobs:
           # Kde je volanie a ktorej vrstve patrí. Keď pribudne ďalšie, pridaj
           # ho sem aj do `layer_area_key` v workers/dem/check.sh.
           # Cesta sa mení, keď sa `run:` blok presunie do workers/ (a to sa
-          # deje – build-map.yml má strop 128 KiB). Preto sa každá vrstva
+          # deje – build-map.yml má strop 500 kB). Preto sa každá vrstva
           # hľadá vo VIACERÝCH kandidátoch a stačí, že ju nájde jeden;
           # keby sa hľadalo len na jednom mieste, presun by kontrolu umlčal.
           CALLS = {
@@ -834,7 +842,7 @@ jobs:
       # a zdvojilo by presne to, na čom sa už raz rozišla kontrola so
       # sťahovaním (pravidlo 1, beh 31307163093).
       #
-      # Čo workflow naozaj zabije, je strop 128 KiB – GitHub nad ním súbor
+      # Čo workflow naozaj zabije, je strop 500 kB – GitHub nad ním súbor
       # ticho neprijme – a ten stráži kontrola „Veľkosť súborov workflowov"
       # vyššie, v bajtoch. Riadky sú tu ako varovanie, aby rast bolo vidieť.
       #
@@ -869,7 +877,7 @@ jobs:
                             f"workflowy je len odporúčanie – graf jobov sa "
                             f"rozdeliť nedá bez toho, aby sa zoznamy inputov "
                             f"napísali dvakrát; rozpis pri tejto kontrole). "
-                            f"Tvrdý strop je 128 KiB a ten stráži kontrola "
+                            f"Tvrdý strop je 500 kB a ten stráži kontrola "
                             f"„Veľkosť súborov workflowov“.")
           sys.exit(1 if bad else 0)
           PY

@@ -2,7 +2,7 @@
 # PBF regiónu na disk – stiahnutie, prípadné orezanie, kľúč a bbox pre build.
 #
 # PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: `build-map.yml` má strop
-# 128 kB, nad ktorým ho GitHub NEPRIJME – a nepovie to; po pushi len vyrobí beh
+# 500 kB, nad ktorým ho GitHub NEPRIJME – a nepovie to; po pushi len vyrobí beh
 # bez jobov s červeným krížikom a prázdnym logom. Toto bol jeho najväčší `run:`
 # blok (128 riadkov). Bokom od toho je to aj tak správnejšie: takto sa dá
 # spustiť lokálne a nie „pushni a pozri sa, čo z toho vyšlo".

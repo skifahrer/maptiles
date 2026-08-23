@@ -171,13 +171,25 @@ ležal len prienik s bboxom, ďalší beh by kontrolou prešiel („je tam") a m
 ticho skončila v polovici. Keď rozsah nie je celý, **musí sa zmeniť meno** –
 preto má testovací výrez v kľúči príponu `_test4`.
 
-**3. Veľký `run:` blok patrí do `workers/`, nie do YAMLu.** Súbor s workflowom
-má strop 128 KiB a **GitHub nad ním workflow ticho neprijme** – po pushi
-vznikne beh bez jobov, s červeným krížikom a prázdnym logom, ktorý vyzerá, že
-sa spustil sám. `build-map.yml` už cez ten strop raz prešiel; odvtedy je z neho
-graf jobov a bash je v `workers/<job>/*.sh`. **Nevracaj ho tam** –
-rozpis patrí do `workers/<job>/*.sh`, `workers/<job>/*.py` alebo `docs/pipeline.md`
-a v YAMLe ostane odkaz naň. (`Kontrola · lint workflowov` varuje od 120 KiB.)
+**3. Veľký `run:` blok patrí do `workers/`, nie do YAMLu** – a dôvod je
+PREHĽADNOSŤ, nie miesto. Rozpis patrí do `workers/<job>/*.sh`,
+`workers/<job>/*.py` alebo `docs/pipeline.md` a v YAMLe ostane odkaz naň:
+v grafe jobov sa má čítať, čo sa deje a v akom poradí, nie sto riadkov bashu.
+**Nevracaj ho tam.**
+
+**A pozor na to, ako sa toto pravidlo zdôvodňovalo.** Roky tu stálo „súbor
+s workflowom má strop 128 KiB" a to je ZLE: dokumentovaný strop je **500 kB**
+(„Each workflow file in the .github/workflows directory must be 500 KB or
+smaller to trigger a run"). Nad ním GitHub workflow naozaj ticho neprijme –
+po pushi vznikne beh bez jobov, s červeným krížikom a prázdnym logom, ktorý
+vyzerá, že sa spustil sám – ale `build-map.yml` má 130 kB, čiže štvrtinu.
+Číslo 128 KiB pochádzalo z behu 33 („prešiel o 122 bajtov"); pri skutočnom
+strope 500 kB to príčina byť nemohla, a kontrola s TÝM ISTÝM príznakom slovo
+za slovom – `}}` v shellovom bloku bez `${{` pred ním – sa našla až potom.
+Pravdepodobne dostala veľkosť vinu za cudzí problém. To nie je overené;
+overený je len ten limit. **Nerež joby kvôli miestu, ktoré nechýba** – rež ich,
+keď sa v súbore prestane dať čítať (pravidlo 5). `Kontrola · lint workflowov`
+varuje od 400 kB.
 
 Pri sťahovaní bloku do skriptu sú dve tiché chyby: `${{ výraz }}` sa zmení na
 `$PREMENNÚ` a tá sa zabudne dopísať do `env:` kroku (skript potom beží
@@ -230,8 +242,10 @@ a `contours-rocks/rock-areas.py` na plán („akú mriežku a ako dlho",
 `run:` blokov – holej YAML štruktúry je 1100 na 17 jobov. Pod 800 sa nedá dostať
 presunutím ničoho, len rozrezaním na ďalšie `workflow_call` súbory, a tam sa
 zoznam ~20 inputov na job musí napísať dvakrát (v `inputs:` volaného aj v
-`with:` volajúceho). Čo workflow naozaj zabije, je **strop 128 KiB** – ten je
-chyba a stráži sa v bajtoch.
+`with:` volajúceho). Čo workflow naozaj zabije, je **strop 500 kB** – ten je
+chyba a stráži sa v bajtoch. Do neho je miesta dosť (`build-map.yml` je na
+štvrtine), takže **rozrezanie na `workflow_call` je rozhodnutie o čitateľnosti
+a o tom, čo sa má dať spustiť samo** – nie o bajtoch. Rozpis pri pravidle 3.
 
 **6. Drahý medzivýsledok sa ukladá hneď, ako vznikne.** `actions/cache` ukladá
 až v post-kroku a len keď job dobehne úspešne – takže sa používa `cache/restore`
@@ -1244,7 +1258,7 @@ hodnoty by sa raz rozišli a katalóg by tvrdil vrstvy, ktoré v mape nie sú.
 curl -sSL https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz \
   | tar xz actionlint && ./actionlint
 
-# veľkosť workflowov (strop 128 KiB, varovanie od 120 KiB)
+# veľkosť workflowov (strop 500 kB, varovanie od 400 kB)
 wc -c .github/workflows/*.yml
 
 # bash vo workers (shellcheck nie je v CI, actionlint ho volá len na `run:`)

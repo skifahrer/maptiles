@@ -6,12 +6,14 @@ name: Mapa · obmedzenia ciest
 # `workers/roads/roads.yml`), takže sa to isté PBF čítá druhýkrát vlastnou
 # schémou. Ten istý vzor ako značené trasy a krajinné prvky.
 #
-# PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map.yml`. Ten súbor má 128 232 B
-# a strop je 128 KiB (131 072 B) – nad ním GitHub workflow TICHO NEPRIJME:
-# vznikne beh bez jobov, s červeným krížikom a prázdnym logom, ktorý vyzerá,
-# že sa spustil sám (pravidlo 3 v CLAUDE.md). Do zvyšných 2,8 kB sa job
-# s Planetilerom, cache a artefaktmi nezmestí, takže je to `workflow_call`
-# a v `build-map.yml` po ňom ostalo desať riadkov.
+# PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map.yml`. NIE kvôli veľkosti –
+# strop je 500 kB a `build-map.yml` má 130 kB, takže miesto tam je (kým sa
+# tento súbor písal, platilo v repozitári číslo 128 KiB a bolo zlé; rozpis
+# v kontrole veľkosti v `lint-workflows.yml`). Dôvod je, že sa to takto dá
+# spustiť aj SAMO: obmedzenia na ceste sú vlastná vrstva s vlastnou schémou
+# a človek ju chce občas prepočítať bez toho, aby staval celú mapu. Je to ten
+# istý vzor ako `dmr5-drive.yml`, `update-dem.yml` alebo `shading-rocks.yml` –
+# vlastný súbor, `workflow_call` a v `build-map.yml` desať riadkov.
 #
 # Cena za to je, že vstupy sa píšu dvakrát (v `inputs:` tu a vo `with:` tam)
 # a že `workflow_call` NEDEDÍ ani `env`, ani `secrets` volajúceho – oboje sa

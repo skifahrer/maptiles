@@ -2,7 +2,7 @@
 # Je v sklade na Drive výškový model pre naše územie – a keď nie, čo doplniť?
 #
 # PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: build-map.yml má k stropu,
-# nad ktorým ho GitHub NEPRIJME (128 kB), blízko – a nepovie to; po pushi len
+# nad ktorým ho GitHub NEPRIJME (500 kB) – a nepovie to; po pushi len
 # vyrobí beh bez jobov. Rovnako sú na tom `contours-build.sh` či `fetch-dem.sh`.
 # Bokom od toho je to aj tak správnejšie: takto sa dá rozhodovanie spustiť
 # lokálne a nie „pushni a pozri sa, čo z toho vyšlo".

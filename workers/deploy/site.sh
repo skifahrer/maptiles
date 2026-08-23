@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Viewer + `manifest.json` do `_site/` – posledný krok pred nasadením na Pages.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map.yml` má strop 128 kB a nad ním ho GitHub
+# PREČO SAMOSTATNÝ SKRIPT: `build-map.yml` má strop 500 kB a nad ním ho GitHub
 # ticho neprijme (stráži to „Kontrola · lint workflowov"). Tento blok bol jeho druhý najväčší
 # (109 riadkov, z toho 30 riadkov `jq --arg`).
 #

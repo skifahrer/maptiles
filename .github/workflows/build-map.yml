@@ -928,7 +928,7 @@ jobs:
           # celý kraj. Počíta sa až v `plan/area.py`, tu sú jeho vstupy.
           key: pbf-v5-${{ inputs.region }}-${{ steps.opts.outputs.opt_custom_pbf_url }}-${{ steps.opts.outputs.opt_crop_bbox }}-t${{ steps.opts.outputs.opt_test_km2 }}-a${{ inputs.area }}${{ steps.opts.outputs.opt_area_bbox }}-at${{ steps.opts.outputs.opt_test_at }}-${{ steps.day.outputs.d }}
 
-      # Bash je vo `workers/plan/pbf.sh` – tento súbor má strop 128 kB a nad
+      # Bash je vo `workers/plan/pbf.sh` – tento súbor má strop 500 kB a nad
       # ním ho GitHub ticho neprijme (stráži Lint workflows). Sem chodia len
       # hodnoty z formulára a z volieb.
       - name: Stiahni PBF iba daného regiónu
@@ -1093,7 +1093,7 @@ jobs:
       # Kľúč potrebuje restore, save aj mazanie pri pregenerovaní. Keby bol
       # napísaný trikrát, stačí ho raz zabudnúť opraviť a cache sa ticho
       # rozsype (uloží sa pod iným kľúčom, než sa hľadá).
-      # Skladanie kľúčov je vo `workers/plan/cache-keys.sh` (strop súboru 128 kB).
+      # Skladanie kľúčov je vo `workers/plan/cache-keys.sh` (strop súboru 500 kB).
       # `hashFiles` je funkcia GitHubu, tak sa jej výsledok podá ako env.
       - name: Kľúče cache
         id: keys
@@ -1911,7 +1911,7 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # Vo vlastnom súbore, lebo tento je pri strope 128 KiB – dôvod v `roads.yml`.
+  # Vo vlastnom súbore, nech sa dá spustiť aj sám – dôvod v `roads.yml`.
   roads:
     name: Obmedzenia na ceste
     needs: plan
@@ -2293,7 +2293,7 @@ jobs:
           done
 
       # Sto riadkov bashu a jq je vo `workers/deploy/site.sh` (strop súboru
-      # 128 kB). Sem chodia len výstupy ostatných jobov.
+      # 500 kB). Sem chodia len výstupy ostatných jobov.
       - name: Poskladaj web (viewer + manifest)
         env:
           BASE_URL: ${{ steps.pages.outputs.base_url }}
@@ -2437,7 +2437,7 @@ jobs:
       # `steps-*` artefaktu; tu sa zlejú a zoradia podľa poradového čísla,
       # lebo joby bežia súbežne a poradie v čase nič nehovorí.
       # Súhrn je deväť kilobajtov markdownu a workflow súbor má strop
-      # 128 KiB – nad ním ho GitHub ticho neprijme. Text je preto
+      # 500 kB – nad ním ho GitHub ticho neprijme. Text je preto
       # vo `workers/deploy/summary.sh` a sem chodia len hodnoty, ktoré pozná
       # iba workflow (výsledky jobov, vybrané zdroje, URL nasadenia).
       - name: Súhrn buildu
