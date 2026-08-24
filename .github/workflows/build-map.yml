@@ -2113,6 +2113,10 @@ jobs:
         run: mkdir -p steps-out
 
 
+      # `workers/assets/glyphs.sh` JE V KĽÚČI. Nie je to len zdroj spritov –
+      # rozhoduje aj o tom, KTORÉ rozsahy znakov v `_site/fonts` ostanú.
+      # Kým v kľúči nebol, zmena toho zoznamu sa neprejavila: cache vrátila
+      # staré (širšie) fonty a skript ich len našiel na disku.
       - name: Cache glyfov a spritov (restore)
         id: assets-cache
         uses: ./.github/actions/cache-restore
@@ -2120,7 +2124,7 @@ jobs:
           path: |
             _site/fonts
             _site/sprites
-          key: assets-${{ hashFiles('poc/web/icon-sources.js', 'poc/web/shields.js', 'poc/web/marks.js', 'poc/web/style-overrides.json', 'workers/assets/sprite.mjs', 'workers/assets/shields.mjs', 'workers/assets/marks.mjs', 'workers/assets/custom-icons.mjs', 'workers/lib/sprite-bake.mjs') }}-${{ env.GLYPHS_ZIP }}
+          key: assets-${{ hashFiles('poc/web/icon-sources.js', 'poc/web/shields.js', 'poc/web/marks.js', 'poc/web/style-overrides.json', 'workers/assets/sprite.mjs', 'workers/assets/shields.mjs', 'workers/assets/marks.mjs', 'workers/assets/custom-icons.mjs', 'workers/lib/sprite-bake.mjs', 'workers/assets/glyphs.sh') }}-${{ env.GLYPHS_ZIP }}
 
       # Sedemdesiat riadkov bashu je vo `workers/assets/icons.sh`.
       - name: Stiahni a priprav sady ikoniek

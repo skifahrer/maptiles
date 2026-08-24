@@ -1,0 +1,170 @@
+# Prečo sú balíky veľké a čo sa z nich dá vyhodiť
+
+Analýza balíkov (`.zip` / `.aar`), ktoré si mobilná aplikácia sťahuje z Drive.
+Čísla sú z `maps.json` (stav 2026-08-23) a z premerania zdrojov, z ktorých
+pipeline balíky skladá.
+
+## Čo dnes vážia balíky
+
+| región | mapa (zip) | vrstevnice-skaly | tienovanie | search |
+|---|---|---|---|---|
+| bratislavsky | 130,9 MB | 26,7 MB | 71,5 MB | 6,1 MB |
+| presovsky | 218,8 MB | 139,7 MB | 112,9 MB | 6,5 MB |
+| trnavsky | 141,0 MB | 45,7 MB | 49,1 MB | 4,0 MB |
+
+## Z čoho je základná mapa
+
+`zaklad_subory()` v `workers/deploy/publish-map.py` berie **celý `_site`**
+okrem vrstevníc, skál a tieňovania. V `_site` pritom leží aj to, čo mapa
+nepotrebuje.
+
+Rozpis pre `bratislavsky.zip` (fonty premerané presne, `search` z katalógu,
+dlaždice dopočítané ako zvyšok):
+
+| položka | v ZIPe | podiel |
+|---|---|---|
+| **fonty (`_site/fonts`)** | **61,2 MB** | **47 %** |
+| dlaždice `.pmtiles` (mapa, trasy, prvky, cesty) | ~62 MB | 47 % |
+| `search-index.db` | 6,1 MB | 5 % |
+| sprity + viewer + `region.geojson` | ~1,5 MB | 1 % |
+
+Fonty sú v každom regióne rovnaké, takže tých 61,2 MB je konštanta vo
+**všetkých** balíkoch.
+
+## Nález 1 – fonty: 60 MB znakov, ktoré mapa nikdy nevykreslí ✅ opravené
+
+> Opravené v `workers/assets/glyphs.sh`: rozsahy sa orežú na
+> `GLYPHS_KEEP_RANGES` (predvolene latinka, gréčtina, cyrilika,
+> interpunkcia). Zmerané na origináli balíka: zo 768 súborov ostane 51,
+> z 61,2 MB v ZIPe ostane 1,7 MB. Zvyšok tejto sekcie popisuje stav pred
+> opravou.
+
+`workers/assets/glyphs.sh` skopíroval z `noto-sans.zip` celé fontstacky:
+
+```bash
+copy_matching '^Noto Sans (Regular|Bold|Italic)$'   # cp -r "$d" _site/fonts/
+```
+
+`cp -r` vezme adresár **so všetkými 256 rozsahmi** – vrátane CJK, arabčiny,
+hebrejčiny, thajčiny, dévanágarí a emoji. Premerané na origináli:
+
+| variant | súborov | RAW | v ZIPe |
+|---|---|---|---|
+| všetko (dnešný stav) | 768 | 99,7 MB | **61,2 MB** |
+| bezpečný výber | 48 | 3,4 MB | **1,7 MB** |
+| minimum (latinka + cyrilika + interpunkcia) | 24 | 2,3 MB | 1,1 MB |
+
+Štýl používa tri fontstacky (`REG`, `BOLD`, `ITAL` v `poc/web/themes.js`),
+takže vyhodiť sa nedá ani jeden – ale rozsahy nad U+2000 áno. Mapa je
+`--languages=sk,en`; čínsky názov v nej nie je z čoho vzniknúť.
+
+**Úspora: 59,5 MB z každého balíka mapy.**
+
+Kontrola v `workers/deploy/check.sh` overuje len existenciu
+`$SITE/fonts/$stack/0-255.pbf` a smoke test siaha na ten istý súbor, takže
+orezanie rozsahov ani jednému neprekáža.
+
+Vedľajší efekt, ktorý oprava rieši spolu s tým: `BUDGET_ASSETS_MB: "40"`
+v `build-map.yml` počítal s tým, že fonty a ikonky majú 40 MB. Mali 100 MB,
+takže rozpočet na dlaždice bol o ~60 MB optimistickejší, než aká bola
+skutočnosť. Po oreze sa do tých 40 MB zmestia s veľkou rezervou.
+
+Pozor na cache: kľúč `assets-…` v `build-map.yml` `workers/assets/glyphs.sh`
+neobsahoval, takže samotná zmena zoznamu rozsahov by sa neprejavila – cache by
+vrátila staré (širšie) fonty. Preto je skript teraz v `hashFiles(...)`.
+
+## Nález 2 – `search-index.db` je v balíku dvakrát
+
+```python
+vrstvy_pack = vrstvy_subory(args.site, man)
+tien_pack   = tienovanie_subory(args.site, man)
+baliky = [
+    ("", "…", args.site, zaklad_subory(args.site, vrstvy_pack + tien_pack)),
+    …
+    ("search", "…", args.site, hladanie_subory(args.site, man)),
+]
+```
+
+Zo základnej mapy sa vynímajú `vrstvy_pack` a `tien_pack`, ale **nie**
+`hladanie_subory`. `_site/tiles/search-index.db` je preto aj v
+`<región>.zip`, aj v `<región>-search.zip`. Ten balík vznikol práve preto, aby
+sa index sťahovať nemusel.
+
+**Úspora: 4,0 – 6,5 MB podľa regiónu.** Oprava je jednoriadková – pridať
+`hladanie_subory(...)` do zoznamu, ktorý sa základnej mape vynecháva.
+
+## Nález 3 – dlaždice sú stavané na maximálny detail
+
+`workers/tiles/build.sh` prepisuje tri Planetiler prepínače proti ich
+predvoleným hodnotám (overené cez `planetiler --help`):
+
+| prepínač | default | v repozitári |
+|---|---|---|
+| `min_feature_size_at_max_zoom` | 0.0625 | **0** |
+| `simplify_tolerance_at_max_zoom` | 0.0625 | **0** |
+| `building_merge_z13` | true | **false** |
+
+Je to zámer – viewer prezoomováva z16 až na z20, takže sa na z16 nič
+nezahadzuje ani nezjednodušuje. Ale je to zároveň jediný väčší zdroj
+veľkosti dlaždíc, ktorý je pod kontrolou repozitára. Stojí za A/B beh
+s defaultmi; bežne to býva 10–25 %.
+
+Druhá vec: štýl kreslí `housenumber` od `minzoom: 17`, ale dlaždice končia na
+z16. Súpisné čísla sú teda v dátach z14–z16 (OpenMapTiles ich tam dáva) a na
+obrazovku sa dostanú len prezoomovaním. Na turistickej mape je to vrstva,
+ktorá sa dá vypnúť bez toho, aby niekomu chýbala.
+
+## Otázka 2 – zlúčiť vrstevnice a skaly do základnej mapy?
+
+**Nie. Nezmenší to nič a zdraží to sťahovanie.**
+
+### Na bajtoch sa nezíska
+
+Zmeral som to na syntetických MVT dlaždiciach (`gzip` po dlaždiciach + réžia
+PMTiles adresárov), štyri scenáre:
+
+| scenár | dva `.pmtiles` | jeden `.pmtiles` | rozdiel |
+|---|---|---|---|
+| husté vrstevnice z16 (hory) | 23,6 MB | 23,7 MB | −0,38 % |
+| riedke vrstevnice z12 (nížina) | 1,2 MB | 1,2 MB | +0,37 % |
+| malé dlaždice, skaly všade | 1,0 MB | 1014 KB | +3,58 % |
+| stredné, skaly v polovici | 5,9 MB | 6,0 MB | −0,49 % |
+
+Dôvod: PMTiles komprimuje **každú dlaždicu zvlášť**. Zlúčenie ušetrí jednu
+hlavičku (127 B) a jeden adresár (~3 B na dlaždicu), ale gzip stream navyše
+stojí ~18 B na dlaždicu – to sa navzájom vyruší. Zisk je merateľný len tam,
+kde sú dlaždice tak malé, že réžia streamu prevažuje, a to práve vrstevnice
+na z16 nie sú.
+
+### Na sťahovaní sa stratí
+
+To podstatné je, že dnes si vrstevnice a skaly stiahnuť **nemusíš**:
+
+| región | základná mapa | +vrstevnice-skaly | zlúčené (povinne) |
+|---|---|---|---|
+| bratislavsky | 130,9 MB | 26,7 MB | 157,6 MB |
+| presovsky | 218,8 MB | 139,7 MB | **358,5 MB** |
+| trnavsky | 141,0 MB | 45,7 MB | 186,7 MB |
+
+Pri Prešovskom kraji by sa základná mapa zväčšila o 64 %. Delenie na balíky
+je presne to, čo veľkosť sťahovania rieši – a hlavička `publish-map.py` to
+takto aj popisuje.
+
+## Čo z toho vyjde
+
+Nálezy 1 a 2 sú čistý zisk – nič sa v mape nezmení, len sa prestane baliť to,
+čo sa nepoužíva:
+
+| región | pôvodne | po oprave 1 (hotové) | po oprave 1+2 |
+|---|---|---|---|
+| bratislavsky | 130,9 MB | ~71 MB (−46 %) | ~65 MB (−50 %) |
+| presovsky | 218,8 MB | ~159 MB (−27 %) | ~152 MB (−31 %) |
+| trnavsky | 141,0 MB | ~82 MB (−42 %) | ~78 MB (−45 %) |
+
+Nález 2 (`search-index.db` v balíku dvakrát) zatiaľ opravený nie je.
+
+Nález 3 je kompromis medzi detailom a veľkosťou – ten sa oplatí zmerať A/B
+skôr, než sa o ňom rozhodne.
+
+Čo naopak **nemá zmysel** riešiť: sprity (všetky tri sady majú v zdroji dokopy
+~380 KB) a viewer (`poc/web` má 576 KB). Sú to promile.

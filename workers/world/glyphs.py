@@ -2,20 +2,23 @@
 """
 Z fontov ostanú len tie rozsahy znakov, ktoré sú v menách na mape.
 
-PREČO. V balíku mapy sveta nie sú to drahé dlaždice, ale PÍSMO: jeden fontstack
-Noto Sans má 33 MB v 256 súboroch (celý unicode, po 256 znakoch na súbor)
-a v balíku sú dva – Regular a Bold. Mapa sveta pritom píše dve veci: mená
+PREČO. V balíku mapy sveta nie sú to drahé dlaždice, ale PÍSMO. `glyphs.sh`
+už rozsahy raz oreže – necháva latinku, gréčtinu, cyriliku a interpunkciu,
+lebo pri mape kraja nevie, aké mená v nej budú, a chýbajúci rozsah znamená na
+mape prázdne štvorčeky. Tu sa to ale VIE: mapa sveta píše dve veci, mená
 štátov a mená regiónov sťahovania. Merané na 516 menách z Natural Earth
-(`name` aj `name_en`) padnú VŠETKY do jediného rozsahu 0–255; dva stacky tak
-spadnú zo 69 MB na stovky kB. Bez toho sa `basic` do 15 MB nezmestí ani so
-štyrmi dlaždicami – nezmestí sa doň písmo.
+(`name` aj `name_en`) padnú VŠETKY do jediného rozsahu 0–255, takže z ~1,2 MB
+na stack ostanú stovky kB. Pri balíku so stropom 15 MB to stojí za to.
+
+(Kým `glyphs.sh` rozsahy nerezal, bol stack celý unicode – 33 MB v 256
+súboroch – a tento skript bol jediné, čo `basic` do 15 MB vôbec vopchalo.)
 
 MERIA SA, NEHÁDA. Rozsahy sa nezapisujú do číselníka ako „Latinka stačí":
 prečítajú sa z pripravených podkladov, teda z tých istých mien, ktoré pôjdu do
 dlaždíc. Keby Geofabrik raz pomenoval región po japonsky, rozsah pribudne sám.
-Keby sa naopak zoznam nedal prečítať, NEOREŽE SA NIČ – mapa s celým písmom je
-o 60 MB väčšia, mapa s chýbajúcim písmom má na tom mieste prázdne štvorčeky
-a nikto nepovie prečo (pravidlo 8 v CLAUDE.md).
+Keby sa naopak zoznam nedal prečítať, NEOREŽE SA NIČ – ostane to, čo nechal
+`glyphs.sh`, teda o pár MB väčší balík. Mapa s chýbajúcim písmom má na tom
+mieste prázdne štvorčeky a nikto nepovie prečo (pravidlo 8 v CLAUDE.md).
 
 Použitie:
     python3 workers/world/glyphs.py --fonts=_site/fonts --data=data/world
@@ -70,8 +73,9 @@ def main():
         try:
             r = rozsahy_z_geojsonu(z)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            # Nečitateľný podklad NESMIE viesť k orezaniu: radšej o 60 MB
-            # väčší balík než mapa s prázdnymi štvorčekmi namiesto mien.
+            # Nečitateľný podklad NESMIE viesť k orezaniu: radšej balík
+            # o pár MB väčší (to, čo nechal `glyphs.sh`) než mapa
+            # s prázdnymi štvorčekmi namiesto mien.
             print(f"::warning::Podklad {z} sa nedá prečítať ({exc}) – fonty sa "
                   f"NEOREŽÚ a v balíku ostane celé písmo.")
             return 0

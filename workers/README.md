@@ -2127,13 +2127,17 @@ ktoré podklady sa vôbec sťahujú – basic tak nesťahuje 60 MB vodných poly
 ani nepotrebuje GDAL. Štýl si z toho istého číselníka berie, ktoré vrstvy
 kresliť, a `workers/lint/world.py` porovnáva schému so štýlom pre každú podobu.
 
-**A pozor, v tom balíku nie sú to drahé dlaždice, ale PÍSMO.** Jeden fontstack
-Noto Sans má 33 MB (celý unicode) a v balíku sú dva – do 15 MB by sa basic
-nezmestil ani prázdny. [`glyphs.py`](world/glyphs.py) preto necháva len tie
-rozsahy znakov, ktoré sú v menách na mape, a MERIA ich z podkladov: všetkých
-516 mien z Natural Earth padne do jediného rozsahu 0–255, takže 69 MB písma
-spadne na 256 kB. Keď sa podklad nedá prečítať, neoreže sa nič – väčší balík je
+**A pozor, v tom balíku nie sú to drahé dlaždice, ale PÍSMO.**
+[`glyphs.sh`](assets/glyphs.sh) už rozsahy raz oreže (latinka, gréčtina,
+cyrilika, interpunkcia – ~1,2 MB na stack), lebo pri mape kraja nevie, aké
+mená v nej budú. Tu sa to VIE, tak [`glyphs.py`](world/glyphs.py) necháva len
+tie rozsahy, ktoré sú v menách na mape, a MERIA ich z podkladov: všetkých 516
+mien z Natural Earth padne do jediného rozsahu 0–255, takže z ~2,4 MB písma
+ostane 256 kB. Keď sa podklad nedá prečítať, neoreže sa nič – väčší balík je
 lepší než prázdne štvorčeky namiesto mien.
+
+(Kým `glyphs.sh` rozsahy nerezal, mal jeden fontstack 33 MB a dva 69 MB –
+vtedy bol `glyphs.py` jediné, čo basic do 15 MB vôbec vopchalo.)
 
 **`basic` má vlastný kľúč regiónu `svet_basic`**, teda vlastný priečinok na
 Drive (`<koreň>/svet_basic/`) aj vlastný uzol v `maps.json`. Meno je sľub

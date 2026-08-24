@@ -133,16 +133,22 @@ fi
 # štýl siahne na verejnú službu a mapa ide ďalej.
 T_A=$(date +%s)
 workers/assets/glyphs.sh
-# KURZÍVA IDE PREČ. Jeden fontstack má ~34 MB (celý unicode), takže tri sú
-# 102 MB – pri mape, ktorej dlaždice majú desiatky MB, je to väčšina balíka.
-# Štýl sveta má popisky len v dvoch rezoch (`Noto Sans Regular` a `Bold`,
-# viď `workers/world/style.mjs`), tak sa tretí nebalí. Mapa kraja si berie
-# všetky tri – tam kurzívu používajú vodné toky a geografické názvy.
+# KURZÍVA IDE PREČ. Štýl sveta má popisky len v dvoch rezoch (`Noto Sans
+# Regular` a `Bold`, viď `workers/world/style.mjs`), tak sa tretí nebalí.
+# Mapa kraja si berie všetky tri – tam kurzívu používajú vodné toky
+# a geografické názvy.
+#
+# Kedysi to bola najväčšia položka balíka: stack bol celý unicode (~34 MB),
+# tri teda 102 MB. Odkedy `glyphs.sh` reže rozsahy sám, je stack ~1,2 MB
+# a tento riadok šetrí toľko – robí sa ďalej, lebo nebaliť rez, ktorý štýl
+# nepoužíva, je správne aj keď je lacný.
 rm -rf "_site/fonts/Noto Sans Italic"
-# A PRI `basic` IDE PREČ AJ VÄČŠINA ZVYŠKU. V tomto balíku nie sú to drahé
-# dlaždice, ale PÍSMO: dva stacky sú 69 MB, kým dlaždice basicu jednotky MB –
-# do 15 MB by sa taká mapa nezmestila ani prázdna. Rozsahy sa MERAJÚ z mien
-# v podkladoch, nie hádajú (rozpis vo `workers/world/glyphs.py`).
+# A PRI `basic` IDE PREČ AJ VÄČŠINA ZVYŠKU. `glyphs.sh` necháva latinku,
+# gréčtinu, cyriliku a interpunkciu (~2,4 MB v dvoch stackoch), lebo pri mape
+# kraja nevie, aké mená v nej budú. Tu sa to VIE: mená štátov a regiónov
+# sťahovania sú v podkladoch, a tie padnú do jediného rozsahu 0–255. Rozsahy
+# sa preto MERAJÚ, nie hádajú (rozpis vo `workers/world/glyphs.py`) – bez toho
+# sa `basic` do svojich 15 MB zmestí, ale zbytočne tesnejšie.
 if [ "$GLYPHS_MODE" = 'podla_dat' ]; then
   python3 workers/world/glyphs.py --fonts=_site/fonts --data=data/world
 fi
