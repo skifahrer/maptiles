@@ -435,6 +435,7 @@ Okrem Pages sa každý build publikuje aj do priečinka na Drive
          krajina  kraj      výsek        (úrovne, čo nedávajú zmysel, sa vynechajú)
 
     presovsky-vysoke_tatry.zip                    základná mapa, BEZ riadkov nižšie
+                                                  (a bez glyfov a viewera – tie sú na Pages)
     presovsky-vysoke_tatry-vrstevnice-skaly.zip   tie dve vrstvy (jeden balík)
     presovsky-vysoke_tatry-tienovanie.zip         výškové dlaždice PNG
     presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
@@ -446,6 +447,23 @@ vrstvy z výškového modelu a majú vlastné balíky presne PRETO, aby si ich
 dôvod by neplatil a „iba mapa" by vážila rovnako ako mapa so všetkým. Kto ich
 chce, rozbalí príslušný ZIP navrch: cesty vnútri sú tie isté ako v `_site`
 (`workers/deploy/pack.py`), takže sa dá rozbaliť jeden cez druhý.
+
+**A neobsahuje ani glyfy a webový viewer – tie sú na Pages.** Fonty boli po
+dlaždiciach druhá najväčšia vec v balíku (tri fontstacky Noto Sans po ~34 MB,
+celý unicode, z čoho mapa kraja použije zlomok) a `index.html` s `*.js`
+z `poc/web` je stránka, ktorú si aplikácia nespúšťa – má vlastnú mapu. Oboje
+ostáva v `_site`, teda na Pages, a manifest v balíku nesie ABSOLÚTNU adresu
+glyfov (`site.sh` ju skladá z `$BASE`), takže štýl vie, odkiaľ si ich vziať.
+
+**Rozhoduje o tom tvar tej adresy, nie prepínač.** Glyfy sa vynechajú práve
+vtedy, keď na ne manifest odkazuje absolútne; mapa sveta má
+`fonts/{fontstack}/{range}.pbf`, teda odkaz DO BALÍKA – na Pages nejde a jej
+glyfy sú orezané na stovky kB –, takže tej sa nechajú. Keď sa manifest prečítať
+nedá, ostanú tiež: „neviem" nesmie znamenať „zahoď", lebo väčší balík je chyba,
+ktorú vidno na veľkosti, kým mapa bez písmen vyzerá ako pokazený štýl. Koľko
+toho balík takto nenesie, sa vypisuje do logu (pravidlo 4). Stráži to
+`workers/lint/packaging.py` – aj to, že viewer z `_site` nezmizne, lebo z balíka
+je vynechaný práve preto, že je na Pages.
 
 **Články z Wikipédie sú štvrtý balík a na Pages NEIDÚ.** Job `wiki` vyberie
 z regionálneho PBF všetko, čo má tag `wikipedia` alebo `wikidata` (body, čiary
@@ -1297,6 +1315,7 @@ python3 workers/plan/area.py --region-bbox=18.7,48.8,20.6,49.6 --area=vysoke_tat
 python3 workers/dem/target.py --source=dmr5 --area-key=vysoke_tatry --bbox=20.1,49.1,20.2,49.2
 python3 workers/lint/publishing.py     # nepublikuje sa do releasov/artefaktov
 python3 workers/lint/catalog.py        # katalóg drží tvar; test je v maps-test.json
+python3 workers/lint/packaging.py      # glyfy a viewer sú mimo balíka, ale na Pages
 python3 workers/lint/rebuild.py        # `rebuild` prepočíta to, čo sľubuje
 python3 workers/lint/dem-empty.py      # prázdny stupeň sa overuje presne
 python3 workers/lint/terrain.py        # tieňovanie nestráca zvislú presnosť
