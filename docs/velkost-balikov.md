@@ -31,9 +31,15 @@ dlaždice dopočítané ako zvyšok):
 Fonty sú v každom regióne rovnaké, takže tých 61,2 MB je konštanta vo
 **všetkých** balíkoch.
 
-## Nález 1 – fonty: 60 MB znakov, ktoré mapa nikdy nevykreslí
+## Nález 1 – fonty: 60 MB znakov, ktoré mapa nikdy nevykreslí ✅ opravené
 
-`workers/assets/glyphs.sh` skopíruje z `noto-sans.zip` celé fontstacky:
+> Opravené v `workers/assets/glyphs.sh`: rozsahy sa orežú na
+> `GLYPHS_KEEP_RANGES` (predvolene latinka, gréčtina, cyrilika,
+> interpunkcia). Zmerané na origináli balíka: zo 768 súborov ostane 51,
+> z 61,2 MB v ZIPe ostane 1,7 MB. Zvyšok tejto sekcie popisuje stav pred
+> opravou.
+
+`workers/assets/glyphs.sh` skopíroval z `noto-sans.zip` celé fontstacky:
 
 ```bash
 copy_matching '^Noto Sans (Regular|Bold|Italic)$'   # cp -r "$d" _site/fonts/
@@ -55,11 +61,17 @@ takže vyhodiť sa nedá ani jeden – ale rozsahy nad U+2000 áno. Mapa je
 **Úspora: 59,5 MB z každého balíka mapy.**
 
 Kontrola v `workers/deploy/check.sh` overuje len existenciu
-`$SITE/fonts/$stack/0-255.pbf`, takže orezanie rozsahov jej neprekáža.
+`$SITE/fonts/$stack/0-255.pbf` a smoke test siaha na ten istý súbor, takže
+orezanie rozsahov ani jednému neprekáža.
 
-Vedľajší efekt: `BUDGET_ASSETS_MB: "40"` v `build-map.yml` počíta s tým, že
-fonty a ikonky majú 40 MB. Majú 100 MB, takže rozpočet na dlaždice je dnes
-o ~60 MB optimistickejší, než aká je skutočnosť.
+Vedľajší efekt, ktorý oprava rieši spolu s tým: `BUDGET_ASSETS_MB: "40"`
+v `build-map.yml` počítal s tým, že fonty a ikonky majú 40 MB. Mali 100 MB,
+takže rozpočet na dlaždice bol o ~60 MB optimistickejší, než aká bola
+skutočnosť. Po oreze sa do tých 40 MB zmestia s veľkou rezervou.
+
+Pozor na cache: kľúč `assets-…` v `build-map.yml` `workers/assets/glyphs.sh`
+neobsahoval, takže samotná zmena zoznamu rozsahov by sa neprejavila – cache by
+vrátila staré (širšie) fonty. Preto je skript teraz v `hashFiles(...)`.
 
 ## Nález 2 – `search-index.db` je v balíku dvakrát
 
@@ -143,11 +155,13 @@ takto aj popisuje.
 Nálezy 1 a 2 sú čistý zisk – nič sa v mape nezmení, len sa prestane baliť to,
 čo sa nepoužíva:
 
-| región | dnes | po oprave 1+2 | rozdiel |
+| región | pôvodne | po oprave 1 (hotové) | po oprave 1+2 |
 |---|---|---|---|
-| bratislavsky | 130,9 MB | ~65 MB | −50 % |
-| presovsky | 218,8 MB | ~152 MB | −31 % |
-| trnavsky | 141,0 MB | ~76 MB | −46 % |
+| bratislavsky | 130,9 MB | ~71 MB (−46 %) | ~65 MB (−50 %) |
+| presovsky | 218,8 MB | ~159 MB (−27 %) | ~152 MB (−31 %) |
+| trnavsky | 141,0 MB | ~82 MB (−42 %) | ~78 MB (−45 %) |
+
+Nález 2 (`search-index.db` v balíku dvakrát) zatiaľ opravený nie je.
 
 Nález 3 je kompromis medzi detailom a veľkosťou – ten sa oplatí zmerať A/B
 skôr, než sa o ňom rozhodne.
