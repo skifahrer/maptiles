@@ -1740,7 +1740,8 @@ Priečinok hovorí, čoho sa mapa týka, a čo chýba, sa vyrobí:
 <koreň>/slovensko/presovsky/vysoke_tatry/
          krajina  kraj      výsek   (úrovne, čo nedávajú zmysel, sa vynechajú)
 
-    presovsky-vysoke_tatry.zip                    základná mapa, BEZ vrstevníc, skál a tieňovania
+    presovsky-vysoke_tatry.zip                    základná mapa, BEZ riadkov nižšie,
+                                                  a bez glyfov a viewera (tie sú na Pages)
     presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy (.pmtiles)
     presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice (.pmtiles)
     presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
@@ -1759,6 +1760,26 @@ vrstvy z výškového modelu a majú vlastné balíky presne preto, aby si ich
 dôvod neplatil a „iba mapa" vážila rovnako ako mapa so všetkým. Kto ich chce,
 rozbalí príslušný ZIP navrch: cesty vnútri sú tie isté ako v `_site`, takže sa
 dá rozbaliť jeden cez druhý.
+
+**Ani glyfy a webový viewer v ňom nie sú – tie sú na Pages.** Fonty boli po
+dlaždiciach druhá najväčšia vec v balíku (tri fontstacky Noto Sans po ~34 MB,
+celý unicode, a mapa kraja z nich použije zlomok) a `index.html` s `*.js`
+z `poc/web` je stránka, ktorú si aplikácia nespúšťa – má vlastnú mapu. Oboje
+ostáva v `_site`, teda na Pages, a `manifest.json` v balíku nesie **absolútnu**
+adresu glyfov (`site.sh` ju skladá z `$BASE`), takže štýl vie, odkiaľ si ich
+vziať.
+
+Rozhoduje o tom **tvar tej adresy, nie prepínač** (`mimo_balika()`
+v `publish-map.py`): glyfy sa vynechajú práve vtedy, keď na ne manifest
+odkazuje absolútne. Mapa sveta má `fonts/{fontstack}/{range}.pbf`, čiže odkaz
+do balíka – na Pages nejde a jej glyfy sú orezané na stovky kB
+(`workers/world/glyphs.py`) –, takže tej sa nechajú. Keď sa manifest prečítať
+nedá, ostanú tiež: „neviem" nesmie znamenať „zahoď", lebo väčší balík je chyba,
+ktorú vidno na veľkosti, kým mapa bez písmen vyzerá ako pokazený štýl. Koľko
+toho balík nenesie, sa píše do logu, a `obsah.json` v ňom to hovorí tiež
+(`bez_glyfov`, `glyphs`, `bez_viewera`) – rovnako ako `bez_skal`. Stráži to
+[`workers/lint/packaging.py`](lint/packaging.py), vrátane toho, že viewer
+z `_site` nezmizne: z balíka je vynechaný práve preto, že je na Pages.
 
 **Vrstevnice a skaly sú v jednom balíku** zámerne: sú z toho istého výpočtu nad
 tým istým DEM a jedna bez druhej sa nepoužíva. Tieňovanie je zvlášť, lebo je to

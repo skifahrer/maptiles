@@ -8,9 +8,24 @@ balíky a nahrajú na Drive do priečinka podľa toho, čoho sa mapa týka:
 
     <koreň>/slovensko/presovsky/vysoke_tatry/
         presovsky-vysoke_tatry.zip                    základná mapa, BEZ nižšie
+                                                      (a bez glyfov a viewera – tie sú na Pages)
         presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy
         presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice
         presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
+
+GLYFY A WEBOVÝ VIEWER SA NEBALIA – SÚ NA PAGES. Fonty boli po dlaždiciach
+druhá najväčšia vec v balíku (tri fontstacky Noto Sans po ~34 MB, celý unicode)
+a mapa kraja z nich použije zlomok; viewer (`index.html` a `*.js` z `poc/web`)
+je zase web, ktorý si aplikácia nespúšťa – má vlastnú mapu. Oboje ostáva v
+`_site`, teda na Pages, takže sa nič nestráca: manifest v balíku nesie
+ABSOLÚTNU adresu glyfov (`site.sh` ju skladá z `$BASE`), takže štýl vie, odkiaľ
+si ich vziať.
+
+A NIE JE TO NATVRDO: glyfy sa vynechajú PRÁVE VTEDY, keď na ne manifest
+odkazuje absolútnou adresou. Mapa sveta má v manifeste `fonts/{fontstack}/…`,
+teda odkaz DO BALÍKA (na Pages nejde a jej glyfy sú orezané na stovky kB) –
+tej sa preto nechajú. Jedna otázka, jedna odpoveď: kde si štýl glyfy pýta,
+tam musia byť.
 
 ZÁKLADNÁ MAPA NEMÁ VRSTEVNICE, SKALY ANI TIEŇOVANIE. Sú to ťažké vrstvy
 z výškového modelu a majú vlastné balíky presne preto, aby si ich človek
@@ -356,6 +371,11 @@ def obsah(kind, man, fmt="zip"):
         "test_km2": env("TEST_KM2", "0"),
         "tiles_maxzoom": env("TILES_MAXZOOM"),
         "vrstvy": vrstvy(),
+        # ČO V BALÍKU NIE JE A KDE TO JE. Mlčanie sa dá čítať ako „zabudlo sa
+        # to pribaliť“ – to isté pravidlo, akým sa tu píše `bez_skal`.
+        "bez_glyfov": glyfy_su_inde(man),
+        "glyphs": man.get("glyphs") or "",
+        "bez_viewera": True,
         "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "run": env("GITHUB_RUN_NUMBER"),
         "run_id": env("GITHUB_RUN_ID"),
@@ -379,13 +399,82 @@ def vsetky_subory(site):
     return subory
 
 
-def zaklad_subory(site, vylucit):
-    """Súbory balíka `mapa` – všetko z `_site` OKREM toho, čo má vlastný balík.
+# ---------- čo do balíka NEPATRÍ ----------
+#
+# Rozpis je v hlavičke súboru. Krátko: glyfy a viewer ležia na Pages, takže
+# v balíku sú mŕtva váha – ale len vtedy, keď sa na ne dá odtiaľ dostať.
 
-    `vylucit` sú súbory balíkov `vrstevnice-skaly` a `tienovanie`: keby aj tie
-    ostali v základnej mape, mali by ich cesty vnútri dvakrát – raz tu, raz
-    v tom druhom ZIPe – a „iba mapa" by vážila rovnako ako mapa so všetkým,
-    čo je presne to, kvôli čomu majú vlastné balíky (viď hlavička súboru).
+# Viewer je to, čo `workers/deploy/site.sh` kopíruje do KOREŇA `_site`
+# z `poc/web` (`cp poc/web/*.js poc/web/*.json poc/web/index.html _site/`).
+# Podpriečinky sa neriešia zámerne: `styles/`, `sprites/` a `tiles/` sú mapa.
+VIEWER_PRIPONY = (".html", ".js", ".mjs", ".css")
+VIEWER_SUBORY = ("style-overrides.json",)   # jediný `.json`, čo tam z viewera ide
+
+
+def je_viewer(site, cesta):
+    """Súbor webového viewera v koreni `_site`?"""
+    rel = os.path.relpath(cesta, site)
+    if os.path.dirname(rel):
+        return False
+    return rel.endswith(VIEWER_PRIPONY) or rel in VIEWER_SUBORY
+
+
+def je_glyf(site, cesta):
+    """Súbor v `_site/fonts/` – teda glyf."""
+    rel = os.path.relpath(cesta, site)
+    return rel.split(os.sep)[0] == "fonts"
+
+
+def glyfy_su_inde(man):
+    """Odkazuje manifest na glyfy MIMO balíka (absolútnou adresou)?
+
+    Toto je celé rozhodnutie, a je odvodené z dát, nie z prepínača: keď štýl
+    ukazuje na `https://…/fonts/{fontstack}/{range}.pbf` (Pages), sú súbory
+    v balíku mŕtva váha. Keď ukazuje relatívne – mapa sveta – sú JEDINÝ zdroj
+    a vynechať sa nesmú (na Pages tá mapa nejde).
+
+    Keď sa manifest prečítať nedá, odpoveď je „neviem“, a to znamená NECHAŤ:
+    väčší balík je chyba, ktorú vidno na veľkosti, kým mapa bez písmen vyzerá
+    ako pokazený štýl.
+    """
+    return str(man.get("glyphs") or "").startswith(("http://", "https://"))
+
+
+def mimo_balika(site, man):
+    """Súbory z `_site`, ktoré do balíkov nepatria – zoznam a dôvody.
+
+    Vracia `(subory, dovody)`; `dovody` je `[(popis, počet, bajty)]` do logu,
+    lebo vynechať 90 MB potichu je presne to, čo pravidlo 4 zakazuje.
+    """
+    vsetky = vsetky_subory(site)
+    skupiny = [("viewer (je na Pages)", [p for p in vsetky if je_viewer(site, p)])]
+    if glyfy_su_inde(man):
+        skupiny.append((f"glyfy (štýl si ich pýta z {man.get('glyphs')})",
+                        [p for p in vsetky if je_glyf(site, p)]))
+    elif any(je_glyf(site, p) for p in vsetky):
+        log("Glyfy ostávajú v balíku – manifest na ne odkazuje relatívne "
+            f"({man.get('glyphs') or 'manifest sa nedá prečítať'}), takže "
+            f"balík je jediné miesto, kde ich štýl nájde.")
+
+    subory, dovody = [], []
+    for popis, kus in skupiny:
+        if not kus:
+            continue
+        subory.extend(kus)
+        dovody.append((popis, len(kus), sum(os.path.getsize(p) for p in kus)))
+    return subory, dovody
+
+
+def zaklad_subory(site, vylucit):
+    """Súbory balíka `mapa` – všetko z `_site` OKREM toho, čo doň nepatrí.
+
+    `vylucit` je dvoje. Jedno sú súbory balíkov `vrstevnice-skaly`
+    a `tienovanie`: keby aj tie ostali v základnej mape, mali by ich cesty
+    vnútri dvakrát – raz tu, raz v tom druhom ZIPe – a „iba mapa" by vážila
+    rovnako ako mapa so všetkým, čo je presne to, kvôli čomu majú vlastné
+    balíky. Druhé je to, čo nemá vlastný balík, lebo je na Pages – glyfy
+    a viewer (`mimo_balika`). Oboje sa podáva zvonku, aby sa tá istá otázka
+    nepočítala dvakrát; čo je čo, hovorí hlavička súboru.
     """
     von = {os.path.abspath(p) for p in vylucit}
     return [p for p in vsetky_subory(site) if os.path.abspath(p) not in von]
@@ -481,9 +570,16 @@ def main():
     # nemusel sťahovať, keď ich nechce (viď hlavička súboru).
     vrstvy_pack = vrstvy_subory(args.site, man)
     tien_pack = tienovanie_subory(args.site, man)
+    # Glyfy a viewer sú na Pages (rozpis v hlavičke). Musí byť VIDIEŤ, koľko
+    # toho balík takto nenesie – vynechaných 90 MB potichu je to isté ako
+    # 90 MB navyše potichu.
+    von_pack, von_dovody = mimo_balika(args.site, man)
+    for popis, kolko, bajtov in von_dovody:
+        log(f"Do balíka nejde {popis}: {kolko} súborov, "
+            f"{folder.human(bajtov)}")
     baliky = [
-        ("", "základná mapa – bez vrstevníc, skál a tieňovania",
-         args.site, zaklad_subory(args.site, vrstvy_pack + tien_pack)),
+        ("", "základná mapa – bez vrstevníc, skál, tieňovania, glyfov a viewera",
+         args.site, zaklad_subory(args.site, vrstvy_pack + tien_pack + von_pack)),
         ("vrstevnice-skaly", "vrstevnice a skalné plochy (.pmtiles)",
          args.site, vrstvy_pack),
         ("tienovanie", "výškové dlaždice pre tieňovanie a 3D terén (raster .pmtiles)",
