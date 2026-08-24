@@ -1744,6 +1744,7 @@ Priečinok hovorí, čoho sa mapa týka, a čo chýba, sa vyrobí:
                                                   a bez glyfov a viewera (tie sú na Pages)
     presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy (.pmtiles)
     presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice (.pmtiles)
+    presovsky-vysoke_tatry-search.zip             index na offline hľadanie (SQLite FTS5)
     presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
 
 Každý balík je aj ako **`.aar` (Apple Archive)** – ten istý obsah, to isté
@@ -1754,12 +1755,20 @@ macOS; vypína sa voľbou `apple_archive=false`. V `maps.json` má každý balí
 `formats.zip` aj `formats.aar`. + index.json
 ```
 
-**Základná mapa vrstevnice, skaly ani tieňovanie NEOBSAHUJE.** Sú to ťažké
-vrstvy z výškového modelu a majú vlastné balíky presne preto, aby si ich
-človek nemusel sťahovať, keď ich nechce – kým boli aj v základnej mape, ten
-dôvod neplatil a „iba mapa" vážila rovnako ako mapa so všetkým. Kto ich chce,
-rozbalí príslušný ZIP navrch: cesty vnútri sú tie isté ako v `_site`, takže sa
-dá rozbaliť jeden cez druhý.
+**Základná mapa vrstevnice, skaly, tieňovanie ani index na hľadanie
+NEOBSAHUJE.** Sú to ťažké veci, ktoré mapa na to, aby sa nakreslila,
+nepotrebuje, a majú vlastné balíky presne preto, aby si ich človek nemusel
+sťahovať, keď ich nechce – kým boli aj v základnej mape, ten dôvod neplatil
+a „iba mapa" vážila rovnako ako mapa so všetkým. Kto ich chce, rozbalí
+príslušný ZIP navrch: cesty vnútri sú tie isté ako v `_site`, takže sa dá
+rozbaliť jeden cez druhý.
+
+`search-index.db` bol v balíku dvakrát – vo vlastnom `-search.zip` aj
+v základnej mape, lebo `zaklad_subory()` dostávalo na vynechanie len
+vrstevnice a tieňovanie. Balík `-search` tým nič neriešil: index (4–6,5 MB
+podľa kraja) si stiahol každý. **Balík, ktorý v `publish-map.py` pribudne,
+patrí vždy aj do `vylucit`** – vynechať ho je ticho: mapa je v poriadku, len
+o toľko väčšia, a na súbore to nikto nepozná.
 
 **Ani glyfy a webový viewer v ňom nie sú – tie sú na Pages.** Fonty boli po
 dlaždiciach druhá najväčšia vec v balíku (tri fontstacky Noto Sans po ~34 MB,
