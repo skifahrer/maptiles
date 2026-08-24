@@ -73,7 +73,11 @@ Pozor na cache: kľúč `assets-…` v `build-map.yml` `workers/assets/glyphs.sh
 neobsahoval, takže samotná zmena zoznamu rozsahov by sa neprejavila – cache by
 vrátila staré (širšie) fonty. Preto je skript teraz v `hashFiles(...)`.
 
-## Nález 2 – `search-index.db` je v balíku dvakrát
+## Nález 2 – `search-index.db` je v balíku dvakrát ✅ opravené
+
+> Opravené v `workers/deploy/publish-map.py`: `hladanie_subory()` sa počíta
+> raz a to isté pole ide aj do `vylucit` základnej mapy. Overené na
+> zabalených ZIPoch – index je teraz práve v jednom balíku.
 
 ```python
 vrstvy_pack = vrstvy_subory(args.site, man)
@@ -90,8 +94,14 @@ Zo základnej mapy sa vynímajú `vrstvy_pack` a `tien_pack`, ale **nie**
 `<región>.zip`, aj v `<región>-search.zip`. Ten balík vznikol práve preto, aby
 sa index sťahovať nemusel.
 
-**Úspora: 4,0 – 6,5 MB podľa regiónu.** Oprava je jednoriadková – pridať
-`hladanie_subory(...)` do zoznamu, ktorý sa základnej mape vynecháva.
+**Úspora: 4,0 – 6,5 MB podľa regiónu.**
+
+Katalóg ani `manifest.json` o indexe nevedia – appka ho hľadá skenovaním
+stiahnutého priečinka na `.db` so slovom „search" v mene. Vybratie zo
+základnej mapy teda nič nerozbíja; kto chce hľadanie, stiahne si `-search`,
+presne ako pri vrstevniciach. **Je to ale zmena správania:** kto si dnes
+stiahne len základnú mapu, hľadanie má; po oprave ho mať nebude, kým si
+nestiahne aj druhý balík.
 
 ## Nález 3 – dlaždice sú stavané na maximálny detail
 
@@ -155,13 +165,18 @@ takto aj popisuje.
 Nálezy 1 a 2 sú čistý zisk – nič sa v mape nezmení, len sa prestane baliť to,
 čo sa nepoužíva:
 
-| región | pôvodne | po oprave 1 (hotové) | po oprave 1+2 |
-|---|---|---|---|
-| bratislavsky | 130,9 MB | ~71 MB (−46 %) | ~65 MB (−50 %) |
-| presovsky | 218,8 MB | ~159 MB (−27 %) | ~152 MB (−31 %) |
-| trnavsky | 141,0 MB | ~82 MB (−42 %) | ~78 MB (−45 %) |
+| región | pôvodne | po oprave 1+2 (obe hotové) |
+|---|---|---|
+| bratislavsky | 130,9 MB | ~65 MB (−50 %) |
+| presovsky | 218,8 MB | ~152 MB (−31 %) |
+| trnavsky | 141,0 MB | ~78 MB (−45 %) |
 
-Nález 2 (`search-index.db` v balíku dvakrát) zatiaľ opravený nie je.
+**Pozor na aritmetiku vyššie.** Medzitým pribudlo (`d0f4dfd`, mimo tejto
+analýzy), že glyfy a viewer sa do balíka nebalia vôbec, keď na ne manifest
+odkazuje absolútnou adresou na Pages. Kde to platí, je fontov v balíku 0 MB
+a úspora z nálezu 1 sa v tom balíku už neprejaví druhýkrát – orez rozsahov
+tam šetrí Pages a mapu sveta, nie sťahovanie do mobilu. Tabuľka platí pre
+balík, ktorý si glyfy nesie (manifest s relatívnym odkazom).
 
 Nález 3 je kompromis medzi detailom a veľkosťou – ten sa oplatí zmerať A/B
 skôr, než sa o ňom rozhodne.

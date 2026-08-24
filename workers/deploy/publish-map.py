@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Hotová mapa na Google Drive – ŠTYRI ZIPy so stálym menom.
+Hotová mapa na Google Drive – PÄŤ ZIPov so stálym menom.
 
 ČO TO ROBÍ. Z `_site` (celý web: dlaždice, štýly, vrstevnice, skaly,
 tieňovanie, fonty a sprity) a z priečinka s článkami (`--wiki`) sa zabalia
@@ -11,6 +11,7 @@ balíky a nahrajú na Drive do priečinka podľa toho, čoho sa mapa týka:
                                                       (a bez glyfov a viewera – tie sú na Pages)
         presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy
         presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice
+        presovsky-vysoke_tatry-search.zip             index na offline hľadanie
         presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
 
 GLYFY A WEBOVÝ VIEWER SA NEBALIA – SÚ NA PAGES. Fonty boli po dlaždiciach
@@ -27,12 +28,17 @@ teda odkaz DO BALÍKA (na Pages nejde a jej glyfy sú orezané na stovky kB) –
 tej sa preto nechajú. Jedna otázka, jedna odpoveď: kde si štýl glyfy pýta,
 tam musia byť.
 
-ZÁKLADNÁ MAPA NEMÁ VRSTEVNICE, SKALY ANI TIEŇOVANIE. Sú to ťažké vrstvy
-z výškového modelu a majú vlastné balíky presne preto, aby si ich človek
-nemusel sťahovať, keď ich nechce – kým boli aj v základnej mape, ten dôvod
-neplatil a „iba mapa" vážila rovnako ako mapa so všetkým. Kto ich chce, rozbalí
-príslušný ZIP navrch (cesty vnútri sú tie isté ako v `_site`, takže sa dá
-rozbaliť jeden cez druhý).
+ZÁKLADNÁ MAPA NEMÁ VRSTEVNICE, SKALY, TIEŇOVANIE ANI INDEX NA HĽADANIE. Sú to
+ťažké veci, ktoré mapa na to, aby sa nakreslila, nepotrebuje, a majú vlastné
+balíky presne preto, aby si ich človek nemusel sťahovať, keď ich nechce – kým
+boli aj v základnej mape, ten dôvod neplatil a „iba mapa" vážila rovnako ako
+mapa so všetkým. Kto ich chce, rozbalí príslušný ZIP navrch (cesty vnútri sú
+tie isté ako v `_site`, takže sa dá rozbaliť jeden cez druhý).
+
+`search-index.db` tu bol dvakrát – vo vlastnom `-search.zip` aj v základnej
+mape, lebo `zaklad_subory()` dostávalo na vynechanie len vrstevnice
+a tieňovanie. Balík `-search` tým nič neriešil: index (4–6,5 MB podľa kraja)
+si stiahol každý, aj keď hľadanie nechcel.
 
 Úrovne cesty, ktoré nedávajú zmysel, sa vynechajú: build celej krajiny nemá
 kraj a build celého kraja nemá výsek. Chýbajúce priečinky sa vyrobia.
@@ -468,13 +474,18 @@ def mimo_balika(site, man):
 def zaklad_subory(site, vylucit):
     """Súbory balíka `mapa` – všetko z `_site` OKREM toho, čo doň nepatrí.
 
-    `vylucit` je dvoje. Jedno sú súbory balíkov `vrstevnice-skaly`
-    a `tienovanie`: keby aj tie ostali v základnej mape, mali by ich cesty
-    vnútri dvakrát – raz tu, raz v tom druhom ZIPe – a „iba mapa" by vážila
-    rovnako ako mapa so všetkým, čo je presne to, kvôli čomu majú vlastné
-    balíky. Druhé je to, čo nemá vlastný balík, lebo je na Pages – glyfy
-    a viewer (`mimo_balika`). Oboje sa podáva zvonku, aby sa tá istá otázka
-    nepočítala dvakrát; čo je čo, hovorí hlavička súboru.
+    `vylucit` je dvoje. Jedno sú súbory balíkov `vrstevnice-skaly`,
+    `tienovanie` a `search`: keby aj tie ostali v základnej mape, mali by ich
+    cesty vnútri dvakrát – raz tu, raz v tom druhom ZIPe – a „iba mapa" by
+    vážila rovnako ako mapa so všetkým, čo je presne to, kvôli čomu majú
+    vlastné balíky. Druhé je to, čo nemá vlastný balík, lebo je na Pages –
+    glyfy a viewer (`mimo_balika`). Oboje sa podáva zvonku, aby sa tá istá
+    otázka nepočítala dvakrát; čo je čo, hovorí hlavička súboru.
+
+    KTORÝKOĽVEK BALÍK, ČO PRIBUDNE, PATRÍ AJ SEM. Vynechať ho je ticho: mapa
+    je v poriadku, len o toľko väčšia, a na súbore to nikto nepozná. Presne to
+    sa stalo `search-index.db` – mal vlastný balík od začiatku, ale zo
+    základnej mapy ho nikto nevybral, takže si ho každý stiahol dvakrát.
     """
     von = {os.path.abspath(p) for p in vylucit}
     return [p for p in vsetky_subory(site) if os.path.abspath(p) not in von]
@@ -565,11 +576,14 @@ def main():
     # počítajú od tej bázy, takže vnútri je `articles.ndjson`, nie
     # `_wiki/articles.ndjson`.
     #
-    # Vrstevnice, skaly a tieňovanie sa počítajú PRED základnou mapou, lebo tá
-    # ich musí VYNECHAŤ – majú vlastné balíky práve preto, aby si ich človek
-    # nemusel sťahovať, keď ich nechce (viď hlavička súboru).
+    # Vrstevnice, skaly, tieňovanie a index na hľadanie sa počítajú PRED
+    # základnou mapou, lebo tá ich musí VYNECHAŤ – majú vlastné balíky práve
+    # preto, aby si ich človek nemusel sťahovať, keď ich nechce (viď hlavička
+    # súboru). Každý sa počíta RAZ a to isté pole ide aj do vlastného balíka:
+    # druhé volanie tej istej funkcie je druhá odpoveď na tú istú otázku.
     vrstvy_pack = vrstvy_subory(args.site, man)
     tien_pack = tienovanie_subory(args.site, man)
+    hladanie_pack = hladanie_subory(args.site, man)
     # Glyfy a viewer sú na Pages (rozpis v hlavičke). Musí byť VIDIEŤ, koľko
     # toho balík takto nenesie – vynechaných 90 MB potichu je to isté ako
     # 90 MB navyše potichu.
@@ -578,14 +592,16 @@ def main():
         log(f"Do balíka nejde {popis}: {kolko} súborov, "
             f"{folder.human(bajtov)}")
     baliky = [
-        ("", "základná mapa – bez vrstevníc, skál, tieňovania, glyfov a viewera",
-         args.site, zaklad_subory(args.site, vrstvy_pack + tien_pack + von_pack)),
+        ("", "základná mapa – bez vrstevníc, skál, tieňovania, hľadania, "
+             "glyfov a viewera",
+         args.site, zaklad_subory(args.site, vrstvy_pack + tien_pack
+                                  + hladanie_pack + von_pack)),
         ("vrstevnice-skaly", "vrstevnice a skalné plochy (.pmtiles)",
          args.site, vrstvy_pack),
         ("tienovanie", "výškové dlaždice pre tieňovanie a 3D terén (raster .pmtiles)",
          args.site, tien_pack),
         ("search", "vyhľadávací index pre offline hľadanie (SQLite FTS5)",
-         args.site, hladanie_subory(args.site, man)),
+         args.site, hladanie_pack),
     ]
     # WIKIPÉDIA SA PRIDÁ, LEN KEĎ O NEJ TENTO BEH VIE. Odkedy má vlastnú
     # pipeline (`.github/workflows/wiki.yml`), Build map články nesťahuje –
