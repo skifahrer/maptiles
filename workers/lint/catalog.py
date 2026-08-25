@@ -24,7 +24,14 @@ import sys
 
 import yaml
 
-DRUHY = {"mapa", "vrstevnice-skaly", "tienovanie", "wikipedia", "search"}
+DRUHY = {"mapa", "vrstevnice-skaly", "tienovanie", "wikipedia"}
+# ZRUŠENÉ DRUHY – v katalógu ešte môžu byť (kraj, ktorý sa odvtedy nestaval),
+# ale publikovanie ich už NEVYRÁBA: `search` sa presťahoval DOVNÚTRA balíka
+# `mapa` a jeho veľkosť je pod ním v `casti`. Hlásiť ich ako neznámy druh by
+# znamenalo červený lint za starý zápis, ktorý najbližší build sám prepíše;
+# preto sa berú, ale musia byť aj v `ZRUSENE` v `publish-map.py` – inak by
+# starý `-search.zip` ostal ležať na Drive a katalóg by naň ukazoval.
+ZRUSENE = {"search"}
 # Meno balíka: `<kraj>[-<výsek>][-testNkm2]` + prípona druhu. Sedí to s
 # `zaklad()` a `meno()` vo `workers/deploy/publish-map.py`.
 MENO = re.compile(r"^[a-z0-9_]+(-[a-z0-9_]+)*(-test[0-9.]+km2)?"
@@ -58,6 +65,16 @@ CATALOG_PY = "workers/deploy/catalog.py"
 CATALOG_SH = "workers/deploy/catalog.sh"
 
 bad = []
+
+# Obsah `publish-map.py` treba UŽ pri kontrole katalógov (zrušené druhy), a
+# ešte raz nižšie pri kontrole samotného skriptu. Číta sa preto raz, tu.
+try:
+    pmap_text = open(PUBLISH_MAP, encoding="utf-8").read()
+except OSError:
+    pmap_text = ""
+pmap_zrusene = set()
+for _m in re.findall(r"^ZRUSENE\s*=\s*\(([^)]*)\)", pmap_text, re.M):
+    pmap_zrusene |= set(re.findall(r"[\"']([\w-]+)[\"']", _m))
 
 
 def polozky(node, kde):
@@ -135,9 +152,14 @@ for cesta in CATALOGS:
                 bad.append(f"{cesta}: {kde} nemá `{pole}` – z katalógu sa "
                            f"nedá zistiť, kedy tá mapa vznikla.")
         for druh, m in p["maps"].items():
-            if druh not in DRUHY:
+            if druh not in DRUHY | ZRUSENE:
                 bad.append(f"{cesta}: {kde} má balík `{druh}`, ktorý "
                            f"publikovanie nevyrába (pozná {sorted(DRUHY)}).")
+            if druh in ZRUSENE and pmap_text and druh not in pmap_zrusene:
+                bad.append(f"{cesta}: {kde} má zrušený balík `{druh}`, ale "
+                           f"`{PUBLISH_MAP}` ho nemá v `ZRUSENE`, takže ho "
+                           f"nikto nezmaže z Drive ani z položky – katalóg by "
+                           f"naň ukazoval navždy.")
             if not isinstance(m, dict) or not m.get("file") or not m.get("link"):
                 bad.append(f"{cesta}: {kde}/{druh} nemá `file` a `link` – "
                            f"zoznam bez odkazu je na nič.")
@@ -240,12 +262,14 @@ for wf_path in PIPELINE:
 
 # `--only` musí katalóg DOPĹŇAŤ, nie prepisovať: samostatná pipeline vie len
 # o svojom balíku a prepis by zmazal odkazy na mapu, o ktorej nič nevie.
+pmap = pmap_text
 try:
-    pmap = open(PUBLISH_MAP, encoding="utf-8").read()
     kmap = open(CATALOG_PY, encoding="utf-8").read()
 except OSError as exc:
-    bad.append(f"{PUBLISH_MAP} / {CATALOG_PY} sa nedá prečítať: {exc}")
-    pmap = kmap = ""
+    bad.append(f"{CATALOG_PY} sa nedá prečítať: {exc}")
+    kmap = ""
+if not pmap:
+    bad.append(f"{PUBLISH_MAP} sa nedá prečítať.")
 # ČO SI ČITATEĽ NESMIE ODVODIŤ. Meno súboru s dlaždicami sa z kľúča uzla
 # poskladať NEDÁ – uzol je `bratislavsky_test4km2`, balík `bratislavsky-test4km2
 # .zip` a dlaždice v ňom `tiles/bratislavsky_test4-…`; pri výreze sa dokonca
@@ -265,7 +289,13 @@ for kluc, preco in (
                         "(`dem_source` je zdroj vrstevníc)"),
         ("terrain_source", "z ktorého modelu je TIEŇOVANIE, v položke nie je "
                            "– pri prechode na náhradný model by atribúcia "
-                           "tvrdila DMR 5.0 nad reliéfom zo Sonnyho")):
+                           "tvrdila DMR 5.0 nad reliéfom zo Sonnyho"),
+        ("casti", "koľko z balíka `mapa` je HĽADANIE a koľko NAVIGÁCIA, "
+                  "v položke nie je. Vlastný balík tie dve veci nemajú "
+                  "(cestujú v mape), takže katalóg je jediné miesto, kde sa "
+                  "ich veľkosť dá prečítať bez stiahnutia stoviek MB – a "
+                  "kým sa nedala, ležal `search-index.db` v balíku dvakrát "
+                  "a nikto to na veľkosti nepoznal")):
     if kmap and kluc not in kmap:
         bad.append(f"{CATALOG_PY}: {preco}. Doplň to z `manifest.json` – "
                    f"pozná to, lebo podľa toho číta dlaždice aj viewer.")

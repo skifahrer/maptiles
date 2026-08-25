@@ -1741,10 +1741,10 @@ Priečinok hovorí, čoho sa mapa týka, a čo chýba, sa vyrobí:
          krajina  kraj      výsek   (úrovne, čo nedávajú zmysel, sa vynechajú)
 
     presovsky-vysoke_tatry.zip                    základná mapa, BEZ riadkov nižšie,
-                                                  a bez glyfov a viewera (tie sú na Pages)
+                                                  ale S hľadaním a navigáciou;
+                                                  bez glyfov a viewera (tie sú na Pages)
     presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy (.pmtiles)
     presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice (.pmtiles)
-    presovsky-vysoke_tatry-search.zip             index na offline hľadanie (SQLite FTS5)
     presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
 
 Každý balík je aj ako **`.aar` (Apple Archive)** – ten istý obsah, to isté
@@ -1755,20 +1755,39 @@ macOS; vypína sa voľbou `apple_archive=false`. V `maps.json` má každý balí
 `formats.zip` aj `formats.aar`. + index.json
 ```
 
-**Základná mapa vrstevnice, skaly, tieňovanie ani index na hľadanie
-NEOBSAHUJE.** Sú to ťažké veci, ktoré mapa na to, aby sa nakreslila,
-nepotrebuje, a majú vlastné balíky presne preto, aby si ich človek nemusel
-sťahovať, keď ich nechce – kým boli aj v základnej mape, ten dôvod neplatil
-a „iba mapa" vážila rovnako ako mapa so všetkým. Kto ich chce, rozbalí
+**Základná mapa vrstevnice, skaly ani tieňovanie NEOBSAHUJE.** Sú to ťažké
+vrstvy z výškového modelu, ktoré mapa na to, aby sa nakreslila, nepotrebuje,
+a vážia porovnateľne s ňou samou, takže majú vlastné balíky presne preto, aby
+si ich človek nemusel sťahovať, keď ich nechce. Kto ich chce, rozbalí
 príslušný ZIP navrch: cesty vnútri sú tie isté ako v `_site`, takže sa dá
 rozbaliť jeden cez druhý.
 
-`search-index.db` bol v balíku dvakrát – vo vlastnom `-search.zip` aj
-v základnej mape, lebo `zaklad_subory()` dostávalo na vynechanie len
-vrstevnice a tieňovanie. Balík `-search` tým nič neriešil: index (4–6,5 MB
-podľa kraja) si stiahol každý. **Balík, ktorý v `publish-map.py` pribudne,
-patrí vždy aj do `vylucit`** – vynechať ho je ticho: mapa je v poriadku, len
-o toľko väčšia, a na súbore to nikto nepozná.
+**Hľadanie a navigácia sú naopak V NEJ – sú to časti, nie balíky.** Vlastný
+`-search.zip` mali a bola to chyba v tom, čo mapa sľubuje: kto si stiahol mapu
+kraja, dostal mapu, v ktorej sa nedá nič nájsť ani nikam doviesť, a že mu chýba
+druhý súbor, nemal ako vedieť – žiadny „stiahni si aj toto" v aplikácii nie je.
+Cena je jednotky až desiatky MB proti stovkám za dlaždice. Balík `-search`
+preto zanikol (`ZRUSENE` v `publish-map.py`) a starý sa na Drive maže; graf
+Valhally (`_site/routing/`) sa balí rovnako.
+
+**Obe sú vždy za ten jeden región**, ktorého je balík. Index je z toho istého
+PBF ako mapa; graf sa stavia z `data/region.osm.pbf` toho istého behu
+(workflow [`navigation-region.yml`](../.github/workflows/navigation-region.yml)),
+takže **trasa v ňom končí na hranici kraja** – hrana, ktorej v rezanom PBF
+chýba druhý koniec, je slepá ulica. Je to zámer a `graf.json` v balíku to
+o sebe hovorí (`rozsah: "region"`, `hranica: …`); kto potrebuje prejsť
+hranicu, má na to celoštátny graf z [`navigation.yml`](../.github/workflows/navigation.yml).
+Rozpis oboch je v [`docs/navigation.md`](../docs/navigation.md).
+
+**Koľko z balíka tie časti sú, je vidieť v katalógu** – `maps.json` má pod
+balíkom `mapa` kľúč `casti` s `raw_size` (bajty pred zabalením, preto iné meno
+než `size` balíka) a počtom súborov. Časť, ktorá sa nedá odmerať, je presne to,
+čím bol `search-index.db` predtým, než sa naň niekto pozrel: ležal v balíku
+dvakrát a na veľkosti to nikto nepoznal.
+
+**Balík, ktorý v `publish-map.py` pribudne, patrí vždy aj do `vylucit`** –
+vynechať ho je ticho: mapa je v poriadku, len o toľko väčšia, a na súbore to
+nikto nepozná.
 
 **Ani glyfy a webový viewer v ňom nie sú – tie sú na Pages.** Fonty boli po
 dlaždiciach druhá najväčšia vec v balíku (tri fontstacky Noto Sans po ~34 MB,

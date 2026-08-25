@@ -1,0 +1,98 @@
+name: Mapa · navigačný graf kraja
+
+# NAVIGAČNÝ GRAF (Valhalla) PRE JEDEN KRAJ – a ide DOVNÚTRA balíka jeho mapy,
+# nie do vlastného ZIPu. Kto si stiahol kraj, má v ňom aj to, čo ho v ňom
+# dovezie; druhý súbor, o ktorom sa v aplikácii nedozvie, by znamenal mapu
+# s navigáciou, ktorá „nefunguje". To isté rozhodnutie ako pri vyhľadávacom
+# indexe – rozpis je v hlavičke `workers/deploy/publish-map.py`.
+#
+# TRASA V ŇOM KONČÍ NA HRANICI KRAJA. PBF je rezaný na hranicu (mapa je mapa
+# kraja) a hrana, ktorej chýba druhý koniec, je slepá ulica. Je to ZÁMER, nie
+# opomenutie, a `graf.json` v balíku to o sebe hovorí (`rozsah: "region"`,
+# `hranica: …`) – mlčanie by sa dalo čítať ako pokazená trasa. Kto potrebuje
+# prejsť hranicu, má na to CELOŠTÁTNY graf z vlastnej pipeline („Mapa · Build
+# navigácia“, `navigation.yml`): tá stavia z celých štátnych extraktov, má
+# vlastný balík na Drive a vlastný uzol v katalógu. Rozpis oboch je
+# v `docs/navigation.md`.
+#
+# PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map.yml`: ten je pri strope
+# 128 KiB, nad ktorým GitHub workflow TICHO NEPRIJME (dôvod aj čísla sú
+# v hlavičke `roads.yml`). Ten istý vzor, tá istá cena – vstupy sa píšu
+# dvakrát a `workflow_call` nededí `env` volajúceho.
+#
+# JEDEN SKRIPT PRE OBA ROZSAHY. Graf stavia `workers/routing/graph.sh`, to
+# isté, čo púšťa celoštátna pipeline; líši sa len tým, čo dostane (`REGION_KEY`
+# a rezaný PBF namiesto `AREA` a štátnych extraktov). Dva skripty by boli dve
+# pravdy o tom, ako sa graf stavia a čo sa v ňom kontroluje (pravidlo 1).
+
+on:
+  workflow_call:
+    inputs:
+      region_key:
+        description: "Kľúč regiónu – ide do `graf.json` ako rozsah grafu"
+        required: true
+        type: string
+      valhalla_image:
+        description: "Docker obraz Valhally (radšej s tagom než latest)"
+        required: false
+        default: "ghcr.io/valhalla/valhalla-scripted:latest"
+        type: string
+    outputs:
+      graph_mb:
+        description: "Veľkosť grafu v MB (0 = nevznikol)"
+        value: ${{ jobs.graf.outputs.graph_mb }}
+      valhalla:
+        description: "Verzia motora, ktorou je graf postavený"
+        value: ${{ jobs.graf.outputs.valhalla }}
+
+jobs:
+  graf:
+    name: Graf z PBF kraja
+    runs-on: ubuntu-latest
+    outputs:
+      graph_mb: ${{ steps.graph.outputs.graph_mb }}
+      valhalla: ${{ steps.graph.outputs.valhalla }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Priprav priečinok na meranie
+        run: mkdir -p steps-out
+
+      # To isté PBF, z akého je mapa – job `plan` ho už stiahol a orezal.
+      - name: Stiahni PBF z prípravy
+        uses: actions/download-artifact@v8
+        with:
+          name: pbf
+          path: data
+
+      # Docker je na `ubuntu-latest` k dispozícii, takže sa nič neinštaluje.
+      - name: Graf Valhally z PBF kraja
+        id: graph
+        env:
+          REGION_KEY: ${{ inputs.region_key }}
+          ROUTING_PBF: data/region.osm.pbf
+          VALHALLA_IMAGE: ${{ inputs.valhalla_image }}
+        run: workers/routing/graph.sh
+
+      # ARTEFAKT SA NEVOLÁ `site-…` ZÁMERNE. Kusy `site-*` zlieva `deploy` do
+      # `_site` PRED nahratím na Pages a graf na Pages nemá čo robiť – nie je
+      # čo kresliť a zjedol by rozpočet stránky. Balenie si ho preto stiahne
+      # menom, až za tým krokom.
+      - name: Odlož graf pre balenie
+        if: ${{ always() && hashFiles('_site/routing/*') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: navigacia-graf
+          path: _site
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+
+      - name: Odlož meranie krokov
+        if: ${{ always() && hashFiles('steps-out/*') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: steps-navigacia
+          path: steps-out
+          retention-days: 1
+          if-no-files-found: ignore

@@ -735,6 +735,10 @@ jobs:
       opt_trails: ${{ steps.opts.outputs.opt_trails }}
       opt_features: ${{ steps.opts.outputs.opt_features }}
       opt_search: ${{ steps.opts.outputs.opt_search }}
+      # Navigačný graf pre tento kraj – nemá vlastný balík, ide
+      # DOVNÚTRA mapy (rozpis vo `workers/deploy/publish-map.py`).
+      opt_navigacia: ${{ steps.opts.outputs.opt_navigacia }}
+      opt_valhalla_image: ${{ steps.opts.outputs.opt_valhalla_image }}
       # Tri výbery zdroja tak, ako ich rozobrala parse-options.py.
       # `opt_rock_dem` je zdroj skál, LEN keď je to výškový model – pri
       # `tienovanie` a `ziadne` je prázdny, takže nikto nesiahne na DEM.
@@ -783,77 +787,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Na stránke má byť MAPA, nie README – a to je vlastnosť jedného
-      # nastavenia repozitára: `build_type`.
-      #
-      # `build_type: legacy` = zdroj Pages je VETVA. Vtedy popri nás beží
-      # zabudovaný Jekyll builder („pages build and deployment"), ktorý pri
-      # KAŽDOM pushi do vetvy nasadí koreň repozitára – teda README – a mapu,
-      # ktorú nasadil tento workflow, prepíše. Navonok to vyzerá, že sa mapa
-      # „sama pokazila": beh je zelený, nasadenie prebehlo, a na stránke je
-      # README. Stalo sa to po mergoch #50, #51, #52 a znova #54 a #55, takže
-      # to už nie je nehoda, ale niečo, čo sa vracia.
-      #
-      # Prepnúť sa to skúsi rovno tu – je to jedno PUT volanie a je
-      # idempotentné. Keď ho token neprejde, beh POKRAČUJE a mapu nasadí.
-      #
-      # Zhadzovať beh hneď na začiatku bola chyba a stála celý deň behov:
-      # `GITHUB_TOKEN` na zmenu zdroja Pages nestačí (mení sa ním nastavenie
-      # repozitára, nie obsah stránky), takže sa beh zastavil po troch
-      # sekundách a mapa nebola ŽIADNA. Pritom nasadenie funguje aj pri
-      # zdroji z vetvy – mapa na stránke je, len ju prepíše najbližší push
-      # do master. Radšej mapa, ktorá vydrží do ďalšieho mergu, než nič.
-      #
-      # Preto: skúsiť, nahlas povedať, čo API odpovedalo, a ísť ďalej.
-      # Odpoveď sa NEZAHADZUJE do /dev/null – bez nej sa z logu nedalo
-      # zistiť, či je to chýbajúce právo, alebo niečo iné.
+      # Na stránke má byť MAPA, nie README, a to je vlastnosť jedného
+      # nastavenia repozitára (`build_type`). Prečo sa to prepína tu, prečo to
+      # beh nezhodí, keď sa nedá, a čo sa stalo, keď zhadzovalo – rozpis je
+      # v `workers/deploy/pages-source.sh`.
       - name: Zapni GitHub Pages a prepni zdroj na Actions
         id: pages-src
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -uo pipefail
-          RUCNE="Nastav to ručne raz: Settings → Pages → Build and deployment → Source: 'GitHub Actions'."
-
-          PAGES=$(gh api "repos/$GITHUB_REPOSITORY/pages" 2>/dev/null || true)
-
-          if [ -z "$PAGES" ]; then
-            echo "GitHub Pages nie je zapnuté – zapínam so zdrojom GitHub Actions…"
-            if ODPOVED=$(gh api -X POST "repos/$GITHUB_REPOSITORY/pages" \
-                 -f 'build_type=workflow' 2>&1); then
-              echo "  ✓ zapnuté"
-              PAGES=$(gh api "repos/$GITHUB_REPOSITORY/pages" 2>/dev/null || true)
-            else
-              echo "  API odpovedalo: $ODPOVED"
-              # Bez zapnutých Pages sa nasadiť NEDÁ – tu zastaviť treba.
-              echo "::error::GitHub Pages nie je zapnuté a tokenu sa ho nepodarilo zapnúť (na to treba admin práva). $RUCNE"
-              exit 1
-            fi
-          fi
-
-          BT=$(printf '%s' "$PAGES" | jq -r '.build_type // "?"')
-          if [ "$BT" != 'workflow' ]; then
-            echo "Pages berie zdroj z vetvy (build_type=$BT) – skúšam prepnúť na GitHub Actions…"
-            if ODPOVED=$(gh api -X PUT "repos/$GITHUB_REPOSITORY/pages" \
-                 -f 'build_type=workflow' 2>&1); then
-              # Overiť, a nie veriť: keby PUT prešlo a nastavenie ostalo staré,
-              # build by dobehol do zelena a na stránke by aj tak bolo README.
-              BT=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq '.build_type // "?"' 2>/dev/null || echo '?')
-              [ "$BT" = 'workflow' ] && echo "  ✓ prepnuté (build_type=$BT)"
-            else
-              echo "  API odpovedalo: $ODPOVED"
-            fi
-          fi
-
-          echo "build_type=$BT" >> "$GITHUB_OUTPUT"
-          if [ "$BT" != 'workflow' ]; then
-            # VAROVANIE, nie chyba. Mapa sa nasadí a bude na stránke; zmizne
-            # až pri najbližšom pushi do master, keď ju prepíše zabudovaný
-            # Jekyll builder obsahom repozitára (uvidíš README).
-            echo "::warning::GitHub Pages berie zdroj z vetvy (build_type=$BT), nie z Actions, a tokenu sa to nepodarilo prepnúť. Mapa sa nasadí, ale najbližší push do master ju prepíše obsahom repozitára (uvidíš README). $RUCNE"
-          else
-            echo "Pages je zapnuté a berie z Actions ✓ – nasadí sa mapa z tohto behu"
-          fi
+        run: workers/deploy/pages-source.sh
 
       # PBF sa mení denne, tak je v kľúči dátum – v ten istý deň sa už
       # nesťahuje znova (kraj má 36–63 MB, celé Slovensko ~380 MB).
@@ -1984,6 +1926,19 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
+  # ---------- navigačný graf pre tento kraj ----------
+  # Vo vlastnom súbore, lebo tento je pri strope 128 KiB – dôvod aj rozpis
+  # (prečo graf ide DOVNÚTRA mapy a prečo trasa končí na hranici kraja) je
+  # v `navigation-region.yml`.
+  navigacia:
+    name: Navigačný graf (Valhalla)
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.opt_navigacia == 'true' }}
+    uses: ./.github/workflows/navigation-region.yml
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      valhalla_image: ${{ needs.plan.outputs.opt_valhalla_image }}
+
   # ---------- mapové dlaždice ----------
   # Beží súbežne s vrstevnicami, trasami aj tieňovaním – z nich nič
   # nepotrebuje, len PBF z prípravy.
@@ -2174,7 +2129,7 @@ jobs:
   # bez nich, ale nasadiť.
   deploy:
     name: Zloženie a nasadenie
-    needs: [plan, shading-rocks, contours, rocks, trails, features, roads, search, terrain, tiles, assets]
+    needs: [plan, shading-rocks, contours, rocks, trails, features, roads, search, navigacia, terrain, tiles, assets]
     if: ${{ !cancelled() && needs.tiles.result == 'success' && needs.assets.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -2215,7 +2170,7 @@ jobs:
       - name: Čo prišlo od ostatných jobov
         run: |
           set -uo pipefail
-          echo "Výsledky jobov: vrstevnice=${{ needs.contours.result }}, trasy=${{ needs.trails.result }}, prvky=${{ needs.features.result }}, obmedzenia=${{ needs.roads.result }}, hľadanie=${{ needs.search.result }}, terén=${{ needs.terrain.result }}, dlaždice=${{ needs.tiles.result }}, ikonky=${{ needs.assets.result }}"
+          echo "Výsledky jobov: vrstevnice=${{ needs.contours.result }}, trasy=${{ needs.trails.result }}, prvky=${{ needs.features.result }}, obmedzenia=${{ needs.roads.result }}, hľadanie=${{ needs.search.result }}, navigácia=${{ needs.navigacia.result }}, terén=${{ needs.terrain.result }}, dlaždice=${{ needs.tiles.result }}, ikonky=${{ needs.assets.result }}"
           find _site -maxdepth 2 -mindepth 1 -type d -exec du -sh {} \; 2>/dev/null || true
           du -sm _site | cut -f1 | xargs -I{} echo "_site spolu: {} MB"
 
@@ -2371,6 +2326,19 @@ jobs:
           PAGES_BUILD_TYPE: ${{ needs.plan.outputs.pages_build_type }}
         run: workers/deploy/smoke-test.sh
 
+      # NAVIGAČNÝ GRAF AŽ TU, ZA PAGES. Do balíka patrí (kto si stiahol kraj,
+      # má v ňom aj navigáciu), na stránku nie – nie je čo kresliť a zjedol by
+      # rozpočet Pages. Preto sa artefakt nevolá `site-…`: krok „Pozbieraj
+      # kusy stránky“ berie `site-*` a graf by sa doňho zlial ešte pred
+      # nahratím na Pages. `continue-on-error`, lebo mapa bez navigácie je
+      # mapa – katalóg o nej povie `casti.navigacia: 0 súborov`.
+      - name: Stiahni navigačný graf do balíka
+        if: ${{ always() && needs.navigacia.result == 'success' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: navigacia-graf
+          path: _site
 
       - name: Publikuj mapu na Drive
         id: publish
@@ -2517,6 +2485,17 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: deploy-site
+          path: _site
+      # NAVIGAČNÝ GRAF MUSÍ BYŤ AJ V `.aar`. `.aar` je ten istý obsah ako ZIP,
+      # len inak zabalený – balík, v ktorom by graf chýbal, by o sebe cez
+      # `obsah.json` tvrdil to isté, čo ZIP, a nesedelo by to. Do `site-*`
+      # graf nepatrí (na Pages nemá čo robiť), takže sa sťahuje menom.
+      # `continue-on-error`: mapa bez navigácie je mapa.
+      - name: Stiahni navigačný graf do balíka
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: navigacia-graf
           path: _site
       - name: Zabaľ a nahraj .aar na Drive
         id: publish

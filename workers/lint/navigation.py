@@ -20,6 +20,12 @@ Navigačný graf: rozsah, jeho uzol v katalógu a to, čo sa v ňom NESMIE strat
      a diaľničná známka po krajinách nemá na čom stáť. A nefunguje TICHO –
      trasa sa spočíta, len je iná. `graph.sh` ho musí kontrolovať.
 
+  4b. GRAF KRAJA, KTORÝ MLČÍ O SVOJEJ HRANICI. Kraj sa stavia z REZANÉHO PBF
+     (mapa je mapa kraja a navigácia má byť v nej), takže trasa v ňom končí
+     na hranici – a keď to `graf.json` nepovie, nedá sa to odlíšiť od
+     pokazeného grafu. Rovnako musí platiť, že ten graf stavia ten istý
+     skript a že sa do balíka naozaj dostane.
+
   4. KRAJINA MIMO `vignettes.json`. Rozsah, ktorý pokrýva krajinu, o ktorej
      `vignettes.json` nevie, znamená, že sa v nej voľba `vignettes` nespýta
      na nič – a mlčanie sa nedá odlíšiť od „známku tam netreba".
@@ -45,6 +51,11 @@ AREAS = os.path.join(_DATA, "routing-areas.json")
 REGIONS = os.path.join(_DATA, "regions.json")
 VIGNETTES = os.path.join(_DATA, "vignettes.json")
 WORKFLOW = os.path.join(".github", "workflows", "navigation.yml")
+# Druhý rozsah toho istého grafu: JEDEN KRAJ, a graf ide dovnútra balíka jeho
+# mapy. Volá ho `build-map.yml` cez `workflow_call` (vlastný súbor, lebo ten
+# je pri strope 128 KiB).
+REGION_WORKFLOW = os.path.join(".github", "workflows", "navigation-region.yml")
+BUILD_MAP = os.path.join(".github", "workflows", "build-map.yml")
 PBF_SH = os.path.join(_WORKERS, "routing", "pbf.sh")
 GRAPH_SH = os.path.join(_WORKERS, "routing", "graph.sh")
 
@@ -143,7 +154,54 @@ def main():
     else:
         err("workers/routing/graph.sh", "skript neexistuje.")
 
-    # --- 5. formulár vs. číselník ---
+    # --- 5. graf kraja: existuje, stavia ho ten istý skript a POVIE,
+    #        že trasa v ňom končí na hranici ---
+    # Graf z REZANÉHO PBF je presne to, čo `pbf.sh` robiť nesmie (kontrola 2) –
+    # tu je to zámer, lebo mapa je mapa kraja a navigácia má byť v nej. Preto
+    # to musí byť NAPÍSANÉ v balíku: bez toho sa „trasa cez hranicu nejde"
+    # nedá odlíšiť od pokazeného grafu, a to je ten istý tichý omyl, len
+    # z druhej strany.
+    if os.path.exists(REGION_WORKFLOW):
+        wtext = open(REGION_WORKFLOW, encoding="utf-8").read()
+        if "workers/routing/graph.sh" not in wtext:
+            err(".github/workflows/navigation-region.yml",
+                "graf kraja sa nestavia `workers/routing/graph.sh`. Druhý "
+                "skript by bol druhá pravda o tom, ako sa graf stavia a čo sa "
+                "v ňom kontroluje – a kontrola štyroch súborov vyššie by na "
+                "neho nedosiahla.")
+        if "name: navigacia-graf" not in wtext:
+            err(".github/workflows/navigation-region.yml",
+                "graf sa neodkladá ako artefakt `navigacia-graf`. Do balíka "
+                "sa dostane jedine cezeň – `site-*` sa zlieva do `_site` pred "
+                "nahratím na Pages a graf tam nemá čo robiť.")
+        if os.path.exists(BUILD_MAP):
+            bm = open(BUILD_MAP, encoding="utf-8").read()
+            if "navigation-region.yml" not in bm:
+                err(".github/workflows/build-map.yml",
+                    "build mapy nevolá `navigation-region.yml`, takže kraj "
+                    "sa zabalí bez navigácie – a nikto to nepovie: mapa je "
+                    "v poriadku, len sa v nej nedá nikam doviezť.")
+            if "name: navigacia-graf" not in bm:
+                err(".github/workflows/build-map.yml",
+                    "graf sa pri balení nesťahuje (`navigacia-graf`). Job ho "
+                    "postaví, artefakt vznikne a do ZIPu sa nedostane – "
+                    "presne ten druh tichého omylu, ktorý vidno až v telefóne.")
+    else:
+        err(".github/workflows/navigation-region.yml", "workflow neexistuje.")
+
+    if os.path.exists(GRAPH_SH):
+        graph = open(GRAPH_SH, encoding="utf-8").read()
+        if "hranica" not in graph:
+            err("workers/routing/graph.sh",
+                "`graf.json` nehovorí, kam trasa v tom grafe smie. Graf kraja "
+                "je z REZANÉHO PBF, takže trasa v ňom končí na hranici – "
+                "a mlčanie sa dá čítať ako pokazený graf, nie ako rozsah.")
+        if "REGION_KEY" not in graph:
+            err("workers/routing/graph.sh",
+                "skript nepozná `REGION_KEY`, teda graf za jeden kraj. Build "
+                "mapy by musel mať vlastný – dve pravdy o tom istom.")
+
+    # --- 6. formulár vs. číselník ---
     if os.path.exists(WORKFLOW):
         with open(WORKFLOW, encoding="utf-8") as f:
             wf = yaml.safe_load(f)
@@ -164,8 +222,9 @@ def main():
     if bad:
         print(f"\n{len(bad)} problém(ov) v navigačnom grafe.")
         return 1
-    print("Navigačný graf: rozsahy majú vlastný uzol v katalógu, PBF sa nereže, "
-          "graf sa overuje celý a formulár sedí s číselníkom.")
+    print("Navigačný graf: rozsahy majú vlastný uzol v katalógu, celoštátny "
+          "PBF sa nereže, graf kraja o svojej hranici hovorí, graf sa overuje "
+          "celý a formulár sedí s číselníkom.")
     return 0
 
 

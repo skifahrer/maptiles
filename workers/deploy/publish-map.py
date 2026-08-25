@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Hotová mapa na Google Drive – PÄŤ ZIPov so stálym menom.
+Hotová mapa na Google Drive – ŠTYRI ZIPy so stálym menom.
 
 ČO TO ROBÍ. Z `_site` (celý web: dlaždice, štýly, vrstevnice, skaly,
 tieňovanie, fonty a sprity) a z priečinka s článkami (`--wiki`) sa zabalia
@@ -8,10 +8,11 @@ balíky a nahrajú na Drive do priečinka podľa toho, čoho sa mapa týka:
 
     <koreň>/slovensko/presovsky/vysoke_tatry/
         presovsky-vysoke_tatry.zip                    základná mapa, BEZ nižšie
-                                                      (a bez glyfov a viewera – tie sú na Pages)
+                                                      (ale S hľadaním a navigáciou –
+                                                      tie sú jej časti, nie balíky;
+                                                      bez glyfov a viewera – tie sú na Pages)
         presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy
         presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice
-        presovsky-vysoke_tatry-search.zip             index na offline hľadanie
         presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
 
 GLYFY A WEBOVÝ VIEWER SA NEBALIA – SÚ NA PAGES. Fonty boli po dlaždiciach
@@ -28,17 +29,33 @@ teda odkaz DO BALÍKA (na Pages nejde a jej glyfy sú orezané na stovky kB) –
 tej sa preto nechajú. Jedna otázka, jedna odpoveď: kde si štýl glyfy pýta,
 tam musia byť.
 
-ZÁKLADNÁ MAPA NEMÁ VRSTEVNICE, SKALY, TIEŇOVANIE ANI INDEX NA HĽADANIE. Sú to
-ťažké veci, ktoré mapa na to, aby sa nakreslila, nepotrebuje, a majú vlastné
-balíky presne preto, aby si ich človek nemusel sťahovať, keď ich nechce – kým
-boli aj v základnej mape, ten dôvod neplatil a „iba mapa" vážila rovnako ako
-mapa so všetkým. Kto ich chce, rozbalí príslušný ZIP navrch (cesty vnútri sú
-tie isté ako v `_site`, takže sa dá rozbaliť jeden cez druhý).
+ZÁKLADNÁ MAPA NEMÁ VRSTEVNICE, SKALY ANI TIEŇOVANIE. Sú to ťažké vrstvy
+z výškového modelu, ktoré mapa na to, aby sa nakreslila, nepotrebuje, a majú
+vlastné balíky presne preto, aby si ich človek nemusel sťahovať, keď ich
+nechce – vážia porovnateľne s mapou samou (rozpis v `docs/velkost-balikov.md`).
+Kto ich chce, rozbalí príslušný ZIP navrch (cesty vnútri sú tie isté ako
+v `_site`, takže sa dá rozbaliť jeden cez druhý).
 
-`search-index.db` tu bol dvakrát – vo vlastnom `-search.zip` aj v základnej
-mape, lebo `zaklad_subory()` dostávalo na vynechanie len vrstevnice
-a tieňovanie. Balík `-search` tým nič neriešil: index (4–6,5 MB podľa kraja)
-si stiahol každý, aj keď hľadanie nechcel.
+HĽADANIE A NAVIGÁCIA SÚ NAOPAK V NEJ – SÚ TO ČASTI, NIE BALÍKY. Vlastný
+`-search.zip` mali a bola to chyba v tom, čo mapa sľubuje: kto si stiahol mapu
+kraja, dostal mapu, v ktorej sa nedá nič nájsť ani nikam doviesť, a že mu chýba
+druhý súbor, nemal ako vedieť – žiadny „stiahni si aj toto" v nej nie je.
+Cena za to je jednotky až desiatky MB proti stovkám, ktoré vážia dlaždice,
+takže sa tu ani nemá čo šetriť. Balík `-search` preto zanikol (`ZRUSENE`) a
+starý sa na Drive maže; graf Valhally (`_site/routing/`) sa balí rovnako.
+
+OBE SÚ VŽDY ZA TEN JEDEN REGIÓN, ktorého je balík. Pri hľadaní to platilo
+odjakživa (index je z toho istého PBF ako mapa); graf sa preto stavia
+z `data/region.osm.pbf` toho istého behu. Trasa v ňom KONČÍ NA HRANICI
+REGIÓNU – hrana, ktorej v rezanom PBF chýba druhý koniec, je slepá ulica –
+a kto potrebuje prejsť hranicu, má na to celoštátny graf z `navigation.yml`.
+Je to zámer, nie opomenutie, a `graf.json` v balíku to o sebe hovorí
+(`rozsah: "region"`).
+
+KOĽKO Z BALÍKA TIE ČASTI SÚ, MUSÍ BYŤ VIDIEŤ. Časť, ktorá sa nedá odmerať, je
+presne to, čím bol `search-index.db` predtým, než sa naň niekto pozrel: bol
+v balíku dvakrát a na veľkosti to nikto nepoznal. Každá časť sa preto premeria
+a jej veľkosť ide do `maps.json` pod balík `mapa` (kľúč `casti`).
 
 Úrovne cesty, ktoré nedávajú zmysel, sa vynechajú: build celej krajiny nemá
 kraj a build celého kraja nemá výsek. Chýbajúce priečinky sa vyrobia.
@@ -96,6 +113,18 @@ def load(name, path):
 
 pack = load("deploy_pack", "pack.py")   # ako sa balík zabalí (zip / aar)
 catalog = load("deploy_catalog", "catalog.py")  # čo sa píše do maps.json
+subory = load("deploy_subory", "subory.py")     # čo je v ktorom balíku
+# Mená nakrátko: čítajú sa v `main()` vedľa seba a `subory.subory` by bolo
+# horšie čitateľné než to, čo tie funkcie robia.
+casti_baliku = subory.casti_baliku
+glyfy_su_inde = subory.glyfy_su_inde
+manifest_data = subory.manifest_data
+mimo_balika = subory.mimo_balika
+tienovanie_subory = subory.tienovanie_subory
+velkost_casti = subory.velkost_casti
+vrstvy_subory = subory.vrstvy_subory
+vsetky_subory = subory.vsetky_subory
+zaklad_subory = subory.zaklad_subory
 BALICE = pack.BALICE
 aa_je = pack.aa_je
 auth = load("drive_auth", os.path.join(_DRIVE, "auth.py"))        # kto sme na Drive
@@ -104,6 +133,14 @@ folder = load("drive_folder", os.path.join(_DRIVE, "folder.py"))  # priečinky a
 # Priečinok, do ktorého sa mapy publikujú. Ako pri DMR 5.0 a cache platí, že
 # tajomstvo to nie je – id chodí v zdieľanom odkaze; tajomstvom je token.
 FOLDER_ID = "1pvrw7CGUkQLwg8Ql8xbKA4HhQHvPl8_7"
+
+# BALÍKY, KTORÉ UŽ NIE SÚ – ich obsah sa presťahoval DO základnej mapy.
+# Zoznam nie je pamätník: `-search.zip` z minulých behov na Drive LEŽÍ ďalej
+# (mená sú stále, takže ho nový beh neprepíše) a v katalógu by ostal ako
+# odkaz, ktorý sľubuje niečo, čo si už netreba sťahovať. Preto sa starý balík
+# maže a z položky katalógu vypadne – rovnako, ako keď vrstva v builde nie je.
+# Až prestane byť čo mazať, môže odtiaľto vypadnúť aj `search`.
+ZRUSENE = ("search",)
 
 # Balí sa `deflate` na najnižší stupeň. Obsah `_site` je z veľkej časti už
 # komprimovaný (PMTiles nesú gzip-nuté dlaždice, tieňovanie sú PNG), takže
@@ -286,86 +323,21 @@ def meno(kind="", fmt="zip"):
     return zaklad() + (f"-{kind}" if kind else "") + PRIPONY[fmt]
 
 
-# ---------- čo je v ktorom balíku ----------
-# Základná mapa NEOBSAHUJE vrstevnice, skaly ani tieňovanie – to sú ťažké
-# vrstvy z výškového modelu a majú vlastné balíky práve preto, aby si ich
-# človek nemusel sťahovať, keď ich nechce. Vrstevnice so skalami sú aj to,
-# čo sa nosí do inej mapy, a tieňovanie je jedna pyramída PNG. Vrstevnice
-# a skaly sú SPOLU zámerne – sú z toho istého výpočtu nad tým istým DEM
-# a jedna bez druhej sa nepoužíva.
+# ---------- čo balík o sebe hovorí ----------
 
-def manifest_data(site):
-    """`_site/tiles/manifest.json` – jediné miesto, ktoré vie, čo v mape je.
+def obsah(kind, man, fmt="zip", casti=None):
+    """`obsah.json` do balíka – to, čo kedysi nieslo meno súboru.
 
-    Berie sa odtiaľ, a nie z ďalších premenných prostredia: manifest skladá
-    `workers/deploy/site.sh` a vrstva, ktorá v ňom nie je, v mape nie je
-    (pravidlo 1 – jedna otázka, jedna odpoveď, jedno miesto).
+    `casti` sú kúsky, ktoré cestujú V ZÁKLADNEJ MAPE (hľadanie, navigácia) –
+    píšu sa aj s veľkosťou a aj vtedy, keď v mape nie sú (`files: 0`). Kto
+    balík rozbalí, sa tak nemusí pýtať priečinka, či v ňom graf je.
     """
-    path = os.path.join(site, "tiles", "manifest.json")
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except (OSError, ValueError) as exc:
-        log(f"::warning::{path} sa nedá prečítať ({exc}) – balíky vrstiev sa "
-            f"skladajú podľa mien súborov v `_site`.")
-        return {}
-
-
-
-def vrstvy_subory(site, man):
-    """Súbory balíka `vrstevnice-skaly` – z manifestu, inak podľa mena."""
-    reg = catalog.region_entry(man)
-    rel = [reg[k] for k in ("contours", "rocks") if reg.get(k)]
-    if not rel:
-        tiles = os.path.join(site, "tiles")
-        rel = [os.path.join("tiles", n) for n in sorted(os.listdir(tiles))
-               if n.endswith(("-contours.pmtiles", "-rocks.pmtiles"))] \
-            if os.path.isdir(tiles) else []
-    return [os.path.join(site, p) for p in rel
-            if os.path.exists(os.path.join(site, p))]
-
-
-def tienovanie_subory(site, man):
-    """Súbory balíka `tienovanie` – raster `.pmtiles` s výškovými dlaždicami.
-
-    Balí sa len vlastný archív. Keď sa tieňovanie nevyrobilo, štýl padá na
-    cudzie dlaždice (AWS Terrain Tiles) a tie do nášho balíka nepatria – nie
-    sú naše a nie sú v `_site`.
-
-    Bola to pyramída tisícov PNG súborov v `_site/terrain`; odkedy je z nej
-    jeden `.pmtiles` (workers/terrain/pack.py), je to jeden súbor. Hľadá sa
-    podľa PRÍPONY MENA, nie podľa priečinka: `tiles/` je spoločný pre všetky
-    vrstvy, takže „všetko v priečinku" by do balíka `tienovanie` pribalilo
-    aj mapu, vrstevnice a trasy.
-    """
-    base = os.path.join(site, "tiles")
-    if not os.path.isdir(base):
-        return []
-    return [os.path.join(base, n) for n in sorted(os.listdir(base))
-            if n.endswith("-terrain.pmtiles")]
-
-
-def hladanie_subory(site, man):
-    """Súbory balíka `search` – SQLite FTS5 index na offline hľadanie.
-
-    Jeden súbor, presunutý workers/search/build.sh do `_site/tiles/` ako
-    `search-index.db`. Hľadá sa podľa PRÍPONY MENA a slova „search" v nej
-    (rovnaké pravidlo, akým appka skenuje stiahnutý priečinok, nie pevné
-    meno – `.db` súbor s „search" v mene), z rovnakého dôvodu ako
-    `tienovanie_subory`: `tiles/` je spoločný pre všetky vrstvy.
-    """
-    base = os.path.join(site, "tiles")
-    if not os.path.isdir(base):
-        return []
-    return [os.path.join(base, n) for n in sorted(os.listdir(base))
-            if n.endswith(".db") and "search" in n.lower()]
-
-
-def obsah(kind, man, fmt="zip"):
-    """`obsah.json` do balíka – to, čo kedysi nieslo meno súboru."""
     reg = catalog.region_entry(man)
     return {
         "balik": kind or "mapa",
+        # Časti sú vec ZÁKLADNEJ MAPY; vo vlastnom balíku vrstiev by kľúč
+        # `casti` sľuboval, že tam hľadanie a navigácia môžu byť.
+        **({"casti": velkost_casti(casti)} if not kind and casti else {}),
         # Meno TOHO súboru, v ktorom `obsah.json` leží – čiže aj s príponou
         # formátu. Keby tu bolo natvrdo `.zip`, `.aar` by o sebe tvrdil, že
         # je ZIP, a to je presne ten druh tichého omylu, ktorému sa mená
@@ -392,103 +364,6 @@ def obsah(kind, man, fmt="zip"):
                      "dem_source": man.get("dem_source"),
                      "region": reg},
     }
-
-
-
-# ---------- balenie ----------
-
-def vsetky_subory(site):
-    subory = []
-    for root, _dirs, names in os.walk(site):
-        for n in names:
-            subory.append(os.path.join(root, n))
-    return subory
-
-
-# ---------- čo do balíka NEPATRÍ ----------
-#
-# Rozpis je v hlavičke súboru. Krátko: glyfy a viewer ležia na Pages, takže
-# v balíku sú mŕtva váha – ale len vtedy, keď sa na ne dá odtiaľ dostať.
-
-# Viewer je to, čo `workers/deploy/site.sh` kopíruje do KOREŇA `_site`
-# z `poc/web` (`cp poc/web/*.js poc/web/*.json poc/web/index.html _site/`).
-# Podpriečinky sa neriešia zámerne: `styles/`, `sprites/` a `tiles/` sú mapa.
-VIEWER_PRIPONY = (".html", ".js", ".mjs", ".css")
-VIEWER_SUBORY = ("style-overrides.json",)   # jediný `.json`, čo tam z viewera ide
-
-
-def je_viewer(site, cesta):
-    """Súbor webového viewera v koreni `_site`?"""
-    rel = os.path.relpath(cesta, site)
-    if os.path.dirname(rel):
-        return False
-    return rel.endswith(VIEWER_PRIPONY) or rel in VIEWER_SUBORY
-
-
-def je_glyf(site, cesta):
-    """Súbor v `_site/fonts/` – teda glyf."""
-    rel = os.path.relpath(cesta, site)
-    return rel.split(os.sep)[0] == "fonts"
-
-
-def glyfy_su_inde(man):
-    """Odkazuje manifest na glyfy MIMO balíka (absolútnou adresou)?
-
-    Toto je celé rozhodnutie, a je odvodené z dát, nie z prepínača: keď štýl
-    ukazuje na `https://…/fonts/{fontstack}/{range}.pbf` (Pages), sú súbory
-    v balíku mŕtva váha. Keď ukazuje relatívne – mapa sveta – sú JEDINÝ zdroj
-    a vynechať sa nesmú (na Pages tá mapa nejde).
-
-    Keď sa manifest prečítať nedá, odpoveď je „neviem“, a to znamená NECHAŤ:
-    väčší balík je chyba, ktorú vidno na veľkosti, kým mapa bez písmen vyzerá
-    ako pokazený štýl.
-    """
-    return str(man.get("glyphs") or "").startswith(("http://", "https://"))
-
-
-def mimo_balika(site, man):
-    """Súbory z `_site`, ktoré do balíkov nepatria – zoznam a dôvody.
-
-    Vracia `(subory, dovody)`; `dovody` je `[(popis, počet, bajty)]` do logu,
-    lebo vynechať 90 MB potichu je presne to, čo pravidlo 4 zakazuje.
-    """
-    vsetky = vsetky_subory(site)
-    skupiny = [("viewer (je na Pages)", [p for p in vsetky if je_viewer(site, p)])]
-    if glyfy_su_inde(man):
-        skupiny.append((f"glyfy (štýl si ich pýta z {man.get('glyphs')})",
-                        [p for p in vsetky if je_glyf(site, p)]))
-    elif any(je_glyf(site, p) for p in vsetky):
-        log("Glyfy ostávajú v balíku – manifest na ne odkazuje relatívne "
-            f"({man.get('glyphs') or 'manifest sa nedá prečítať'}), takže "
-            f"balík je jediné miesto, kde ich štýl nájde.")
-
-    subory, dovody = [], []
-    for popis, kus in skupiny:
-        if not kus:
-            continue
-        subory.extend(kus)
-        dovody.append((popis, len(kus), sum(os.path.getsize(p) for p in kus)))
-    return subory, dovody
-
-
-def zaklad_subory(site, vylucit):
-    """Súbory balíka `mapa` – všetko z `_site` OKREM toho, čo doň nepatrí.
-
-    `vylucit` je dvoje. Jedno sú súbory balíkov `vrstevnice-skaly`,
-    `tienovanie` a `search`: keby aj tie ostali v základnej mape, mali by ich
-    cesty vnútri dvakrát – raz tu, raz v tom druhom ZIPe – a „iba mapa" by
-    vážila rovnako ako mapa so všetkým, čo je presne to, kvôli čomu majú
-    vlastné balíky. Druhé je to, čo nemá vlastný balík, lebo je na Pages –
-    glyfy a viewer (`mimo_balika`). Oboje sa podáva zvonku, aby sa tá istá
-    otázka nepočítala dvakrát; čo je čo, hovorí hlavička súboru.
-
-    KTORÝKOĽVEK BALÍK, ČO PRIBUDNE, PATRÍ AJ SEM. Vynechať ho je ticho: mapa
-    je v poriadku, len o toľko väčšia, a na súbore to nikto nepozná. Presne to
-    sa stalo `search-index.db` – mal vlastný balík od začiatku, ale zo
-    základnej mapy ho nikto nevybral, takže si ho každý stiahol dvakrát.
-    """
-    von = {os.path.abspath(p) for p in vylucit}
-    return [p for p in vsetky_subory(site) if os.path.abspath(p) not in von]
 
 
 # ---------- beh ----------
@@ -576,14 +451,21 @@ def main():
     # počítajú od tej bázy, takže vnútri je `articles.ndjson`, nie
     # `_wiki/articles.ndjson`.
     #
-    # Vrstevnice, skaly, tieňovanie a index na hľadanie sa počítajú PRED
-    # základnou mapou, lebo tá ich musí VYNECHAŤ – majú vlastné balíky práve
-    # preto, aby si ich človek nemusel sťahovať, keď ich nechce (viď hlavička
-    # súboru). Každý sa počíta RAZ a to isté pole ide aj do vlastného balíka:
-    # druhé volanie tej istej funkcie je druhá odpoveď na tú istú otázku.
+    # Vrstevnice, skaly a tieňovanie sa počítajú PRED základnou mapou, lebo tá
+    # ich musí VYNECHAŤ – majú vlastné balíky práve preto, aby si ich človek
+    # nemusel sťahovať, keď ich nechce (viď hlavička súboru). Každý sa počíta
+    # RAZ a to isté pole ide aj do vlastného balíka: druhé volanie tej istej
+    # funkcie je druhá odpoveď na tú istú otázku.
     vrstvy_pack = vrstvy_subory(args.site, man)
     tien_pack = tienovanie_subory(args.site, man)
-    hladanie_pack = hladanie_subory(args.site, man)
+    # ČASTI ZÁKLADNEJ MAPY – hľadanie a navigácia. Zo základnej mapy sa
+    # NEVYNÍMAJÚ (sú v nej, o to ide); počítajú sa preto, aby sa dali premerať
+    # a ich veľkosť išla do katalógu pod balík `mapa`.
+    #
+    # Pri `--only` sa nepočítajú vôbec: tá pipeline základnú mapu nerobí a jej
+    # `_site` mapu ani neobsahuje, takže by premerala PRÁZDNO a katalóg by
+    # o mape, ktorá hľadanie má, tvrdil, že ho nemá.
+    casti = [] if args.only else casti_baliku(args.site, man)
     # Glyfy a viewer sú na Pages (rozpis v hlavičke). Musí byť VIDIEŤ, koľko
     # toho balík takto nenesie – vynechaných 90 MB potichu je to isté ako
     # 90 MB navyše potichu.
@@ -591,17 +473,20 @@ def main():
     for popis, kolko, bajtov in von_dovody:
         log(f"Do balíka nejde {popis}: {kolko} súborov, "
             f"{folder.human(bajtov)}")
+    for kluc, popis, subory in casti:
+        log(f"V základnej mape je časť `{kluc}` – {popis}: "
+            + (f"{len(subory)} súborov, "
+               f"{folder.human(sum(os.path.getsize(p) for p in subory))}"
+               if subory else "TENTO BUILD JU NEVYROBIL, v mape nebude"))
     baliky = [
-        ("", "základná mapa – bez vrstevníc, skál, tieňovania, hľadania, "
-             "glyfov a viewera",
+        ("", "základná mapa (aj s hľadaním a navigáciou) – bez vrstevníc, "
+             "skál, tieňovania, glyfov a viewera",
          args.site, zaklad_subory(args.site, vrstvy_pack + tien_pack
-                                  + hladanie_pack + von_pack)),
+                                  + von_pack)),
         ("vrstevnice-skaly", "vrstevnice a skalné plochy (.pmtiles)",
          args.site, vrstvy_pack),
         ("tienovanie", "výškové dlaždice pre tieňovanie a 3D terén (raster .pmtiles)",
          args.site, tien_pack),
-        ("search", "vyhľadávací index pre offline hľadanie (SQLite FTS5)",
-         args.site, hladanie_pack),
     ]
     # WIKIPÉDIA SA PRIDÁ, LEN KEĎ O NEJ TENTO BEH VIE. Odkedy má vlastnú
     # pipeline (`.github/workflows/wiki.yml`), Build map články nesťahuje –
@@ -641,6 +526,12 @@ def main():
     # v katalógu; keby si to katalóg počítal sám, prišiel by o `wikipedia`
     # presne v tom behu, ktorý ju na Drive nechal ležať (pravidlo 1).
     spravuje = [kind or "mapa" for kind, *_ in baliky]
+    # ZRUŠENÝ BALÍK JE TIEŽ NIEČO, O ČOM TENTO BEH ROZHODUJE. Bez neho v tomto
+    # zozname by ho katalóg pokladal za balík cudzej pipeline a nechal by v
+    # položke odkaz na `-search.zip`, ktorý o pár riadkov nižšie mažeme
+    # z Drive. `--only` je výnimka: tá pipeline vie len o svojom balíku.
+    if not args.only:
+        spravuje += list(ZRUSENE)
     for kind, popis, _base, subory in baliky:
         stav = (f"{len(subory)} súborov, "
                 f"{folder.human(sum(os.path.getsize(p) for p in subory))}"
@@ -662,7 +553,7 @@ def main():
             for fmt in formaty:
                 name = meno(kind, fmt)
                 BALICE[fmt](base, os.path.join(out, name), name[:-4], subory,
-                            info=obsah(kind, man, fmt))
+                            info=obsah(kind, man, fmt, casti))
         return 0
 
     creds = auth.from_env()
@@ -703,7 +594,7 @@ def main():
         dest = os.path.join(args.out or os.environ.get("RUNNER_TEMP", "/tmp"),
                             name)
         velkost = BALICE[fmt](base, dest, name[:-4], subory,
-                              info=obsah(kind, man, fmt))
+                              info=obsah(kind, man, fmt, casti))
         try:
             log(f"Nahrávam {name} ({folder.human(velkost)}) …")
             t0 = time.time()
@@ -718,6 +609,22 @@ def main():
                 os.remove(dest)
         hotove.append((kind, name, popis, velkost, prepisane, file_id, fmt))
     log(f"Hotovo: {len(hotove)} balíkov v {folder.folder_link(fid)}")
+
+    # ---------- balík, ktorý už neexistuje ----------
+    # Meno je stále, takže ho nový beh NEPREPÍŠE – a `-search.zip` z minulého
+    # behu by v priečinku ležal vedľa novej mapy a tváril sa, že si ho treba
+    # stiahnuť, hoci index je odteraz vnútri mapy. Je to tá istá vec, akú robí
+    # cyklus vyššie s balíkom vrstvy, ktorú build nevyrobil, len o dôvod
+    # ďalej: nie „v tomto builde nie je", ale „taký balík už nie je".
+    if not args.only:
+        for kind in ZRUSENE:
+            for fmt in formaty:
+                name = meno(kind, fmt)
+                kolko = folder.delete_named(creds, fid, name)
+                if kolko:
+                    log(f"::warning::Balík `{kind}` už neexistuje – jeho obsah "
+                        f"je v základnej mape. Zmazal som {kolko}× {name}, aby "
+                        f"si ho nikto nesťahoval druhýkrát.")
 
     # ---------- katalóg ----------
     if args.maps:
@@ -736,7 +643,11 @@ def main():
             # o balík vyššie: samostatná pipeline pozná jediný balík.
             [(k, n, v, i, f) for k, n, _p, v, _pr, i, f in hotove],
             man, iba=args.only, merge="zip" not in formaty, kat=kat,
-            layers=vrstvy(), spravuje=spravuje)
+            layers=vrstvy(), spravuje=spravuje,
+            # KOĽKO Z MAPY JE HĽADANIE A KOĽKO NAVIGÁCIA. Odkedy nemajú vlastný
+            # balík, je toto jediné miesto, kde sa to dá prečítať bez toho, aby
+            # si človek stiahol stovky MB a rozbalil ich.
+            casti=None if args.only else velkost_casti(casti))
         if args.summary and zmenene:
             with open(args.summary, "a") as f:
                 f.write(f"Katalóg `{args.maps}` v repozitári je "
@@ -753,6 +664,20 @@ def main():
                 f.write(f"| `{name}` | {popis} | {folder.human(velkost)} | "
                         f"{'prepísaný' if prepisane else '–'} |\n")
             f.write("\n")
+            # ČASTI ZÁKLADNEJ MAPY zvlášť – v tabuľke vyššie sú započítané
+            # v jej veľkosti a bez tohto by sa nedalo povedať, koľko z nej sú.
+            # Časť, ktorá v mape NIE JE, sa píše tiež: mlčanie by sa dalo
+            # čítať aj ako „zabudlo sa to premerať".
+            if casti:
+                f.write("Z toho v základnej mape cestuje (vlastný balík "
+                        "nemajú):\n\n")
+                f.write("| časť | čo to je | veľkosť |\n|---|---|--:|\n")
+                for kluc, popis, subory in casti:
+                    bajtov = sum(os.path.getsize(x) for x in subory)
+                    f.write(f"| `{kluc}` | {popis} | "
+                            + (folder.human(bajtov) if subory
+                               else "**nie je v tejto mape**") + " |\n")
+                f.write("\n")
     return 0
 
 

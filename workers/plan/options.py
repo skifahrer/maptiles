@@ -119,6 +119,20 @@ DEFAULTS = {
     # Vyhľadávací index: offline FTS5. Bez výberu zdroja - idú z toho istého
     # PBF ako mapa. Zapínač je tu namiesto vo formulári.
     "search": ("true", "generovať vyhľadávací index pre offline hľadávanie"),
+    # NAVIGAČNÝ GRAF (Valhalla) pre TENTO región – ide dovnútra balíka mapy,
+    # nie do vlastného ZIPu (rozpis v hlavičke `workers/deploy/publish-map.py`).
+    # Bez neho je v mape, ktorú si človek stiahol, všetko okrem toho, čo ho
+    # tam dovezie. Trasa v ňom končí na hranici kraja – PBF je rezaný a hrana
+    # bez druhého konca je slepá ulica; cez hranicu vedie celoštátny balík
+    # z `.github/workflows/navigation.yml`. Zapínač je tu a nie vo formulári,
+    # lebo `workflow_dispatch` má strop 10 inputov a ten je vyčerpaný.
+    "navigacia": ("true", "stavať navigačný graf (Valhalla) pre tento región"),
+    # OBRAZ VALHALLY S TAGOM, nie `latest`: graf a knižnica, ktorá ho čítá
+    # v telefóne, si musia sedieť a nesúlad verzií vyzerá ako pokazená trasa.
+    # Predvolené je aj tak `latest` – pripnutá verzia sa zavesí a nikto ju
+    # nedvihne –, ale to, čo sa NAOZAJ použilo, ide do `graf.json` v balíku.
+    "valhalla_image": ("ghcr.io/valhalla/valhalla-scripted:latest",
+                       "docker obraz, ktorým sa stavia navigačný graf"),
     # OBMEDZENIA NA CESTE (workers/roads/roads.yml): výška podjazdov a tunelov,
     # šírka, hmotnosť, maximálna rýchlosť, jazdné pruhy, stúpanie. Tie hodnoty
     # vrstva `transportation` OpenMapTiles nenesie vôbec, takže sa – rovnako
@@ -451,6 +465,12 @@ def main():
     if values["search"] not in ("true", "false"):
         print(f"::error::Voľba search=... musí byť true alebo false, "
               f"nie {values['search']}.", file=sys.stderr)
+        return 1
+    # A to isté pre navigáciu – `navigacia=1` by ju ticho vypla a v mape by
+    # sa dalo všetko okrem toho, kvôli čomu ju človek v aute má.
+    if values["navigacia"] not in ("true", "false"):
+        print(f"::error::Voľba navigacia=... musí byť true alebo false, "
+              f"nie {values['navigacia']}.", file=sys.stderr)
         return 1
 
     # A to isté pre publikovanie na Drive: `publish=0` by ho ticho vyplo

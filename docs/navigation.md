@@ -173,31 +173,51 @@ Kým to nie je rozhodnuté, je `transit` v číselníku so značkou `needs_gtfs`
 a `profile.py` pri ňom povie, že bez zdroja motor vráti „no route" – a že to
 nie je chyba profilu. Prázdny režim, ktorý sa tvári hotový, by bol horší.
 
-## 7. Kde graf žije – a prečo NIE po krajoch
+## 7. Kde graf žije – DVA ROZSAHY, nie jeden
 
-Mapa sa publikuje po krajoch a končí na hranici regiónu. **Graf tak deliť nemožno**
-a je to priamo dôsledok zadania: známka po krajinách má zmysel len vtedy, keď
-trasa môže prejsť hranicu. Navigačný balík preto patrí na **štát a jeho
-susedov**, nie na kraj – inak sa v Rakúsku nedá jazdiť, takže sa v ňom nedá ani
-vyhnúť tomu, že tam nemám známku.
+Graf sa stavia **v dvoch rozsahoch a obidva sú potrebné**, lebo odpovedajú na
+dve rôzne otázky. Stavia ich ten istý skript (`workers/routing/graph.sh`) –
+dva by boli dve pravdy o tom, ako sa graf stavia a čo sa v ňom kontroluje.
 
-Druhá vec, ktorú treba pri stavbe grafu overiť: pipeline reže PBF kraja
-`osmium extract -s smart`, čo je urobené pre **plochy** (`docs` k
-`workers/plan/pbf.sh`). Pre graf je dôležitá referenčná úplnosť **relácií
-zákazov odbočenia**; pravdepodobne je pre navigáciu správne siahnuť po
-nerezanom štátnom PBF, ktoré pipeline aj tak sťahuje, a nie po výreze kraja.
+### 7a. Graf KRAJA – vnútri balíka mapy
 
-Balenie je inak ten istý vzor ako Wikipédia – **piaty balík na Drive**, nie na
-Pages (graf je desiatky až stovky MB a rozpočet stránky je 900 MB na celú mapu):
+Mapu si človek sťahuje po krajoch a chce v nej navigáciu. Preto sa ku každému
+kraju stavia graf z **toho istého PBF, z akého je mapa** (`data/region.osm.pbf`,
+job `navigacia` → `.github/workflows/navigation-region.yml`) a **balí sa
+DOVNÚTRA `<kraj>.zip` a `<kraj>.aar`** do `routing/`, nie do vlastného súboru.
+To isté rozhodnutie ako pri vyhľadávacom indexe a z toho istého dôvodu: druhý
+balík, o ktorom sa v aplikácii nedozvie, je mapa, ktorá „nefunguje“.
+
+**Trasa v ňom končí na hranici kraja.** PBF je rezaný `osmium extract -s smart`
+– celé cesty a doplnení členovia relácií, urobené pre **plochy** – takže hrana,
+ktorej chýba druhý koniec, je slepá ulica a relácie zákazov odbočenia na
+hranici môžu byť neúplné. Je to **zámer, nie opomenutie**, a `graf.json`
+v balíku to o sebe hovorí (`rozsah: "region"`, `hranica: "trasa končí na
+hranici regiónu…"`) – mlčanie by sa dalo čítať ako pokazený graf.
+
+Na Pages ten graf **nejde** (nie je čo kresliť a rozpočet stránky je 900 MB na
+celú mapu), preto sa jeho artefakt volá `navigacia-graf` a nie `site-…`:
+`deploy` ho sťahuje až za krokom, ktorý nahráva na Pages. Koľko z balíka je,
+hovorí `maps.json` – pod balíkom `mapa`, `casti.navigacia.raw_size`.
+
+### 7b. Graf ŠTÁTU a susedov – vlastný balík
+
+Známka po krajinách má zmysel len vtedy, keď trasa **môže prejsť hranicu**, a
+cezhraničná trasa potrebuje sieť, ktorá na hranici nekončí. Tento graf sa preto
+stavia z **celých štátnych extraktov** (`workers/routing/pbf.sh`, **nič sa
+nereže**) a má vlastný balík na Drive, ten istý vzor ako Wikipédia:
 
 ```
-<koreň>/slovensko/navigacia/slovensko+susedia-navigacia.zip
+<koreň>/navigacia_slovensko_susedia/…
 ```
 
 …s položkou v `maps.json`, aby sa o ňom bez tokenu dalo dozvedieť, a s
-`obsah.json` vnútri, ktorý povie, z akého PBF a s akou verziou motora je
-postavený. Verzia motora v ňom **musí** byť: graf a knižnica, ktorá ho číta, si
-musia sedieť a nesúlad vyzerá ako pokazená trasa.
+`obsah.json` aj `graf.json` vnútri, ktoré povedia, z akého PBF a s akou verziou
+motora je postavený. Verzia motora v ňom **musí** byť: graf a knižnica, ktorá
+ho číta, si musia sedieť a nesúlad vyzerá ako pokazená trasa.
+
+**Ktorý z tých dvoch klient má, sa pozná z `graf.json`** (`rozsah`), nie
+z veľkosti súboru ani z priečinka.
 
 ## 8. Čo z tohto je hotové
 
@@ -208,11 +228,12 @@ musia sedieť a nesúlad vyzerá ako pokazená trasa.
 | `workers/routing/profile.py` | z profilu `costing_options` (Valhalla) alebo `custom_model` (GraphHopper); `--check` je matica pokrytia, `--strict` padne na nepokrytej voľbe |
 | `workers/lint/routing.py` | kľúče Valhally proti zoznamu z jej zdrojáku, výrazy GraphHoppera proti jeho zakódovaným hodnotám, každá voľba má pre každý motor odpoveď |
 
-| `workers/data/routing-areas.json` | na aký rozsah sa graf stavia (a prečo nie po krajoch) |
+| `workers/data/routing-areas.json` | na aký CELOŠTÁTNY rozsah sa graf stavia |
 | `workers/routing/pbf.sh` | štátne extrakty z osm.fr, zliate `osmium merge`; **nič sa nereže** |
-| `workers/routing/graph.sh` | graf Valhally v Dockeri, overenie všetkých štyroch súborov, `graf.json` s verziou motora |
-| `.github/workflows/navigation.yml` | „Mapa · Build navigácia“ – graf, balík na Drive, zápis do `maps.json` |
-| `workers/lint/navigation.py` | rozsah má vlastný uzol v katalógu, PBF sa nereže, `admins.sqlite` sa nestratí, formulár sedí s číselníkom |
+| `workers/routing/graph.sh` | graf Valhally v Dockeri pre OBA rozsahy (`AREA` = štát, `REGION_KEY` = kraj), overenie všetkých štyroch súborov, `graf.json` s verziou motora a s tým, kam trasa smie |
+| `.github/workflows/navigation.yml` | „Mapa · Build navigácia“ – celoštátny graf, vlastný balík na Drive, zápis do `maps.json` |
+| `.github/workflows/navigation-region.yml` | graf KRAJA z PBF mapy; artefakt `navigacia-graf` ide do `<kraj>.zip` aj `.aar`, nie na Pages |
+| `workers/lint/navigation.py` | rozsah má vlastný uzol v katalógu, celoštátny PBF sa nereže, graf kraja o svojej hranici hovorí, `admins.sqlite` sa nestratí, formulár sedí s číselníkom |
 | `workers/roads/*` | obmedzenia na ceste v DLAŽDICIACH (výška, šírka, hmotnosť, rýchlosť) – §1, „Áčko“ |
 
 Trasu už teda počítať **je z čoho**: graf existuje, dá sa postaviť a stiahnuť.
