@@ -332,6 +332,52 @@ def files_named(creds, parent, name):
             if f.get("mimeType") != FOLDER_MIME]
 
 
+def ids_in(creds, parent):
+    """`{id: meno}` súborov, ktoré v priečinku TERAZ sú (bez podpriečinkov).
+
+    Na otázku „existuje ešte súbor, na ktorý ukazuje odkaz v katalógu" –
+    a preto id, nie mená. KAŽDÉ nahratie vyrobí NOVÉ id (`upload_clobber`
+    nahrá a starý súbor zmaže), takže odkaz v `maps.json` prestane platiť
+    v okamihu, keď ten istý balík nahrá ďalší beh. Kým sa to nedalo overiť,
+    nikto o tom nevedel: odkaz vyzerá rovnako, či za ním súbor je, alebo nie.
+
+    Plytko zámerne: balíky mapy ležia priamo v priečinku mapy a podpriečinky
+    sú výseky (`vysoke_tatry`), teda cudzie položky katalógu. `listing()` sa
+    vnára a na túto otázku by odpovedal o priečinok širšie.
+    """
+    out, token = {}, ""
+    while True:
+        q = urllib.parse.quote(f"'{parent}' in parents and trashed = false")
+        path = (f"/drive/v3/files?q={q}&pageSize=1000"
+                f"&supportsAllDrives=true&includeItemsFromAllDrives=true"
+                f"&fields=nextPageToken,files(id,name,mimeType)")
+        if token:
+            path += "&pageToken=" + urllib.parse.quote(token)
+        data = auth.api_get(creds, path)
+        for f in data.get("files") or []:
+            if f.get("mimeType") == FOLDER_MIME:
+                continue
+            out[f["id"]] = f.get("name") or f["id"]
+        token = data.get("nextPageToken") or ""
+        if not token:
+            return out
+
+
+def id_z_odkazu(url):
+    """Id súboru z odkazu, aký píše `file_link` / `download_link`, inak "".
+
+    Katalóg nesie odkazy, nie id – kto chce vedieť, či za odkazom ešte niečo
+    je, musí id vylúpnuť. Obe podoby sú tu vedľa seba zámerne: sú to dva
+    tvary tej istej veci a keby si ich čítal každý sám, raz sa rozídu.
+    """
+    text = (url or "").strip()
+    if "/file/d/" in text:
+        return text.split("/file/d/", 1)[1].split("/", 1)[0].split("?", 1)[0]
+    if "id=" in text:
+        return text.split("id=", 1)[1].split("&", 1)[0]
+    return ""
+
+
 def upload_clobber(creds, path, name, parent, description=""):
     """Nahraj a AŽ POTOM zmaž staré súbory toho istého mena.
 

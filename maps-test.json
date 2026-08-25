@@ -51,26 +51,6 @@
             "updated_at": "2026-08-22T09:30:31Z",
             "updated_ts": 1787391031
           },
-          "search": {
-            "download": "https://drive.google.com/uc?export=download&id=1_JqT9oKtnzoDov-qRtqGfgwpisPD4sNK",
-            "file": "bratislavsky-test4km2-search.zip",
-            "formats": {
-              "zip": {
-                "download": "https://drive.google.com/uc?export=download&id=1_JqT9oKtnzoDov-qRtqGfgwpisPD4sNK",
-                "file": "bratislavsky-test4km2-search.zip",
-                "link": "https://drive.google.com/file/d/1_JqT9oKtnzoDov-qRtqGfgwpisPD4sNK/view",
-                "run": "161",
-                "size": 8699,
-                "updated_at": "2026-08-22T09:30:31Z",
-                "updated_ts": 1787391031
-              }
-            },
-            "link": "https://drive.google.com/file/d/1_JqT9oKtnzoDov-qRtqGfgwpisPD4sNK/view",
-            "run": "161",
-            "size": 8699,
-            "updated_at": "2026-08-22T09:30:31Z",
-            "updated_ts": 1787391031
-          },
           "tienovanie": {
             "download": "https://drive.google.com/uc?export=download&id=13Fq_EprgpF-56irP1Y67CJCr1fYQP4hd",
             "file": "bratislavsky-test4km2-tienovanie.zip",

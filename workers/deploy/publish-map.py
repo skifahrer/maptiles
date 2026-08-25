@@ -538,12 +538,12 @@ def main():
     # v katalógu; keby si to katalóg počítal sám, prišiel by o `wikipedia`
     # presne v tom behu, ktorý ju na Drive nechal ležať (pravidlo 1).
     spravuje = [kind or "mapa" for kind, *_ in baliky]
-    # ZRUŠENÝ BALÍK JE TIEŽ NIEČO, O ČOM TENTO BEH ROZHODUJE. Bez neho v tomto
-    # zozname by ho katalóg pokladal za balík cudzej pipeline a nechal by v
-    # položke odkaz na `-search.zip`, ktorý o pár riadkov nižšie mažeme
-    # z Drive. `--only` je výnimka: tá pipeline vie len o svojom balíku.
-    if not args.only:
-        spravuje += list(ZRUSENE)
+    # ZRUŠENÝ BALÍK NIE JE VEC JEDNÉHO BEHU, a preto nejde cez `spravuje`, ale
+    # vlastným parametrom (`zrusene=` v `zapis_katalog`). Kým sa naň hľadelo
+    # ako na „balík, o ktorom tento beh rozhoduje", vedel ho z položky vyhodiť
+    # len PREPIS – a job s `.aar` položku neprepisuje, ale dopĺňa: prebral si
+    # teda balíky z katalógu aj s `-search` a odkaz na súbor, ktorý ten istý
+    # beh o pár riadkov nižšie z Drive zmazal, sa v `maps.json` objavil znova.
     for kind, popis, _base, subory in baliky:
         stav = (f"{len(subory)} súborov, "
                 f"{folder.human(sum(os.path.getsize(p) for p in subory))}"
@@ -638,6 +638,25 @@ def main():
                         f"je v základnej mape. Zmazal som {kolko}× {name}, aby "
                         f"si ho nikto nesťahoval druhýkrát.")
 
+    # ---------- čo v priečinku NAOZAJ leží ----------
+    # Zoznam id, ktoré v priečinku mapy sú TERAZ – teda po nahratí aj po
+    # mazaní. Katalóg podľa neho zahodí odkazy na súbory, ktoré tam nie sú
+    # (rozpis pri `precisti_mrtve` v `catalog.py`): id sa mení pri každom
+    # nahratí, takže odkaz z behu, ktorému sa zápis katalógu nedostal do vetvy,
+    # ukazuje do prázdna a na ničom to nie je vidieť.
+    #
+    # `None` a nie `{}` pri chybe: „nepodarilo sa mi to zistiť" a „v priečinku
+    # nič nie je" sú dve rôzne odpovede a tá druhá by z katalógu vymazala celú
+    # mapu. Beh na tom nepadá – balíky sú nahraté a to je to podstatné.
+    zive = None
+    try:
+        zive = folder.ids_in(creds, fid)
+        log(f"V priečinku mapy je {len(zive)} súborov – podľa nich sa "
+            f"z katalógu vyhodia odkazy na tie, ktoré tam už nie sú.")
+    except Exception as exc:                       # noqa: BLE001 – viď vyššie
+        log(f"::warning::Priečinok mapy sa nedal vypísať ({exc}) – odkazy "
+            f"v katalógu tento beh neoveril. Zapíšem ich tak, ako sú.")
+
     # ---------- katalóg ----------
     if args.maps:
         # RÝCHLY TEST SA ZAPISUJE TIEŽ, LEN INAM. Balíky na Drive ležia
@@ -659,7 +678,12 @@ def main():
             # KOĽKO Z MAPY JE HĽADANIE A KOĽKO NAVIGÁCIA. Odkedy nemajú vlastný
             # balík, je toto jediné miesto, kde sa to dá prečítať bez toho, aby
             # si človek stiahol stovky MB a rozbalil ich.
-            casti=None if args.only else velkost_casti(casti))
+            casti=None if args.only else velkost_casti(casti),
+            # Balík, ktorý už neexistuje, a odkaz, za ktorým už súbor nie je –
+            # dve veci, ktoré v katalógu vyzerajú ako ponuka na stiahnutie
+            # a nie sú ňou. `zrusene` platí aj pri `--only`: „taký balík už
+            # nie je" nezávisí od toho, ktorá pipeline katalóg práve píše.
+            zrusene=ZRUSENE, zive=zive)
         if args.summary and zmenene:
             with open(args.summary, "a") as f:
                 f.write(f"Katalóg `{args.maps}` v repozitári je "

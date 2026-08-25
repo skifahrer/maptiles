@@ -237,6 +237,108 @@ def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None):
         polozka.update(zaznam)
 
 
+# ---------- odkaz, za ktorým už súbor nie je ----------
+# KAŽDÉ NAHRATIE VYROBÍ NOVÉ ID. `folder.upload_clobber` nahrá balík a starý
+# súbor toho mena zmaže, takže id v odkaze platí presne do ďalšieho behu tej
+# mapy. Katalóg je jediné miesto, kde sa meno balíka prekladá na id – a keď sa
+# zápis katalógu nedostane do vetvy (rebase konflikt, spadnutý push; oboje
+# `catalog.sh` len ohlási a beh nechá zelený), ostane v `maps.json` id z behu,
+# ktorý ho práve zmazal. Odkaz vyzerá rovnako, či za ním súbor je, alebo nie:
+# aplikácia ho stiahne a dostane chybovú stránku Drive namiesto mapy.
+#
+# Preto sa pred zápisom položka POROVNÁ SO SKUTOČNÝM PRIEČINKOM. Beh, ktorý
+# katalóg píše, je prihlásený na Drive a priečinok mapy má otvorený – vypýtať
+# si od neho zoznam id je jedna požiadavka a je to jediný okamih, keď sa dá
+# odpovedať na otázku „je za tým odkazom ešte súbor".
+#
+# NEOVERENÉ SA NEMAŽE. `zive=None` znamená „tento beh sa Drive nepýtal" a vtedy
+# sa nesiaha na nič; balík bez odkazu (id sa nedá vylúpnuť) ostáva tiež. Mazať
+# sa smie len to, o čom Drive POVEDAL, že tam nie je.
+
+def odkaz_id(zaznam):
+    """Id súboru z `download`/`link` jedného zápisu balíka, alebo ""."""
+    if not isinstance(zaznam, dict):
+        return ""
+    return (folder.id_z_odkazu(zaznam.get("download"))
+            or folder.id_z_odkazu(zaznam.get("link")))
+
+
+def mrtvy(zaznam, zive, chranene):
+    """Ukazuje tento zápis na súbor, ktorý na Drive už nie je?"""
+    fid = odkaz_id(zaznam)
+    return bool(fid) and fid not in zive and fid not in chranene
+
+
+def precisti_mrtve(mapy, zive, chranene=()):
+    """Vyhoď z položky odkazy na súbory, ktoré v priečinku nie sú. Čo vypadlo.
+
+    Ide po formátoch, nie po balíkoch: `.aar` a ZIP toho istého balíka nahrávajú
+    dva joby a jeden z nich mohol spadnúť, takže „mŕtvy" je vlastnosť súboru.
+    Balík, ktorému neostane ani jeden živý formát, vypadne celý – prázdna
+    položka je horšia než žiadna, lebo vyzerá ako ponuka na stiahnutie.
+
+    VRCH POLOŽKY JE ZRKADLO ZIPu (viď `zapis_balik`), takže sa musí prepísať
+    tiež: keby sa prečistili len `formats`, `download` o riadok vyššie by
+    ukazoval na ten istý zmazaný súbor a starší čitateľ katalógu – ten, kvôli
+    ktorému to zrkadlo existuje – by na to sadol ako prvý.
+    """
+    vyhodene = []
+    for kind in sorted(mapy):
+        polozka = mapy[kind]
+        if not isinstance(polozka, dict):
+            continue
+        padli = []
+        formaty = polozka.get("formats")
+        if isinstance(formaty, dict):
+            for fmt in sorted(formaty):
+                if mrtvy(formaty[fmt], zive, chranene):
+                    padli.append(f"{kind}/{fmt} "
+                                 f"({formaty[fmt].get('file') or '?'})")
+                    del formaty[fmt]
+            if not formaty:
+                polozka.pop("formats", None)
+        zive_formaty = polozka.get("formats") or {}
+        if zive_formaty:
+            if mrtvy(polozka, zive, chranene):
+                polozka.update(zive_formaty.get("zip")
+                               or zive_formaty[sorted(zive_formaty)[0]])
+            vyhodene += padli
+            continue
+        # Bez formátov rozhoduje sám vrch – tak vyzerá položka mapy, ktorú
+        # nahral beh spred `formats` (výsek `vysoke_tatry`), a tak vyzerá aj
+        # tá, ktorej práve odpadol posledný formát. JEDNA HLÁŠKA, nie dve:
+        # „balík X je preč" a „formát X/zip je preč" je v tej chvíli tá istá
+        # správa a dvakrát by sa čítala ako dva rôzne chýbajúce súbory.
+        if mrtvy(polozka, zive, chranene):
+            vyhodene.append(f"{kind} ({polozka.get('file') or '?'})")
+            del mapy[kind]
+        else:
+            vyhodene += padli
+    return vyhodene
+
+
+def uprac(mapy, zrusene=(), zive=None, chranene=()):
+    """Vyhoď z položky, čo do nej už nepatrí – a povedz o tom.
+
+    Dve veci, ktoré vyzerajú rovnako (v katalógu ostal balík, ktorý si nikto
+    nemá čo stiahnuť) a majú iný dôvod, tak nech sú vedľa seba a nech ich
+    hlásky idú do logu obe. Ticho by z toho spravilo hádanku: v `maps.json`
+    by balík jednoducho nebol a nikto by nevedel, či zanikol, alebo sa
+    stratil.
+    """
+    for kind in zrusene:
+        if mapy.pop(kind, None) is not None:
+            log(f"Balík `{kind}` už neexistuje (obsah je v základnej mape) – "
+                f"z položky katalógu vypadol.")
+    if zive is None:
+        return
+    for popis in precisti_mrtve(mapy, zive, chranene):
+        log(f"::warning::V katalógu bol odkaz na {popis}, ale taký súbor "
+            f"v priečinku mapy na Drive nie je – vypadol. (Balík nahral beh, "
+            f"ktorému sa zápis katalógu nedostal do vetvy; ďalší beh ho "
+            f"nahrá znova.)")
+
+
 def zapis(path, data, popis):
     """Zapíše katalóg, keď sa naozaj zmenil. True = súbor je iný."""
     text = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
@@ -277,7 +379,8 @@ def zapis_casti(mapy, casti):
 
 
 def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
-                  kat=None, layers=None, spravuje=None, casti=None):
+                  kat=None, layers=None, spravuje=None, casti=None,
+                  zrusene=(), zive=None):
     """Doplň (alebo prepíš) položku v `maps.json`. Vracia True, keď sa zmenil.
 
     `baliky` je zoznam `(druh, meno, veľkosť, id, formát)` – to, čo sa naozaj
@@ -313,6 +416,19 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
     mapy, teda každá zmena štýlu, z `maps.json` ticho zmazal, hoci
     `…-wikipedia.zip` na Drive ležal ďalej (behy 31892120453 a staršie:
     najprv prišiel o balík `bratislavsky`, potom aj `presovsky`).
+
+    `zrusene` sú BALÍKY, KTORÉ UŽ NEEXISTUJÚ – ich obsah sa presťahoval do inej
+    mapy (`ZRUSENE` v `publish-map.py`). Vypadnú z položky vo VŠETKÝCH troch
+    vetvách, a to je celý rozdiel oproti `spravuje`: „tento beh o ňom
+    nerozhoduje" je vec jedného behu, kým „taký balík už nie je" platí bez
+    ohľadu na to, kto katalóg práve píše. Kým to vedel len prepis, vrátil ho
+    tam job s `.aar`: prepísal položku tým, čo v katalógu našiel, a `-search`
+    tak v `maps.json` ožil hneď v tom behu, ktorý ho z Drive zmazal.
+
+    `zive` sú ID SÚBOROV, KTORÉ V PRIEČINKU MAPY NA DRIVE TERAZ SÚ
+    (`folder.ids_in`). Odkaz na súbor, ktorý medzi nimi nie je, z položky
+    vypadne (`precisti_mrtve`) – rozpis je tam. `None` = tento beh sa Drive
+    nepýtal, vtedy sa neoveruje nič.
     """
     try:
         with open(path) as f:
@@ -371,6 +487,13 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
         # `casti` sa tu NEPREPISUJÚ, aj keby prišli: samostatná pipeline
         # (`--only=wikipedia`) nemá `_site` mapy, takže by za „hľadanie v tejto
         # mape nie je" vyhlásila mapu, ktorá ho má.
+        #
+        # ZRUŠENÝ BALÍK A MŔTVY ODKAZ SA UPRATUJÚ AJ TU. Sú to jediné dve veci,
+        # o ktorých táto pipeline rozhodovať smie, hoci o mape nevie nič: že
+        # balík `-search` už neexistuje, platí všade rovnako, a že za odkazom
+        # nie je súbor, práve povedal Drive – tomu istému behu, ktorý sem
+        # zapisuje.
+        uprac(mapy, zrusene, zive, {fid for _k, _n, _v, fid, _f in baliky})
         return zapis(path, data,
                      f"doplnený balík {iba} k {'/'.join(kat)}")
     polozka = {
@@ -474,6 +597,13 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
                     kedy=data["_updated_at"], kedy_ts=data["_updated_ts"])
     if casti is not None:
         zapis_casti(polozka["maps"], casti)
+    # AŽ TERAZ, keď sú v položke aj balíky tohto behu: pri `merge` je totiž
+    # východiskom to, čo v katalógu bolo, a práve tam môže ležať zrušený balík
+    # aj odkaz na súbor, ktorý na Drive už nie je. Balíky tohto behu sú
+    # `chranene` – ich súbory sme nahrali pred pár sekundami a Drive ich
+    # v zozname mať ešte nemusí.
+    uprac(polozka["maps"], zrusene, zive,
+          {fid for _k, _n, _v, fid, _f in baliky})
 
     # `subregions` patria uzlu, nie tejto mape – nahradenie položky ich nesmie
     # zmazať (build Vysokých Tatier neruší mapu celého kraja a naopak).
