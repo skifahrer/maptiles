@@ -55,35 +55,6 @@
             "updated_at": "2026-08-23T09:35:32Z",
             "updated_ts": 1787477732
           },
-          "search": {
-            "download": "https://drive.google.com/uc?export=download&id=1KZVHj_9ZFUjhzoxl4YUDfzJ7vk1U5RiL",
-            "file": "bratislavsky-search.zip",
-            "formats": {
-              "aar": {
-                "download": "https://drive.google.com/uc?export=download&id=1Jd4zp9mEfUmAGqY7XQ7d-FbrMDFt6DEp",
-                "file": "bratislavsky-search.aar",
-                "link": "https://drive.google.com/file/d/1Jd4zp9mEfUmAGqY7XQ7d-FbrMDFt6DEp/view",
-                "run": "163",
-                "size": 5202165,
-                "updated_at": "2026-08-23T09:36:01Z",
-                "updated_ts": 1787477761
-              },
-              "zip": {
-                "download": "https://drive.google.com/uc?export=download&id=1KZVHj_9ZFUjhzoxl4YUDfzJ7vk1U5RiL",
-                "file": "bratislavsky-search.zip",
-                "link": "https://drive.google.com/file/d/1KZVHj_9ZFUjhzoxl4YUDfzJ7vk1U5RiL/view",
-                "run": "163",
-                "size": 6371227,
-                "updated_at": "2026-08-23T09:35:32Z",
-                "updated_ts": 1787477732
-              }
-            },
-            "link": "https://drive.google.com/file/d/1KZVHj_9ZFUjhzoxl4YUDfzJ7vk1U5RiL/view",
-            "run": "163",
-            "size": 6371227,
-            "updated_at": "2026-08-23T09:35:32Z",
-            "updated_ts": 1787477732
-          },
           "tienovanie": {
             "download": "https://drive.google.com/uc?export=download&id=1eaOYL0B6jtcDydt1g5INPnKQopZEx-B0",
             "file": "bratislavsky-tienovanie.zip",
@@ -240,35 +211,6 @@
             "link": "https://drive.google.com/file/d/1Cm8lnHZinI3L5uSIdXvUVnAgaNx0onRz/view",
             "run": "159",
             "size": 229466460,
-            "updated_at": "2026-08-21T23:02:39Z",
-            "updated_ts": 1787353359
-          },
-          "search": {
-            "download": "https://drive.google.com/uc?export=download&id=1k57be3pxUpE3y6SEI1DYydZ0lMV4NbxL",
-            "file": "presovsky-search.zip",
-            "formats": {
-              "aar": {
-                "download": "https://drive.google.com/uc?export=download&id=1Ueo89RK1OLBSRzruWtOImZ6ovOPi09KW",
-                "file": "presovsky-search.aar",
-                "link": "https://drive.google.com/file/d/1Ueo89RK1OLBSRzruWtOImZ6ovOPi09KW/view",
-                "run": "159",
-                "size": 5759777,
-                "updated_at": "2026-08-21T23:03:28Z",
-                "updated_ts": 1787353408
-              },
-              "zip": {
-                "download": "https://drive.google.com/uc?export=download&id=1k57be3pxUpE3y6SEI1DYydZ0lMV4NbxL",
-                "file": "presovsky-search.zip",
-                "link": "https://drive.google.com/file/d/1k57be3pxUpE3y6SEI1DYydZ0lMV4NbxL/view",
-                "run": "159",
-                "size": 6848844,
-                "updated_at": "2026-08-21T23:02:39Z",
-                "updated_ts": 1787353359
-              }
-            },
-            "link": "https://drive.google.com/file/d/1k57be3pxUpE3y6SEI1DYydZ0lMV4NbxL/view",
-            "run": "159",
-            "size": 6848844,
             "updated_at": "2026-08-21T23:02:39Z",
             "updated_ts": 1787353359
           },
@@ -466,35 +408,6 @@
             "link": "https://drive.google.com/file/d/1HHCkGhK-eqP8XzIIKr-oiGvE5LwA9dgL/view",
             "run": "167",
             "size": 85235338,
-            "updated_at": "2026-08-25T06:33:27Z",
-            "updated_ts": 1787639607
-          },
-          "search": {
-            "download": "https://drive.google.com/uc?export=download&id=1xPh162XUK1sjee5b5Mkh6nmDAfSiKq--",
-            "file": "trnavsky-search.zip",
-            "formats": {
-              "aar": {
-                "download": "https://drive.google.com/uc?export=download&id=1pD5m-2bgtN0Pxg06fJ8LE0ta7MOmeA8Z",
-                "file": "trnavsky-search.aar",
-                "link": "https://drive.google.com/file/d/1pD5m-2bgtN0Pxg06fJ8LE0ta7MOmeA8Z/view",
-                "run": "167",
-                "size": 3575905,
-                "updated_at": "2026-08-25T06:34:07Z",
-                "updated_ts": 1787639647
-              },
-              "zip": {
-                "download": "https://drive.google.com/uc?export=download&id=1xPh162XUK1sjee5b5Mkh6nmDAfSiKq--",
-                "file": "trnavsky-search.zip",
-                "link": "https://drive.google.com/file/d/1xPh162XUK1sjee5b5Mkh6nmDAfSiKq--/view",
-                "run": "167",
-                "size": 4301633,
-                "updated_at": "2026-08-25T06:33:27Z",
-                "updated_ts": 1787639607
-              }
-            },
-            "link": "https://drive.google.com/file/d/1xPh162XUK1sjee5b5Mkh6nmDAfSiKq--/view",
-            "run": "167",
-            "size": 4301633,
             "updated_at": "2026-08-25T06:33:27Z",
             "updated_ts": 1787639607
           },
