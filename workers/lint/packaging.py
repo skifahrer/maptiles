@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Glyfy a viewer sú na Pages – v balíku byť nemajú, ale musia byť KDE INDE.
+Glyfy ani viewer v balíku nie sú – ale musia byť KDE INDE.
 
 PREČO TO EXISTUJE. Fonty boli po dlaždiciach druhá najväčšia vec v balíku mapy
 (tri fontstacky Noto Sans po ~34 MB, celý unicode; mapa kraja z nich použije
@@ -11,20 +11,21 @@ nebalí a ostáva len v `_site`, teda na Pages.
 A PRÁVE PRETO SÚ TU TIETO KONTROLY: vynechať súbor z balíka je jednoriadková
 zmena, ktorá sa dá spraviť aj tam, kde ten súbor NIE JE ODKIAĽ VZIAŤ – a mapa
 bez glyfov nespadne, len nemá jediné písmeno a vyzerá ako pokazený štýl.
-Rozhodnutie preto nie je prepínač, ale odpoveď z dát: glyfy sa vynechajú práve
-vtedy, keď na ne manifest odkazuje ABSOLÚTNOU adresou (Pages). Mapa sveta má
-v manifeste `fonts/{fontstack}/{range}.pbf`, teda odkaz DO BALÍKA – na Pages
-nejde a jej glyfy sú orezané na stovky kB –, takže tej sa nechajú.
+Glyfy majú preto DVE miesta, kde sú, a obe sa strážia: appka si tri orezané
+stacky nesie v sebe (`skifahrer/rikimaps`, `GlyphStore` – to odtiaľto vidieť
+nie je), a pre všetkých ostatných musí adresa v štýle na niečo ukazovať.
 
 ČO SA KONTROLUJE:
 
-  1. `mimo_balika()` naozaj vynechá viewer aj glyfy, keď je odkaz absolútny,
-  2. pri RELATÍVNOM odkaze glyfy v balíku OSTANÚ (mapa sveta),
-  3. a keď sa manifest nedá prečítať, ostanú tiež – „neviem" nesmie znamenať
-     „zahoď" (väčší balík je chyba, ktorú vidno na veľkosti),
+  1. `mimo_balika()` naozaj vynechá viewer aj glyfy, keď manifest odkazuje na
+     Pages,
+  2. vynechá ich AJ pri relatívnom odkaze (mapa sveta) – appka ich má v sebe,
+  3. a vynechá ich aj vtedy, keď sa manifest nedá prečítať; „neviem" tu už
+     neznamená „nechaj", lebo nechať znamená desiatky MB navyše v každom balíku,
   4. `workers/deploy/site.sh` skladá adresu glyfov z `$BASE`, čiže absolútnu,
      a viewer do `_site` ďalej KOPÍRUJE (na Pages ostať musí),
-  5. `workers/world/style.mjs` drží glyfy relatívne, teda v balíku.
+  5. `workers/world/style.mjs` neodkazuje na glyfy DO BALÍKA – tam už nie sú –,
+     ale na adresu, z ktorej si ich vezme ten, kto nie je appka.
 
 Spustiť sa dá aj lokálne:
     python3 workers/lint/packaging.py
@@ -90,18 +91,18 @@ for meno in ("tiles/kraj.pmtiles", "styles/svetla.json", "sprites/temaki.png",
             f"je to mapa; bez neho sa balík nedá otvoriť a nespadne pri tom nič.")
 
 svet = v_baliku(pm, {"glyphs": "fonts/{fontstack}/{range}.pbf"})
-if "fonts/Noto Sans Regular/0-255.pbf" not in svet:
+if "fonts/Noto Sans Regular/0-255.pbf" in svet:
     bad.append(
-        f"{PUBLISH}: glyfy sa vynechali aj pri RELATÍVNOM odkaze. Tak ich má "
-        f"mapa sveta – tá na Pages nejde, takže balík je jediné miesto, kde ich "
-        f"štýl nájde, a bez nich by v nej nebolo ani jedno meno.")
+        f"{PUBLISH}: glyfy ostali v balíku pri RELATÍVNOM odkaze. Odkedy si ich "
+        f"appka nesie v sebe, nie je to jediný zdroj ani pri mape sveta – a pri "
+        f"strope 15 MB na podobu `basic` je to váha, ktorú nikto nerozbalí.")
 
 neznamy = v_baliku(pm, {})
-if "fonts/Noto Sans Regular/0-255.pbf" not in neznamy:
+if "fonts/Noto Sans Regular/0-255.pbf" in neznamy:
     bad.append(
-        f"{PUBLISH}: keď sa manifest nedá prečítať, glyfy sa zahodili. "
-        f"„Neviem“ musí znamenať NECHAŤ: väčší balík je chyba, ktorú vidno na "
-        f"veľkosti, kým mapa bez písmen vyzerá ako pokazený štýl.")
+        f"{PUBLISH}: keď sa manifest nedá prečítať, glyfy ostali v balíku. "
+        f"Presne tak dopadol prvý ostrý beh `.aar` – desiatky MB navyše v každom "
+        f"balíku, a na súbore to nikto nepozná.")
 
 # ---- 4. Pages tie súbory naozaj má ----
 with open(SITE, encoding="utf-8") as f:
@@ -110,9 +111,9 @@ with open(SITE, encoding="utf-8") as f:
 if not re.search(r'glyphs\s*=\s*"\$BASE/fonts/\{fontstack\}/\{range\}\.pbf"',
                  site_sh.replace("GLYPHS=", "glyphs=")):
     bad.append(
-        f"{SITE}: adresa glyfov v manifeste sa neskladá z `$BASE`. Balík sa "
-        f"podľa nej rozhoduje, či glyfy pribaliť – relatívna adresa by "
-        f"znamenala „sú v balíku“, lenže tam ich Build map nedáva.")
+        f"{SITE}: adresa glyfov v manifeste sa neskladá z `$BASE`. V balíku "
+        f"glyfy nie sú, takže táto adresa je pre web jediné, čo mu povie, kam "
+        f"siahnuť – relatívna by ukazovala do balíka, kde nie je nič.")
 
 if not re.search(r"cp\s+poc/web/\*\.js\s+poc/web/\*\.json\s+poc/web/index\.html\s+_site/",
                  site_sh):
@@ -120,16 +121,22 @@ if not re.search(r"cp\s+poc/web/\*\.js\s+poc/web/\*\.json\s+poc/web/index\.html\
         f"{SITE}: viewer sa už do `_site` nekopíruje. Z balíka je vynechaný "
         f"práve preto, že je na Pages – keď zmizne aj odtiaľ, nie je nikde.")
 
-# ---- 5. mapa sveta si glyfy nesie ----
+# ---- 5. mapa sveta neodkazuje do balíka ----
 with open(WORLD_STYLE, encoding="utf-8") as f:
     world = f.read()
-if 'url("fonts/{fontstack}/{range}.pbf")' not in world:
+if 'url("fonts/{fontstack}/{range}.pbf")' in world:
     bad.append(
-        f"{WORLD_STYLE}: mapa sveta už neodkazuje na glyfy relatívne. Odkedy "
-        f"balenie rozhoduje podľa tvaru tej adresy, by ich absolútna adresa "
-        f"z balíka vyhodila – a `svet.zip` na Pages nemá kam siahnuť.")
+        f"{WORLD_STYLE}: mapa sveta odkazuje na glyfy DO BALÍKA, kde už nie sú. "
+        f"Appke to nevadí (nesie si ich), ale rozbalený balík vo vieweri by bol "
+        f"bez jediného mena – a to vyzerá ako pokazený štýl, nie ako chýbajúci "
+        f"súbor.")
+if "fonts.openmaptiles.org" not in world:
+    bad.append(
+        f"{WORLD_STYLE}: štýl sveta nemá odkiaľ vziať glyfy. Appka si ich nesie "
+        f"v sebe, ale ten, kto appka nie je, potrebuje adresu – bez nej je mapa "
+        f"bez nápisov.")
 
 for b in bad:
     print(f"::error::{b}")
-print(f"Glyfy a viewer sú mimo balíka, ale na Pages: {len(bad)} chýb")
+print(f"Glyfy a viewer sú mimo balíka, ale majú kde byť: {len(bad)} chýb")
 sys.exit(1 if bad else 0)

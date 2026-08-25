@@ -1770,23 +1770,32 @@ podľa kraja) si stiahol každý. **Balík, ktorý v `publish-map.py` pribudne,
 patrí vždy aj do `vylucit`** – vynechať ho je ticho: mapa je v poriadku, len
 o toľko väčšia, a na súbore to nikto nepozná.
 
-**Ani glyfy a webový viewer v ňom nie sú – tie sú na Pages.** Fonty boli po
-dlaždiciach druhá najväčšia vec v balíku (tri fontstacky Noto Sans po ~34 MB,
-celý unicode, a mapa kraja z nich použije zlomok) a `index.html` s `*.js`
-z `poc/web` je stránka, ktorú si aplikácia nespúšťa – má vlastnú mapu. Oboje
-ostáva v `_site`, teda na Pages, a `manifest.json` v balíku nesie **absolútnu**
-adresu glyfov (`site.sh` ju skladá z `$BASE`), takže štýl vie, odkiaľ si ich
-vziať.
+**Ani glyfy a webový viewer v ňom nie sú.** Fonty boli po dlaždiciach druhá
+najväčšia vec v balíku (tri fontstacky Noto Sans po ~34 MB, celý unicode, a mapa
+kraja z nich použije zlomok) a `index.html` s `*.js` z `poc/web` je stránka,
+ktorú si aplikácia nespúšťa – má vlastnú mapu. Oboje ostáva v `_site`, teda na
+Pages.
 
-Rozhoduje o tom **tvar tej adresy, nie prepínač** (`mimo_balika()`
-v `publish-map.py`): glyfy sa vynechajú práve vtedy, keď na ne manifest
-odkazuje absolútne. Mapa sveta má `fonts/{fontstack}/{range}.pbf`, čiže odkaz
-do balíka – na Pages nejde a jej glyfy sú orezané na stovky kB
-(`workers/world/glyphs.py`) –, takže tej sa nechajú. Keď sa manifest prečítať
-nedá, ostanú tiež: „neviem" nesmie znamenať „zahoď", lebo väčší balík je chyba,
-ktorú vidno na veľkosti, kým mapa bez písmen vyzerá ako pokazený štýl. Koľko
-toho balík nenesie, sa píše do logu, a `obsah.json` v ňom to hovorí tiež
-(`bez_glyfov`, `glyphs`, `bez_viewera`) – rovnako ako `bez_skal`. Stráži to
+**Kde sú teda glyfy.** Na dvoch miestach, a ani jedno nie je balík:
+
+| kto | odkiaľ |
+| --- | --- |
+| web | z Pages. `manifest.json` v balíku nesie ich **absolútnu** adresu (`site.sh` ju skladá z `$BASE`), takže štýl vie, kam siahnuť. |
+| aplikácia | **zo seba**. `skifahrer/rikimaps` si tri orezané stacky (3,5 MB, `Resources/Glyphs/`) nesie v binári a `glyphs` si pri načítaní štýlu prepíše na ne (`GlyphStore`). |
+
+To druhé je dôvod, prečo sa vynechávajú **vždy** a nie podľa tvaru adresy
+v manifeste. Kým appka glyfy nemala, bolo rozhodnutie odvodené z dát: vynechaj
+ich práve vtedy, keď na ne manifest odkazuje absolútne – pri relatívnom odkaze
+(mapa sveta) bol balík jediné miesto, kde ich štýl našiel. Odkedy ich má appka
+v sebe, to neplatí ani tam, a offline mapa už nezávisí od toho, či sa dá dostať
+na Pages: **na hrebeni sa naň dostať nedá**, a presne tam mapa bez písmen
+vyzerá ako pokazený štýl.
+
+Mapa sveta si preto do manifestu píše adresu verejnej služby
+(`fonts.openmaptiles.org`) – nie odkaz do balíka, kde už glyfy nie sú –, aby mal
+odkiaľ brať aj ten, kto appka nie je. Koľko toho balík nenesie, sa píše do logu,
+a `obsah.json` v ňom to hovorí tiež (`bez_glyfov`, `glyphs`, `glyfy_kde`,
+`bez_viewera`) – rovnako ako `bez_skal`. Stráži to
 [`workers/lint/packaging.py`](lint/packaging.py), vrátane toho, že viewer
 z `_site` nezmizne: z balíka je vynechaný práve preto, že je na Pages.
 
