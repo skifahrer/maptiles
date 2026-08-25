@@ -476,6 +476,82 @@ def _skuska_katalogu():
                      f"`updated_ts` – pri balíku z inej pipeline je to jediné, "
                      f"čo povie, ako je starý.")
 
+    # ---- odkaz, za ktorým na Drive už súbor nie je ----
+    # KAŽDÉ nahratie vyrobí NOVÉ id (`folder.upload_clobber` nahrá a starý
+    # súbor zmaže), takže odkaz v katalógu platí do ďalšieho behu tej mapy.
+    # Keď sa zápis nedostane do vetvy (rebase konflikt, spadnutý push – oboje
+    # `catalog.sh` len ohlási), ostane v `maps.json` id z behu, ktorý ten
+    # súbor práve zmazal. Preto sa položka pred zápisom porovnáva so
+    # skutočným priečinkom (`zive`) – a preto sa to skúša naostro: staticky
+    # sa nedá prečítať, či sa mŕtvy odkaz naozaj vyhodí a živý naozaj nechá.
+    def _odkaz(fid):
+        return {"file": f"{fid}.zip", "size": 1,
+                "link": f"https://drive.google.com/file/d/{fid}/view",
+                "download": f"https://drive.google.com/uc?export=download&id={fid}",
+                "formats": {"zip": {
+                    "file": f"{fid}.zip", "size": 1,
+                    "link": f"https://drive.google.com/file/d/{fid}/view",
+                    "download": f"https://drive.google.com/uc?export=download&id={fid}"}}}
+
+    def _polozka_s(mapy, path):
+        with open(path, "w") as f:
+            json.dump({"slovensko": {"name": "Slovensko", "regions": {
+                "bratislavsky": {"name": "Bratislavský kraj",
+                                 "maps": mapy}}}}, f)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = f"{tmp}/maps.json"
+        with contextlib.redirect_stdout(io.StringIO()):
+            # Job s `.aar` položku NEPREPISUJE, ale dopĺňa (`merge`). Kým to
+            # vedel vyhodiť len prepis, prebral si balíky z katalógu aj so
+            # zrušeným `search` – a odkaz na súbor, ktorý ten istý beh z Drive
+            # zmazal, v `maps.json` ožil.
+            _polozka_s({"mapa": _odkaz("ziva"),
+                        "search": _odkaz("zmazana")}, path)
+            mod.zapis_katalog(path, parts, regions,
+                              [("", "bratislavsky.aar", 1, "aar1", "aar")],
+                              man, merge=True, spravuje=["mapa"],
+                              zrusene=tuple(ZRUSENE), zive={"ziva": "x"})
+            po_aar = maps_v(path)
+
+            # Balík cudzej pipeline, ktorého súbor na Drive NIE JE, vypadne –
+            # a ten, ktorý tam je, ostane. Bez tohto rozlíšenia by overovanie
+            # buď nemazalo nič, alebo by zmazalo aj to, čo platí.
+            _polozka_s({"mapa": _odkaz("ziva"),
+                        "wikipedia": _odkaz("zmazana")}, path)
+            mod.zapis_katalog(path, parts, regions, [], man,
+                              merge=True, spravuje=["mapa"],
+                              zrusene=tuple(ZRUSENE), zive={"ziva": "x"})
+            po_overeni = maps_v(path)
+
+            # A keď sa priečinok vypísať nedá, nesiaha sa na nič: „neviem" a
+            # „nie je tam" sú dve rôzne odpovede a tá druhá by z katalógu
+            # vymazala hotovú mapu.
+            _polozka_s({"mapa": _odkaz("ziva"),
+                        "wikipedia": _odkaz("ktovie")}, path)
+            mod.zapis_katalog(path, parts, regions, [], man,
+                              merge=True, spravuje=["mapa"],
+                              zrusene=tuple(ZRUSENE), zive=None)
+            bez_overenia = maps_v(path)
+    if "search" in po_aar:
+        chyby.append(f"{CATALOG_PY}: job s `.aar` vrátil do položky zrušený "
+                     f"balík `search` – ukazoval by na súbor, ktorý ten istý "
+                     f"beh na Drive zmazal.")
+    if "zip" not in (po_aar.get("mapa", {}).get("formats") or {}):
+        chyby.append(f"{CATALOG_PY}: doplnenie `.aar` zahodilo ZIP základnej "
+                     f"mapy – katalóg by o balíku, ktorý na Drive leží, mlčal.")
+    if "wikipedia" in po_overeni:
+        chyby.append(f"{CATALOG_PY}: v položke ostal odkaz na súbor, ktorý "
+                     f"v priečinku mapy na Drive nie je – aplikácia by ho "
+                     f"stiahla a dostala chybovú stránku Drive.")
+    if "mapa" not in po_overeni:
+        chyby.append(f"{CATALOG_PY}: overenie odkazov vyhodilo aj balík, "
+                     f"ktorého súbor na Drive JE.")
+    if "wikipedia" not in bez_overenia:
+        chyby.append(f"{CATALOG_PY}: beh, ktorý sa Drive nepýtal (`zive=None`), "
+                     f"vyhodil balík z katalógu – „neviem“ nesmie znamenať "
+                     f"„nie je tam“.")
+
     # ---- ktorý súbor: `maps.json` vs `maps-test.json` ----
     stary = os.environ.get("TEST_KM2")
     try:
