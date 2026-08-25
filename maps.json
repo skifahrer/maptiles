@@ -1,7 +1,7 @@
 {
   "_comment": "Katalóg hotových máp na Google Drive – ktoré sú a kde. Hlavný kľúč je krajina, pod ňou `regions` (kraj) a `subregions` (výsek); kľúče na `_` sú metadáta katalógu, nie krajiny. Dopisuje ho na konci buildu workers/deploy/publish-map.py (krok „Zapíš mapu do maps.json“); ručne sa needituje. Odkazy otvorí ten, kto má prístup k priečinku s mapami.",
-  "_updated_at": "2026-08-25T06:33:27Z",
-  "_updated_ts": 1787639607,
+  "_updated_at": "2026-08-25T06:34:07Z",
+  "_updated_ts": 1787639647,
   "slovensko": {
     "name": "Slovensko",
     "regions": {
@@ -444,6 +444,15 @@
             "download": "https://drive.google.com/uc?export=download&id=1HHCkGhK-eqP8XzIIKr-oiGvE5LwA9dgL",
             "file": "trnavsky.zip",
             "formats": {
+              "aar": {
+                "download": "https://drive.google.com/uc?export=download&id=1UOXKv2EEByWr-en38KaTwbo1jDqSRFbk",
+                "file": "trnavsky.aar",
+                "link": "https://drive.google.com/file/d/1UOXKv2EEByWr-en38KaTwbo1jDqSRFbk/view",
+                "run": "167",
+                "size": 86242440,
+                "updated_at": "2026-08-25T06:34:07Z",
+                "updated_ts": 1787639647
+              },
               "zip": {
                 "download": "https://drive.google.com/uc?export=download&id=1HHCkGhK-eqP8XzIIKr-oiGvE5LwA9dgL",
                 "file": "trnavsky.zip",
@@ -464,6 +473,15 @@
             "download": "https://drive.google.com/uc?export=download&id=1xPh162XUK1sjee5b5Mkh6nmDAfSiKq--",
             "file": "trnavsky-search.zip",
             "formats": {
+              "aar": {
+                "download": "https://drive.google.com/uc?export=download&id=1pD5m-2bgtN0Pxg06fJ8LE0ta7MOmeA8Z",
+                "file": "trnavsky-search.aar",
+                "link": "https://drive.google.com/file/d/1pD5m-2bgtN0Pxg06fJ8LE0ta7MOmeA8Z/view",
+                "run": "167",
+                "size": 3575905,
+                "updated_at": "2026-08-25T06:34:07Z",
+                "updated_ts": 1787639647
+              },
               "zip": {
                 "download": "https://drive.google.com/uc?export=download&id=1xPh162XUK1sjee5b5Mkh6nmDAfSiKq--",
                 "file": "trnavsky-search.zip",
@@ -484,6 +502,15 @@
             "download": "https://drive.google.com/uc?export=download&id=1j_EcL3tnyWT6SbnPo_WB-wAAWYM1pwWU",
             "file": "trnavsky-tienovanie.zip",
             "formats": {
+              "aar": {
+                "download": "https://drive.google.com/uc?export=download&id=12BMUpot1QF9nu-JrfT_Ehq7bgcGf4ETq",
+                "file": "trnavsky-tienovanie.aar",
+                "link": "https://drive.google.com/file/d/12BMUpot1QF9nu-JrfT_Ehq7bgcGf4ETq/view",
+                "run": "167",
+                "size": 39626519,
+                "updated_at": "2026-08-25T06:34:07Z",
+                "updated_ts": 1787639647
+              },
               "zip": {
                 "download": "https://drive.google.com/uc?export=download&id=1j_EcL3tnyWT6SbnPo_WB-wAAWYM1pwWU",
                 "file": "trnavsky-tienovanie.zip",
@@ -504,6 +531,15 @@
             "download": "https://drive.google.com/uc?export=download&id=1U9K6_AyK6mqlvbQIvchk9sDeI9DPAcBd",
             "file": "trnavsky-vrstevnice-skaly.zip",
             "formats": {
+              "aar": {
+                "download": "https://drive.google.com/uc?export=download&id=1shDlMPTItGZb7QMR7gCqM_sMKszTqs2w",
+                "file": "trnavsky-vrstevnice-skaly.aar",
+                "link": "https://drive.google.com/file/d/1shDlMPTItGZb7QMR7gCqM_sMKszTqs2w/view",
+                "run": "167",
+                "size": 48116269,
+                "updated_at": "2026-08-25T06:34:07Z",
+                "updated_ts": 1787639647
+              },
               "zip": {
                 "download": "https://drive.google.com/uc?export=download&id=1U9K6_AyK6mqlvbQIvchk9sDeI9DPAcBd",
                 "file": "trnavsky-vrstevnice-skaly.zip",
@@ -540,8 +576,8 @@
           "trails": "tiles/trnavsky-trails.pmtiles"
         },
         "trails_maxzoom": 14,
-        "updated_at": "2026-08-25T06:33:27Z",
-        "updated_ts": 1787639607
+        "updated_at": "2026-08-25T06:34:07Z",
+        "updated_ts": 1787639647
       }
     }
   }
