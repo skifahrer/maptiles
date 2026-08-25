@@ -238,13 +238,17 @@ def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None):
 
 
 # ---------- odkaz, za ktorým už súbor nie je ----------
-# KAŽDÉ NAHRATIE VYROBÍ NOVÉ ID. `folder.upload_clobber` nahrá balík a starý
-# súbor toho mena zmaže, takže id v odkaze platí presne do ďalšieho behu tej
-# mapy. Katalóg je jediné miesto, kde sa meno balíka prekladá na id – a keď sa
-# zápis katalógu nedostane do vetvy (rebase konflikt, spadnutý push; oboje
-# `catalog.sh` len ohlási a beh nechá zelený), ostane v `maps.json` id z behu,
-# ktorý ho práve zmazal. Odkaz vyzerá rovnako, či za ním súbor je, alebo nie:
-# aplikácia ho stiahne a dostane chybovú stránku Drive namiesto mapy.
+# ID BALÍKA JE STÁLE – `folder.upload_clobber` prepisuje OBSAH toho istého
+# súboru, takže odkaz z katalógu prežije ďalší build tej mapy. Dovtedy to tak
+# nebolo (každé nahratie vyrobilo nové id) a stačilo, aby sa zápis katalógu
+# nedostal do vetvy – rebase konflikt, spadnutý push, pravidlo vetvy; všetko
+# `catalog.sh` len ohlási a beh nechá zelený – a v `maps.json` ostalo id
+# súboru, ktorý ten istý beh zmazal. Odkaz vyzerá rovnako, či za ním súbor je,
+# alebo nie: aplikácia ho stiahne a dostane chybovú stránku Drive namiesto mapy.
+#
+# TÁTO KONTROLA PRETO NEZANIKÁ. Stále platí pre balík nahratý spred tej zmeny,
+# pre súbor zmazaný ručne a pre priečinok, do ktorého siahol niekto iný –
+# a `ozivenie` nižšie je to, čo z nej robí opravu namiesto výmazu.
 #
 # Preto sa pred zápisom položka POROVNÁ SO SKUTOČNÝM PRIEČINKOM. Beh, ktorý
 # katalóg píše, je prihlásený na Drive a priečinok mapy má otvorený – vypýtať
@@ -269,8 +273,48 @@ def mrtvy(zaznam, zive, chranene):
     return bool(fid) and fid not in zive and fid not in chranene
 
 
+def ozivenie(zaznam, zive):
+    """Nové id súboru TOHO ISTÉHO MENA v priečinku, alebo "".
+
+    MŔTVY ODKAZ NEZNAMENÁ, ŽE BALÍK ZMIZOL. Skoro vždy je to naopak: balík
+    práve nahral build, ktorému sa zápis katalógu nedostal do vetvy, takže
+    súbor v priečinku JE – len pod novým id. Zahodiť vtedy položku znamená
+    tvrdiť, že mapa neexistuje, hoci leží pripravená na Drive; prepísať odkaz
+    na živý súbor toho istého mena je to, čo by do katalógu napísal ten
+    stratený zápis.
+
+    `zive` je `{id: meno}` z `folder.ids_in`, čiže meno je po ruke a netreba
+    sa Drive pýtať druhýkrát. Meno balíka je stále (`meno()` v `publish-map.py`
+    ho skladá z kraja a vrstvy), takže je to spoľahlivý kľúč.
+
+    PRI DVOCH ZHODÁCH RADŠEJ NIČ. Drive dovolí dva súbory jedného mena vedľa
+    seba a hádať, ktorý z nich je ten pravý, by znamenalo ponúkať na
+    stiahnutie náhodný – vtedy nech radšej platí pôvodné pravidlo a odkaz
+    vypadne.
+    """
+    meno = zaznam.get("file") if isinstance(zaznam, dict) else None
+    if not meno:
+        return ""
+    zhody = [fid for fid, nazov in zive.items() if nazov == meno]
+    return zhody[0] if len(zhody) == 1 else ""
+
+
+def oziv(zaznam, zive):
+    """Prepíš odkazy zápisu na živý súbor toho mena. True = podarilo sa."""
+    fid = ozivenie(zaznam, zive)
+    if not fid:
+        return False
+    zaznam["link"] = folder.file_link(fid)
+    zaznam["download"] = folder.download_link(fid)
+    return True
+
+
 def precisti_mrtve(mapy, zive, chranene=()):
-    """Vyhoď z položky odkazy na súbory, ktoré v priečinku nie sú. Čo vypadlo.
+    """Zrovnaj odkazy položky so skutočným priečinkom. `(opravené, vyhodené)`.
+
+    Mŕtvy odkaz sa najprv skúsi OŽIVIŤ – nájsť v priečinku súbor toho istého
+    mena a ukázať naň (rozpis pri `ozivenie`). Vyhadzuje sa až to, čo v
+    priečinku naozaj nie je pod žiadnym id.
 
     Ide po formátoch, nie po balíkoch: `.aar` a ZIP toho istého balíka nahrávajú
     dva joby a jeden z nich mohol spadnúť, takže „mŕtvy" je vlastnosť súboru.
@@ -282,7 +326,7 @@ def precisti_mrtve(mapy, zive, chranene=()):
     ukazoval na ten istý zmazaný súbor a starší čitateľ katalógu – ten, kvôli
     ktorému to zrkadlo existuje – by na to sadol ako prvý.
     """
-    vyhodene = []
+    opravene, vyhodene = [], []
     for kind in sorted(mapy):
         polozka = mapy[kind]
         if not isinstance(polozka, dict):
@@ -291,9 +335,13 @@ def precisti_mrtve(mapy, zive, chranene=()):
         formaty = polozka.get("formats")
         if isinstance(formaty, dict):
             for fmt in sorted(formaty):
-                if mrtvy(formaty[fmt], zive, chranene):
-                    padli.append(f"{kind}/{fmt} "
-                                 f"({formaty[fmt].get('file') or '?'})")
+                if not mrtvy(formaty[fmt], zive, chranene):
+                    continue
+                popis = f"{kind}/{fmt} ({formaty[fmt].get('file') or '?'})"
+                if oziv(formaty[fmt], zive):
+                    opravene.append(popis)
+                else:
+                    padli.append(popis)
                     del formaty[fmt]
             if not formaty:
                 polozka.pop("formats", None)
@@ -310,11 +358,16 @@ def precisti_mrtve(mapy, zive, chranene=()):
         # „balík X je preč" a „formát X/zip je preč" je v tej chvíli tá istá
         # správa a dvakrát by sa čítala ako dva rôzne chýbajúce súbory.
         if mrtvy(polozka, zive, chranene):
-            vyhodene.append(f"{kind} ({polozka.get('file') or '?'})")
-            del mapy[kind]
+            popis = f"{kind} ({polozka.get('file') or '?'})"
+            if oziv(polozka, zive):
+                opravene.append(popis)
+                vyhodene += padli
+            else:
+                vyhodene.append(popis)
+                del mapy[kind]
         else:
             vyhodene += padli
-    return vyhodene
+    return opravene, vyhodene
 
 
 def uprac(mapy, zrusene=(), zive=None, chranene=()):
@@ -332,11 +385,14 @@ def uprac(mapy, zrusene=(), zive=None, chranene=()):
                 f"z položky katalógu vypadol.")
     if zive is None:
         return
-    for popis in precisti_mrtve(mapy, zive, chranene):
+    opravene, vyhodene = precisti_mrtve(mapy, zive, chranene)
+    for popis in opravene:
+        log(f"::warning::Odkaz na {popis} v katalógu ukazoval do prázdna, ale "
+            f"súbor toho mena v priečinku mapy JE – prepísal som odkaz naň. "
+            f"(Balík nahral beh, ktorému sa zápis katalógu nedostal do vetvy.)")
+    for popis in vyhodene:
         log(f"::warning::V katalógu bol odkaz na {popis}, ale taký súbor "
-            f"v priečinku mapy na Drive nie je – vypadol. (Balík nahral beh, "
-            f"ktorému sa zápis katalógu nedostal do vetvy; ďalší beh ho "
-            f"nahrá znova.)")
+            f"v priečinku mapy na Drive nie je ani pod iným id – vypadol.")
 
 
 def zapis(path, data, popis):

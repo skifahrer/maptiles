@@ -68,11 +68,13 @@ a jej veľkosť ide do `maps.json` pod balík `mapa` (kľúč `casti`).
 Úrovne cesty, ktoré nedávajú zmysel, sa vynechajú: build celej krajiny nemá
 kraj a build celého kraja nemá výsek. Chýbajúce priečinky sa vyrobia.
 
-MENO JE STÁLE – rovnaký kraj (a rovnaký výsek) má vždy to isté meno, takže
-ďalší build starý balík PREPÍŠE a v priečinku je jeden aktuálny súbor namiesto
-histórie behov. Poradie je „najprv nahraj, potom zmaž starý" (`folder.
-upload_clobber`): Drive dovolí dva súbory s tým istým menom vedľa seba, takže
-„najprv zmaž" by po spadnutom nahrávaní nenechalo ani nové, ani staré.
+MENO AJ ODKAZ SÚ STÁLE – rovnaký kraj (a rovnaký výsek) má vždy to isté meno,
+takže ďalší build starý balík PREPÍŠE a v priečinku je jeden aktuálny súbor
+namiesto histórie behov. Prepíše sa pritom OBSAH toho istého súboru
+(`folder.upload_clobber`), takže mu ostane id – a odkaz, ktorý o ňom hovorí
+`maps.json`, platí aj po ďalšom builde. Kým sa nahrával nový súbor a starý sa
+mazal, bol ten odkaz starý presne jeden build a katalóg, ktorý sa nestihol
+commitnúť, ukazoval do prázdna (rozpis pri `upload_clobber`).
 
 ČO V TOM BALÍKU JE, HOVORÍ `obsah.json` V ŇOM. Kým bolo meno jedinečné, nieslo
 zoom, vrstvy a ich zdroje (`…-z16-vrstevnice_dmr5_5m-skaly_dmr5-…-r73.zip`);
@@ -641,9 +643,10 @@ def main():
     # ---------- čo v priečinku NAOZAJ leží ----------
     # Zoznam id, ktoré v priečinku mapy sú TERAZ – teda po nahratí aj po
     # mazaní. Katalóg podľa neho zahodí odkazy na súbory, ktoré tam nie sú
-    # (rozpis pri `precisti_mrtve` v `catalog.py`): id sa mení pri každom
-    # nahratí, takže odkaz z behu, ktorému sa zápis katalógu nedostal do vetvy,
-    # ukazuje do prázdna a na ničom to nie je vidieť.
+    # (rozpis pri `precisti_mrtve` v `catalog.py`) – a keď taký súbor v
+    # priečinku pod iným id JE, odkaz sa naň prepíše. Odkedy `upload_clobber`
+    # prepisuje obsah a id nechá, je to už len záchranná sieť na balíky spred
+    # tej zmeny a na ručné zásahy do priečinka.
     #
     # `None` a nie `{}` pri chybe: „nepodarilo sa mi to zistiť" a „v priečinku
     # nič nie je" sú dve rôzne odpovede a tá druhá by z katalógu vymazala celú

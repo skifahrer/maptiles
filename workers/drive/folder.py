@@ -327,7 +327,7 @@ def files_named(creds, parent, name):
     data = auth.api_get(creds, f"/drive/v3/files?q={q}&pageSize=100"
                                f"&supportsAllDrives=true"
                                f"&includeItemsFromAllDrives=true"
-                               f"&fields=files(id,name,size,mimeType)")
+                               f"&fields=files(id,name,size,mimeType,createdTime)")
     return [f for f in (data.get("files") or [])
             if f.get("mimeType") != FOLDER_MIME]
 
@@ -379,21 +379,48 @@ def id_z_odkazu(url):
 
 
 def upload_clobber(creds, path, name, parent, description=""):
-    """Nahraj a AŽ POTOM zmaž staré súbory toho istého mena.
+    """Nahraj balík pod menom `name` – a NECHAJ MU ID, ktoré už mal.
 
-    To poradie je celé, o čom to je (viď `workers/drive/store.py`): Drive
-    dovolí dva súbory s tým istým menom vedľa seba, takže „najprv zmaž" by po
-    spadnutom nahrávaní nenechalo ani nové, ani staré – a v priečinku by nebolo
-    nič namiesto toho, čo tam pred minútou bolo.
+    ID JE ODKAZ, KTORÝ SME NIEKOMU DALI. Katalóg (`maps.json`) prekladá meno
+    balíka na id a je jediné miesto, kde ten preklad existuje; aplikácia si
+    podľa neho mapu sťahuje. Kým sa nahrávalo „nový súbor + zmaž starý", id sa
+    menilo pri KAŽDOM builde, takže odkaz platil presne dovtedy, kým katalóg
+    dobehol do vetvy. Keď sa ten zápis nedostal (rebase konflikt, spadnutý
+    push, pravidlo vetvy – všetko len `::warning::`), ostal v katalógu odkaz na
+    súbor, ktorý ten istý beh o riadok nižšie zmazal: mapa na Drive JE, ale
+    stiahnuť sa nedá a na odkaze to nikto nepozná. (25. 8. 2026 tak bolo mŕtvych
+    14 z 24 odkazov v `maps.json` – Bratislavský, Trnavský a Vysoké Tatry.)
 
-    Vracia `(id nahratého súboru, koľko starých verzií sa zmazalo)`.
+    Drive vie prepísať OBSAH existujúceho súboru (`PATCH` na `/upload/…/{id}`)
+    a id mu pritom ostane. Nový build teda mení, čo si človek stiahne, nie
+    adresu, na ktorej to nájde – a katalóg, ktorý sa nestihol zapísať, je
+    potom nanajvýš o veľkosť a dátum pozadu. Nezostarne na mŕtvy odkaz.
+
+    Zdieľanie sa dedí z priečinka a ostáva tiež: nové id by bolo nové aj pre
+    každého, kto si starý odkaz uložil.
+
+    DUPLIKÁT SA ZMAŽE, PREPÍŠE SA NAJSTARŠÍ. Drive dovolí dva súbory s tým
+    istým menom vedľa seba (dva behy naraz), takže „ten starý" nemusí byť
+    jeden. Berie sa NAJSTARŠÍ – je to ten, na ktorý najskôr ukazuje katalóg –
+    a ostatné idú preč až PO úspešnom prepise.
+
+    Vracia `(id súboru, koľko súborov toho mena tam už bolo)` – druhá
+    hodnota je pre hlášku „starý balík prepísaný“ v `publish-map.py`.
     """
-    stare = [f["id"] for f in files_named(creds, parent, name)]
-    fid = upload(creds, path, name, parent, description)
-    for old in stare:
-        auth.api_delete(creds, old)
+    stare = files_named(creds, parent, name)
+    stare.sort(key=lambda f: f.get("createdTime") or "")
     if stare:
-        print(f"    starú verziu ({len(stare)}×) som zmazal", flush=True)
+        fid = stare[0]["id"]
+        update(creds, path, fid, name, description)
+        navyse = [f["id"] for f in stare[1:]]
+    else:
+        fid = upload(creds, path, name, parent, description)
+        navyse = []
+    for duplikat in navyse:
+        auth.api_delete(creds, duplikat)
+    if navyse:
+        print(f"    duplikát toho mena ({len(navyse)}×) som zmazal",
+              flush=True)
     return fid, len(stare)
 
 
@@ -461,22 +488,61 @@ def upload(creds, path, name, parent, description="", tries=4):
     stratenému spojeniu.
     """
     size = os.path.getsize(path)
-    meta = json.dumps({"name": name, "parents": [parent],
-                       # Dlhý text nejde do `appProperties`: tie majú strop
-                       # 124 B na hodnotu a kľúče cache sú dlhšie.
-                       "description": description,
-                       "appProperties": {
-                           "repo": os.environ.get("GITHUB_REPOSITORY", ""),
-                           "run": os.environ.get("GITHUB_RUN_ID", "")}})
+    meta = json.dumps({"name": name, "parents": [parent], **_meta(description)})
+    return _posli(creds, path, size, name,
+                  _relacia(creds, meta, size, "POST", UPLOAD_PATH), tries)
 
-    headers = _post_session(creds, meta, size)
+
+def update(creds, path, fid, name="", description="", tries=4):
+    """Prepíš OBSAH existujúceho súboru – id, meno aj zdieľanie mu ostanú.
+
+    To je celý rozdiel oproti `upload` a je to dôvod, prečo tá funkcia
+    existuje: odkaz v katalógu je id, takže nový build nesmie vyrábať nový
+    súbor (rozpis pri `upload_clobber`). `PATCH` na `/upload/…/{id}` je tá istá
+    resumable relácia, len na hotový súbor; `parents` sa v nej neposielajú –
+    presun do iného priečinka je iná operácia a tá sa tu nerobí.
+
+    Obsah Drive vymení až po doposlaní posledného bloku, takže prerušený
+    prepis nechá v priečinku pôvodný súbor – nie polovičný.
+    """
+    size = os.path.getsize(path)
+    meta = json.dumps(_meta(description))
+    return _posli(creds, path, size, name or fid,
+                  _relacia(creds, meta, size, "PATCH", _update_path(fid)),
+                  tries)
+
+
+def _meta(description):
+    """Metadáta, ktoré si balík nesie – rovnaké pri nahratí aj pri prepise."""
+    return {
+        # Dlhý text nejde do `appProperties`: tie majú strop
+        # 124 B na hodnotu a kľúče cache sú dlhšie.
+        "description": description,
+        "appProperties": {
+            "repo": os.environ.get("GITHUB_REPOSITORY", ""),
+            "run": os.environ.get("GITHUB_RUN_ID", "")},
+    }
+
+
+def _update_path(fid):
+    return (f"/upload/drive/v3/files/{urllib.parse.quote(fid)}"
+            f"?uploadType=resumable&supportsAllDrives=true"
+            f"&fields=id,name,size")
+
+
+def _relacia(creds, meta, size, method, path):
+    """Otvor resumable reláciu a vráť `(host, cesta)` na posielanie blokov."""
+    headers = _post_session(creds, meta, size, method, path)
     loc = headers.get("Location")
     if not loc:
         raise RuntimeError("Drive nevrátil adresu nahrávania (Location)")
     parts = urllib.parse.urlsplit(loc)
-    host = parts.netloc
-    upath = parts.path + (("?" + parts.query) if parts.query else "")
+    return parts.netloc, parts.path + (("?" + parts.query) if parts.query else "")
 
+
+def _posli(creds, path, size, name, relacia, tries):
+    """Pošli súbor po blokoch do otvorenej relácie. Vracia id."""
+    host, upath = relacia
     progress = Progress(size)
     sent = 0
     attempt = 0
@@ -516,19 +582,19 @@ def upload(creds, path, name, parent, description="", tries=4):
                 attempt += 1
                 creds.renew(None)
                 continue
-            raise RuntimeError(_upload_error(status, headers, parent))
+            raise RuntimeError(_upload_error(status, headers, name))
     raise RuntimeError("Drive nahrávanie neukončil – posledný blok nedostal "
                        "odpoveď 200/201.")
 
 
-def _upload_error(status, headers, parent):
+def _upload_error(status, headers, kde):
     body = headers.get("_telo") or b""
     reason = drive.api_error(body) or f"HTTP {status}"
     if status == 403 and "insufficient" in str(reason).lower():
         return auth.scope_hint(str(reason))
     if status == 403:
-        return (f"Drive odmietol zápis ({reason}). Najčastejšie je to plný "
-                f"disk účtu alebo právo len na čítanie priečinka {parent}.")
+        return (f"Drive odmietol zápis ({reason}) pri „{kde}“. Najčastejšie "
+                f"je to plný disk účtu alebo právo len na čítanie.")
     return f"Drive vrátil HTTP {status} pri nahrávaní ({reason})"
 
 
@@ -553,15 +619,18 @@ def _request(host, method, path, body, headers, timeout=300):
             pass
 
 
-def _post_session(creds, meta, size):
+def _post_session(creds, meta, size, method="POST", path=UPLOAD_PATH):
     """Otvor nahrávaciu reláciu. Vracia hlavičky odpovede (v nich `Location`).
+
+    `POST` na `UPLOAD_PATH` vyrobí nový súbor, `PATCH` na `/upload/…/{id}`
+    prepíše obsah hotového – inak je to tá istá relácia a tie isté bloky.
 
     Na 401 sa token raz vymení a skúsi znova – vypršať mohol práve teraz a
     zahodiť kvôli tomu celé nahrávanie by bolo drahé.
     """
     for pokus in range(2):
         status, head, _ = _request(
-            auth.API_HOST, "POST", UPLOAD_PATH, meta.encode("utf-8"),
+            auth.API_HOST, method, path, meta.encode("utf-8"),
             {"Authorization": "Bearer " + creds.token(),
              "Content-Type": "application/json; charset=UTF-8",
              "X-Upload-Content-Type": "application/octet-stream",
