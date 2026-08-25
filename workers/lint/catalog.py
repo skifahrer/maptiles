@@ -63,6 +63,9 @@ CATALOG_PY = "workers/deploy/catalog.py"
 # beh začal (inak druhý zapisujúci job v tom istom behu vždy skončí
 # konfliktom; beh 31782846262).
 CATALOG_SH = "workers/deploy/catalog.sh"
+# Nahrávanie na Drive. Katalóg stojí na tom, že id balíka prežije ďalší build
+# (rozpis pri `_skuska_stalych_id`), a rozhoduje o tom táto jedna funkcia.
+FOLDER_PY = "workers/drive/folder.py"
 
 bad = []
 
@@ -533,6 +536,19 @@ def _skuska_katalogu():
                               merge=True, spravuje=["mapa"],
                               zrusene=tuple(ZRUSENE), zive=None)
             bez_overenia = maps_v(path)
+
+            # MŔTVY ODKAZ NA BALÍK, KTORÝ V PRIEČINKU JE POD INÝM ID, sa
+            # OPRAVÍ, nevyhodí. Je to ten častejší prípad: balík nahral build,
+            # ktorému sa zápis katalógu nedostal do vetvy (25. 8. 2026 tak bolo
+            # mŕtvych 14 z 24 odkazov). Vyhodiť ho znamená tvrdiť, že mapa
+            # neexistuje, hoci leží na Drive pripravená na stiahnutie.
+            _polozka_s({"mapa": _odkaz("stare"),
+                        "wikipedia": _odkaz("zmazana")}, path)
+            mod.zapis_katalog(path, parts, regions, [], man,
+                              merge=True, spravuje=["mapa"],
+                              zrusene=tuple(ZRUSENE),
+                              zive={"nove": "stare.zip"})
+            po_ozivení = maps_v(path)
     if "search" in po_aar:
         chyby.append(f"{CATALOG_PY}: job s `.aar` vrátil do položky zrušený "
                      f"balík `search` – ukazoval by na súbor, ktorý ten istý "
@@ -551,6 +567,20 @@ def _skuska_katalogu():
         chyby.append(f"{CATALOG_PY}: beh, ktorý sa Drive nepýtal (`zive=None`), "
                      f"vyhodil balík z katalógu – „neviem“ nesmie znamenať "
                      f"„nie je tam“.")
+    ozivena = po_ozivení.get("mapa") or {}
+    if "nove" not in (ozivena.get("download") or ""):
+        chyby.append(f"{CATALOG_PY}: odkaz ukazoval do prázdna, ale súbor "
+                     f"`stare.zip` v priečinku JE (pod novým id) – katalóg ho "
+                     f"mal prepísať naň, nie balík zahodiť. Zostalo: "
+                     f"{ozivena.get('download') or '(balík vypadol)'}")
+    if "nove" not in ((ozivena.get("formats") or {}).get("zip", {})
+                      .get("download") or ""):
+        chyby.append(f"{CATALOG_PY}: oživil sa len vrch položky a nie "
+                     f"`formats.zip` (alebo naopak) – tie dva odkazy sú jedna "
+                     f"vec a musia ukazovať na ten istý súbor.")
+    if "wikipedia" in po_ozivení:
+        chyby.append(f"{CATALOG_PY}: oživovanie nechalo v katalógu balík, "
+                     f"ktorého súbor v priečinku nie je pod žiadnym id.")
 
     # ---- ktorý súbor: `maps.json` vs `maps-test.json` ----
     stary = os.environ.get("TEST_KM2")
@@ -573,6 +603,90 @@ def _skuska_katalogu():
                      f"skončila medzi hotovými mapami.")
     return chyby
 
+
+def _skuska_stalych_id():  # noqa: C901
+    """Prepíše `upload_clobber` súbor, alebo mu vyrobí nové id?
+
+    PREČO TO STRÁŽI PRÁVE KONTROLA KATALÓGU. Celý `maps.json` stojí na tom, že
+    id balíka prežije ďalší build – odkaz v ňom je jediné, čím sa mapa dá
+    stiahnuť, a zapisuje sa RAZ, pri nahratí. Kým `upload_clobber` vyrábal nový
+    súbor a starý mazal, platil ten odkaz do najbližšieho buildu tej mapy a
+    stačilo, aby sa commit katalógu nedostal do vetvy (25. 8. 2026: pribudol
+    ruleset na `master`, štyri behy nahrali balíky, žiadny katalóg nezapísal a
+    14 z 24 odkazov ukazovalo na zmazané súbory).
+
+    Naostro, nie z AST: „vracia to to isté id" sa nedá prečítať z tvaru kódu.
+    Drive sa pritom nedotýkame – nahrávanie aj mazanie sú podstrčené.
+    """
+    import contextlib
+    import importlib.util
+    import io
+    import tempfile
+    chyby = []
+    spec = importlib.util.spec_from_file_location("_lint_folder", FOLDER_PY)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        balik = f"{tmp}/mapa.zip"
+        with open(balik, "wb") as f:
+            f.write(b"x")
+
+        def skuska(v_priecinku):
+            stopa = {"upload": 0, "update": [], "delete": []}
+            mod.files_named = lambda *_a, **_k: [dict(x) for x in v_priecinku]
+            mod.update = lambda _c, _p, fid, *_a, **_k: (
+                stopa["update"].append(fid) or fid)
+            mod.upload = lambda *_a, **_k: (
+                stopa.__setitem__("upload", stopa["upload"] + 1) or "nove_id")
+            mod.auth.api_delete = lambda _c, fid: stopa["delete"].append(fid)
+            with contextlib.redirect_stdout(io.StringIO()):
+                fid, _ = mod.upload_clobber(None, balik, "mapa.zip",
+                                            "priecinok")
+            return fid, stopa
+
+        # 1. Balík toho mena v priečinku UŽ JE – prepíše sa jeho obsah a id mu
+        #    ostane. To je celý zmysel tejto funkcie.
+        fid, stopa = skuska([{"id": "stale_id", "createdTime": "2026-01-01T00:00:00Z"}])
+        if fid != "stale_id":
+            chyby.append(f"{FOLDER_PY}: `upload_clobber` vrátil id "
+                         f"`{fid}` namiesto `stale_id` – odkaz v `maps.json` "
+                         f"by prestal platiť pri každom builde a katalóg, "
+                         f"ktorý sa nestihne commitnúť, by ukazoval do prázdna.")
+        if stopa["upload"]:
+            chyby.append(f"{FOLDER_PY}: `upload_clobber` vyrobil NOVÝ súbor, "
+                         f"hoci ten istý v priečinku už je.")
+        if stopa["delete"]:
+            chyby.append(f"{FOLDER_PY}: `upload_clobber` zmazal "
+                         f"{stopa['delete']} – jediný súbor toho mena je ten, "
+                         f"na ktorý ukazuje katalóg.")
+
+        # 2. Dva súbory jedného mena (dva behy naraz): prepíše sa NAJSTARŠÍ –
+        #    ten, na ktorý katalóg ukazuje – a duplikát ide preč.
+        fid, stopa = skuska([
+            {"id": "novsi", "createdTime": "2026-02-02T00:00:00Z"},
+            {"id": "starsi", "createdTime": "2026-01-01T00:00:00Z"}])
+        if fid != "starsi":
+            chyby.append(f"{FOLDER_PY}: pri dvoch súboroch toho mena sa "
+                         f"prepísal `{fid}`, nie najstarší `starsi` – ten "
+                         f"druhý je ten, ktorý katalóg ponúka na stiahnutie.")
+        if stopa["delete"] != ["novsi"]:
+            chyby.append(f"{FOLDER_PY}: duplikát sa nezmazal "
+                         f"({stopa['delete']}) – v priečinku by vedľa mapy "
+                         f"ležala druhá s tým istým menom.")
+
+        # 3. Prvý build tej mapy – v priečinku nie je nič, súbor sa vyrobí.
+        fid, stopa = skuska([])
+        if stopa["upload"] != 1 or fid != "nove_id":
+            chyby.append(f"{FOLDER_PY}: prvý balík sa nenahral "
+                         f"(upload={stopa['upload']}, id={fid}).")
+    return chyby
+
+
+try:
+    bad += _skuska_stalych_id()
+except Exception as exc:                      # noqa: BLE001 – čokoľvek je chyba
+    bad.append(f"{FOLDER_PY} sa nedá skúšobne spustiť ({exc!r}).")
 
 try:
     bad += _skuska_katalogu()

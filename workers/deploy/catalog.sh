@@ -72,10 +72,29 @@ git commit -q -m "Katalóg máp: $(git diff --cached --shortstat -- "$MAPS_JSON"
   -m "Zapísal build ${RUN_URL:-(bez odkazu)} po nahratí balíkov na Drive." \
   || { echo "::warning::Commit sa nepodaril – katalóg dopíše ďalší build."; exit 0; }
 
+# ODMIETNUTIE PRAVIDLOM VETVY NIE JE PRETEKANIE DVOCH BEHOV. „Skúsim to znova"
+# a „katalóg dopíše ďalší build" platí pre non-fast-forward: to je pretek,
+# ktorý rebase vyrieši, a ďalší build ho naozaj dopíše. Keď push odmietne
+# ruleset (GH013 – „Changes must be made through a pull request"), neprejde ani
+# ten ďalší build a katalóg PRESTANE PLATIŤ ÚPLNE – ticho, so zeleným behom.
+# Presne to sa stalo 25. 8. 2026: ruleset pribudol o 10:00, štyri behy po ňom
+# nahrali balíky, žiadny nezapísal katalóg a nikto sa to z behu nedozvedel.
+# Trvalé odmietnutie preto beh ZHODÍ – je to jediná vec, ktorá o ňom povie.
+push_vystup=""
+trvalo_odmietnute() {
+  printf '%s' "$push_vystup" | grep -qE 'GH013|repository rule violations|protected branch|pre-receive hook declined'
+}
+
 for i in $(seq 1 "$TRIES"); do
-  if git push origin "HEAD:$BRANCH"; then
+  if push_vystup=$(git push origin "HEAD:$BRANCH" 2>&1); then
+    printf '%s\n' "$push_vystup"
     echo "$MAPS_JSON je vo vetve $BRANCH ✓"
     exit 0
+  fi
+  printf '%s\n' "$push_vystup"
+  if trvalo_odmietnute; then
+    echo "::error::$MAPS_JSON sa nedá zapísať do vetvy $BRANCH – push odmietlo pravidlo repozitára, nie pretek dvoch behov. Ďalší build ho preto NEDOPÍŠE: balíky na Drive sa budú prepisovať ďalej a katalóg ostane stáť na tom, čo je v ňom teraz. Daj bótovi cestu do $BRANCH (bypass v rulesete alebo push cez pull request) a pusti build znova."
+    exit 1
   fi
   if [ "$i" -eq "$TRIES" ]; then break
   fi
