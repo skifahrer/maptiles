@@ -253,8 +253,31 @@ def zapis(path, data, popis):
     return True
 
 
+def zapis_casti(mapy, casti):
+    """Koľko z balíka `mapa` je hľadanie a koľko navigácia.
+
+    HĽADANIE A NAVIGÁCIA NEMAJÚ VLASTNÝ BALÍK – cestujú v základnej mape
+    (rozpis v hlavičke `publish-map.py`), takže toto je jediné miesto, kde sa
+    ich veľkosť dá prečítať bez toho, aby si človek stiahol stovky MB
+    a rozbalil ich. Píše sa aj `0`: „hľadanie v tejto mape nie je" je odpoveď,
+    kým chýbajúci kľúč sa dá čítať aj ako „zabudlo sa to premerať".
+
+    Číslo sa volá `raw_size` a stojí vedľa `size` toho istého balíka zámerne:
+    `size` je zabalený ZIP, `raw_size` bajty pred zabalením (vlastný archív tá
+    časť nemá, takže sa iné číslo zmerať nedá). Ten istý kľúč pre dve rôzne
+    čísla by sa sčítal a nesedelo by to.
+    """
+    polozka = mapy.get("mapa")
+    if polozka is None:
+        return                        # tento beh základnú mapu nenahral
+    if not casti:
+        polozka.pop("casti", None)
+        return
+    polozka["casti"] = {k: dict(v) for k, v in casti.items()}
+
+
 def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
-                  kat=None, layers=None, spravuje=None):
+                  kat=None, layers=None, spravuje=None, casti=None):
     """Doplň (alebo prepíš) položku v `maps.json`. Vracia True, keď sa zmenil.
 
     `baliky` je zoznam `(druh, meno, veľkosť, id, formát)` – to, čo sa naozaj
@@ -274,6 +297,12 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
     ZIPy: keby prepisoval, katalóg by o ZIPoch prestal vedieť. Pri bežnom
     behu (`merge=False`) sa naopak MUSÍ nahradiť – inak by v katalógu ostali
     odkazy na balíky, ktoré tento build nevyrobil.
+
+    `casti` sú kúsky, ktoré cestujú V BALÍKU `mapa` a vlastný balík nemajú
+    (hľadanie, navigačný graf) – `{kľúč: {"raw_size": B, "files": N}}`. Zapisujú
+    sa pod ten balík (`zapis_casti`), lebo inak sa ich veľkosť nedá zistiť
+    inak než stiahnutím mapy. `None` znamená „tento beh ich nepočítal"
+    (samostatná pipeline s `--only`), a vtedy sa nesmú ani zmazať.
 
     `spravuje` sú DRUHY BALÍKOV, O KTORÝCH TENTO BEH ROZHODUJE – ten istý
     zoznam, podľa ktorého `publish-map.py` maže starý balík na Drive. Balík,
@@ -339,6 +368,9 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
         for kind, name, velkost, fid, fmt in baliky:
             zapis_balik(mapy, kind, name, velkost, fid, fmt,
                         kedy=data["_updated_at"], kedy_ts=data["_updated_ts"])
+        # `casti` sa tu NEPREPISUJÚ, aj keby prišli: samostatná pipeline
+        # (`--only=wikipedia`) nemá `_site` mapy, takže by za „hľadanie v tejto
+        # mape nie je" vyhlásila mapu, ktorá ho má.
         return zapis(path, data,
                      f"doplnený balík {iba} k {'/'.join(kat)}")
     polozka = {
@@ -440,6 +472,8 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
     for kind, name, velkost, fid, fmt in baliky:
         zapis_balik(polozka["maps"], kind, name, velkost, fid, fmt,
                     kedy=data["_updated_at"], kedy_ts=data["_updated_ts"])
+    if casti is not None:
+        zapis_casti(polozka["maps"], casti)
 
     # `subregions` patria uzlu, nie tejto mape – nahradenie položky ich nesmie
     # zmazať (build Vysokých Tatier neruší mapu celého kraja a naopak).

@@ -37,26 +37,37 @@ import sys
 import tempfile
 
 PUBLISH = "workers/deploy/publish-map.py"
+SUBORY = "workers/deploy/subory.py"
 SITE = "workers/deploy/site.sh"
 WORLD_STYLE = "workers/world/style.mjs"
 
 bad = []
 
 
-def nacitaj(cesta):
-    spec = importlib.util.spec_from_file_location("publish_map", cesta)
+def nacitaj_modul(meno, cesta):
+    spec = importlib.util.spec_from_file_location(meno, cesta)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["publish_map"] = mod
+    sys.modules[meno] = mod
     spec.loader.exec_module(mod)
     return mod
 
 
+def nacitaj(cesta):
+    return nacitaj_modul("publish_map", cesta)
+
+
 def napln(site):
-    """Napodobenina `_site`: viewer, glyfy, štýly, sprite, dlaždice."""
+    """Napodobenina `_site`: viewer, glyfy, štýly, sprite, dlaždice.
+
+    Aj hľadanie a navigácia – tie do balíka PATRIA (kontrola 6 nižšie).
+    """
     for rel in ("index.html", "app.js", "themes.js", "style-overrides.json",
                 "region.geojson", "fonts/Noto Sans Regular/0-255.pbf",
                 "styles/svetla.json", "sprites/temaki.png",
-                "tiles/manifest.json", "tiles/kraj.pmtiles"):
+                "tiles/manifest.json", "tiles/kraj.pmtiles",
+                "tiles/search-index.db", "routing/valhalla_tiles.tar",
+                "routing/valhalla.json", "routing/admins.sqlite",
+                "routing/timezones.sqlite", "routing/graf.json"):
         cesta = os.path.join(site, rel)
         os.makedirs(os.path.dirname(cesta) or site, exist_ok=True)
         with open(cesta, "w") as f:
@@ -103,6 +114,43 @@ if "fonts/Noto Sans Regular/0-255.pbf" in neznamy:
         f"{PUBLISH}: keď sa manifest nedá prečítať, glyfy ostali v balíku. "
         f"Presne tak dopadol prvý ostrý beh `.aar` – desiatky MB navyše v každom "
         f"balíku, a na súbore to nikto nepozná.")
+
+# ---- 6. hľadanie a navigácia z balíka VYPADNÚŤ NESMÚ ----
+# Vlastný balík nemajú: `search-index.db` ho mal a bola to mapa, v ktorej sa
+# nedalo nič nájsť, kým si človek nestiahol druhý ZIP – o ktorom sa v aplikácii
+# nedozvedel. Graf Valhally je to isté o jeden krok ďalej: mapa, ktorá vie, kde
+# čo je, ale nevie ťa tam doviezť. Vypadnúť pritom môžu jedným riadkom (stačí
+# ich pridať medzi to, čo `zaklad_subory` vynecháva) a NIČ NESPADNE – preto
+# kontrola.
+for meno in ("tiles/search-index.db", "routing/valhalla_tiles.tar",
+             "routing/admins.sqlite", "routing/graf.json"):
+    if meno not in kraj:
+        bad.append(
+            f"{PUBLISH}: `{meno}` z balíka mapy VYPADOL. Hľadanie ani "
+            f"navigačný graf vlastný balík nemajú – cestujú v základnej mape "
+            f"a bez nich je to mapa, v ktorej sa nedá nič nájsť ani nikam "
+            f"doviesť. Nespadne pri tom nič; pozná sa to až v telefóne.")
+
+# A musia byť aj PREMERANÉ – veľkosť ide do `maps.json` pod balík `mapa`
+# (`casti`). Časť, ktorú nikto nemeria, je presne to, čím bol `search-index.db`
+# predtým, než sa naň niekto pozrel: v balíku dvakrát, a na veľkosti to nikto
+# nepoznal.
+import tempfile as _tf                                       # noqa: E402
+sub = nacitaj_modul("deploy_subory", SUBORY)
+with _tf.TemporaryDirectory() as site:
+    napln(site)
+    merane = sub.velkost_casti(sub.casti_baliku(site, PAGES))
+for kluc in ("search", "navigacia"):
+    if kluc not in merane:
+        bad.append(
+            f"{SUBORY}: časť `{kluc}` sa nepremeriava, takže sa jej veľkosť "
+            f"nemá ako dostať do `maps.json` – a keďže vlastný balík nemá, "
+            f"nedá sa zistiť inak než stiahnutím celej mapy.")
+    elif not merane[kluc].get("files"):
+        bad.append(
+            f"{SUBORY}: časť `{kluc}` nenašla ani jeden súbor v `_site`, hoci "
+            f"tam sú. Zmenil sa výber podľa mena alebo priečinka? V mape by "
+            f"tá časť ostala, len by o nej katalóg tvrdil, že tam nie je.")
 
 # ---- 4. Pages tie súbory naozaj má ----
 with open(SITE, encoding="utf-8") as f:

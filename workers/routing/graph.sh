@@ -23,27 +23,57 @@
 # nesúlad vyzerá ako pokazená trasa, nie ako nesúlad verzií. Preto sa obraz
 # zadáva s TAGOM (nie `latest`) a to, čo sa naozaj použilo, sa zapíše.
 #
-# Vstup:  data/routing.osm.pbf, AREA, VALHALLA_IMAGE
+# DVA ROZSAHY, JEDEN SKRIPT. Graf sa stavia raz pre CELÝ ŠTÁT (workflow
+# „Mapa · Build navigácia", vlastný balík na Drive, `AREA` z
+# `workers/data/routing-areas.json`) a raz pre JEDEN REGIÓN, kde ide priamo
+# DOVNÚTRA balíka mapy toho regiónu (job `navigacia` v `build-map.yml`,
+# `REGION_KEY` a PBF, ktoré si beh už aj tak stiahol). Dva skripty by boli dve
+# pravdy o tom, ako sa graf stavia a čo sa v ňom kontroluje (pravidlo 1).
+#
+# ČO SA PRI REGIÓNE MENÍ: PBF je REZANÝ na hranicu kraja, takže hrana, ktorej
+# chýba druhý koniec, je slepá ulica – trasa v takom grafe KONČÍ NA HRANICI
+# REGIÓNU. Je to zámer (mapa aj hľadanie sú za ten istý región a človek, ktorý
+# si stiahol kraj, má v ňom aj navigáciu), nie opomenutie, a `graf.json` to
+# o sebe hovorí: `rozsah: "region"` a `hranica: "trasa končí na hranici
+# regiónu"`. Kto potrebuje prejsť hranicu, má na to celoštátny balík.
+#
+# Vstup:  ROUTING_PBF (default data/routing.osm.pbf), AREA alebo REGION_KEY,
+#         VALHALLA_IMAGE
 # Výstup: _site/routing/* a `graph_mb`, `valhalla` do GITHUB_OUTPUT
 
 set -euo pipefail
 mkdir -p custom_files _site/routing steps-out
 T=$(date +%s)
 
-: "${AREA:?povedz AREA – kľúč z workers/data/routing-areas.json}"
+AREA="${AREA:-}"
+REGION_KEY="${REGION_KEY:-}"
+if [ -n "$AREA" ]; then
+  ROZSAH="area"                       # celý štát (alebo štáty) z číselníka
+  POPIS="rozsah \`$AREA\`"
+  PBF="${ROUTING_PBF:-data/routing.osm.pbf}"
+  ROBI="workers/routing/pbf.sh"
+elif [ -n "$REGION_KEY" ]; then
+  ROZSAH="region"                     # jeden kraj, graf ide do jeho mapy
+  POPIS="región \`$REGION_KEY\`"
+  PBF="${ROUTING_PBF:-data/region.osm.pbf}"
+  ROBI="workers/plan/pbf.sh (krok „PBF regiónu“)"
+else
+  echo "::error::Povedz, na aký rozsah sa graf stavia: buď AREA (kľúč z workers/data/routing-areas.json, celoštátny balík), alebo REGION_KEY (kraj, graf ide dovnútra jeho mapy). Bez toho by sa nedalo napísať do graf.json, čo ten graf pokrýva – a rozsah je pri navigácii to hlavné, čo o nej treba vedieť."
+  exit 1
+fi
 IMAGE="${VALHALLA_IMAGE:-ghcr.io/valhalla/valhalla-scripted:latest}"
 
-[ -s data/routing.osm.pbf ] || {
-  echo "::error::Chýba data/routing.osm.pbf – najprv musí prejsť workers/routing/pbf.sh."
+[ -s "$PBF" ] || {
+  echo "::error::Chýba $PBF – najprv musí prejsť $ROBI."
   exit 1
 }
-cp data/routing.osm.pbf custom_files/
+cp "$PBF" custom_files/routing.osm.pbf
 
 PBF_MB=$(( $(stat -c%s custom_files/routing.osm.pbf) / 1048576 ))
 # PLÁN S ODHADOM PRED DRAHOU ČASŤOU (pravidlo 4). Odhad je hrubý a je to tu
 # NAPÍSANÉ: stavba grafu rastie s veľkosťou PBF nelineárne a namerané čísla pre
 # tieto rozsahy ešte nemáme – prvý beh ich doplní do `routing-areas.json`.
-echo "::notice::Staviam graf z ${PBF_MB} MB PBF (rozsah \`$AREA\`, obraz $IMAGE). Slovensko samo je desiatky minút; so susedmi to môže byť hodiny a na job je strop 360 minút. Namerané čísla z tohto behu patria do workers/data/routing-areas.json."
+echo "::notice::Staviam graf z ${PBF_MB} MB PBF ($POPIS, obraz $IMAGE). Kraj sú jednotky minút; Slovensko samo desiatky a so susedmi to môže byť hodiny – na job je strop 360 minút. Namerané čísla z celoštátnych behov patria do workers/data/routing-areas.json."
 
 # Verzia motora – zisťuje sa PRED stavbou, nech sa na ňu nečaká hodinu. Keď sa
 # nedá prečítať, nie je to ticho: do balíka pôjde aspoň digest obrazu.
@@ -108,18 +138,17 @@ done
 # Čo je v balíku a z čoho – vedľa `obsah.json`, ktorý dopisuje
 # `workers/deploy/publish-map.py`. Toto je tá časť, ktorú o sebe vie len tento
 # krok: rozsah, verzia motora a PBF, z ktorého graf je.
-python3 - "$AREA" "$VALHALLA_VER" "$PBF_MB" > _site/routing/graf.json <<'PY'
+python3 - "$ROZSAH" "${AREA:-$REGION_KEY}" "$VALHALLA_VER" "$PBF_MB" \
+        > _site/routing/graf.json <<'PY'
 import json, os, sys, time
-area_key, valhalla, pbf_mb = sys.argv[1], sys.argv[2], int(sys.argv[3])
-areas = json.load(open(os.path.join("workers", "data", "routing-areas.json"),
-                       encoding="utf-8"))["areas"]
-area = areas[area_key]
-print(json.dumps({
-    "rozsah": area_key,
-    "name": area["name"],
-    "region_key": area["region_key"],
-    "krajiny": area["countries"],
-    "pbf": area["pbf"],
+druh, kluc, valhalla, pbf_mb = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+graf = {
+    # AKÝ ROZSAH TEN GRAF POKRÝVA je pri navigácii to hlavné, čo o ňom treba
+    # vedieť – od toho závisí, kam sa v ňom dá doviezť. `area` je celý štát
+    # (alebo štáty) z číselníka a má vlastný balík; `region` je jeden kraj
+    # a graf je vnútri balíka jeho mapy.
+    "rozsah": druh,
+    "kluc": kluc,
     "pbf_mb": pbf_mb,
     # Verzia motora MUSÍ byť v balíku: graf a knižnica si musia sedieť.
     "valhalla": valhalla or "neznáma",
@@ -130,7 +159,41 @@ print(json.dumps({
     "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     "run": os.environ.get("GITHUB_RUN_NUMBER", ""),
     "run_id": os.environ.get("GITHUB_RUN_ID", ""),
-}, ensure_ascii=False, indent=2))
+}
+if druh == "area":
+    areas = json.load(open(os.path.join("workers", "data", "routing-areas.json"),
+                           encoding="utf-8"))["areas"]
+    area = areas[kluc]
+    graf.update({
+        "name": area["name"],
+        "region_key": area["region_key"],
+        "krajiny": area["countries"],
+        "pbf": area["pbf"],
+        # Celý štátny extrakt, nič sa nerezalo – trasa smie ísť až na okraj
+        # rozsahu (`workers/routing/pbf.sh` preto nesmie rezať).
+        "hranica": "trasa smie ísť po okraj rozsahu",
+    })
+else:
+    regions = json.load(open(os.path.join("workers", "data", "regions.json"),
+                             encoding="utf-8"))
+    graf.update({
+        "name": (regions.get(kluc) or {}).get("name") or kluc,
+        "region_key": kluc,
+        # `krajiny` (ISO kódy pre známky) tu ZÁMERNE NIE JE: `regions.json`
+        # ich nenesie – `country` je tam UZOL KATALÓGU (`slovensko`), nie
+        # `SK`. Napísať ho pod tým istým kľúčom, pod akým celoštátny graf
+        # píše `["SK"]`, by bola tá istá otázka s dvoma rôznymi odpoveďami.
+        # Známky to nebrzdí: `profile.py` berie krajiny z `vignettes.json`,
+        # nie z grafu (viď `workers/data/routing-areas.json`).
+        "krajina_uzol": (regions.get(kluc) or {}).get("country") or "",
+        # ČO TENTO GRAF NEVIE, A JE TO NAPÍSANÉ. PBF je rezaný na hranicu
+        # kraja, takže hrana, ktorej chýba druhý koniec, je slepá ulica.
+        # Mlčanie by sa dalo čítať ako „trasa cez hranicu nefunguje z inej
+        # príčiny" – a to je presne ten tichý omyl, ktorému sa tu vyhýbame.
+        "hranica": "trasa končí na hranici regiónu; cez hranicu vedie "
+                   "celoštátny graf z .github/workflows/navigation.yml",
+    })
+print(json.dumps(graf, ensure_ascii=False, indent=2))
 PY
 cat _site/routing/graf.json
 
@@ -138,6 +201,6 @@ MB=$(( $(du -sb _site/routing | cut -f1) / 1048576 ))
 echo "graph_mb=$MB" >> "$GITHUB_OUTPUT"
 echo "valhalla=${VALHALLA_VER:-neznama}" >> "$GITHUB_OUTPUT"
 SEK=$(( $(date +%s) - T ))
-echo "::notice::Graf hotový: ${MB} MB za $(( SEK / 60 )) min $(( SEK % 60 )) s (PBF ${PBF_MB} MB, rozsah \`$AREA\`). Toto číslo patrí do workers/data/routing-areas.json."
+echo "::notice::Graf hotový: ${MB} MB za $(( SEK / 60 )) min $(( SEK % 60 )) s (PBF ${PBF_MB} MB, $POPIS). Pri celoštátnom behu patrí toto číslo do workers/data/routing-areas.json; pri kraji je v katalógu pod balíkom mapy (`casti.navigacia`)."
 printf '%s\t%s\t%s\t%s\n' "20" "Navigačný graf (Valhalla)" "$SEK" \
   "${MB} MB z ${PBF_MB} MB PBF" >> steps-out/routing.tsv

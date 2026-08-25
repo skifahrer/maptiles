@@ -73,11 +73,28 @@ Pozor na cache: kľúč `assets-…` v `build-map.yml` `workers/assets/glyphs.sh
 neobsahoval, takže samotná zmena zoznamu rozsahov by sa neprejavila – cache by
 vrátila staré (širšie) fonty. Preto je skript teraz v `hashFiles(...)`.
 
-## Nález 2 – `search-index.db` je v balíku dvakrát ✅ opravené
+## Nález 2 – `search-index.db` je v balíku dvakrát ✅ opravené, potom prehodnotené
 
 > Opravené v `workers/deploy/publish-map.py`: `hladanie_subory()` sa počíta
-> raz a to isté pole ide aj do `vylucit` základnej mapy. Overené na
-> zabalených ZIPoch – index je teraz práve v jednom balíku.
+> raz a to isté pole išlo aj do `vylucit` základnej mapy. Overené na
+> zabalených ZIPoch – index bol potom práve v jednom balíku.
+>
+> **A práve to sa ukázalo ako zlá odpoveď na správny nález.** Dvakrát v balíku
+> bola chyba; vlastný balík ale nie je jej jediná oprava a je to tá horšia
+> z dvoch. Odstránené je odteraz to ZDVOJENIE (index je v balíku raz),
+> a je v tom, ktorý si človek naozaj stiahne – v ZÁKLADNEJ MAPE. Balík
+> `-search` zanikol (`ZRUSENE`), starý sa na Drive maže a `maps.json` má
+> veľkosť indexu pod balíkom `mapa` v `casti.search.raw_size`. Tým istým
+> spôsobom sa do mapy dostal aj navigačný graf Valhally
+> (`casti.navigacia`, `docs/navigation.md`).
+>
+> Dôvod je v poslednom odseku tejto sekcie a v čísle: úspora 4–6,5 MB na
+> balíku, ktorý má 65–152 MB, je 4–8 %. Za to sa kúpila mapa, v ktorej
+> hľadanie nefunguje, a to bez jediného slova – aplikácia sa na druhý balík
+> nepýta a v katalógu ho nikto nehľadá. Kde tá úvaha platí ďalej, sú
+> vrstevnice, skaly a tieňovanie: tie vážia toľko čo mapa sama (tabuľka
+> vyššie), takže tam je „nechcem to sťahovať" naozaj o polovicu sťahovania,
+> nie o percentách.
 
 ```python
 vrstvy_pack = vrstvy_subory(args.site, man)
@@ -96,12 +113,15 @@ sa index sťahovať nemusel.
 
 **Úspora: 4,0 – 6,5 MB podľa regiónu.**
 
-Katalóg ani `manifest.json` o indexe nevedia – appka ho hľadá skenovaním
+Katalóg ani `manifest.json` o indexe nevedeli – appka ho hľadá skenovaním
 stiahnutého priečinka na `.db` so slovom „search" v mene. Vybratie zo
-základnej mapy teda nič nerozbíja; kto chce hľadanie, stiahne si `-search`,
-presne ako pri vrstevniciach. **Je to ale zmena správania:** kto si dnes
-stiahne len základnú mapu, hľadanie má; po oprave ho mať nebude, kým si
-nestiahne aj druhý balík.
+základnej mapy teda nič nerozbilo; kto chcel hľadanie, stiahol si `-search`,
+presne ako pri vrstevniciach. **Bola to ale zmena správania:** kto si stiahol
+len základnú mapu, hľadanie mal; po oprave ho nemal, kým si nestiahol aj druhý
+balík – a nemal sa to ako dozvedieť. Presne táto veta bola dôvod, prečo sa
+delenie vrátilo späť: mlčanie tu neznamená „nemáš to zapnuté", ale „mapa je
+pokazená". Katalóg o indexe odvtedy vie (`casti.search`), takže sa jeho
+veľkosť dá prečítať bez toho, aby sa musel oddeliť do vlastného súboru.
 
 ## Nález 3 – dlaždice sú stavané na maximálny detail
 
@@ -165,11 +185,14 @@ takto aj popisuje.
 Nálezy 1 a 2 sú čistý zisk – nič sa v mape nezmení, len sa prestane baliť to,
 čo sa nepoužíva:
 
-| región | pôvodne | po oprave 1+2 (obe hotové) |
+| región | pôvodne | po oprave 1 (+2 ako zdvojenie) |
 |---|---|---|
-| bratislavsky | 130,9 MB | ~65 MB (−50 %) |
-| presovsky | 218,8 MB | ~152 MB (−31 %) |
-| trnavsky | 141,0 MB | ~78 MB (−45 %) |
+| bratislavsky | 130,9 MB | ~71 MB (−46 %) |
+| presovsky | 218,8 MB | ~159 MB (−27 %) |
+| trnavsky | 141,0 MB | ~82 MB (−42 %) |
+
+(Index je v tých číslach ZAPOČÍTANÝ raz – v základnej mape, kde je odteraz aj
+navigačný graf. Zmizlo len to, čo tam bolo dvakrát.)
 
 **Pozor na aritmetiku vyššie.** Medzitým pribudlo (`d0f4dfd`, mimo tejto
 analýzy), že glyfy a viewer sa do balíka nebalia vôbec, keď na ne manifest
