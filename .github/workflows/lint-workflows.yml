@@ -542,11 +542,12 @@ jobs:
       - name: Katalóg máp drží tvar a nikto ho neobchádza
         run: python3 workers/lint/catalog.py
 
-      # Glyfy a webový viewer sa do balíkov nebalia – sú na Pages. Vynechať
-      # súbor z balíka je pritom jednoriadková zmena, ktorá sa dá spraviť aj
-      # tam, kde ho nie je odkiaľ vziať: mapa bez glyfov nespadne, len nemá
-      # jediné písmeno. Rozpis: `workers/lint/packaging.py`.
-      - name: Glyfy a viewer sú mimo balíka, ale na Pages
+      # Glyfy ani webový viewer sa do balíkov nebalia: viewer je na Pages,
+      # glyfy si nesie appka v sebe. Vynechať súbor z balíka je pritom
+      # jednoriadková zmena, ktorá sa dá spraviť aj tam, kde ho nie je odkiaľ
+      # vziať: mapa bez glyfov nespadne, len nemá jediné písmeno. Rozpis:
+      # `workers/lint/packaging.py`.
+      - name: Glyfy a viewer sú mimo balíka, ale majú kde byť
         run: python3 workers/lint/packaging.py
 
       # `rebuild` je jediná páka, ktorou sa dá povedať „cache nepoužívaj". Keď

@@ -17,8 +17,10 @@ TRI DRUHY ODPOVEDÍ SÚ TU:
     v ktorej sa nedá nič nájsť ani nikam doviesť, a nikto by nemal ako
     zistiť, že mu druhý súbor chýba. Premeriavajú sa (`velkost_casti`),
     aby bolo v katalógu vidieť, koľko z balíka sú.
-  * MIMO BALÍKA (`mimo_balika`: glyfy a viewer). Sú na Pages – ale len keď sa
-    na ne dá odtiaľ dostať, čo hovorí manifest, nie prepínač.
+  * MIMO BALÍKA (`mimo_balika`: glyfy a viewer). Viewer je web, ktorý si
+    aplikácia nespúšťa, a glyfy si appka nesie vo vlastnom binári – vynechajú
+    sa preto VŽDY, nie podľa tvaru adresy v manifeste (rozpis v hlavičke
+    `publish-map.py`). `kde_su_glyfy` k tomu povie, odkiaľ si ich kto vezme.
 
 Zvyšok, teda `zaklad_subory`, je „všetko ostatné z `_site`".
 """
@@ -200,8 +202,9 @@ def vsetky_subory(site):
 
 # ---------- čo do balíka NEPATRÍ ----------
 #
-# Rozpis je v hlavičke súboru. Krátko: glyfy a viewer ležia na Pages, takže
-# v balíku sú mŕtva váha – ale len vtedy, keď sa na ne dá odtiaľ dostať.
+# Rozpis je v hlavičke `publish-map.py`. Krátko: viewer je web, ktorý si
+# aplikácia nespúšťa, a glyfy si appka nesie vo vlastnom binári – v balíku sú
+# teda oboje mŕtva váha VŽDY, nie podľa tvaru adresy v manifeste.
 
 # Viewer je to, čo `workers/deploy/site.sh` kopíruje do KOREŇA `_site`
 # z `poc/web` (`cp poc/web/*.js poc/web/*.json poc/web/index.html _site/`).
@@ -224,19 +227,21 @@ def je_glyf(site, cesta):
     return rel.split(os.sep)[0] == "fonts"
 
 
-def glyfy_su_inde(man):
-    """Odkazuje manifest na glyfy MIMO balíka (absolútnou adresou)?
+def kde_su_glyfy(man):
+    """Krátka veta do logu a do `obsah.json`: odkiaľ si ich kto vezme.
 
-    Toto je celé rozhodnutie, a je odvodené z dát, nie z prepínača: keď štýl
-    ukazuje na `https://…/fonts/{fontstack}/{range}.pbf` (Pages), sú súbory
-    v balíku mŕtva váha. Keď ukazuje relatívne – mapa sveta – sú JEDINÝ zdroj
-    a vynechať sa nesmú (na Pages tá mapa nejde).
-
-    Keď sa manifest prečítať nedá, odpoveď je „neviem“, a to znamená NECHAŤ:
-    väčší balík je chyba, ktorú vidno na veľkosti, kým mapa bez písmen vyzerá
-    ako pokazený štýl.
+    Nie je to rozhodnutie – to je urobené (glyfy sa nebalia nikdy, rozpis
+    v hlavičke `publish-map.py`) –, je to odpoveď na otázku, ktorú si nad
+    menším balíkom položí každý: „a kde teda sú?“. Appka ich má v sebe vždy;
+    web podľa toho, čo si štýl pýta, a to je v manifeste.
     """
-    return str(man.get("glyphs") or "").startswith(("http://", "https://"))
+    adresa = str(man.get("glyphs") or "")
+    if adresa.startswith(("http://", "https://")):
+        return f"appka ich má v sebe, web si ich berie z {adresa}"
+    if adresa:
+        return (f"appka ich má v sebe; štýl si ich pýta relatívne ({adresa}), "
+                f"takže mimo appky ich treba doplniť")
+    return "appka ich má v sebe (manifest sa nedá prečítať, adresu neviem)"
 
 
 def mimo_balika(site, man):
@@ -246,14 +251,10 @@ def mimo_balika(site, man):
     lebo vynechať 90 MB potichu je presne to, čo pravidlo 4 zakazuje.
     """
     vsetky = vsetky_subory(site)
-    skupiny = [("viewer (je na Pages)", [p for p in vsetky if je_viewer(site, p)])]
-    if glyfy_su_inde(man):
-        skupiny.append((f"glyfy (štýl si ich pýta z {man.get('glyphs')})",
-                        [p for p in vsetky if je_glyf(site, p)]))
-    elif any(je_glyf(site, p) for p in vsetky):
-        log("Glyfy ostávajú v balíku – manifest na ne odkazuje relatívne "
-            f"({man.get('glyphs') or 'manifest sa nedá prečítať'}), takže "
-            f"balík je jediné miesto, kde ich štýl nájde.")
+    skupiny = [
+        ("viewer (je na Pages)", [p for p in vsetky if je_viewer(site, p)]),
+        (f"glyfy ({kde_su_glyfy(man)})", [p for p in vsetky if je_glyf(site, p)]),
+    ]
 
     subory, dovody = [], []
     for popis, kus in skupiny:
@@ -271,9 +272,10 @@ def zaklad_subory(site, vylucit):
     a `tienovanie`: keby aj tie ostali v základnej mape, mali by ich cesty
     vnútri dvakrát – raz tu, raz v tom druhom ZIPe – a „iba mapa" by vážila
     rovnako ako mapa so všetkým, čo je presne to, kvôli čomu majú vlastné
-    balíky. Druhé je to, čo nemá vlastný balík, lebo je na Pages – glyfy
-    a viewer (`mimo_balika`). Oboje sa podáva zvonku, aby sa tá istá otázka
-    nepočítala dvakrát; čo je čo, hovorí hlavička súboru.
+    balíky. Druhé je to, čo v balíku nemá čo robiť – viewer (je na Pages)
+    a glyfy (nesie si ich appka), teda `mimo_balika`. Oboje sa podáva zvonku,
+    aby sa tá istá otázka nepočítala dvakrát; čo je čo, hovorí hlavička
+    `publish-map.py`.
 
     KTORÝKOĽVEK BALÍK, ČO PRIBUDNE, PATRÍ AJ SEM. Vynechať ho je ticho: mapa
     je v poriadku, len o toľko väčšia, a na súbore to nikto nepozná. Presne to

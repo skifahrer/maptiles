@@ -1,7 +1,7 @@
 {
   "_comment": "Katalóg hotových máp na Google Drive – ktoré sú a kde. Hlavný kľúč je krajina, pod ňou `regions` (kraj) a `subregions` (výsek); kľúče na `_` sú metadáta katalógu, nie krajiny. Dopisuje ho na konci buildu workers/deploy/publish-map.py (krok „Zapíš mapu do maps.json“); ručne sa needituje. Odkazy otvorí ten, kto má prístup k priečinku s mapami.",
-  "_updated_at": "2026-08-24T14:36:39Z",
-  "_updated_ts": 1787582199,
+  "_updated_at": "2026-08-25T06:34:07Z",
+  "_updated_ts": 1787639647,
   "slovensko": {
     "name": "Slovensko",
     "regions": {
@@ -441,129 +441,129 @@
         ],
         "maps": {
           "mapa": {
-            "download": "https://drive.google.com/uc?export=download&id=1jKfhh6uQ-BS9QnA1M-Y7E4PHGqSwx1H4",
+            "download": "https://drive.google.com/uc?export=download&id=1HHCkGhK-eqP8XzIIKr-oiGvE5LwA9dgL",
             "file": "trnavsky.zip",
             "formats": {
               "aar": {
-                "download": "https://drive.google.com/uc?export=download&id=1yfxf8T3QROXUt6jsq7FQpGSZ9AZgtmu5",
+                "download": "https://drive.google.com/uc?export=download&id=1UOXKv2EEByWr-en38KaTwbo1jDqSRFbk",
                 "file": "trnavsky.aar",
-                "link": "https://drive.google.com/file/d/1yfxf8T3QROXUt6jsq7FQpGSZ9AZgtmu5/view",
-                "run": "165",
-                "size": 86238165,
-                "updated_at": "2026-08-24T14:36:39Z",
-                "updated_ts": 1787582199
+                "link": "https://drive.google.com/file/d/1UOXKv2EEByWr-en38KaTwbo1jDqSRFbk/view",
+                "run": "167",
+                "size": 86242440,
+                "updated_at": "2026-08-25T06:34:07Z",
+                "updated_ts": 1787639647
               },
               "zip": {
-                "download": "https://drive.google.com/uc?export=download&id=1jKfhh6uQ-BS9QnA1M-Y7E4PHGqSwx1H4",
+                "download": "https://drive.google.com/uc?export=download&id=1HHCkGhK-eqP8XzIIKr-oiGvE5LwA9dgL",
                 "file": "trnavsky.zip",
-                "link": "https://drive.google.com/file/d/1jKfhh6uQ-BS9QnA1M-Y7E4PHGqSwx1H4/view",
-                "run": "165",
-                "size": 85231575,
-                "updated_at": "2026-08-24T14:35:54Z",
-                "updated_ts": 1787582154
+                "link": "https://drive.google.com/file/d/1HHCkGhK-eqP8XzIIKr-oiGvE5LwA9dgL/view",
+                "run": "167",
+                "size": 85235338,
+                "updated_at": "2026-08-25T06:33:27Z",
+                "updated_ts": 1787639607
               }
             },
-            "link": "https://drive.google.com/file/d/1jKfhh6uQ-BS9QnA1M-Y7E4PHGqSwx1H4/view",
-            "run": "165",
-            "size": 85231575,
-            "updated_at": "2026-08-24T14:35:54Z",
-            "updated_ts": 1787582154
+            "link": "https://drive.google.com/file/d/1HHCkGhK-eqP8XzIIKr-oiGvE5LwA9dgL/view",
+            "run": "167",
+            "size": 85235338,
+            "updated_at": "2026-08-25T06:33:27Z",
+            "updated_ts": 1787639607
           },
           "search": {
-            "download": "https://drive.google.com/uc?export=download&id=1BGJUO8txzO4PfBJm5MO4g9ZlMkbhdvGw",
+            "download": "https://drive.google.com/uc?export=download&id=1xPh162XUK1sjee5b5Mkh6nmDAfSiKq--",
             "file": "trnavsky-search.zip",
             "formats": {
               "aar": {
-                "download": "https://drive.google.com/uc?export=download&id=17NUiVKObzI8sLfr07rFytgUr2qb80rC1",
+                "download": "https://drive.google.com/uc?export=download&id=1pD5m-2bgtN0Pxg06fJ8LE0ta7MOmeA8Z",
                 "file": "trnavsky-search.aar",
-                "link": "https://drive.google.com/file/d/17NUiVKObzI8sLfr07rFytgUr2qb80rC1/view",
-                "run": "165",
-                "size": 3574358,
-                "updated_at": "2026-08-24T14:36:39Z",
-                "updated_ts": 1787582199
+                "link": "https://drive.google.com/file/d/1pD5m-2bgtN0Pxg06fJ8LE0ta7MOmeA8Z/view",
+                "run": "167",
+                "size": 3575905,
+                "updated_at": "2026-08-25T06:34:07Z",
+                "updated_ts": 1787639647
               },
               "zip": {
-                "download": "https://drive.google.com/uc?export=download&id=1BGJUO8txzO4PfBJm5MO4g9ZlMkbhdvGw",
+                "download": "https://drive.google.com/uc?export=download&id=1xPh162XUK1sjee5b5Mkh6nmDAfSiKq--",
                 "file": "trnavsky-search.zip",
-                "link": "https://drive.google.com/file/d/1BGJUO8txzO4PfBJm5MO4g9ZlMkbhdvGw/view",
-                "run": "165",
-                "size": 4300783,
-                "updated_at": "2026-08-24T14:35:54Z",
-                "updated_ts": 1787582154
+                "link": "https://drive.google.com/file/d/1xPh162XUK1sjee5b5Mkh6nmDAfSiKq--/view",
+                "run": "167",
+                "size": 4301633,
+                "updated_at": "2026-08-25T06:33:27Z",
+                "updated_ts": 1787639607
               }
             },
-            "link": "https://drive.google.com/file/d/1BGJUO8txzO4PfBJm5MO4g9ZlMkbhdvGw/view",
-            "run": "165",
-            "size": 4300783,
-            "updated_at": "2026-08-24T14:35:54Z",
-            "updated_ts": 1787582154
+            "link": "https://drive.google.com/file/d/1xPh162XUK1sjee5b5Mkh6nmDAfSiKq--/view",
+            "run": "167",
+            "size": 4301633,
+            "updated_at": "2026-08-25T06:33:27Z",
+            "updated_ts": 1787639607
           },
           "tienovanie": {
-            "download": "https://drive.google.com/uc?export=download&id=1zmCPkCtD7kKHwvifr4qfir2Wvaa1zpQ2",
+            "download": "https://drive.google.com/uc?export=download&id=1j_EcL3tnyWT6SbnPo_WB-wAAWYM1pwWU",
             "file": "trnavsky-tienovanie.zip",
             "formats": {
               "aar": {
-                "download": "https://drive.google.com/uc?export=download&id=1xIrU51XV7g3D0MJVOh1_AkruOOCDZQH4",
+                "download": "https://drive.google.com/uc?export=download&id=12BMUpot1QF9nu-JrfT_Ehq7bgcGf4ETq",
                 "file": "trnavsky-tienovanie.aar",
-                "link": "https://drive.google.com/file/d/1xIrU51XV7g3D0MJVOh1_AkruOOCDZQH4/view",
-                "run": "165",
-                "size": 39626393,
-                "updated_at": "2026-08-24T14:36:39Z",
-                "updated_ts": 1787582199
+                "link": "https://drive.google.com/file/d/12BMUpot1QF9nu-JrfT_Ehq7bgcGf4ETq/view",
+                "run": "167",
+                "size": 39626519,
+                "updated_at": "2026-08-25T06:34:07Z",
+                "updated_ts": 1787639647
               },
               "zip": {
-                "download": "https://drive.google.com/uc?export=download&id=1zmCPkCtD7kKHwvifr4qfir2Wvaa1zpQ2",
+                "download": "https://drive.google.com/uc?export=download&id=1j_EcL3tnyWT6SbnPo_WB-wAAWYM1pwWU",
                 "file": "trnavsky-tienovanie.zip",
-                "link": "https://drive.google.com/file/d/1zmCPkCtD7kKHwvifr4qfir2Wvaa1zpQ2/view",
-                "run": "165",
-                "size": 39586987,
-                "updated_at": "2026-08-24T14:35:54Z",
-                "updated_ts": 1787582154
+                "link": "https://drive.google.com/file/d/1j_EcL3tnyWT6SbnPo_WB-wAAWYM1pwWU/view",
+                "run": "167",
+                "size": 39587031,
+                "updated_at": "2026-08-25T06:33:27Z",
+                "updated_ts": 1787639607
               }
             },
-            "link": "https://drive.google.com/file/d/1zmCPkCtD7kKHwvifr4qfir2Wvaa1zpQ2/view",
-            "run": "165",
-            "size": 39586987,
-            "updated_at": "2026-08-24T14:35:54Z",
-            "updated_ts": 1787582154
+            "link": "https://drive.google.com/file/d/1j_EcL3tnyWT6SbnPo_WB-wAAWYM1pwWU/view",
+            "run": "167",
+            "size": 39587031,
+            "updated_at": "2026-08-25T06:33:27Z",
+            "updated_ts": 1787639607
           },
           "vrstevnice-skaly": {
-            "download": "https://drive.google.com/uc?export=download&id=1JobYzp3WddNutTgZtvjbqW0dnUW3STvx",
+            "download": "https://drive.google.com/uc?export=download&id=1U9K6_AyK6mqlvbQIvchk9sDeI9DPAcBd",
             "file": "trnavsky-vrstevnice-skaly.zip",
             "formats": {
               "aar": {
-                "download": "https://drive.google.com/uc?export=download&id=1xkq3RhseLTNrjjF9thitSFWuOXlnqJVm",
+                "download": "https://drive.google.com/uc?export=download&id=1shDlMPTItGZb7QMR7gCqM_sMKszTqs2w",
                 "file": "trnavsky-vrstevnice-skaly.aar",
-                "link": "https://drive.google.com/file/d/1xkq3RhseLTNrjjF9thitSFWuOXlnqJVm/view",
-                "run": "165",
-                "size": 48295992,
-                "updated_at": "2026-08-24T14:36:39Z",
-                "updated_ts": 1787582199
+                "link": "https://drive.google.com/file/d/1shDlMPTItGZb7QMR7gCqM_sMKszTqs2w/view",
+                "run": "167",
+                "size": 48116269,
+                "updated_at": "2026-08-25T06:34:07Z",
+                "updated_ts": 1787639647
               },
               "zip": {
-                "download": "https://drive.google.com/uc?export=download&id=1JobYzp3WddNutTgZtvjbqW0dnUW3STvx",
+                "download": "https://drive.google.com/uc?export=download&id=1U9K6_AyK6mqlvbQIvchk9sDeI9DPAcBd",
                 "file": "trnavsky-vrstevnice-skaly.zip",
-                "link": "https://drive.google.com/file/d/1JobYzp3WddNutTgZtvjbqW0dnUW3STvx/view",
-                "run": "165",
-                "size": 47711032,
-                "updated_at": "2026-08-24T14:35:54Z",
-                "updated_ts": 1787582154
+                "link": "https://drive.google.com/file/d/1U9K6_AyK6mqlvbQIvchk9sDeI9DPAcBd/view",
+                "run": "167",
+                "size": 47530984,
+                "updated_at": "2026-08-25T06:33:27Z",
+                "updated_ts": 1787639607
               }
             },
-            "link": "https://drive.google.com/file/d/1JobYzp3WddNutTgZtvjbqW0dnUW3STvx/view",
-            "run": "165",
-            "size": 47711032,
-            "updated_at": "2026-08-24T14:35:54Z",
-            "updated_ts": 1787582154
+            "link": "https://drive.google.com/file/d/1U9K6_AyK6mqlvbQIvchk9sDeI9DPAcBd/view",
+            "run": "167",
+            "size": 47530984,
+            "updated_at": "2026-08-25T06:33:27Z",
+            "updated_ts": 1787639607
           }
         },
         "maxzoom": 16,
         "name": "Trnavský kraj",
         "roads_maxzoom": 15,
-        "rock_slope": 49,
+        "rock_slope": 50,
         "rock_source": "dmr5",
         "rocks_maxzoom": 16,
-        "run": "165",
+        "run": "167",
         "terrain_maxzoom": 13,
         "terrain_source": "dmr5",
         "tiles": {
@@ -576,8 +576,8 @@
           "trails": "tiles/trnavsky-trails.pmtiles"
         },
         "trails_maxzoom": 14,
-        "updated_at": "2026-08-24T14:36:39Z",
-        "updated_ts": 1787582199
+        "updated_at": "2026-08-25T06:34:07Z",
+        "updated_ts": 1787639647
       }
     }
   }

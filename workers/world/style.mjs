@@ -25,7 +25,7 @@
  *   node workers/world/style.mjs --out=_site/styles --maxzoom=6
  *   node workers/world/style.mjs --out=_site/styles --base-url=https://…/svet
  */
-import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { THEMES } from "../../poc/web/themes.js";
@@ -63,13 +63,17 @@ const VRSTVY = new Set(VARIANTY[variant].layers);
 // stanú absolútne (mapa hosťovaná na URL).
 const base = (args["base-url"] || "").replace(/\/$/, "");
 const url = (cesta) => (base ? `${base}/${cesta}` : cesta);
-// Glyfy sú v balíku vedľa dlaždíc (sťahuje ich `workers/assets/glyphs.sh`).
-// Keď sa nestiahli, štýl siahne na verejnú službu – mapa bez nápisov je
-// horšia než mapa s cudzími nápismi.
-const glyphs = args.glyphs
-  || (existsSync("_site/fonts")
-    ? url("fonts/{fontstack}/{range}.pbf")
-    : "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf");
+// GLYFY V BALÍKU NIE SÚ. Boli – odkaz sem mieril relatívne, vedľa dlaždíc –
+// a `publish-map.py` ich preto ako jedinému balíku nechával. Odkedy si tri
+// orezané stacky nesie v sebe appka (`skifahrer/rikimaps`, `GlyphStore`)
+// a `glyphs` si pri načítaní prepíše na ne, je kópia v balíku mŕtva váha
+// a pri strope 15 MB na podobu `basic` to nie je zanedbateľná váha.
+//
+// Adresa tu ostáva preto, aby mal ODKIAĽ BRAŤ ten, kto nie je appka: rozbalený
+// balík vo webovom vieweri. Je to tá istá verejná služba, na ktorú siaha
+// `workers/deploy/site.sh` aj `workers/styles/build.mjs`, keď lokálne glyfy
+// nie sú – mapa s cudzími nápismi je lepšia než mapa bez nápisov.
+const glyphs = args.glyphs || "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf";
 
 // Tie isté fontstacky, aké kopíruje `workers/assets/glyphs.sh` (hľadá presne
 // `Noto Sans Regular` / `Bold` / `Italic`).

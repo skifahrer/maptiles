@@ -10,24 +10,32 @@ balíky a nahrajú na Drive do priečinka podľa toho, čoho sa mapa týka:
         presovsky-vysoke_tatry.zip                    základná mapa, BEZ nižšie
                                                       (ale S hľadaním a navigáciou –
                                                       tie sú jej časti, nie balíky;
-                                                      bez glyfov a viewera – tie sú na Pages)
+                                                      bez glyfov a viewera – viď nižšie)
         presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy
         presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice
         presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
 
-GLYFY A WEBOVÝ VIEWER SA NEBALIA – SÚ NA PAGES. Fonty boli po dlaždiciach
-druhá najväčšia vec v balíku (tri fontstacky Noto Sans po ~34 MB, celý unicode)
-a mapa kraja z nich použije zlomok; viewer (`index.html` a `*.js` z `poc/web`)
-je zase web, ktorý si aplikácia nespúšťa – má vlastnú mapu. Oboje ostáva v
-`_site`, teda na Pages, takže sa nič nestráca: manifest v balíku nesie
-ABSOLÚTNU adresu glyfov (`site.sh` ju skladá z `$BASE`), takže štýl vie, odkiaľ
-si ich vziať.
+GLYFY A WEBOVÝ VIEWER SA NEBALIA. Fonty boli po dlaždiciach druhá najväčšia vec
+v balíku (tri fontstacky Noto Sans po ~34 MB, celý unicode) a mapa kraja z nich
+použije zlomok; viewer (`index.html` a `*.js` z `poc/web`) je zase web, ktorý si
+aplikácia nespúšťa – má vlastnú mapu. Oboje ostáva v `_site`, teda na Pages.
 
-A NIE JE TO NATVRDO: glyfy sa vynechajú PRÁVE VTEDY, keď na ne manifest
-odkazuje absolútnou adresou. Mapa sveta má v manifeste `fonts/{fontstack}/…`,
-teda odkaz DO BALÍKA (na Pages nejde a jej glyfy sú orezané na stovky kB) –
-tej sa preto nechajú. Jedna otázka, jedna odpoveď: kde si štýl glyfy pýta,
-tam musia byť.
+KDE SÚ TEDA GLYFY. Na dvoch miestach, a ani jedno z nich nie je balík mapy:
+
+    web       na Pages. Manifest v balíku nesie ich ABSOLÚTNU adresu (`site.sh`
+              ju skladá z `$BASE`), takže štýl vie, odkiaľ si ich vziať.
+    aplikácia VO VLASTNOM BINÁRE. `skifahrer/rikimaps` si tri orezané stacky
+              (3,5 MB) nesie sama a štýlu prepíše `glyphs` na ne pri načítaní –
+              inak by offline mapa na hrebeni siahala na Pages a nemala ani
+              jedno písmeno.
+
+PRETO SA VYNECHÁVAJÚ VŽDY, nie podľa tvaru adresy v manifeste. Kým glyfy nosila
+appka v balíku, bolo rozhodnutie odvodené z dát: „vynechaj ich práve vtedy, keď
+na ne manifest odkazuje absolútne“, lebo pri relatívnom odkaze (mapa sveta) bol
+balík jediné miesto, kde ich štýl našiel. Odkedy ich má appka v sebe, to
+neplatí ani tam – a „keď sa manifest nedá prečítať, nechaj ich“ znamenalo
+desiatky MB navyše zakaždým, keď sa `_site` zložilo v inom poradí (prvý ostrý
+beh `.aar` presne tak dopadol).
 
 ZÁKLADNÁ MAPA NEMÁ VRSTEVNICE, SKALY ANI TIEŇOVANIE. Sú to ťažké vrstvy
 z výškového modelu, ktoré mapa na to, aby sa nakreslila, nepotrebuje, a majú
@@ -117,7 +125,7 @@ subory = load("deploy_subory", "subory.py")     # čo je v ktorom balíku
 # Mená nakrátko: čítajú sa v `main()` vedľa seba a `subory.subory` by bolo
 # horšie čitateľné než to, čo tie funkcie robia.
 casti_baliku = subory.casti_baliku
-glyfy_su_inde = subory.glyfy_su_inde
+kde_su_glyfy = subory.kde_su_glyfy
 manifest_data = subory.manifest_data
 mimo_balika = subory.mimo_balika
 tienovanie_subory = subory.tienovanie_subory
@@ -351,8 +359,12 @@ def obsah(kind, man, fmt="zip", casti=None):
         "vrstvy": vrstvy(),
         # ČO V BALÍKU NIE JE A KDE TO JE. Mlčanie sa dá čítať ako „zabudlo sa
         # to pribaliť“ – to isté pravidlo, akým sa tu píše `bez_skal`.
-        "bez_glyfov": glyfy_su_inde(man),
+        # Vždy `True` – glyfy sa nebalia nikdy (rozpis v hlavičke). Pole ostáva,
+        # lebo `obsah.json` má povedať, čo v balíku NIE JE: mlčanie sa dá čítať
+        # ako „zabudlo sa to pribaliť“.
+        "bez_glyfov": True,
         "glyphs": man.get("glyphs") or "",
+        "glyfy_kde": kde_su_glyfy(man),
         "bez_viewera": True,
         "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "run": env("GITHUB_RUN_NUMBER"),
@@ -466,9 +478,9 @@ def main():
     # `_site` mapu ani neobsahuje, takže by premerala PRÁZDNO a katalóg by
     # o mape, ktorá hľadanie má, tvrdil, že ho nemá.
     casti = [] if args.only else casti_baliku(args.site, man)
-    # Glyfy a viewer sú na Pages (rozpis v hlavičke). Musí byť VIDIEŤ, koľko
-    # toho balík takto nenesie – vynechaných 90 MB potichu je to isté ako
-    # 90 MB navyše potichu.
+    # Viewer je na Pages a glyfy si nesie appka (rozpis v hlavičke). Musí byť
+    # VIDIEŤ, koľko toho balík takto nenesie – vynechaných 90 MB potichu je to
+    # isté ako 90 MB navyše potichu.
     von_pack, von_dovody = mimo_balika(args.site, man)
     for popis, kolko, bajtov in von_dovody:
         log(f"Do balíka nejde {popis}: {kolko} súborov, "

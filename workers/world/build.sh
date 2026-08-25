@@ -129,8 +129,14 @@ fi
 
 # ---------- 4. glyfy a štýly ----------
 # Glyfy sťahuje TEN ISTÝ skript ako pri mape kraja: „ako sa dostanú fonty do
-# `_site`" je jedna otázka a dve kópie by sa raz rozišli. Keď sa nestiahnu,
-# štýl siahne na verejnú službu a mapa ide ďalej.
+# `_site`" je jedna otázka a dve kópie by sa raz rozišli.
+#
+# DO BALÍKA UŽ NEJDÚ. `publish-map.py` ich nebalí nikam – appka si tri orezané
+# stacky nesie v sebe (`skifahrer/rikimaps`, `GlyphStore`) a `glyphs` si pri
+# načítaní prepíše na ne. Kroky nižšie teda tvarujú už len `_site`, teda to, čo
+# uvidí lokálny náhľad; na veľkosť balíka nemajú vplyv. Nechávajú sa preto, že
+# `_site` má hovoriť pravdu o tom, z čoho sa mapa skladá – nie preto, že by
+# ešte niečo šetrili.
 T_A=$(date +%s)
 workers/assets/glyphs.sh
 # KURZÍVA IDE PREČ. Štýl sveta má popisky len v dvoch rezoch (`Noto Sans
@@ -189,7 +195,13 @@ jq -n \
     layers: ($layers | split(",") | map(select(length > 0))),
     built_at: $built,
     maxzoom: $maxzoom,
-    glyphs: "fonts/{fontstack}/{range}.pbf",
+    # GLYFY V BALÍKU NIE SÚ – appka si ich nesie v sebe (`skifahrer/rikimaps`,
+    # `GlyphStore`) a `publish-map.py` ich preto nebalí ani sem. Adresa tu je
+    # pre toho, kto appka nie je: rozbalený balík vo webovom vieweri. Tá istá
+    # verejná služba, na akú siaha `site.sh` aj `styles/build.mjs` bez lokálnych
+    # glyfov – a tá istá, akú si píše `workers/world/style.mjs`, lebo je to to
+    # isté tvrdenie a dve kópie by sa raz rozišli.
+    glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
     styles: $styles,
     default_style: ("styles/" + $region + "-svetla.json"),
     attribution: "© OpenStreetMap prispievatelia, Geofabrik, Natural Earth",
