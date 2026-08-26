@@ -24,8 +24,9 @@ ktoré popisuje. Rozsah je pritom sľub (pravidlo 2), rovnako ako meno assetu.
 
 ČO SA KONTROLUJE:
 
-  1. `terrain/tiles.py` má `NODATA` mimo rozsahu skutočných výšok a `warp_level`
-     ho dáva `gdalwarpu` – nie nulu ani inú platnú výšku,
+  1. `terrain/vyska.py` má `NODATA` mimo rozsahu skutočných výšok a
+     `warp_level` v `terrain/tiles.py` ho dáva `gdalwarpu` – nie nulu ani inú
+     platnú výšku,
   2. warpnutá mriežka ide cez `vypln_nodata` (bez toho by sentinel skončil
      rovno v dlaždici, čo je stena stokrát vyššia než tá pôvodná),
   3. dlaždica bez jediného platného pixela sa nezapíše,
@@ -42,6 +43,10 @@ import sys
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _WORKERS = os.path.dirname(_HERE)
 TILES = os.path.join(_WORKERS, "terrain", "tiles.py")
+# Sentinel a obe výplne bývajú vo `vyska.py` vedľa – `tiles.py` je plán, warp
+# a kódovanie. Kontrola sa preto pozerá do oboch: konštanta a výplň sú tam,
+# `-dstnodata` a zahodenie prázdnej dlaždice tu.
+VYSKA = os.path.join(_WORKERS, "terrain", "vyska.py")
 PACK = os.path.join(_WORKERS, "terrain", "pack.py")
 BUILD = os.path.join(_WORKERS, "terrain", "build.sh")
 
@@ -55,13 +60,13 @@ def kod(path):
 
 
 bad = []
-tiles, pack, build = kod(TILES), kod(PACK), kod(BUILD)
+tiles, vyska, pack, build = kod(TILES), kod(VYSKA), kod(PACK), kod(BUILD)
 
 # ---- 1. sentinel mimo rozsahu skutočných výšok ----
-m = re.search(r"^NODATA\s*=\s*(-?[\d.]+)", tiles, re.M)
+m = re.search(r"^NODATA\s*=\s*(-?[\d.]+)", vyska, re.M)
 if not m:
     bad.append(
-        f"{TILES}: chýba konštanta `NODATA`. Hodnota, ktorou sa označí "
+        f"{VYSKA}: chýba konštanta `NODATA`. Hodnota, ktorou sa označí "
         f"„model tu nie je“, musí byť pomenovaná na jednom mieste – warp ju "
         f"zapisuje a slučka podľa nej pozná prázdnu dlaždicu.")
 else:
@@ -70,7 +75,7 @@ else:
     # platná výška a v terrariu sa od chýbajúcej hodnoty neodlíši.
     if -430 <= v <= 8849:
         bad.append(
-            f"{TILES}: `NODATA = {v}` je PLATNÁ nadmorská výška, takže sa "
+            f"{VYSKA}: `NODATA = {v}` je PLATNÁ nadmorská výška, takže sa "
             f"„model tu nie je“ nedá odlíšiť od nameranej hodnoty. Presne "
             f"toto robila nula: na hranici dát z nej bola stena (nameraných "
             f"668 m na 407 m/px = 59°) a za ňou rovina bez tieňovania.")
@@ -82,7 +87,11 @@ if not re.search(r'"-dstnodata",\s*str\(NODATA\)', tiles):
         f"a v dlaždici ostane hodnota, ktorú nikto nečakal.")
 
 # ---- 2. a 3. warpnutá mriežka sa dopĺňa a prázdna dlaždica sa nezapíše ----
-if "vypln_nodata(" not in tiles.split("def vypln_nodata", 1)[-1]:
+if "def vypln_nodata" not in vyska:
+    bad.append(
+        f"{VYSKA}: chýba `vypln_nodata` – výplň dier v modeli. Konštanta by "
+        f"na ich hranici spravila stenu, tak sa dopĺňa okolím.")
+if "vypln_nodata(" not in tiles:
     bad.append(
         f"{TILES}: `vypln_nodata` sa nikde nepoužíva. Bez nej ide sentinel "
         f"({m.group(1) if m else '−9999'} m) rovno do dlaždice a stena je "

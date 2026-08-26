@@ -50,6 +50,9 @@ TILES = os.path.join(_WORKERS, "terrain", "tiles.py")
 BUILD = os.path.join(_WORKERS, "terrain", "build.sh")
 KEYS = os.path.join(_WORKERS, "plan", "cache-keys.sh")
 MASK = os.path.join(_WORKERS, "lib", "region-mask.py")
+# Práca nad mriežkou výšok (výplň dier v modeli, pokračovanie za hranicou
+# kraja) leží vo `vyska.py` vedľa `tiles.py` – kontrola sa pozerá do oboch.
+VYSKA = os.path.join(_WORKERS, "terrain", "vyska.py")
 # Rozhodovanie („aký krok, ktorý resampling") sa SPÚŠŤA, nie číta zo zdrojáku –
 # a preto býva vo `lib/cell.py`, ktoré nemá numpy. Lintovací job má len
 # `checkout` a holý `python3`: `terrain/tiles.py` by sa tu naimportovať nedalo
@@ -255,6 +258,10 @@ def main():
                    "okolím, nie je taká dlaždica rovina a `je_rovina` ju "
                    "nezachytí – tieňovanie by rástlo do dlaždíc, ktoré s "
                    "krajom nemajú spoločné nič.")
+    if "def pokracuj_okolim" not in open(VYSKA).read():
+        bad.append("`workers/terrain/vyska.py` už nemá `pokracuj_okolim` – "
+                   "to je to, čím výška za hranicou kraja pokračuje okolím "
+                   "namiesto roviny, ktorá tam robila stenu.")
     if "def pixel_mask" not in open(MASK).read():
         bad.append("`workers/lib/region-mask.py` už nemá `pixel_mask` – "
                    "na to, ktoré PIXELY ležia v kraji, je jedna odpoveď "

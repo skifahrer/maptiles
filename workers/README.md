@@ -1631,7 +1631,9 @@ Namerané na Prešovskom kraji ako plocha vyrobených dlaždíc proti ploche kra
 | po | 1,07× | 1,04× | **1,02×** | 1,00× | 1,00× | 1,00× | 1,00× |
 
 Ktoré pixely dlaždice sú ešte kraj, povie `pixel_mask` v tom istom súbore –
-a za nimi sa výška **dopĺňa okolím** (`pokracuj_okolim` v `terrain/tiles.py`).
+a za nimi sa výška **dopĺňa okolím** ([`terrain/vyska.py`](terrain/vyska.py) —
+je tam aj výplň dier v modeli; obe odpovede na „tu výšku nemáme" bývajú vedľa
+seba, a `tiles.py` je plán, warp a kódovanie).
 V mape to dovtedy zakrývala až plocha `mimo` zo štýlu, čiže to bola tichá
 chyba: vrstva bola dvakrát väčšia než región a bolo to vidieť, len keď sa
 maska nekreslila (a v 3D pod iným uhlom).
