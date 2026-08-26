@@ -10,9 +10,11 @@
 # tieňovanie zo Sonnyho a z DMR 3.5 nie je to isté a jedno sa nesmie vydávať
 # za druhé – preto sa meno pri ústupe na Sonnyho prepočíta.
 #
-# A NESIE AJ PODOBU KÓDOVANIA (`-v5`). Meno je sľub, a pri sklade je to sľub
-# aj o tom, čo v tých dlaždiciach je: `v5` má mimo kraja rovinu (tieňovanie
-# teda končí na hranici regiónu, nie až na hranici dlaždice, ktorá sa ho
+# A NESIE AJ PODOBU KÓDOVANIA (`-v6`). Meno je sľub, a pri sklade je to sľub
+# aj o tom, čo v tých dlaždiciach je: `v6` dopĺňa výšku za hranicou kraja
+# okolím (`v5` ju tam zrovnával na rovinu 0 m, čo bola po obvode regiónu
+# zvislá stena a v 3D múr), `v5` orezáva tieňovanie na kraj po pixeloch
+# (končí teda na hranici regiónu, nie až na hranici dlaždice, ktorá sa ho
 # dotkla), `v4` priemeruje až od dvojnásobku bunky modelu (rozpis vo
 # `workers/lib/cell.py`), `v3` mal zvislý krok podľa zoomu, ale tesne nad
 # bunkou ešte `average` – a s ním mriežku; staršie majú navyše výšku
@@ -58,7 +60,7 @@ REBUILD="${TERRAIN_REBUILD:-false}"
 # každom behu počítalo odznova (a keď v sklade ostala stará `-v3`, vytiahol sa
 # z nej zoom a stiahnuť sa skúsil súbor, ktorý neexistuje). Nič nespadlo, len
 # to trvalo – pravidlo 8 v čistej podobe.
-ENC_VER=v5
+ENC_VER=v6
 asset_name() { echo "terrain-${REGION_KEY}-${TDEM}-z${1}-${ENC_VER}.pmtiles"; }
 
 # Hotové = leží tu hotový archív. Kým to bol strom PNG, stačilo „priečinok
@@ -133,10 +135,12 @@ if ! have_tiles; then
   fi
   echo "::group::Výškové dlaždice do z$TZ z modelu $TDEM (strop ${TBUDGET_MB} MB)"
   # `--poly`: dlaždice mimo kraja sa nekreslia (smie prečnievať pol dlaždice)
-  # a v tých, čo cez hranicu prečnievajú, je mimo kraja rovina – hillshade
-  # kreslí podľa sklonu, takže tieňovanie sa zastaví na hranici regiónu a nie
-  # až na okraji dlaždice. Bez toho presahovalo na z10 na dvojnásobok plochy
-  # kraja (namerané v hlavičke `tiles.py`).
+  # a v tých, čo cez hranicu prečnievajú, sa za hranicou výška dopĺňa okolím
+  # a dlaždica bez jediného pixela kraja sa nezapíše – tieňovanie sa tak
+  # zastaví na hranici regiónu a nie až na okraji dlaždice. Bez toho
+  # presahovalo na z10 na dvojnásobok plochy kraja (namerané v hlavičke
+  # `tiles.py`), a keď sa mimo kraja zrovnávalo na rovinu, bola z tej hranice
+  # zvislá stena.
   # Keď súbor nie je (polygón sa nestiahol), `tiles.py` to povie a kreslí celý
   # bbox ako predtým – vrstva teda nikdy nezmizne, len je väčšia.
   python3 workers/terrain/tiles.py --dem="dem/$TDEM/all.vrt" --bbox="$BBOX" \
