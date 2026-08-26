@@ -4,10 +4,10 @@ Maska kraja: „patrí toto miesto (alebo táto dlaždica, alebo tento pixel) do
 kraja?"
 
 Pýtajú sa jej vrstvy z výškového modelu – tieňovanie sa podľa nej rozhoduje,
-ktoré dlaždice vôbec kresliť (`tile_touches`) a čo v tých, čo cez hranicu
-prečnievajú, zrovnať na rovinu (`pixel_mask`), a vrstevnice so skalami ju
-dostanú ako `-cutline` do gdalwarpu. Polygón vyrába
-`workers/plan/region-poly.py`.
+ktoré dlaždice vôbec kresliť (`tile_touches`) a ktoré pixely v tých, čo cez
+hranicu prečnievajú, sú ešte kraj (`pixel_mask`; za ním sa výška dopĺňa
+okolím), a vrstevnice so skalami ju dostanú ako `-cutline` do gdalwarpu.
+Polygón vyrába `workers/plan/region-poly.py`.
 
 SÚ TO DVE HRUBOSTI JEDNEJ ODPOVEDE a obe treba: dlaždicová sa nedá spraviť
 jemnejšie než dlaždica (a tá je na z8 široká 156 km), pixelová zase nemá zmysel
@@ -138,8 +138,12 @@ def mask_from_file(path, bbox, cells=2048):
 #
 # Teda dvojnásobok kraja aj viac – presne to, čo je na mape vidieť ako
 # tieňovaný reliéf za jeho hranicou. Odpoveď na to je jemnejšia otázka: „ktoré
-# PIXELY rastra ležia v kraji?" Pixely mimo dostanú v `terrain/tiles.py` rovinu
-# (výšku 0), a hillshade z roviny nekreslí nič – jeho krytie ide so sklonom.
+# PIXELY rastra ležia v kraji?" Za nimi `terrain/tiles.py` výšku DOPĹŇA
+# OKOLÍM (`pokracuj_okolim`), nie zrovnáva na rovinu: rovina 0 m by na hranici
+# kraja spravila zvislú stenu (namerané 89,4° proti 17,9°, ktoré má terén sám)
+# a v 3D múr po obvode regiónu, kým pokračovanie nepridá sklon, ktorý by terén
+# nemal – a ďalej ako o kúsok za hranicu sa nedostane, lebo dlaždica bez
+# jediného pixela kraja sa nezapíše.
 
 
 def _edges(rings):
@@ -159,11 +163,11 @@ def _edges(rings):
 def _dilate(mask, r, np):
     """Maska rozšírená o `r` pixelov (štvorcové okolie, separabilne).
 
-    PREČO SA VÔBEC ROZŠIRUJE. Hranica dát a roviny je pre hillshade zvislá
-    stena, teda najsilnejší sklon, aký v dlaždici môže byť – a keby stála
-    presne na hranici kraja, bol by z nej svetlý či tmavý prstenec po jej
-    VNÚTORNEJ strane, čiže v mape. S rezervou pár pixelov padne stena tesne
-    ZA hranicu, kde ju v štýle prekrýva plocha `mimo` (`deploy/region-mask.py`).
+    PREČO SA VÔBEC ROZŠIRUJE. Tieňovanie sa počíta zo SUSEDNÝCH pixelov
+    a klient si dlaždicu ešte prevzorkuje, takže pixel presne na hranici kraja
+    by mal susedov už z doplneného okolia. S rezervou pár pixelov stojí
+    tieňovanie na hranici na skutočnom teréne a dopĺňa sa až za ňou, kde je
+    v štýle aj tak plocha `mimo` (`deploy/region-mask.py`).
     """
     if r <= 0:
         return mask

@@ -1630,18 +1630,46 @@ Namerané na Prešovskom kraji ako plocha vyrobených dlaždíc proti ploche kra
 | pred | 6,2× | 3,8× | **2,2×** | 1,7× | 1,4× | 1,2× | 1,11× |
 | po | 1,07× | 1,04× | **1,02×** | 1,00× | 1,00× | 1,00× | 1,00× |
 
-Čo v dlaždici padne mimo kraj, dostane **rovinu** (výška 0, `pixel_mask`
-v tom istom súbore). Hillshade kreslí krytím podľa SKLONU, takže z roviny
-nenakreslí nič – tieňovanie tým končí na hranici regiónu aj vnútri dlaždice,
-ktorá cez ňu prečnieva. V mape to dovtedy zakrývala až plocha `mimo` zo štýlu,
-čiže to bola tichá chyba: vrstva bola dvakrát väčšia než región a bolo to
-vidieť, len keď sa maska nekreslila (a v 3D pod iným uhlom).
+Ktoré pixely dlaždice sú ešte kraj, povie `pixel_mask` v tom istom súbore –
+a za nimi sa výška **dopĺňa okolím** (`pokracuj_okolim` v `terrain/tiles.py`).
+V mape to dovtedy zakrývala až plocha `mimo` zo štýlu, čiže to bola tichá
+chyba: vrstva bola dvakrát väčšia než región a bolo to vidieť, len keď sa
+maska nekreslila (a v 3D pod iným uhlom).
 
-Hrana medzi terénom a rovinou je pre hillshade **zvislá stena**, takže nesmie
-stáť presne na hranici: `--edge` (2 px) ju posunie za ňu, kde ju plocha `mimo`
-prekrýva. Dlaždíc je pri tom menej, nie viac – tie celé mimo kraja sú po
-vynulovaní rovina a `je_rovina` ich vynechá. Podoba kódovania preto ide
-z `v4` na **`v5`** (meno assetu v sklade aj kľúč cache), inak by build vrátil
+**Rovina za hranicou bola stena.** Kým tam bola výška 0, spadol terén medzi
+dvoma pixelmi zo 600 m na nulu – a to je pre hillshade (derivácia výšky)
+zvislý útes, v 3D doslova múr po obvode regiónu. Namerané celou pipeline na
+umelom teréne (z13, 12,5 m/px, členitý polygón kraja; terén sám má v kraji
+najväčší sklon 17,9° a stredný 8,0°):
+
+| orez | najväčší 1–4 px za | najväčší 5–12 px za | stredný 1–8 px za | stredný 33–128 px za |
+|---|--:|--:|--:|--:|
+| rovina 0 m | **89,4°** | 89,4° | **79,2°** | 0,0° |
+| pokračovanie okolím | **30,6°** | 22,8° | **7,0°** | 5,5° |
+
+`--edge` (2 px) stenu len **posúval** za hranicu, kde ju plocha `mimo`
+prekrýva – lenže schovaná stena je stále stena a v 3D, pri prevýšení a všade,
+kde sa maska nekreslí, ju bolo vidieť. Pokračovanie stenu nepostaví nikde;
+`--edge` ostáva, ale s inou úlohou: koľko pixelov skutočného terénu sa nechá
+ešte za hranicou, nech tieňovanie NA hranici stojí na okolí a nie na výplni.
+
+Dopĺňa sa **pyramídou priemerov** (pull-push), nie po riadkoch a stĺpcoch ako
+`vypln_nodata` za okrajom modelu: tá je stavaná na rovný okraj a na členitej
+hranici kraja spraví vlastnú stenu (namerané 825 m medzi dvoma susednými
+riadkami dva pixely za hranicou, čiže 89°). Šev medzi doplneným a skutočným
+sa na každej úrovni zvarí štyrmi priechodmi priemeru – bez nich má p99 švov
+42,2°, s nimi 24,8°, čo je p99 terénu (20,9°).
+
+Cenou je, že tieňovanie za hranicou nekončí skokom, ale slabne (8,0° v kraji
+→ 5,5° stotridsať pixelov za hranicou). Ten pás je celý ZA hranicou pod
+plochou `mimo` a ďalej než o kúsok sa nedostane: **dlaždica, v ktorej nie je
+ani jeden pixel kraja, sa nezapíše vôbec** – to isté, čo predtým robila rovina
+cez `je_rovina`, len sa to pýta priamo masky. Dlaždíc je preto rovnako veľa
+ako s rovinou a sú o pár percent väčšie (kraj na 54 % bboxu: 202 dlaždíc
+a 8,7 MB proti 203 a 8,2 MB) – doplnené výšky sa preto zaokrúhľujú na
+`SLOPE_EPS × pixel`, čo je krok, pod ktorým je sklon z kvantizácie
+neviditeľný (669 kB → 444 kB na skúšobnej mriežke). Podoba kódovania ide
+z `v5` na **`v6`** (meno assetu v sklade aj kľúč cache), inak by build vrátil
 staré dlaždice a oprava by sa na už spočítanom regióne neprejavila.
 
 Maska je rastrová a **bez shapely** – tá istá úvaha ako v `dem/coverage.py`: pri
