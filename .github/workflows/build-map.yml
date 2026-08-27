@@ -190,7 +190,7 @@ on:
       publish_pages:
         description: "Nasadiť hotovú mapu na GitHub Pages (odškrtnuté = len na Drive)"
         required: false
-        default: true
+        default: false
         type: boolean
       # Napr. `crop_bbox=18.9,49.1,19.2,49.3 size_limit_mb=1200`.
       # Veľkosť rýchleho testu: `test_km2=8` (default 4).
