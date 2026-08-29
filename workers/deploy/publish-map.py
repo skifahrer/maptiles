@@ -292,12 +292,18 @@ def vrstvy():
     else:
         out.append("bez_tienovania")
 
-    # Trasy a prvky sa píšu, len keď sú – nie sú to vrstvy z výškového modelu
-    # a meno by bez toho narástlo o dve „bez_" na každom behu.
+    # Trasy, prvky a body sa píšu, len keď sú – nie sú to vrstvy z výškového
+    # modelu a meno by bez toho narástlo o „bez_" na každom behu.
     if env("TRAILS_ENABLED") == "true":
         out.append("trasy")
     if env("FEATURES_ENABLED") == "true":
         out.append("prvky")
+    # Body sú DRUHÝ výstup toho istého jobu ako prvky (workers/features/
+    # points.yml, rozpis prečo v jeho hlavičke) – vlastný token napriek tomu,
+    # lebo majú vlastný balík na stiahnutie (`body`) a katalóg/`obsah.json`
+    # majú o ňom vedieť rovnako ako o trasách či obmedzeniach.
+    if env("POINTS_ENABLED") == "true":
+        out.append("body")
     if env("ROADS_ENABLED") == "true":
         out.append("obmedzenia")
     return out

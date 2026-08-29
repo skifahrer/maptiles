@@ -2363,6 +2363,7 @@ jobs:
           CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           FEATURES_ENABLED: ${{ needs.features.outputs.enabled || 'false' }}
+          POINTS_ENABLED: ${{ needs.features.outputs.points_enabled || 'false' }}
           ROADS_ENABLED: ${{ needs.roads.outputs.enabled || 'false' }}
           REGION_KEY: ${{ needs.plan.outputs.key }}
           ROCKS_ENABLED: ${{ needs.rocks.outputs.rocks_enabled || 'false' }}
@@ -2517,6 +2518,7 @@ jobs:
           CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           FEATURES_ENABLED: ${{ needs.features.outputs.enabled || 'false' }}
+          POINTS_ENABLED: ${{ needs.features.outputs.points_enabled || 'false' }}
           ROADS_ENABLED: ${{ needs.roads.outputs.enabled || 'false' }}
           REGION_KEY: ${{ needs.plan.outputs.key }}
           ROCKS_ENABLED: ${{ needs.rocks.outputs.rocks_enabled || 'false' }}
