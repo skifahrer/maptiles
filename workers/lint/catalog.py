@@ -7,8 +7,8 @@ ležia. Je to súbor v repozitári, ktorý dopisuje BEH – a to je presne ten d
 veci, ktorá sa rozíde ticho:
 
   * mená v katalógu prestanú sedieť s menami balíkov, ktoré publikovanie
-    naozaj vyrába (`<kraj>[-<výsek>][-testNkm2]{,-vrstevnice-skaly,-tienovanie}
-    .zip`), a odkazy potom ukazujú na súbory, ktoré na Drive nie sú;
+    naozaj vyrába (`<kraj>[-<výsek>][-testNkm2]{,-vrstevnice-skaly,-tienovanie,
+    -linie,-body}.zip`), a odkazy potom ukazujú na súbory, ktoré na Drive nie sú;
   * katalóg sa zapíše aj vtedy, keď publikovanie zlyhalo – zoznam by tvrdil,
     že mapa je hotová;
   * build stratí právo zapisovať (`contents: write`) a katalóg sa ticho
@@ -24,7 +24,7 @@ import sys
 
 import yaml
 
-DRUHY = {"mapa", "vrstevnice-skaly", "tienovanie", "wikipedia"}
+DRUHY = {"mapa", "vrstevnice-skaly", "tienovanie", "linie", "body", "wikipedia"}
 # ZRUŠENÉ DRUHY – v katalógu ešte môžu byť (kraj, ktorý sa odvtedy nestaval),
 # ale publikovanie ich už NEVYRÁBA: `search` sa presťahoval DOVNÚTRA balíka
 # `mapa` a jeho veľkosť je pod ním v `casti`. Hlásiť ich ako neznámy druh by
@@ -35,7 +35,8 @@ ZRUSENE = {"search"}
 # Meno balíka: `<kraj>[-<výsek>][-testNkm2]` + prípona druhu. Sedí to s
 # `zaklad()` a `meno()` vo `workers/deploy/publish-map.py`.
 MENO = re.compile(r"^[a-z0-9_]+(-[a-z0-9_]+)*(-test[0-9.]+km2)?"
-                  r"(-vrstevnice-skaly|-tienovanie|-wikipedia|-search)?\.zip$")
+                  r"(-vrstevnice-skaly|-tienovanie|-linie|-body|-wikipedia"
+                  r"|-search)?\.zip$")
 CATALOG = "maps.json"
 # RÝCHLY TEST MÁ VLASTNÝ SÚBOR. `maps.json` je jediná odpoveď na „ktoré mapy sú
 # hotové" a mapa s terénom na 4 km² medzi ne nepatrí – uzol testu tam síce mal
