@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updated_at": "2026-08-29T19:36:27.497Z",
+  "updated_at": "2026-08-29T20:16:11.065Z",
   "icons": "osm-liberty",
   "hillshade": true,
   "palette": {},
@@ -9,6 +9,18 @@
     {
       "id": "feature-embankment",
       "before": "cliff-line"
+    },
+    {
+      "id": "feature-parking",
+      "before": "road-secondary"
+    },
+    {
+      "id": "road-tertiary-casing",
+      "before": "feature-parking"
+    },
+    {
+      "id": "road-tertiary",
+      "before": "road-shield-motorway"
     }
   ],
   "poi": {
@@ -37,6 +49,126 @@
         },
         "poi-historic": {
           "visible": true
+        },
+        "road-motorway": {
+          "paint": {
+            "line-color": "#9bd873"
+          }
+        },
+        "road-motorway-casing": {
+          "paint": {
+            "line-color": "#6fa158"
+          }
+        },
+        "road-motorway-bridge": {
+          "paint": {
+            "line-color": "#9bd873"
+          }
+        },
+        "road-motorway-casing-bridge": {
+          "paint": {
+            "line-color": "#808170"
+          }
+        },
+        "road-primary": {
+          "paint": {
+            "line-color": "#ffcc77"
+          }
+        },
+        "road-primary-casing": {
+          "paint": {
+            "line-color": "#e8a540"
+          }
+        },
+        "building-3d": {
+          "paint": {
+            "fill-extrusion-color": "#e0d4bb"
+          }
+        },
+        "road-service-casing": {
+          "paint": {
+            "line-color": "#acaaa4"
+          }
+        },
+        "feature-wall": {
+          "dash": "solid"
+        },
+        "landuse-industrial": {
+          "paint": {
+            "fill-color": "#e5e1d9"
+          }
+        },
+        "feature-parking": {
+          "paint": {
+            "fill-color": "#ffffff"
+          }
+        },
+        "road-service": {
+          "paint": {
+            "line-color": "#ececf1"
+          }
+        },
+        "road-secondary": {
+          "paint": {
+            "line-color": "#faee75"
+          }
+        },
+        "road-secondary-casing": {
+          "paint": {
+            "line-color": "#cbbf36"
+          }
+        },
+        "road-tertiary-casing": {
+          "paint": {
+            "line-color": "#b4a991"
+          }
+        },
+        "road-path": {
+          "paint": {
+            "line-color": "#ececf1"
+          },
+          "dash": "solid",
+          "outline": {
+            "color": "#828285",
+            "width": 1,
+            "opacity": 1
+          }
+        },
+        "road-footway": {
+          "paint": {
+            "line-color": "#e0e5f2"
+          },
+          "dash": "solid",
+          "outline": {
+            "color": "#a9a9b2",
+            "width": 1,
+            "opacity": 1
+          }
+        },
+        "landuse-residential": {
+          "paint": {
+            "fill-color": "#f0e7d5"
+          }
+        },
+        "road-tertiary-tunnel": {
+          "paint": {
+            "line-color": "#ffffff"
+          }
+        },
+        "road-tertiary": {
+          "paint": {
+            "line-color": "#ffffff"
+          }
+        },
+        "road-tertiary-bridge": {
+          "paint": {
+            "line-color": "#ffffff"
+          }
+        },
+        "road-tertiary-casing-bridge": {
+          "paint": {
+            "line-color": "#939492"
+          }
         }
       },
       "poi": {
