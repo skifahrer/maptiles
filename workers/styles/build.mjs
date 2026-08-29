@@ -18,8 +18,11 @@
  *   --roads      … obmedzenia na ceste (výška podjazdov a tunelov, šírka,
  *                  hmotnosť, maximálna rýchlosť), ktoré vrstva
  *                  `transportation` OpenMapTiles nenesie vôbec
- *   --features   … krajinné prvky, ktoré schéma OpenMapTiles nemá –
- *                  násypy, múry, vedenia, pramene, zjazdovky (vlastný .pmtiles)
+ *   --features   … krajinné prvky (línie a plochy), ktoré schéma OpenMapTiles
+ *                  nemá – násypy, múry, vedenia, zjazdovky (vlastný .pmtiles)
+ *   --points     … body v krajine – pramene, jaskyne, rozhľadne, pamiatky
+ *                  (workers/features/points.yml, DRUHÝ výstup toho istého
+ *                  jobu ako --features, vlastný .pmtiles)
  *   --dem-source … model, z ktorého sú vrstevnice a skaly – ide do atribúcie
  *   --dem-tiles-source … model, z ktorého sú výškové dlaždice (tieňovanie
  *                  a 3D terén). Vo formulári je to vlastný výber, takže to
@@ -86,6 +89,11 @@ const hasTrails = args.trails === "true" || args.trails === "1";
 // Krajinné prvky – to isté: vlastný .pmtiles, vlastný maxzoom, voliteľné.
 const featuresMaxzoom = Number(args["features-maxzoom"] || 15);
 const hasFeatures = args.features === "true" || args.features === "1";
+// Body v krajine (pramene, jaskyne, rozhľadne, …) – DRUHÝ výstup toho
+// istého jobu ako krajinné prvky (workers/features/points.yml), preto
+// vlastný .pmtiles, ale rovnaký maxzoom.
+const pointsMaxzoom = Number(args["points-maxzoom"] || featuresMaxzoom);
+const hasPoints = args.points === "true" || args.points === "1";
 // Obmedzenia na ceste (výška podjazdov, šírka, hmotnosť, maximálna rýchlosť)
 // – opäť vlastný .pmtiles, vlastný maxzoom a voliteľné.
 const roadsMaxzoom = Number(args["roads-maxzoom"] || 15);
@@ -338,6 +346,10 @@ for (const type of MAP_TYPES) {
         ? `pmtiles://${baseUrl}/tiles/${region}-features.pmtiles`
         : null,
       featuresMaxzoom,
+      pointsUrl: hasPoints
+        ? `pmtiles://${baseUrl}/tiles/${region}-points.pmtiles`
+        : null,
+      pointsMaxzoom,
       roadsUrl: hasRoads
         ? `pmtiles://${baseUrl}/tiles/${region}-roads.pmtiles`
         : null,
@@ -379,6 +391,7 @@ console.log(
 console.log(
   `Značené trasy: ${hasTrails ? `áno (do z${trailsMaxzoom})` : "nie"}, ` +
   `Krajinné prvky: ${hasFeatures ? `áno (do z${featuresMaxzoom})` : "nie"}, ` +
+  `Body v krajine: ${hasPoints ? `áno (do z${pointsMaxzoom})` : "nie"}, ` +
   `Obmedzenia na ceste: ${hasRoads ? `áno (do z${roadsMaxzoom})` : "nie"}, ` +
   `Vrstevnice: ${
     hasContours ? `áno (do z${contoursMaxzoom}, výšky: ${DEM_SOURCES[demSource].label})` : "nie"

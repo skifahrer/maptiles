@@ -82,6 +82,7 @@ jq -n \
   --argjson tcount "$TRAILS_COUNT" \
   --argjson features "$FEATURES_ENABLED" \
   --argjson fmaxzoom "$FEATURES_MAXZOOM" \
+  --argjson points "$POINTS_ENABLED" \
   --argjson roads "$ROADS_ENABLED" \
   --argjson rdmaxzoom "$ROADS_MAXZOOM" \
   --argjson contours "$CONTOURS_ENABLED" \
@@ -153,6 +154,15 @@ jq -n \
       + (if $features then {
         features: ("tiles/" + $region + "-features.pmtiles"),
         features_maxzoom: $fmaxzoom
+      } else {} end)
+      # Body v krajine (pramene, jaskyne, rozhľadne, …) – DRUHÝ výstup toho
+      # istého jobu ako krajinné prvky vyššie, preto vlastná položka, ale
+      # ten istý maxzoom (`$fmaxzoom`): oba súbory idú z rovnakého behu
+      # Planetileru nad rovnakým predfiltrom, len inou schémou
+      # (workers/features/points.yml, rozpis prečo v jeho hlavičke).
+      + (if $points then {
+        points: ("tiles/" + $region + "-points.pmtiles"),
+        points_maxzoom: $fmaxzoom
       } else {} end)
       # Obmedzenia na ceste – vlastný .pmtiles, takže vlastná položka
       # a vlastný prepínač. `roads_maxzoom` tu MUSÍ byť: kto ho nenájde,

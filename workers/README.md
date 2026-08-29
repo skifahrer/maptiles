@@ -1775,6 +1775,10 @@ Priečinok hovorí, čoho sa mapa týka, a čo chýba, sa vyrobí:
                                                   bez glyfov a viewera (tie sú na Pages)
     presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy (.pmtiles)
     presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice (.pmtiles)
+    presovsky-vysoke_tatry-linie.zip              značené trasy a obmedzenia na ceste –
+                                                  LÍNIE z OSM (.pmtiles)
+    presovsky-vysoke_tatry-body.zip               pramene, jaskyne, rozhľadne, … –
+                                                  BODY z OSM (.pmtiles)
     presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
 
 Každý balík je aj ako **`.aar` (Apple Archive)** – ten istý obsah, to isté
@@ -1791,6 +1795,30 @@ a vážia porovnateľne s ňou samou, takže majú vlastné balíky presne preto
 si ich človek nemusel sťahovať, keď ich nechce. Kto ich chce, rozbalí
 príslušný ZIP navrch: cesty vnútri sú tie isté ako v `_site`, takže sa dá
 rozbaliť jeden cez druhý.
+
+**Značené trasy, obmedzenia na ceste a body v krajine sú z rovnakého dôvodu
+VONKU aj zo základnej mapy** – od nej, na rozdiel od vrstevníc a skál, mapa
+vyzerá rovnako aj bez nich (kreslí sa nad hotovými cestami), takže tu ide
+výlučne o veľkosť sťahovania:
+
+| balík | čo v ňom je | z ktorých `.pmtiles` |
+|---|---|---|
+| `linie` | značené trasy a obmedzenia na ceste – ČISTO líniové dáta z OSM | `-trails`, `-roads` |
+| `body` | pramene, jaskyne, rozhľadne, pamiatky, banské dedičstvo, geodetické body | `-points` |
+
+Krajinné línie a plochy (`-features.pmtiles`: násypy, múry, ploty, vedenia,
+parkoviská, zjazdovky, …) VLASTNÝ balík nemajú a ostávajú v základnej mape –
+sú to línie AJ plochy naraz, takže by nesadli čisto do ani jedného z balíkov
+vyššie bez toho, aby sa appke sľúbilo niečo, čo v nej nie je (rozpis pri
+pravidle 2: keď rozsah nie je celý, musí sa zmeniť meno).
+
+**Body majú VLASTNÝ `.pmtiles`** (`workers/features/points.yml`) presne kvôli
+balíku `body`: `feature_line`, `feature_area` aj `feature_point` kedysi
+vznikali v jednom súbore (`features.yml`) a appka ich nemala ako rozdeliť bez
+toho, aby ho rozbalila a filtrovala obsah sama. Vstup aj predfilter zostali
+spoločné (`workers/features/build.sh` beží Planetiler nad tým istým PBF
+druhýkrát, raz na každú schému) – rozdelenie sa na to, čo je na mape VIDIEŤ,
+neprejaví, len na tom, v ktorom súbore to leží.
 
 **Hľadanie a navigácia sú naopak V NEJ – sú to časti, nie balíky.** Vlastný
 `-search.zip` mali a bola to chyba v tom, čo mapa sľubuje: kto si stiahol mapu
@@ -2072,7 +2100,8 @@ o pár odstavcov nižšie.
       "zilinsky": {
         "name": "Žilinský kraj",
         "maps": { "mapa": { "file": "zilinsky.zip", "link": "…", "download": "…", "size": 900000000 },
-                  "vrstevnice-skaly": { … }, "tienovanie": { … } },
+                  "vrstevnice-skaly": { … }, "tienovanie": { … },
+                  "linie": { … }, "body": { … } },
         "bbox": [18.305, 48.72, 20.08, 49.635], "maxzoom": 16,
         "contours_maxzoom": 16, "contour_interval": 5, "rocks_maxzoom": 16,
         "rock_slope": 50, "dem_source": "dmr5", "layers": ["vrstevnice_dmr5_5m", "…"],
@@ -2560,24 +2589,30 @@ jedine vtedy, keď má navyše `tourism=viewpoint`). Nedá sa to zapnúť – ti
 prvky v základných dlaždiciach jednoducho **nie sú**.
 
 Preto sa z toho istého PBF ťahajú druhýkrát, vlastnou schémou a do vlastného
-`.pmtiles` – rovnaký vzor ako značené trasy a skaly:
+`.pmtiles` – rovnaký vzor ako značené trasy a skaly. Bodové prvky idú do
+VLASTNÉHO súboru (`workers/features/points.yml`), presne kvôli balíku na
+stiahnutie, ktorý appka ponúka zvlášť od línií a plôch (balíky `linie`
+a `body`, `workers/deploy/publish-map.py`) – rovnaký predfilter, len druhý
+beh Planetileru:
 
 ```
 data/region.osm.pbf
   → osmium tags-filter --expressions=workers/features/filter.txt
   → data/features.osm.pbf                      (Andorra: 3,4 MB → 198 kB)
   → planetiler generate-custom --schema=workers/features/features.yml
-  → {región}-features.pmtiles
+  → {región}-features.pmtiles                  (línie a plochy)
+  → planetiler generate-custom --schema=workers/features/points.yml
+  → {región}-points.pmtiles                    (body)
 ```
 
-Štyri vrstvy, `class` rozlišuje čo to je:
+`class` rozlišuje čo v ktorej vrstve je:
 
-| vrstva | čo v nej je | od zoomu |
-|---|---|--:|
-| `feature_line` | **násyp**, zárez, múr, hradby, plot, živý plot, elektrické vedenie, **plánovaná cesta**, priesek, nadzemné potrubie, stromoradie, priehradný múr, hať, výmoľ | 11–15 |
-| `feature_area` | parkovisko, skládka, halda, hospodársky dvor, skleníky, opustený priemysel, kamenné pole | 11–14 |
-| `feature_point` | prameň, vodopád, jaskyňa, závrt, rozhľadňa, stožiar, vodojem, kríž pri ceste, pomník, archeologické nálezisko, štôlňa, útulňa, horský priechod, núdzový bod, geodetický bod | 11–15 |
-| `piste` | zjazdovka, bežkárska trať, skialp, sánkarská dráha – čiara aj plocha, s obťažnosťou | 11 |
+| súbor | vrstva | čo v nej je | od zoomu |
+|---|---|---|--:|
+| `features.pmtiles` | `feature_line` | **násyp**, zárez, múr, hradby, plot, živý plot, elektrické vedenie, **plánovaná cesta**, priesek, nadzemné potrubie, stromoradie, priehradný múr, hať, výmoľ | 11–15 |
+| `features.pmtiles` | `feature_area` | parkovisko, skládka, halda, hospodársky dvor, skleníky, opustený priemysel, kamenné pole | 11–14 |
+| `features.pmtiles` | `piste` | zjazdovka, bežkárska trať, skialp, sánkarská dráha – čiara aj plocha, s obťažnosťou | 11 |
+| `points.pmtiles` | `feature_point` | prameň, vodopád, jaskyňa, závrt, rozhľadňa, stožiar, vodojem, kríž pri ceste, pomník, archeologické nálezisko, štôlňa, útulňa, horský priechod, núdzový bod, geodetický bod | 11–15 |
 
 **Zoomy sú tu hlavné rozhodnutie, nie estetika.** Plotov je v OSM viac než
 všetkých ciest dokopy, takže idú až od z15; vedenie vysokého napätia je
