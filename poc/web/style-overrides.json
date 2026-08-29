@@ -1,12 +1,47 @@
 {
   "version": 2,
-  "updated_at": "2026-08-03T19:21:32.932Z",
+  "updated_at": "2026-08-29T19:36:27.497Z",
   "icons": "osm-liberty",
-  "hillshade": false,
+  "hillshade": true,
   "palette": {},
   "layers": {},
+  "order": [
+    {
+      "id": "feature-embankment",
+      "before": "cliff-line"
+    }
+  ],
   "poi": {
-    "hidden": []
+    "hidden": [],
+    "icons": {}
   },
-  "maps": {}
+  "trails": {
+    "gap": {},
+    "types": {},
+    "marks": {}
+  },
+  "shields": {},
+  "iconSets": [],
+  "customIcons": [],
+  "maps": {
+    "turisticka": {
+      "layers": {
+        "poi-road": {
+          "visible": true
+        },
+        "poi-ski": {
+          "visible": true
+        },
+        "poi-mining": {
+          "visible": true
+        },
+        "poi-historic": {
+          "visible": true
+        }
+      },
+      "poi": {
+        "hidden": []
+      }
+    }
+  }
 }
