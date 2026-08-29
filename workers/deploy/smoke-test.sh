@@ -106,6 +106,7 @@ for pair in "${CONTOURS:-}:contours:vrstevnice" \
             "${ROCKS:-}:rocks:skaly" \
             "${TRAILS:-}:trails:značené trasy" \
             "${FEATURES:-}:features:krajinné prvky" \
+            "${POINTS:-}:points:body v krajine" \
             "${ROADS:-}:roads:obmedzenia na ceste"; do
   IFS=: read -r on src popis <<<"$pair"
   [ "$on" = 'true' ] || continue

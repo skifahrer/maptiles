@@ -83,7 +83,8 @@ PM="$SITE/tiles/$REGION_KEY.pmtiles"
 # vedľa neho sú dve strany tej istej vety – keď sa rozídu, mapa sa načíta
 # a vrstva ticho chýba.
 for pair in "contours:vrstevnice" "rocks:skaly" "trails:značené trasy" \
-            "features:krajinné prvky" "roads:obmedzenia na ceste"; do
+            "features:krajinné prvky" "points:body v krajine" \
+            "roads:obmedzenia na ceste"; do
   src="${pair%%:*}"; popis="${pair#*:}"
   jq -e ".sources.$src" "$STYLE" >/dev/null || continue
   f="$SITE/tiles/$REGION_KEY-$src.pmtiles"

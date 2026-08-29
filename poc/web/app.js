@@ -219,13 +219,23 @@ function styleFor(manifest) {
         ? `pmtiles://${baseUrl}/${region.trails}`
         : null,
     trailsMaxzoom: region.trails_maxzoom || 14,
-    // Krajinné prvky, ktoré schéma OpenMapTiles nemá – vlastný .pmtiles
-    // (násypy, múry, vedenia, prieseky, pramene, jaskyne, zjazdovky).
+    // Krajinné prvky (línie a plochy), ktoré schéma OpenMapTiles nemá –
+    // vlastný .pmtiles (násypy, múry, vedenia, prieseky, zjazdovky).
     featuresUrl:
       region.features && featuresCheck.checked
         ? `pmtiles://${baseUrl}/${region.features}`
         : null,
     featuresMaxzoom: region.features_maxzoom || 15,
+    // Body v krajine (pramene, jaskyne, rozhľadne, …) – DRUHÝ výstup toho
+    // istého jobu ako krajinné prvky vyššie (workers/features/points.yml),
+    // vlastný .pmtiles. V paneli je to TEN ISTÝ prepínač „Krajinné prvky":
+    // pred rozdelením do vlastného súboru boli body súčasťou tej istej
+    // vrstvy a nikto v aplikácii nečakal preň druhé zaškrtávacie políčko.
+    pointsUrl:
+      region.points && featuresCheck.checked
+        ? `pmtiles://${baseUrl}/${region.points}`
+        : null,
+    pointsMaxzoom: region.points_maxzoom || 15,
     // Obmedzenia na ceste – výška podjazdov a tunelov, šírka, hmotnosť,
     // maximálna rýchlosť. Vlastný .pmtiles (workers/roads/roads.yml).
     roadsUrl:

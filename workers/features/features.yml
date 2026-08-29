@@ -13,12 +13,18 @@
 # rozpočte stránky, a v štýle vlastný `source`. Keď job nebeží, štýl vrstvy
 # jednoducho nepridá a mapa je ako predtým.
 #
+# LEN LÍNIE A PLOCHY. Bodové prvky (pramene, jaskyne, rozhľadne, pamiatky, …)
+# sú vo VLASTNOM súbore, `workers/features/points.yml` – rozpis prečo je
+# v jeho hlavičke. Rovnaký vstup, rovnaký predfilter, len druhý beh
+# Planetileru nad tým istým PBF.
+#
 # Vstup vyrába workflow build-map.yml:
 #   osmium tags-filter → data/features.osm.pbf
 # Predfilter je zámerne ŠIRŠÍ než tento súbor (vypúšťa napr. `barrier=gate`,
-# ktorý si berie POI vrstva OpenMapTiles). Keď sem pribudne trieda, filter vo
-# workflowe treba rozšíriť tiež – inak sa v dlaždiciach ticho neobjaví. Na to
-# sa už nemusí pamätať: stráži to `workers/lint/features.py`.
+# ktorý si berie POI vrstva OpenMapTiles). Keď sem (alebo do `points.yml`)
+# pribudne trieda, filter vo workflowe treba rozšíriť tiež – inak sa
+# v dlaždiciach ticho neobjaví. Na to sa už nemusí pamätať: stráži to
+# `workers/lint/features.py` (obe schémy proti tomu istému filtru).
 #
 # ZOOMY sú tu to hlavné rozhodnutie. Plotov je v OSM viac než všetkých ciest
 # dokopy, takže idú až od z15; vedenie vysokého napätia je orientačný bod na
@@ -26,17 +32,17 @@
 #
 # POZOR NA `min_zoom` NAD MAXZOOMOM ARCHÍVU. Čo má tu vyšší `min_zoom`, než
 # je maxzoom vygenerovaných dlaždíc, Planetiler zahodí – a NEPOVIE O TOM NIČ.
-# Presne to sa raz stalo: ploty, živé ploty, geodetické body a hraničné
-# kamene majú `min_zoom: 15`, dlaždice sa robili po z14 a v mape ich bola
-# nula. Preto je `features_maxzoom` predvolene 15 a job v build-map.yml
-# porovná najvyšší `min_zoom` v tomto súbore so zvoleným maxzoomom a rozdiel
-# ohlási varovaním. Znížiť maxzoom kvôli veľkosti je legitímne – len to má
-# byť vidieť, nie sa to dozvedieť z chýbajúcich plotov v mape.
+# Presne to sa raz stalo: ploty a živé ploty majú `min_zoom: 15`, dlaždice sa
+# robili po z14 a v mape ich bola nula. Preto je `features_maxzoom`
+# predvolene 15 a job v build-map.yml porovná najvyšší `min_zoom` v tomto
+# súbore (aj v `points.yml`) so zvoleným maxzoomom a rozdiel ohlási
+# varovaním. Znížiť maxzoom kvôli veľkosti je legitímne – len to má byť
+# vidieť, nie sa to dozvedieť z chýbajúcich plotov v mape.
 schema_name: FricoMaps krajinné prvky
 schema_description: >-
   Násypy, zárezy, múry, ploty, elektrické vedenia, prieseky, stromoradia,
-  pramene, jaskyne, rozhľadne, parkoviská, zjazdovky a plánované cesty – prvky
-  OSM, ktoré schéma OpenMapTiles neprenáša
+  parkoviská, zjazdovky a plánované cesty – línie a plochy z OSM, ktoré
+  schéma OpenMapTiles neprenáša
 attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>
 
 sources:
@@ -44,12 +50,12 @@ sources:
     type: osm
     local_path: data/features.osm.pbf
 
-# Napätie a nadmorská výška majú byť v dlaždiciach čísla, nie reťazce – štýl
-# podľa nich vyberá hrúbku čiary a skladá popisok. Hodnoty ako „22000;110000"
-# sa nerozparsujú a atribút jednoducho nebude; to je v poriadku.
+# Napätie má byť v dlaždici číslo, nie reťazec – štýl podľa neho vyberá
+# hrúbku čiary. Hodnoty ako „22000;110000" sa nerozparsujú a atribút
+# jednoducho nebude; to je v poriadku. (Nadmorská výška, `ele`, je v bodovej
+# vrstve – tá je teraz vo `workers/features/points.yml`.)
 tag_mappings:
   voltage: integer
-  ele: double
 
 layers:
   # ==================== LÍNIE ====================
@@ -336,199 +342,11 @@ layers:
           - key: class
             value: shingle
 
-  # ==================== BODY ====================
-  # `geometry: centroid` schválne: to isté sa v OSM mapuje raz uzlom
-  # (prameň, jaskyňa) a raz plochou (archeologické nálezisko, halda). Bod
-  # v strede je pre popisok správna odpoveď na oboje.
-  - id: feature_point
-    features:
-      # --- voda v teréne ---
-      # Prameň prejde do OpenMapTiles LEN ako plocha (`osm_water_polygon`),
-      # takže studnička mapovaná uzlom – teda prakticky každá – v mape nie je.
-      - source: osm
-        geometry: centroid
-        min_zoom: 12
-        include_when:
-          natural: spring
-        attributes:
-          - key: name
-          - key: ele
-          - key: class
-            value: spring
-          - key: osm_id
-            value: '${ feature.id }'
-            type: long
-          - key: osm_type
-            value: '${ feature.osm_type }'
-      - source: osm
-        geometry: centroid
-        min_zoom: 11
-        include_when:
-          waterway: waterfall
-        attributes:
-          - key: name
-          - key: ele
-          - key: class
-            value: waterfall
-
-      # --- kras ---
-      - source: osm
-        geometry: centroid
-        min_zoom: 12
-        include_when:
-          natural: cave_entrance
-        attributes:
-          - key: name
-          - key: ele
-          - key: class
-            value: cave_entrance
-      - source: osm
-        geometry: centroid
-        min_zoom: 14
-        include_when:
-          natural: sinkhole
-        attributes:
-          - key: name
-          - key: class
-            value: sinkhole
-
-      # --- veže a stožiare ---
-      # Rozhľadňa sa do OpenMapTiles dostane len vtedy, keď má NAVYŠE
-      # `tourism=viewpoint` alebo `attraction`. Samotné `man_made=tower`
-      # schéma nepozná, takže väčšina rozhľadní v mape chýba.
-      - source: osm
-        geometry: centroid
-        min_zoom: 11
-        include_when:
-          man_made: tower
-        attributes:
-          - key: name
-          - key: ele
-          - key: class
-            value: tower
-          - key: osm_id
-            value: '${ feature.id }'
-            type: long
-          - key: osm_type
-            value: '${ feature.osm_type }'
-          # `observation` = rozhľadňa; štýl ju kreslí inak než vysielač
-          - key: subclass
-            value:
-              tag_value: "tower:type"
-      - source: osm
-        geometry: centroid
-        min_zoom: 13
-        include_when:
-          man_made: [mast, water_tower, chimney]
-        attributes:
-          - key: name
-          - key: class
-            type: match_value
-
-      # --- pamiatky, ktoré OpenMapTiles vynecháva ---
-      # Zo všetkých `historic=*` si schéma berie len `monument`, `castle`
-      # a `ruins`. Kríž pri ceste, pomník ani nálezisko medzi ne nepatria.
-      - source: osm
-        geometry: centroid
-        min_zoom: 12
-        include_when:
-          historic: [archaeological_site, battlefield, fort, manor, tomb]
-        attributes:
-          - key: name
-          - key: class
-            type: match_value
-      - source: osm
-        geometry: centroid
-        min_zoom: 14
-        include_when:
-          historic: [wayside_cross, wayside_shrine, memorial]
-        attributes:
-          - key: name
-          - key: class
-            type: match_value
-      - source: osm
-        geometry: centroid
-        min_zoom: 15
-        include_when:
-          historic: [boundary_stone, milestone, charcoal_pile]
-        attributes:
-          - key: name
-          - key: class
-            type: match_value
-
-      # --- banské dedičstvo ---
-      - source: osm
-        geometry: centroid
-        min_zoom: 12
-        include_when:
-          historic: [mine, mine_shaft, mineshaft, adit]
-          man_made: [adit, mineshaft]
-        attributes:
-          - key: name
-          - key: class
-            type: match_value
-          - key: osm_id
-            value: '${ feature.id }'
-            type: long
-          - key: osm_type
-            value: '${ feature.osm_type }'
-
-      # --- útulňa ---
-      # `tourism=alpine_hut` a `chalet` v OpenMapTiles sú, `wilderness_hut`
-      # nie – a v Nízkych Tatrách je to práve tá búda, kvôli ktorej sa plánuje
-      # trasa.
-      - source: osm
-        geometry: centroid
-        min_zoom: 11
-        include_when:
-          tourism: wilderness_hut
-        attributes:
-          - key: name
-          - key: ele
-          - key: class
-            value: wilderness_hut
-
-      # --- horský priechod ---
-      - source: osm
-        geometry: centroid
-        min_zoom: 11
-        include_when:
-          mountain_pass: yes
-        attributes:
-          - key: name
-          - key: ele
-          - key: class
-            value: mountain_pass
-
-      # --- núdzový bod ---
-      # Číslo, ktoré sa hlási horskej službe. Bez neho je to len bod v lese.
-      - source: osm
-        geometry: centroid
-        min_zoom: 14
-        include_when:
-          highway: emergency_access_point
-        attributes:
-          - key: name
-          - key: ref
-          - key: class
-            value: emergency_access_point
-
-      # --- geodetický bod ---
-      - source: osm
-        geometry: centroid
-        min_zoom: 15
-        include_when:
-          man_made: survey_point
-        attributes:
-          - key: name
-          - key: ele
-          - key: class
-            value: survey_point
-          - key: osm_id
-            value: '${ feature.id }'
-            type: long
-          - key: osm_type
-            value: '${ feature.osm_type }'
+  # BODY (pramene, jaskyne, rozhľadne, pamiatky, …) SÚ VO VLASTNOM SÚBORE
+  # od `workers/features/points.yml` – presne kvôli balíku na stiahnutie,
+  # ktorý appka ponúka zvlášť od línií a plôch (rozpis v hlavičke toho
+  # súboru). Rovnaký vstup (`data/features.osm.pbf`), rovnaký predfilter,
+  # len druhý beh Planetileru.
 
   # ==================== ZJAZDOVKY A BEŽKY ====================
   # Vleky a lanovky v dlaždiciach SÚ (`transportation class=aerialway`), trate

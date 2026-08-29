@@ -126,8 +126,10 @@ catalog = load("deploy_catalog", "catalog.py")  # čo sa píše do maps.json
 subory = load("deploy_subory", "subory.py")     # čo je v ktorom balíku
 # Mená nakrátko: čítajú sa v `main()` vedľa seba a `subory.subory` by bolo
 # horšie čitateľné než to, čo tie funkcie robia.
+body_subory = subory.body_subory
 casti_baliku = subory.casti_baliku
 kde_su_glyfy = subory.kde_su_glyfy
+linie_subory = subory.linie_subory
 manifest_data = subory.manifest_data
 mimo_balika = subory.mimo_balika
 tienovanie_subory = subory.tienovanie_subory
@@ -465,13 +467,16 @@ def main():
     # počítajú od tej bázy, takže vnútri je `articles.ndjson`, nie
     # `_wiki/articles.ndjson`.
     #
-    # Vrstevnice, skaly a tieňovanie sa počítajú PRED základnou mapou, lebo tá
-    # ich musí VYNECHAŤ – majú vlastné balíky práve preto, aby si ich človek
-    # nemusel sťahovať, keď ich nechce (viď hlavička súboru). Každý sa počíta
-    # RAZ a to isté pole ide aj do vlastného balíka: druhé volanie tej istej
+    # Vrstevnice, skaly, tieňovanie, línie z OSM (trasy, obmedzenia na ceste)
+    # a body z OSM sa počítajú PRED základnou mapou, lebo tá ich musí
+    # VYNECHAŤ – majú vlastné balíky práve preto, aby si ich človek nemusel
+    # sťahovať, keď ich nechce (viď hlavička súboru). Každý sa počíta RAZ
+    # a to isté pole ide aj do vlastného balíka: druhé volanie tej istej
     # funkcie je druhá odpoveď na tú istú otázku.
     vrstvy_pack = vrstvy_subory(args.site, man)
     tien_pack = tienovanie_subory(args.site, man)
+    linie_pack = linie_subory(args.site, man)
+    body_pack = body_subory(args.site, man)
     # ČASTI ZÁKLADNEJ MAPY – hľadanie a navigácia. Zo základnej mapy sa
     # NEVYNÍMAJÚ (sú v nej, o to ide); počítajú sa preto, aby sa dali premerať
     # a ich veľkosť išla do katalógu pod balík `mapa`.
@@ -494,13 +499,17 @@ def main():
                if subory else "TENTO BUILD JU NEVYROBIL, v mape nebude"))
     baliky = [
         ("", "základná mapa (aj s hľadaním a navigáciou) – bez vrstevníc, "
-             "skál, tieňovania, glyfov a viewera",
+             "skál, tieňovania, línií a bodov z OSM, glyfov a viewera",
          args.site, zaklad_subory(args.site, vrstvy_pack + tien_pack
-                                  + von_pack)),
+                                  + linie_pack + body_pack + von_pack)),
         ("vrstevnice-skaly", "vrstevnice a skalné plochy (.pmtiles)",
          args.site, vrstvy_pack),
         ("tienovanie", "výškové dlaždice pre tieňovanie a 3D terén (raster .pmtiles)",
          args.site, tien_pack),
+        ("linie", "značené trasy a obmedzenia na ceste – línie z OSM (.pmtiles)",
+         args.site, linie_pack),
+        ("body", "pramene, jaskyne, rozhľadne a ďalšie body z OSM (.pmtiles)",
+         args.site, body_pack),
     ]
     # WIKIPÉDIA SA PRIDÁ, LEN KEĎ O NEJ TENTO BEH VIE. Odkedy má vlastnú
     # pipeline (`.github/workflows/wiki.yml`), Build map články nesťahuje –

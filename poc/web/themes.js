@@ -2952,9 +2952,15 @@ export const SHIELD_DEFS = [
  * @param {number} [opts.contoursMaxzoom] najvyšší zoom dlaždíc s vrstevnicami
  * @param {string} [opts.trailsUrl]       pmtiles:// URL so značenými trasami
  * @param {number} [opts.trailsMaxzoom]   najvyšší zoom dlaždíc s trasami
- * @param {string} [opts.featuresUrl]     pmtiles:// URL s krajinnými prvkami,
- *                                        ktoré schéma OpenMapTiles nemá
+ * @param {string} [opts.featuresUrl]     pmtiles:// URL s krajinnými prvkami
+ *                                        (línie a plochy), ktoré schéma
+ *                                        OpenMapTiles nemá
  * @param {number} [opts.featuresMaxzoom] najvyšší zoom dlaždíc s prvkami
+ * @param {string} [opts.pointsUrl]       pmtiles:// URL s bodmi v krajine
+ *                                        (pramene, jaskyne, rozhľadne, …) –
+ *                                        DRUHÝ výstup toho istého jobu ako
+ *                                        `featuresUrl` (workers/features/points.yml)
+ * @param {number} [opts.pointsMaxzoom]   najvyšší zoom dlaždíc s bodmi
  * @param {string} [opts.roadsUrl]        pmtiles:// URL s obmedzeniami na ceste,
  *                                        alebo null, keď ich beh nevyrobil
  * @param {number} [opts.roadsMaxzoom]    najvyšší zoom dlaždíc s obmedzeniami
@@ -3000,6 +3006,8 @@ export function buildStyle({
   trailsMaxzoom = 14,
   featuresUrl = null,
   featuresMaxzoom = 15,
+  pointsUrl = null,
+  pointsMaxzoom = 15,
   roadsUrl = null,
   roadsMaxzoom = 15,
   demSource = DEFAULT_DEM_SOURCE,
@@ -3119,8 +3127,8 @@ export function buildStyle({
         '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
     };
   }
-  // Krajinné prvky, ktoré schéma OpenMapTiles nepozná vôbec: násypy, zárezy,
-  // múry, ploty, vedenia, prieseky, pramene, jaskyne, rozhľadne, parkoviská
+  // Krajinné prvky (línie a plochy), ktoré schéma OpenMapTiles nepozná
+  // vôbec: násypy, zárezy, múry, ploty, vedenia, prieseky, parkoviská
   // a zjazdovky. V celom `planetiler-openmaptiles` sa `embankment` ani raz
   // nevyskytuje, takže sa tieto veci ťahajú z toho istého PBF druhýkrát
   // vlastnou schémou (workers/features/features.yml) do vlastného .pmtiles.
@@ -3129,6 +3137,19 @@ export function buildStyle({
       type: "vector",
       url: featuresUrl,
       maxzoom: featuresMaxzoom,
+      attribution:
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
+    };
+  }
+  // Body v krajine: pramene, jaskyne, rozhľadne, pamiatky, banské dedičstvo,
+  // geodetické body. DRUHÝ výstup toho istého jobu ako krajinné prvky
+  // vyššie – vlastná schéma (workers/features/points.yml), vlastný
+  // .pmtiles, presne kvôli balíku „body“ na stiahnutie zvlášť od línií.
+  if (pointsUrl) {
+    style.sources.points = {
+      type: "vector",
+      url: pointsUrl,
+      maxzoom: pointsMaxzoom,
       attribution:
         '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
     };
@@ -5346,7 +5367,13 @@ export function buildStyle({
   //
   // Ikona sa hľadá rovnako ako pri POI: podľa `class`, a keď ju sada nemá,
   // ostane len popisok – žiadne náhradné kolieska.
-  if (featuresUrl) {
+  //
+  // VLASTNÝ ZDROJ (`points`, nie `features`): body sú vo vlastnom
+  // `.pmtiles` (workers/features/points.yml) presne kvôli balíku „body“ na
+  // stiahnutie zvlášť od línií a plôch – rozpis prečo je v hlavičke toho
+  // súboru. Na to, čo je na mape VIDIEŤ, to nemá vplyv, len na to, z ktorého
+  // súboru sa to číta.
+  if (pointsUrl) {
     // Tá istá voľba ikony ako pri POI (`withPoiIcons`): triedy sú iné
     // (prameň, jaskyňa, rozhľadňa), ale otázka je jedna – „akú značku má
     // táto kategória" – a dve odpovede by sa raz rozišli.
@@ -5362,7 +5389,7 @@ export function buildStyle({
       {
         id: "feature-point",
         type: "symbol",
-        source: "features",
+        source: "points",
         "source-layer": "feature_point",
         minzoom: 12,
         // Skryté kategórie platia aj tu. Zoznam v paneli je jeden pre POI aj

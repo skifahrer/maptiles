@@ -4419,7 +4419,7 @@ export function initDevMode({
     // s tou istou otázkou („akou značkou sa kreslia") a ich vrstva berie
     // ikonu aj skryté triedy z toho istého zoznamu – keby tu neboli, dali by
     // sa nastaviť len naslepo.
-    for (const [source, sourceLayer] of [["omt", "poi"], ["features", "feature_point"]]) {
+    for (const [source, sourceLayer] of [["omt", "poi"], ["points", "feature_point"]]) {
       let features = [];
       try {
         features = map2.querySourceFeatures(source, { sourceLayer });

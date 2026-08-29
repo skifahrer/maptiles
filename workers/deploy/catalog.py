@@ -110,7 +110,8 @@ def region_entry(man):
 # Ktoré vrstvy sú v balíku ako `.pmtiles` a pod akou cestou. Mená kľúčov sú tie
 # isté ako v `manifest.json`, lebo odtiaľ to ide – dva slovníky pre tú istú vec
 # by sa raz rozišli.
-VRSTVY_TILES = ("pmtiles", "contours", "rocks", "trails", "features", "roads")
+VRSTVY_TILES = ("pmtiles", "contours", "rocks", "trails", "features", "points",
+                "roads")
 
 
 def tiles_paths(man, reg):
@@ -396,8 +397,17 @@ def uprac(mapy, zrusene=(), zive=None, chranene=()):
 
 
 def zapis(path, data, popis):
-    """Zapíše katalóg, keď sa naozaj zmenil. True = súbor je iný."""
-    text = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    """Zapíše katalóg, keď sa naozaj zmenil. True = súbor je iný.
+
+    MINIFIKOVANE, BEZ ODSADENIA. `maps.json` číta appka pri každom otvorení
+    zoznamu máp – nie človek pri prezeraní repozitára – a odsadenie na dvoch
+    stovkách máp (kraje aj výseky, po dva formáty na balík) sú desiatky kB
+    medzier, ktoré appka aj tak zahodí pri parsovaní. `sort_keys=True` ostáva:
+    kľúče v tom istom poradí pri každom zápise znamenajú, že `git diff` ukáže
+    len to, čo sa naozaj zmenilo, nie prerovnaný súbor.
+    """
+    text = json.dumps(data, ensure_ascii=False, separators=(",", ":"),
+                      sort_keys=True) + "\n"
     try:
         with open(path) as f:
             if f.read() == text:
@@ -592,7 +602,8 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
     # inak by atribúcia mapy tvrdila DMR 5.0 nad reliéfom zo Sonnyho.
     for k in ("bbox", "maxzoom", "contours_maxzoom", "contour_interval",
               "rocks_maxzoom", "rock_slope", "dem_source", "rock_source",
-              "trails_maxzoom", "features_maxzoom", "roads_maxzoom"):
+              "trails_maxzoom", "features_maxzoom", "points_maxzoom",
+              "roads_maxzoom"):
         if reg.get(k) is not None:
             polozka[k] = reg[k]
     # Cesty k dlaždiciam v balíku – NEODVODZUJÚ sa z kľúča uzla (rozpis pri

@@ -1776,6 +1776,11 @@ jobs:
       enabled: ${{ steps.features.outputs.enabled }}
       maxzoom: ${{ steps.features.outputs.maxzoom }}
       size_mb: ${{ steps.features.outputs.size_mb }}
+      # Body (workers/features/points.yml) sú DRUHÝ výstup toho istého kroku
+      # – vlastný archív pre balík `body` na stiahnutie, zdieľajú maxzoom
+      # s líniami a plochami (rozpis vo `workers/features/build.sh`).
+      points_enabled: ${{ steps.features.outputs.points_enabled }}
+      points_size_mb: ${{ steps.features.outputs.points_size_mb }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -2214,6 +2219,8 @@ jobs:
             --trails-maxzoom='${{ needs.trails.outputs.maxzoom || '14' }}' \
             --features='${{ needs.features.outputs.enabled || 'false' }}' \
             --features-maxzoom='${{ needs.features.outputs.maxzoom || '15' }}' \
+            --points='${{ needs.features.outputs.points_enabled || 'false' }}' \
+            --points-maxzoom='${{ needs.features.outputs.maxzoom || '15' }}' \
             --roads='${{ needs.roads.outputs.enabled || 'false' }}' \
             --roads-maxzoom='${{ needs.roads.outputs.maxzoom || '15' }}' \
             --dem-source='${{ needs.contours.outputs.dem_source || 'sonny' }}' \
@@ -2251,6 +2258,7 @@ jobs:
           DEM_URL: ${{ needs.terrain.outputs.enabled == 'true' && format('pmtiles://{0}/tiles/{1}-terrain.pmtiles', steps.pages.outputs.base_url, needs.plan.outputs.key) || '' }}
           FEATURES_ENABLED: ${{ needs.features.outputs.enabled || 'false' }}
           FEATURES_MAXZOOM: ${{ needs.features.outputs.maxzoom || '15' }}
+          POINTS_ENABLED: ${{ needs.features.outputs.points_enabled || 'false' }}
           ROADS_ENABLED: ${{ needs.roads.outputs.enabled || 'false' }}
           ROADS_MAXZOOM: ${{ needs.roads.outputs.maxzoom || '15' }}
           ICONS_AVAILABLE: ${{ needs.assets.outputs.available }}
@@ -2322,6 +2330,7 @@ jobs:
           ROCKS: ${{ needs.rocks.outputs.rocks_enabled }}
           TRAILS: ${{ needs.trails.outputs.enabled }}
           FEATURES: ${{ needs.features.outputs.enabled }}
+          POINTS: ${{ needs.features.outputs.points_enabled }}
           ROADS: ${{ needs.roads.outputs.enabled }}
           PAGES_BUILD_TYPE: ${{ needs.plan.outputs.pages_build_type }}
         run: workers/deploy/smoke-test.sh

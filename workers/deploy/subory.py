@@ -91,6 +91,47 @@ def vrstvy_subory(site, man):
             if os.path.exists(os.path.join(site, p))]
 
 
+def linie_subory(site, man):
+    """Súbory balíka `linie` – značené trasy a obmedzenia na ceste (.pmtiles).
+
+    ČISTO LÍNIOVÉ DÁTA Z OSM, a preto len tieto dve vrstvy. Krajinné prvky
+    (`-features.pmtiles`) sú línie AJ plochy v jednom súbore (parkovisko,
+    zjazdovka sú plochy) a vlastný balík nemajú – rozpis prečo je
+    v `workers/README.md` pri balíkoch. `trails` a `roads` sú naopak
+    z definície čisto línie (`geometry: line` v oboch schémach), takže sa
+    dajú ponúknuť ako balík „línie z OSM" bez toho, aby sľuboval niečo, čo
+    v ňom nie je.
+    """
+    reg = catalog.region_entry(man)
+    rel = [reg[k] for k in ("trails", "roads") if reg.get(k)]
+    if not rel:
+        tiles = os.path.join(site, "tiles")
+        rel = [os.path.join("tiles", n) for n in sorted(os.listdir(tiles))
+               if n.endswith(("-trails.pmtiles", "-roads.pmtiles"))] \
+            if os.path.isdir(tiles) else []
+    return [os.path.join(site, p) for p in rel
+            if os.path.exists(os.path.join(site, p))]
+
+
+def body_subory(site, man):
+    """Súbory balíka `body` – bodové krajinné prvky (.pmtiles).
+
+    VLASTNÝ súbor (`workers/features/points.yml`), oddelený od
+    `-features.pmtiles` (línie a plochy) práve kvôli tomuto balíku – appka
+    nemala ako ponúknuť „body z OSM" zvlášť, kým boli všetky tri geometrie
+    v jednom archíve.
+    """
+    reg = catalog.region_entry(man)
+    rel = [reg[k] for k in ("points",) if reg.get(k)]
+    if not rel:
+        tiles = os.path.join(site, "tiles")
+        rel = [os.path.join("tiles", n) for n in sorted(os.listdir(tiles))
+               if n.endswith("-points.pmtiles")] \
+            if os.path.isdir(tiles) else []
+    return [os.path.join(site, p) for p in rel
+            if os.path.exists(os.path.join(site, p))]
+
+
 def tienovanie_subory(site, man):
     """Súbory balíka `tienovanie` – raster `.pmtiles` s výškovými dlaždicami.
 
