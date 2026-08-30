@@ -1664,12 +1664,19 @@ export const MAX_PAINT_STOPS = 8;
  * taký štýl ODMIETOL CELÝ (neznáma vlastnosť v `layout` je tvrdá chyba, na
  * rozdiel od neznámej v `paint`), takže `applyLayerOverrides` ich inde než
  * na `symbol` nenasadí.
+ *
+ * `def` je PREDVOĽBA MAPLIBRE – to, čo platí, keď vlastnosť v štýle nie je.
+ * Panel podľa nej ukáže, z čoho sa vychádza, aj pri vrstve, ktorá tú vlastnosť
+ * nemá nastavenú, a percento má z čoho počítať (`overrideValue`). Bez toho sa
+ * dala vlastnosť len ZMENIŤ, nie ZAVIESŤ: rozostup šípok jednosmeriek áno
+ * (štýl mu dáva 120), miesto okolo ikony nie – a vyzeralo to, že tá páka
+ * neexistuje. Čísla sú zo style-spec, nie odhad.
  */
 export const LAYOUT_PROPS = {
-  "icon-size": { min: 0.05, max: 8, step: 0.05, label: "veľkosť ikony" },
-  "symbol-spacing": { min: 1, max: 2000, step: 5, label: "rozostup po čiare" },
-  "icon-padding": { min: 0, max: 40, step: 1, label: "miesto okolo ikony" },
-  "text-size": { min: 1, max: 60, step: 0.5, label: "veľkosť písma" }
+  "icon-size": { min: 0.05, max: 8, step: 0.05, def: 1, label: "veľkosť ikony" },
+  "symbol-spacing": { min: 1, max: 2000, step: 5, def: 250, label: "rozostup po čiare" },
+  "icon-padding": { min: 0, max: 40, step: 1, def: 2, label: "miesto okolo ikony" },
+  "text-size": { min: 1, max: 60, step: 0.5, def: 16, label: "veľkosť písma" }
 };
 export const LAYOUT_PROP_IDS = Object.keys(LAYOUT_PROPS);
 
@@ -1711,6 +1718,31 @@ export const isBandList = (list) =>
   list.every((row) => Array.isArray(row) && row.length === 3);
 
 /**
+ * RELATÍVNA HODNOTA `{ "scale": 1.4, "add": 0.5 }` – „nechaj, čo štýl počíta,
+ * a preškáluj to".
+ *
+ * ŠTVRTÝ TVAR VEDĽA SKALÁRU, KRIVKY A PÁSIEM, a je tu preto, že ostatné tri
+ * odpovedajú na inú otázku. Skalár, krivka aj pásma hovoria „hodnota JE
+ * takáto" – teda ZAHODIA to, čo štýl o tej vlastnosti vie. Pri hrúbke čiary
+ * to znamená, že „cesty o štvrtinu hrubšie" sa nedalo povedať inak než
+ * prepísaním celej krivky ručne, zvlášť pre každú triedu cesty, a prvý zoom
+ * navyše alebo zmena v štýle to ticho rozhodila.
+ *
+ * Relatívna hodnota je oproti tomu ÚPRAVA NAD KRIVKOU: zoomový priebeh ostáva
+ * ten zo štýlu, mení sa len jeho mierka. Preto sa nedá zadať „podľa zoomu" –
+ * to by boli dve odpovede na tú istú otázku.
+ *
+ * LEN NA ČÍSLA. Farba sa škálovať nedá a `{scale: 1.4}` nad hexom by nebola
+ * chyba, ktorú by niekto videl – bola by to farba, ktorá sa nezmenila.
+ */
+export const isRelative = (v) =>
+  !!v && typeof v === "object" && !Array.isArray(v) &&
+  ("scale" in v || "add" in v);
+
+/** Medze relatívnej hodnoty – rovnaké pre `paint` aj `layout`. */
+const REL_LIMITS = { scale: [0.1, 10], add: [-20, 40] };
+
+/**
  * Hodnota z úprav → to, čo ide do štýlu.
  *
  * Skalár ostane skalárom, `none` sa zmení na priehľadnú farbu, POLE ZLOMOV
@@ -1747,6 +1779,25 @@ export function paintValue(value) {
     ["zoom"],
     ...sortStops(value).flatMap(([z, v]) => [z, paintValue(v)])
   ];
+}
+
+/**
+ * ÚPRAVA NAD TÝM, ČO V ŠTÝLE UŽ JE.
+ *
+ * `paintValue` samo nestačí, lebo relatívna hodnota potrebuje ZÁKLAD – a ten
+ * pozná až miesto, kde je po ruke vrstva. Preto sú to dve funkcie a nie jedna
+ * s voliteľným argumentom: `paintValue` odpovedá na „čo to je", táto na „čo sa
+ * z toho stane nad touto vrstvou".
+ *
+ * `fallback` je hodnota, ktorú by MapLibre použil, keby vlastnosť v štýle nebola
+ * (`LAYOUT_PROPS[...].def`). Bez nej by percento nad nenastaveným rozostupom
+ * nemalo z čoho počítať a ticho by nespravilo nič.
+ */
+export function overrideValue(base, value, fallback) {
+  if (!isRelative(value)) return paintValue(value);
+  const z = base === undefined ? fallback : base;
+  if (z === undefined) return undefined;
+  return scaleExpr(z, value);
 }
 
 /**
@@ -1832,6 +1883,68 @@ function cleanLayoutScalar(prop, value, id, problems, where, atZoom = "") {
     return undefined;
   }
   return Math.round(n * 100) / 100;
+}
+
+/**
+ * Jedno číslo ŠÍRKY OKRAJA. Vlastný čistič, hoci `cleanPaintScalar` overuje
+ * to isté meno vlastnosti: okraj má hornú medzu (40 px) a hlásenie o „šírke
+ * okraja", nie o `line-width` – tú vlastnosť v súbore úprav nikto nenapísal.
+ */
+function outlineWidthScalar(prop, value, id, problems, where, atZoom = "") {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0 || n > 40) {
+    problems.push(`${where}Vrstva "${id}": šírka okraja${atZoom} musí byť medzi 0 a 40 (${value}).`);
+    return undefined;
+  }
+  return Math.round(n * 10) / 10;
+}
+
+/**
+ * Skontroluje RELATÍVNU hodnotu `{ scale, add }` (rozpis pri `isRelative`).
+ *
+ * `popis` je meno vlastnosti do hlásenia – pri okraji to nie je `line-width`,
+ * ale „šírka okraja", a hláška o vlastnosti, ktorú v súbore úprav nikto
+ * nenapísal, by hľadanie chyby predĺžila, nie skrátila.
+ */
+function cleanRelative(prop, value, id, problems, where, popis = prop) {
+  const kde = `${where}Vrstva "${id}": ${popis}`;
+  if (prop.endsWith("-color")) {
+    problems.push(`${kde} sa nedá zadať ako "scale"/"add" – preškálovať sa `
+      + `dajú len čísla, nie farby.`);
+    return undefined;
+  }
+  const out = {};
+  for (const [kluc, [min, max]] of Object.entries(REL_LIMITS)) {
+    if (value[kluc] == null) continue;
+    const n = Number(value[kluc]);
+    if (!Number.isFinite(n) || n < min || n > max) {
+      problems.push(`${kde}: "${kluc}" musí byť číslo od ${min} do ${max} (${value[kluc]}).`);
+      return undefined;
+    }
+    out[kluc] = Math.round(n * 100) / 100;
+  }
+  // `{scale: 1}` ani `{add: 0}` nie sú úprava – uložené by boli len šumom
+  // v súbore a v paneli by svietilo „zmenené" nad vrstvou, ktorá sa nezmenila.
+  if ((out.scale ?? 1) === 1 && (out.add ?? 0) === 0) {
+    problems.push(`${kde}: "scale" 1 a "add" 0 nič nemenia – vynechávam.`);
+    return undefined;
+  }
+  return out;
+}
+
+/**
+ * Jedna hodnota vlastnosti v ktoromkoľvek z tvarov, ktoré úpravy poznajú:
+ * relatívna, zoznam podľa zoomu (krivka či pásma), alebo obyčajný skalár.
+ *
+ * Je to JEDNA BRÁNA, lebo tá otázka je jedna a odpovedá sa na ňu na troch
+ * miestach (`paint`, `layout`, šírka okraja). Keby si ju každé písalo samo,
+ * raz by sa rozišli – a rozišli by sa ticho, lebo každý tvar je sám o sebe
+ * platný vstup toho druhého.
+ */
+function cleanValue(prop, value, id, problems, where, scalar = cleanPaintScalar, popis) {
+  if (isRelative(value)) return cleanRelative(prop, value, id, problems, where, popis);
+  if (Array.isArray(value)) return cleanPaintZoom(prop, value, id, problems, where, scalar);
+  return scalar(prop, value, id, problems, where);
 }
 
 /**
@@ -2299,16 +2412,16 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
       problems.push(`${where}Vrstva "${id}": maxzoom (${mx}) musí byť väčší ako minzoom (${mn}).`);
       delete clean.maxzoom;
     }
-    // Hodnota smie byť SKALÁR alebo ZOZNAM PODĽA ZOOMU, a ten má dva tvary:
-    // KRIVKA `[[zoom, hodnota], …]` (plynulý prechod medzi zlomami) alebo
-    // PÁSMA `[[od, do, hodnota], …]` (v pásme konštanta, na hranici skok).
-    // Skalár nahradí to, čo štýl počíta podľa zoomu, pevnou hodnotou. Farba
-    // plochy môže byť navyše `none` – bez výplne (viď `NO_FILL`).
+    // Hodnota smie byť SKALÁR, ZOZNAM PODĽA ZOOMU alebo RELATÍVNA ÚPRAVA.
+    // Zoznam má dva tvary: KRIVKA `[[zoom, hodnota], …]` (plynulý prechod
+    // medzi zlomami) alebo PÁSMA `[[od, do, hodnota], …]` (v pásme konštanta,
+    // na hranici skok). Skalár aj zoznam NAHRADIA to, čo štýl počíta podľa
+    // zoomu; relatívna úprava `{scale, add}` ho naopak nechá a len preškáluje
+    // (rozpis pri `isRelative`). Farba plochy môže byť navyše `none` – bez
+    // výplne (viď `NO_FILL`).
     const paint = {};
     for (const [prop, value] of Object.entries(def.paint || {})) {
-      const clean = Array.isArray(value)
-        ? cleanPaintZoom(prop, value, id, problems, where)
-        : cleanPaintScalar(prop, value, id, problems, where);
+      const clean = cleanValue(prop, value, id, problems, where);
       if (clean !== undefined) paint[prop] = clean;
     }
     if (Object.keys(paint).length) clean.paint = paint;
@@ -2320,9 +2433,7 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
     // druhýkrát a raz by sa tie dva popisy rozišli.
     const layout = {};
     for (const [prop, value] of Object.entries(def.layout || {})) {
-      const c = Array.isArray(value)
-        ? cleanPaintZoom(prop, value, id, problems, where, cleanLayoutScalar)
-        : cleanLayoutScalar(prop, value, id, problems, where);
+      const c = cleanValue(prop, value, id, problems, where, cleanLayoutScalar);
       if (c !== undefined) layout[prop] = c;
     }
     if (Object.keys(layout).length) clean.layout = layout;
@@ -2387,18 +2498,27 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
 
     // ---- okraj (plocha) / obrys pod čiarou ----
     if (def.outline) {
-      const width = Number(def.outline.width);
+      // Šírka okraja pozná TIE ISTÉ TVARY ako hrúbka čiary – skalár, krivku,
+      // pásma aj relatívnu úpravu. Kým to bolo len jedno číslo, okraj plochy
+      // bol na každom zoome rovnako hrubý (teda na prehľade hrubší než plocha
+      // sama) a okraj čiary sa nedal spraviť pomerný, len o konštantu širší.
+      // Čo z ktorého tvaru vyjde, rozhoduje `outlineWidth` – tam je totiž
+      // vidieť DRUH VRSTVY, ktorý tu ešte nepoznáme.
+      const width = cleanValue(
+        "line-width", def.outline.width, id, problems, where,
+        outlineWidthScalar, "šírka okraja"
+      );
       if (!isColor(def.outline.color)) {
         problems.push(`${where}Vrstva "${id}": farba okraja nie je hex (${def.outline.color}).`);
-      } else if (!Number.isFinite(width) || width <= 0 || width > 40) {
-        problems.push(`${where}Vrstva "${id}": šírka okraja musí byť medzi 0 a 40.`);
+      } else if (width === undefined) {
+        // Dôvod už povedal `cleanValue`.
       } else if (def.outline.dash != null && !DASH_IDS.includes(def.outline.dash)) {
         problems.push(`${where}Vrstva "${id}": neznámy vzor okraja "${def.outline.dash}".`);
       } else {
         const opacity = Number(def.outline.opacity);
         clean.outline = {
           color: String(def.outline.color).toLowerCase(),
-          width: Math.round(width * 10) / 10,
+          width,
           dash: def.outline.dash && def.outline.dash !== "solid" ? def.outline.dash : undefined,
           opacity: Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 1
         };
@@ -2406,8 +2526,136 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
       }
     }
 
+    // ---- rozlíšenie podľa atribútu OSM ----
+    const variants = cleanVariants(def.variants, id, problems, where);
+    if (variants.length) clean.variants = variants;
+
     if (Object.keys(clean).length) target[id] = clean;
   }
+}
+
+/**
+ * Najviac variantov na jednu vrstvu. Nie je to technická medza – je to medza
+ * ČITATEĽNOSTI mapy aj panela: každý variant je vlastná vrstva (a s obrysom
+ * dve), takže osem rozlíšení nad poľnou cestou je šestnásť vrstiev, ktoré sa
+ * kreslia cez seba a v ktorých sa už nedá povedať, ktorá je ktorá.
+ */
+export const MAX_VARIANTS = 4;
+
+/** Najviac hodnôt v jednom variante (`surface` má v OSM desiatky, nie stovky). */
+const MAX_VARIANT_VALUES = 24;
+
+/**
+ * Prečistí zoznam variantov jednej vrstvy (rozpis pri `variantLayers`).
+ *
+ * `attr` je meno tagu z dlaždice, takže sa kontroluje len TVAR – či taký
+ * atribút vrstva naozaj nesie, vie povedať jedine mapa a hovorí to panel
+ * (ponúka to, čo je v načítaných dlaždiciach). Vymyslený atribút nič nezhodí:
+ * `str()` z neho spraví `""`, variant sa netrafí a všetko ostane v predlohe.
+ */
+function cleanVariants(raw, id, problems, where) {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) {
+    problems.push(`${where}Vrstva "${id}": "variants" musí byť zoznam – preskakujem.`);
+    return [];
+  }
+  if (raw.length > MAX_VARIANTS) {
+    problems.push(`${where}Vrstva "${id}": ${raw.length} variantov, strop je ${MAX_VARIANTS}.`);
+    return [];
+  }
+  const out = [];
+  const uz = new Set();
+  for (const [i, v] of raw.entries()) {
+    const kde = `${where}Vrstva "${id}", variant ${i + 1}`;
+    if (!v || typeof v !== "object") {
+      problems.push(`${kde} nie je objekt – preskakujem.`);
+      continue;
+    }
+    const attr = String(v.attr ?? "").trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_:]{0,40}$/.test(attr)) {
+      problems.push(`${kde}: "${v.attr}" nie je meno atribútu z dlaždice.`);
+      continue;
+    }
+    const values = [...new Set(
+      (Array.isArray(v.values) ? v.values : [])
+        .filter((x) => typeof x === "string" || typeof x === "number")
+        .map((x) => String(x).trim())
+        .filter(Boolean)
+    )];
+    if (!values.length) {
+      problems.push(`${kde}: zoznam hodnôt je prázdny – variant bez hodnôt by `
+        + `nenakreslil nič a z predlohy by nič neubral.`);
+      continue;
+    }
+    if (values.length > MAX_VARIANT_VALUES) {
+      problems.push(`${kde}: ${values.length} hodnôt, strop je ${MAX_VARIANT_VALUES}.`);
+      continue;
+    }
+    // DVA VARIANTY NAD TOU ISTOU HODNOTOU sú tichá chyba: `variantTest` ich
+    // z predlohy odoberie oba, ale nakreslia sa tiež oba – cez seba.
+    const zrazka = values.find((x) => uz.has(`${attr}=${x}`));
+    if (zrazka) {
+      problems.push(`${kde}: hodnotu "${attr}=${zrazka}" už berie skorší variant `
+        + `– kreslili by sa cez seba.`);
+      continue;
+    }
+    for (const x of values) uz.add(`${attr}=${x}`);
+
+    const clean = { attr, values };
+    const label = String(v.label ?? "").trim();
+    if (label) clean.label = label.slice(0, 40);
+
+    const paint = {};
+    for (const [prop, value] of Object.entries(v.paint || {})) {
+      const c = cleanValue(prop, value, id, problems, `${where}variant ${i + 1}: `);
+      if (c !== undefined) paint[prop] = c;
+    }
+    if (Object.keys(paint).length) clean.paint = paint;
+
+    const layout = {};
+    for (const [prop, value] of Object.entries(v.layout || {})) {
+      const c = cleanValue(prop, value, id, problems, `${where}variant ${i + 1}: `,
+                           cleanLayoutScalar);
+      if (c !== undefined) layout[prop] = c;
+    }
+    if (Object.keys(layout).length) clean.layout = layout;
+
+    if (v.dash != null) {
+      if (!DASH_IDS.includes(v.dash)) problems.push(`${kde}: neznámy vzor čiary "${v.dash}".`);
+      else clean.dash = v.dash;
+    }
+    if (v.icon != null) {
+      const icon = String(v.icon).trim();
+      if (!/^[A-Za-z0-9_.:-]{1,64}$/.test(icon)) {
+        problems.push(`${kde}: neplatné meno ikony "${v.icon}".`);
+      } else {
+        clean.icon = icon;
+      }
+    }
+    if (v.outline) {
+      const w = cleanValue("line-width", v.outline.width, id, problems,
+                           `${where}variant ${i + 1}: `, outlineWidthScalar, "šírka okraja");
+      if (!isColor(v.outline.color)) {
+        problems.push(`${kde}: farba okraja nie je hex (${v.outline.color}).`);
+      } else if (w !== undefined) {
+        const opacity = Number(v.outline.opacity);
+        clean.outline = {
+          color: String(v.outline.color).toLowerCase(),
+          width: w,
+          opacity: Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 1
+        };
+        if (v.outline.dash && v.outline.dash !== "solid") {
+          if (!DASH_IDS.includes(v.outline.dash)) {
+            problems.push(`${kde}: neznámy vzor okraja "${v.outline.dash}".`);
+          } else {
+            clean.outline.dash = v.outline.dash;
+          }
+        }
+      }
+    }
+    out.push(clean);
+  }
+  return out;
 }
 
 /** `true`, ak sada úprav naozaj niečo mení. */
@@ -2521,16 +2769,45 @@ export function mergedPalette(themeKey, overrides) {
 }
 
 /**
- * Rozšíri šírku čiary o konštantu aj vtedy, keď je zadaná interpoláciou
- * podľa zoomu – `["+", …]` by MapLibre nad `["zoom"]` neprijal.
+ * PREŠKÁLUJE ČÍSLO PODĽA ZOOMU – `v × scale + add` – aj vtedy, keď je zadané
+ * krivkou alebo pásmami. Aritmetika sa robí NA JEDNOTLIVÝCH STOPOCH, nie
+ * výrazom `["*", …]` nad hotovou hodnotou: `["zoom"]` smie byť podľa
+ * style-spec iba priamym vstupom najvrchnejšieho `interpolate`/`step`
+ * (rozpis pri `zw`), takže obal navyše by MapLibre odmietol aj s celým štýlom.
+ *
+ * PREČO NÁSOBENIE, A NIE LEN PRIPOČÍTANIE. Konštanta pripočítaná ku krivke
+ * mení pomer na každom zoome inak: obrys diaľnice s `+3` je pri z4 nad čiarou
+ * 0,5 px sedemnásobný, pri z20 nad čiarou 60 px pridá päť percent a nie je ho
+ * vidieť. To je presne to, čo na obrysoch vyzerá „rozbito na krajných zoomoch“.
+ * Percento drží pomer všade rovnaký, konštanta sa hodí na jemný doplnok –
+ * preto oboje naraz.
+ *
+ * PÁSMA (`step`) SÚ TU ZÁMERNE. Kým to vedela len krivka, okraj nad čiarou,
+ * ktorej šírka je v pásmach, dostal výraz nezmenený – čiže bol presne taký
+ * široký ako čiara, teda neviditeľný. Nič nespadlo, štýl bol platný.
+ *
+ * Výraz, ktorý nie je ani jedno (napr. `match` nad dátami), sa vráti tak, ako
+ * prišiel – prepisovať dátami riadenú hodnotu naslepo by bola tichá zmena mapy.
  */
-function widenExpr(expr, extra) {
-  if (typeof expr === "number") return expr + extra;
-  if (Array.isArray(expr) && expr[0] === "interpolate") {
+export function scaleExpr(expr, rel) {
+  const { scale = 1, add = 0 } = rel || {};
+  // Zaokrúhlenie: `0.5 * 1.4` je v plávajúcej čiarke `0.7000000000000001`
+  // a to by šlo do štýlu aj do súboru úprav.
+  const t = (v) =>
+    typeof v === "number" ? Math.round((v * scale + add) * 1000) / 1000 : v;
+  if (typeof expr === "number") return t(expr);
+  if (!Array.isArray(expr)) return expr;
+  // `["interpolate", <druh>, <vstup>, z1, v1, z2, v2, …]`
+  if (expr[0] === "interpolate") {
     const out = expr.slice(0, 3);
-    for (let i = 3; i < expr.length; i += 2) {
-      out.push(expr[i], typeof expr[i + 1] === "number" ? expr[i + 1] + extra : expr[i + 1]);
-    }
+    for (let i = 3; i < expr.length; i += 2) out.push(expr[i], t(expr[i + 1]));
+    return out;
+  }
+  // `["step", <vstup>, <hodnota pod prvým zlomom>, z1, v1, z2, v2, …]` –
+  // teda prvý výstup je na inom mieste než pri krivke.
+  if (expr[0] === "step") {
+    const out = [expr[0], expr[1], t(expr[2])];
+    for (let i = 3; i < expr.length; i += 2) out.push(expr[i], t(expr[i + 1]));
     return out;
   }
   return expr;
@@ -2613,6 +2890,112 @@ function patternLayer(layer, pattern) {
 }
 
 /**
+ * ŠÍRKA OKRAJA – z tvaru, ktorý prišiel v úprave, a z druhu vrstvy.
+ *
+ * Sú to dve rôzne otázky podľa toho, čo sa obťahuje:
+ *
+ *   PLOCHA nemá vlastnú hrúbku, takže okraj je samostatná čiara a jej šírka
+ *   je ABSOLÚTNA. Preto tu dávajú zmysel všetky tvary vrátane krivky a pásiem
+ *   – práve tie sú odpoveď na „okraj, ktorý so zoomom nezhrubne do neslušna".
+ *
+ *   ČIARA hrúbku má, takže okraj je casing POD ŇOU a jeho šírka sa počíta
+ *   OD NEJ. Skalár `w` znamená „`w` px na každej strane", teda `2w` na šírke
+ *   (obrys je centrovaný); relatívna úprava znamená „toľkokrát hrubší".
+ *   Oboje drží krivku čiary, takže okraj škáluje s ňou.
+ *
+ * Krivka ani pásma sa k šírke ČIARY pripočítať nedajú – „výraz + výraz" nad
+ * `["zoom"]` MapLibre nepozná (rozpis pri `zw`) – takže tam sú, tak ako pri
+ * ploche, absolútnou šírkou casingu. Je to jediné čítanie, ktoré nie je hádanie.
+ */
+function outlineWidth(layer, width) {
+  // Pri ploche nie je čo škálovať, takže základ relatívnej úpravy je 1 px.
+  const base = layer.type === "line" ? layer.paint["line-width"] : null;
+  if (isRelative(width)) return scaleExpr(base ?? 1, width);
+  const val = paintValue(width);
+  if (base == null || typeof val !== "number") return val;
+  return scaleExpr(base, { add: val * 2 });
+}
+
+/**
+ * ROZLÍŠENIE PODĽA ATRIBÚTU OSM – „nespevnená poľná cesta bodkovane,
+ * spevnená plnou čiarou s obrysom".
+ *
+ * PREČO TO NIE JE DRUHÁ VRSTVA V ZDROJÁKU. Dovtedy sa taká otázka dala
+ * zodpovedať len tak, že sa do `themes.js` dopísala ďalšia `add(...)`
+ * s ručne zloženým filtrom – teda commit, build a pol hodiny. Pritom je to
+ * presne to, čo sa ladí okom nad mapou: ktoré hodnoty `surface` ešte znamenajú
+ * „dá sa tadiaľ ísť autom" je otázka na kraj, nie na zdroják.
+ *
+ * PRVOK SA SMIE NAKRESLIŤ RAZ. Variant dostane filter predlohy A test
+ * atribútu, predloha si k svojmu filtru pridá NEGÁCIU toho testu. Bez toho
+ * druhého by sa čiara kreslila dvakrát cez seba: hrubšia, tmavšia a s
+ * prerušovaním, ktoré sa navzájom vypĺňa – teda tichý omyl, ktorý na mape
+ * vyzerá skoro dobre. (Tá istá úvaha, akú si o dvoch blokoch píše
+ * `workers/roads/roads.yml`.)
+ *
+ * Prvok, ktorý atribút vôbec NEMÁ, ostáva v predlohe: `str()` z chýbajúceho
+ * tagu spraví `""` a to sa v zozname hodnôt netrafí. Tak to má byť – „nevieme,
+ * aký je povrch" nie je to isté ako „je nespevnený".
+ */
+function variantLayers(layer, variants, hasIcon) {
+  const out = [];
+  const koren = (layer.metadata || {})["frico:derived"] || layer.id;
+  for (const [i, v] of variants.entries()) {
+    const test = ["in", str(v.attr), ["literal", v.values]];
+    const zaklad = derived(layer, `var${i + 1}`, v.label || v.attr);
+    const vrstva = {
+      ...zaklad,
+      type: layer.type,
+      filter: layer.filter ? ["all", layer.filter, test] : test,
+      ...(layer.layout ? { layout: { ...layer.layout, ...(zaklad.layout || {}) } } : {}),
+      paint: { ...(layer.paint || {}) },
+      metadata: { ...zaklad.metadata, "frico:derived": koren, "frico:variant": layer.id }
+    };
+    for (const [prop, value] of Object.entries(v.paint || {})) {
+      const nv = overrideValue(vrstva.paint[prop], value);
+      if (nv !== undefined) vrstva.paint[prop] = nv;
+    }
+    if (v.layout && layer.type === "symbol") {
+      vrstva.layout = { ...(vrstva.layout || {}) };
+      for (const [prop, value] of Object.entries(v.layout)) {
+        const nv = overrideValue(vrstva.layout[prop], value, LAYOUT_PROPS[prop]?.def);
+        if (nv !== undefined) vrstva.layout[prop] = nv;
+      }
+    }
+    // „Plná" nie je „nič" – rovnaká úvaha ako pri úprave vrstvy.
+    if (v.dash && layer.type === "line") {
+      const arr = dashArray(v.dash);
+      if (arr) vrstva.paint["line-dasharray"] = arr;
+      else delete vrstva.paint["line-dasharray"];
+    }
+    if (v.icon && layer.type === "symbol" && hasIcon(v.icon)) {
+      vrstva.layout = { ...(vrstva.layout || {}), "icon-image": v.icon };
+    }
+    // Obrys variantu ide pod čiaru rovnako ako obrys vrstvy, a hlási sa ku
+    // KOREŇU – inak by ho presun poradia nechal stáť tam, kde predloha už nie je.
+    const obrys = v.outline ? outlineLayer(vrstva, v.outline) : null;
+    if (obrys) {
+      obrys.metadata = { ...obrys.metadata, "frico:derived": koren };
+      if (layer.type === "line") out.push(obrys);
+    }
+    out.push(vrstva);
+    if (obrys && layer.type !== "line") out.push(obrys);
+  }
+  return out;
+}
+
+/** Test „tento prvok patrí niektorému z variantov" – na zúženie predlohy. */
+function variantTest(variants) {
+  const testy = variants.map((v) => ["in", str(v.attr), ["literal", v.values]]);
+  return testy.length === 1 ? testy[0] : ["any", ...testy];
+}
+
+/** Je to vrstva variantu? Vracia id predlohy alebo `null`. */
+export function variantLayerFor(layer) {
+  return (layer?.metadata || {})["frico:variant"] || null;
+}
+
+/**
  * Okraj. Pri ploche je to obrysová čiara nad ňou, pri čiare širšia čiara
  * pod ňou (klasický casing) – v oboch prípadoch „to, čo prvok ohraničuje".
  */
@@ -2625,7 +3008,7 @@ function outlineLayer(layer, outline) {
       layout: { "line-join": "round" },
       paint: {
         "line-color": outline.color,
-        "line-width": outline.width,
+        "line-width": outlineWidth(layer, outline.width),
         "line-opacity": outline.opacity ?? 1,
         ...dash
       }
@@ -2638,7 +3021,7 @@ function outlineLayer(layer, outline) {
       layout: layer.layout || {},
       paint: {
         "line-color": outline.color,
-        "line-width": widenExpr(layer.paint["line-width"], outline.width * 2),
+        "line-width": outlineWidth(layer, outline.width),
         "line-opacity": outline.opacity ?? 1,
         ...dash
       }
@@ -2664,7 +3047,7 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true) {
     // a poskladá znova z ÚČINNÉHO predpisu – inak by úprava vzoru vyrobila
     // druhú vrstvu s tým istým id a poistka proti duplicite by nechala tú
     // pôvodnú, čiže by sa v mape ticho nezmenilo nič.
-    if (patternLayerFor(layer)) continue;
+    if (patternLayerFor(layer) || variantLayerFor(layer)) continue;
 
     const o = layerOverrides[layer.id];
     // Chýbajúci kľúč = „nechaj vzor zo štýlu", `null` = „vypni ho".
@@ -2705,7 +3088,10 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true) {
     if (o.paint) {
       layer.paint = { ...(layer.paint || {}) };
       for (const [prop, value] of Object.entries(o.paint)) {
-        layer.paint[prop] = paintValue(value);
+        const v = overrideValue(layer.paint[prop], value);
+        // Percento nad vlastnosťou, ktorú vrstva nemá, nemá z čoho počítať –
+        // `undefined` v `paint` by MapLibre odmietol aj s celým štýlom.
+        if (v !== undefined) layer.paint[prop] = v;
       }
     }
     // `layout` len na SYMBOLOVEJ vrstve: `icon-size` na čiare je pre MapLibre
@@ -2715,7 +3101,10 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true) {
     if (o.layout && layer.type === "symbol") {
       layer.layout = { ...(layer.layout || {}) };
       for (const [prop, value] of Object.entries(o.layout)) {
-        layer.layout[prop] = paintValue(value);
+        // Rozostup ani veľkosť ikony vrstva nemusí mať nastavené – vtedy je
+        // základom predvoľba MapLibre, nie nič (rozpis pri `overrideValue`).
+        const v = overrideValue(layer.layout[prop], value, LAYOUT_PROPS[prop]?.def);
+        if (v !== undefined) layer.layout[prop] = v;
       }
     }
     // „Plná" NIE JE „nič": vrstva, ktorá má prerušovanie zabudované v štýle
@@ -2729,11 +3118,23 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true) {
       else delete layer.paint["line-dasharray"];
     }
 
+    // ROZLÍŠENIE PODĽA ATRIBÚTU. Vzniká z vrstvy, na ktorej UŽ SEDÍ jej vlastná
+    // úprava, takže variant dedí doladený vzhľad a mení oproti nemu len to, čím
+    // sa líši. Predloha si k filtru pridá negáciu – rozpis pri `variantLayers`.
+    const varianty = (o.variants || []).length
+      ? variantLayers(layer, o.variants, hasIcon)
+      : [];
+    if (varianty.length) {
+      const nie = ["!", variantTest(o.variants)];
+      layer.filter = layer.filter ? ["all", layer.filter, nie] : nie;
+    }
+
     // Okraj čiary ide pod ňu, okraj plochy a vzor nad ňu.
     const outline = o.outline ? outlineLayer(layer, o.outline) : null;
     if (outline && layer.type === "line") out.push(outline);
     out.push(layer);
     if (outline && layer.type !== "line") out.push(outline);
+    out.push(...varianty);
     const pattern = pat && patOk(pat) ? patternLayer(layer, pat) : null;
     if (pattern) out.push(pattern);
   }

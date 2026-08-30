@@ -52,6 +52,8 @@ import {
   sortStops,
   sortBands,
   isBandList,
+  isRelative,
+  scaleExpr,
   emptyOverrides,
   normalizeOverrides,
   hasOverrides,
@@ -63,6 +65,7 @@ import {
   TRAIL_MARK_COLOURS,
   LAYOUT_PROPS,
   LAYOUT_PROP_IDS,
+  MAX_VARIANTS,
   CUSTOM_ICON_PREFIX,
   CUSTOM_ICON_MAX_COUNT,
   CUSTOM_ICON_MAX_BYTES,
@@ -101,6 +104,19 @@ import {
   iconNameFromFile,
   CUSTOM_ICON_MAX_PX
 } from "./dev-icons.js";
+
+/**
+ * Atribúty, ktorými sa rozlišovať NEDÁ, hoci v dlaždici sú.
+ *
+ * Meno, číslo cesty ani id prvku nie sú kategórie – variant nad nimi by bol
+ * jedna vrstva na jednu cestu. Zvyšok sa nefiltruje: čo v dlaždiciach naozaj
+ * je, ponúkne `scanAttrs` aj s počtami, a atribút s jedinou hodnotou z ponuky
+ * vypadne sám (nerozlíšil by nič).
+ */
+const SKIP_ATTRS = new Set([
+  "id", "osm_id", "ref", "ref_length", "network", "rel",
+  "ele", "ele_ft", "render_height", "render_min_height", "area", "length"
+]);
 
 const STORAGE_KEY = "fricomaps.overrides";
 const SCOPE_KEY = "fricomaps.devscope";
@@ -353,6 +369,16 @@ export function initDevMode({
     if (open) patternOpen.add(id);
     else patternOpen.delete(id);
   };
+  /**
+   * Rozpísané rozlíšenie podľa atribútu: ktorý atribút je vybraný a ktoré
+   * hodnoty sú naklikané, kým sa nepotvrdí „Pridať rozlíšenie".
+   *
+   * NIE JE TO ÚPRAVA, a preto to nie je v `overrides`: polovica naklikaného
+   * variantu je stav panela, nie mapy – uložený by sa vyviezol do repozitára
+   * a pipeline by ho zahodila ako variant bez hodnôt.
+   */
+  const variantAttr = new Map();
+  const variantValues = new Map();
   let poiClasses = [];
   let applyTimer = null;
   let zoomTimer = null;
@@ -2126,20 +2152,102 @@ export function initDevMode({
    * zmenenej hodnote `⟲` ako všade inde v paneli a v bublinke je aj to, čo
    * „auto" na tomto zoome znamená – aby bolo z čoho vyjsť.
    */
+  /**
+   * „AUTO × % + N" – úprava NAD tým, čo počíta štýl, namiesto pevného čísla.
+   *
+   * Prečo to políčko existuje. Pevná hodnota ZAHODÍ zoomovú krivku, takže
+   * „cesty o štvrtinu hrubšie" sa dovtedy dalo povedať len prepísaním celej
+   * krivky ručne – zvlášť pre každú triedu cesty, a prvý zoom navyše to ticho
+   * rozhodil. Percento krivku nechá a zmení jej mierku (rozpis pri
+   * `isRelative` v `themes.js`), takže hrúbka aj obrys škálujú ďalej.
+   *
+   * Dve políčka, nie jedno: `×` drží pomer na všetkých zoomoch rovnaký, `+`
+   * je jemný doplnok. Prázdne = nechaj tak (`× 1`, `+ 0`), takže vyprázdnenie
+   * oboch je „späť na štýl".
+   */
+  function relativeInputs({ layer, prop, where, rel, onSet }) {
+    const pole = (kluc, znak, krok, siroko) => {
+      const input = el("input", {
+        type: "number",
+        class: "dev-num dev-rel",
+        step: krok,
+        value: rel && rel[kluc] != null ? rel[kluc] : "",
+        placeholder: siroko,
+        title: `${prop}: ${znak === "×" ? "koľkokrát" : "o koľko"} oproti tomu, `
+          + `čo počíta štýl – prázdne nechá pôvodnú hodnotu`
+      });
+      input.addEventListener("change", () => {
+        const next = { ...(rel || {}) };
+        if (input.value === "") delete next[kluc];
+        else next[kluc] = Number(input.value);
+        onSet(next);
+      });
+      return el("span", { class: "dev-relpair" }, [el("span", { text: znak }), input]);
+    };
+    return [pole("scale", "×", 0.05, "1"), pole("add", "+", 0.5, "0")];
+  }
+
+  /**
+   * KTORÉ `layout` VLASTNOSTI SA NA TEJTO VRSTVE DAJÚ LADIŤ.
+   *
+   * Nie „tie, ktoré už má". Kým sa ponúkali len tie, ktoré štýl NASTAVIL,
+   * nedala sa žiadna zaviesť – rozostup šípok jednosmeriek sa zmeniť dal
+   * (štýl mu dáva 120), ale miesto okolo ikony nie, lebo ho štýl nechal na
+   * predvolenom. Vyzeralo to, že tá páka neexistuje, hoci chýbal len riadok.
+   *
+   * Ponúka sa preto to, čo na vrstve niečo ZNAMENÁ – a to sa dá prečítať
+   * z jej `layout`: veľkosť a odsadenie ikony má zmysel tam, kde ikona je,
+   * veľkosť písma tam, kde je text, a rozostup len pri symboloch kladených
+   * POZDĹŽ ČIARY (pri bodovom umiestnení je `symbol-spacing` bez účinku, teda
+   * by to bolo políčko, ktoré vyzerá, že niečo robí, a nerobí nič).
+   */
+  function layoutPropsFor(layer) {
+    const L = layer.layout || {};
+    const maIkonu = L["icon-image"] !== undefined;
+    const maText = L["text-field"] !== undefined;
+    const poCiare = L["symbol-placement"] === "line" || L["symbol-placement"] === "line-center";
+    return LAYOUT_PROP_IDS.filter((prop) => {
+      if (prop === "text-size") return maText;
+      if (prop === "icon-size" || prop === "icon-padding") return maIkonu;
+      if (prop === "symbol-spacing") return poCiare;
+      return false;
+    });
+  }
+
   function paintNumber({ layer, prop, label, min, max, step, where = "paint" }) {
     const o = layerOverride(layer.id) || {};
     // `paint` aj `layout` – to isté políčko, len iná polica (rozpis pri
     // `zoomStopsEditor`).
     const zapisVlastnost = where === "layout" ? setLayerLayout : setLayerPaint;
-    const cur = (layer[where] || {})[prop];
+    // Vlastnosť, ktorú štýl nenastavil, nie je „nič" – platí pre ňu predvoľba
+    // MapLibre (`LAYOUT_PROPS[...].def`). Bez nej by pri nej svietilo prázdne
+    // „auto", z ktorého sa nedá vyjsť, a percento by nemalo čo násobiť
+    // (tú istú hodnotu dosadzuje `overrideValue` pri skladaní štýlu).
+    const vStyle = (layer[where] || {})[prop];
+    const cur = vStyle === undefined && where === "layout"
+      ? LAYOUT_PROPS[prop]?.def
+      : vStyle;
     const isNum = typeof cur === "number";
-    const overridden = !!(o[where] && o[where][prop] !== undefined);
+    const uprava = (o[where] || {})[prop];
+    const overridden = uprava !== undefined;
+    const rel = isRelative(uprava) ? uprava : null;
     const back = () => {
       zapisVlastnost(layer.id, prop, undefined);
       apply({ immediate: true });
     };
     const resetBtn = (title) =>
       el("button", { type: "button", class: "dev-mini", title, text: "⟲", onclick: back });
+    // `×` a `+` sa píšu do tej istej vlastnosti ako pevná hodnota – sú to dve
+    // odpovede na jednu otázku, takže sa navzájom nahrádzajú, nie sčítavajú.
+    const relPolia = () =>
+      relativeInputs({
+        layer, prop, where, rel,
+        onSet: (next) => {
+          const prazdne = next.scale == null && next.add == null;
+          zapisVlastnost(layer.id, prop, prazdne ? undefined : next);
+          apply({ immediate: true });
+        }
+      });
 
     // Keď tú istú vlastnosť riadia zoomové zlomy, pevná hodnota by ich prepísala
     // – políčko sa preto zamkne a povie, kde sa to teraz nastavuje. Dve páky na
@@ -2155,6 +2263,27 @@ export function initDevMode({
       input.title = `${prop} je nastavené podľa zoomu nižšie (krivka alebo pásma) – `
         + `zruš to (⟲), ak chceš jednu pevnú hodnotu`;
       field.classList.add("changed");
+      field.appendChild(resetBtn(`Späť na to, čo počíta štýl (${prop})`));
+      return field;
+    }
+
+    // RELATÍVNA ÚPRAVA. Krivka zo štýlu ostáva, mení sa jej mierka – v políčku
+    // preto nie je čo vypĺňať a ukazuje sa, čo z toho na tomto zoome vyšlo.
+    // (`cur` je už PO úprave: panel dostáva štýl, na ktorom úprava sedí.)
+    if (rel) {
+      const teraz = valueAtZoom(cur, zoomView);
+      const field = numberField({
+        label, value: undefined, min, max, step,
+        placeholder: typeof teraz === "number" ? String(teraz) : "—",
+        onChange: () => {}
+      });
+      const input = field.querySelector("input");
+      input.disabled = true;
+      input.title = `${prop} je ${relPopis(rel)} oproti štýlu`
+        + (typeof teraz === "number" ? ` – na z${zoomCell()} je to ${teraz}` : "");
+      field.classList.add("changed");
+      for (const p of relPolia()) field.appendChild(p);
+      field.appendChild(resetBtn(`Späť na to, čo počíta štýl (${prop})`));
       return field;
     }
 
@@ -2173,7 +2302,10 @@ export function initDevMode({
       // Šípka na prázdnom políčku nesmie skočiť na spodnú medzu (0 = zmiznutá
       // čiara) – začne sa od toho, čo je v mape teraz.
       stepFrom: autoText,
-      title: isNum
+      title: vStyle === undefined && where === "layout"
+        ? `${prop} štýl nenastavuje – platí predvoľba MapLibre (${cur}). `
+          + `Vyplnením alebo „×" sa dá zaviesť.`
+        : isNum
         ? `${prop} je pevná hodnota – ⟲ vedľa ju vráti na to, čo počíta štýl`
         : `${prop} sa v štýle mení podľa zoomu` +
           (autoText ? ` (na z${zoomCell()} je to ${autoText})` : "") +
@@ -2183,10 +2315,73 @@ export function initDevMode({
         apply({ immediate: true });
       }
     });
+    // `×` a `+` sú tu vždy, aj nad nedotknutou vlastnosťou – práve vtedy sú
+    // totiž najužitočnejšie („nechaj krivku, len hrubšie") a keby sa ukázali
+    // až po vyplnení pevnej hodnoty, nikto by ich nenašiel.
+    for (const p of relPolia()) field.appendChild(p);
     if (!overridden) return field;
     field.classList.add("changed");
     field.appendChild(resetBtn(`Späť na to, čo počíta štýl (${prop} podľa zoomu)`));
     return field;
+  }
+
+  /**
+   * Šírka okraja – pevná hodnota a pri ČIARE aj „× a +" (rozpis pri sekcii
+   * „okraj"). Pole zlomov sem nechodí z panela, ale ručne upravený súbor ho
+   * dovoliť môže, takže sa s ním počíta: políčko sa vtedy zamkne, nech ho
+   * pevná hodnota ticho neprepíše.
+   */
+  function outlineWidthField(layer, out, isArea) {
+    const w = out.width;
+    const zapis = (v) => {
+      patchSub(layer.id, "outline", { width: v });
+      apply({ immediate: true });
+    };
+    if (Array.isArray(w)) {
+      const field = numberField({ label: "šírka", value: undefined, min: 0.5, max: 40,
+                                  step: 0.5, placeholder: "—", onChange: () => {} });
+      const input = field.querySelector("input");
+      input.disabled = true;
+      input.title = "šírka okraja je nastavená podľa zoomu – prepíš ju v súbore úprav";
+      return field;
+    }
+    const rel = isRelative(w) ? w : null;
+    const field = numberField({
+      label: "šírka",
+      value: rel ? undefined : w,
+      min: 0.5,
+      max: 40,
+      step: 0.5,
+      placeholder: rel ? "—" : "",
+      title: rel
+        ? `okraj je ${relPopis(rel)} oproti hrúbke čiary`
+        : isArea
+        ? "šírka obrysovej čiary v px"
+        : "toľko px obrysu na každej strane čiary",
+      onChange: (v) => zapis(v ?? 1)
+    });
+    if (rel) field.querySelector("input").disabled = true;
+    // Plocha vlastnú hrúbku nemá, takže nie je čo násobiť – „×" by tam bolo
+    // políčko, ktoré vyzerá, že niečo robí, a nerobí nič.
+    if (!isArea) {
+      for (const p of relativeInputs({
+        layer, prop: "šírka okraja", where: "paint", rel,
+        onSet: (next) => {
+          const prazdne = next.scale == null && next.add == null;
+          // Okraj bez šírky nie je okraj – prázdne „× a +" sa vrátia na 1 px.
+          zapis(prazdne ? 1 : next);
+        }
+      })) field.appendChild(p);
+    }
+    return field;
+  }
+
+  /** „1,4× a +0,5 px" – relatívna úprava po slovensky, do bublinky a súhrnu. */
+  function relPopis(rel) {
+    const casti = [];
+    if (rel.scale != null) casti.push(`${rel.scale}×`);
+    if (rel.add != null) casti.push(`${rel.add > 0 ? "+" : ""}${rel.add}`);
+    return casti.join(" a ") || "bez zmeny";
   }
 
   /**
@@ -2477,9 +2672,7 @@ export function initDevMode({
     // sú rozloženie, nie farba. Ladia sa okom a PO ZOOMOCH – práve preto je
     // pod každou z nich ten istý editor kriviek a pásiem ako pri hrúbke.
     if (layer.type === "symbol") {
-      const layoutRows = LAYOUT_PROP_IDS.filter(
-        (prop) => (layer.layout || {})[prop] !== undefined
-      );
+      const layoutRows = layoutPropsFor(layer);
       if (layoutRows.length) {
         parts.push(sectionTitle("Veľkosť a rozostup", "koľko miesta symbol zaberie"));
         for (const prop of layoutRows) {
@@ -2808,6 +3001,16 @@ export function initDevMode({
     }
 
     // ---- okraj ----
+    // ŠÍRKA OKRAJA ZNAMENÁ PRI PLOCHE A PRI ČIARE NIEČO INÉ, a je to preto, že
+    // sa obťahuje niečo iné (rozpis pri `outlineWidth` v `themes.js`):
+    //
+    //   plocha  vlastnú hrúbku nemá, takže okraj je samostatná čiara a číslo
+    //           je jej ABSOLÚTNA šírka. „× a +" tu preto nemajú z čoho počítať.
+    //   čiara   hrúbku má, takže okraj je casing POD ŇOU a počíta sa OD NEJ:
+    //           číslo je „toľko px na každej strane", `×` je „toľkokrát
+    //           hrubší". Práve `×` je odpoveď na obrys, ktorý na prehľade
+    //           prekryje cestu a v detaile nie je vidieť – konštanta drží
+    //           pomer len na jednom zoome.
     const out = o.outline;
     const isArea = layer.type !== "line";
     parts.push(
@@ -2842,17 +3045,7 @@ export function initDevMode({
             apply({ rerender: false });
           }
         }),
-        numberField({
-          label: "šírka",
-          value: out.width,
-          min: 0.5,
-          max: 40,
-          step: 0.5,
-          onChange: (v) => {
-            patchSub(layer.id, "outline", { width: v ?? 1 });
-            apply({ immediate: true });
-          }
-        }),
+        outlineWidthField(layer, out, isArea),
         dashField({
           label: "čiara",
           value: out.dash || "solid",
@@ -2876,7 +3069,268 @@ export function initDevMode({
     }
     parts.push(el("div", { class: `dev-sub${out ? " changed" : ""}` }, outlineRow));
 
+    // ---- rozlíšenie podľa atribútu OSM ----
+    parts.push(...variantSection(layer, o));
+
     return el("div", { class: "dev-details" }, parts);
+  }
+
+  /**
+   * AKÉ ATRIBÚTY A HODNOTY MÁ TÁ VRSTVA V MAPE PRÁVE TERAZ.
+   *
+   * Číta sa to Z DLAŽDÍC, nie zo zoznamu v zdrojáku, a je to rozhodnutie:
+   * schéma OpenMapTiles vydáva `surface` len pre niektoré triedy ciest a
+   * pri niektorých zoomoch, takže vymenovaný zoznam by ponúkal rozlíšenia,
+   * ktoré nikdy nič netrafia – a to sa prejaví až tým, že v mape sa nič
+   * nezmení. Takto sa ponúka to, čo naozaj je, aj s počtami, a hodnota,
+   * ktorá v tomto výreze nie je, sa ani nedá naklikať.
+   *
+   * Počty sú z NAČÍTANÝCH dlaždíc, teda z toho, čo je práve na obrazovke –
+   * a to je správna odpoveď na „ktoré hodnoty tu vlastne sú".
+   */
+  function scanAttrs(layer) {
+    const m = getMap();
+    const sourceLayer = layer["source-layer"];
+    if (!m || !layer.source || !sourceLayer) return new Map();
+    let features = [];
+    try {
+      features = m.querySourceFeatures(layer.source, { sourceLayer, filter: layer.filter });
+    } catch {
+      try {
+        features = m.querySourceFeatures(layer.source, { sourceLayer });
+      } catch {
+        return new Map();
+      }
+    }
+    const out = new Map();
+    for (const f of features) {
+      for (const [k, v] of Object.entries(f.properties || {})) {
+        if (v == null || v === "") continue;
+        // Meno, popis ani `ref` nie sú kategórie – rozlíšiť podľa nich by
+        // znamenalo variant na každú cestu zvlášť.
+        if (SKIP_ATTRS.has(k) || k.startsWith("name")) continue;
+        if (!out.has(k)) out.set(k, new Map());
+        const hodnoty = out.get(k);
+        const s = String(v);
+        if (s.length > 40) continue;
+        hodnoty.set(s, (hodnoty.get(s) || 0) + 1);
+      }
+    }
+    // Atribút s jedinou hodnotou nerozlíši nič – variant by z predlohy vzal
+    // všetko a predloha by ostala prázdna.
+    for (const [k, v] of out) if (v.size < 2) out.delete(k);
+    return out;
+  }
+
+  /** Zoznam variantov jednej vrstvy – z toho priečinka, do ktorého sa zapisuje. */
+  const variantsOf = (id) => (layerOverride(id) || {}).variants || [];
+
+  function setVariants(id, list) {
+    setLayerOverride(id, { variants: list.length ? list : undefined });
+  }
+
+  function patchVariant(id, i, patch) {
+    const list = [...variantsOf(id)];
+    if (!list[i]) return;
+    const next = { ...list[i], ...patch };
+    for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k];
+    list[i] = next;
+    setVariants(id, list);
+    apply({ immediate: true });
+  }
+
+  /** Jedna vlastnosť `paint` vo variante; `undefined` = späť na to, čo má predloha. */
+  function patchVariantPaint(id, i, prop, value) {
+    const cur = { ...(variantsOf(id)[i]?.paint || {}) };
+    if (value === undefined) delete cur[prop];
+    else cur[prop] = value;
+    patchVariant(id, i, { paint: Object.keys(cur).length ? cur : undefined });
+  }
+
+  function variantSection(layer, o) {
+    if (!layer["source-layer"]) return [];
+    const parts = [
+      sectionTitle(
+        "Rozlíšenie podľa OSM",
+        "napr. nespevnená cesta bodkovane, spevnená plnou čiarou"
+      )
+    ];
+    const varianty = o.variants || [];
+    const isLine = layer.type === "line";
+
+    varianty.forEach((v, i) => {
+      const row = [
+        el("span", { class: "dev-name" }, [
+          el("span", { text: v.label || v.attr }),
+          el("small", { text: `${v.attr} = ${v.values.join(", ")}` })
+        ])
+      ];
+      if (isLine) {
+        row.push(
+          dashField({
+            label: "čiara",
+            value: v.dash || "",
+            builtin: builtinDash(layer),
+            onChange: (d) => patchVariant(layer.id, i, { dash: d || undefined })
+          })
+        );
+      }
+      const farbaProp = primaryColorProp(layer);
+      if (farbaProp) {
+        row.push(
+          colorControl({
+            value: v.paint?.[farbaProp] ?? layer.paint[farbaProp],
+            changed: v.paint?.[farbaProp] !== undefined,
+            onInput: (c) => {
+              patchVariantPaint(layer.id, i, farbaProp, c);
+            },
+            onReset: v.paint?.[farbaProp] !== undefined
+              ? () => patchVariantPaint(layer.id, i, farbaProp, undefined)
+              : null
+          })
+        );
+      }
+      // Hrúbka len relatívne: variant je „to isté, len inak" a pevné číslo by
+      // z neho spravilo vrstvu, ktorá s predlohou už nemá nič spoločné.
+      if (isLine) {
+        row.push(
+          el("span", { class: "dev-field" }, [
+            el("span", { text: "hrúbka" }),
+            ...relativeInputs({
+              layer, prop: "hrúbka variantu", where: "paint",
+              rel: isRelative(v.paint?.["line-width"]) ? v.paint["line-width"] : null,
+              onSet: (next) => {
+                const prazdne = next.scale == null && next.add == null;
+                patchVariantPaint(layer.id, i, "line-width", prazdne ? undefined : next);
+              }
+            })
+          ]),
+          selectField({
+            label: "okraj",
+            value: v.outline ? "on" : "off",
+            options: [["off", "žiadny"], ["on", "obrys pod čiarou"]],
+            onChange: (val) => patchVariant(layer.id, i, {
+              outline: val === "on"
+                ? v.outline || { color: darken(primaryColor(layer)), width: { scale: 1.5 } }
+                : undefined
+            })
+          })
+        );
+        if (v.outline) {
+          row.push(
+            colorControl({
+              value: v.outline.color,
+              changed: true,
+              onInput: (c) => patchVariant(layer.id, i, { outline: { ...v.outline, color: c } })
+            }),
+            el("span", { class: "dev-field" }, [
+              el("span", { text: "šírka" }),
+              ...relativeInputs({
+                layer, prop: "šírka okraja variantu", where: "paint",
+                rel: isRelative(v.outline.width) ? v.outline.width : null,
+                onSet: (next) => {
+                  const prazdne = next.scale == null && next.add == null;
+                  patchVariant(layer.id, i, {
+                    outline: { ...v.outline, width: prazdne ? 1 : next }
+                  });
+                }
+              })
+            ])
+          );
+        }
+      }
+      row.push(
+        el("button", {
+          type: "button",
+          class: "dev-mini",
+          title: "Zrušiť toto rozlíšenie – prvky sa vrátia do predlohy",
+          text: "🗑",
+          onclick: () => {
+            const list = varianty.filter((_, j) => j !== i);
+            setVariants(layer.id, list);
+            apply({ immediate: true });
+          }
+        })
+      );
+      parts.push(el("div", { class: "dev-sub changed" }, row));
+    });
+
+    if (varianty.length >= MAX_VARIANTS) {
+      parts.push(el("div", { class: "dev-sub" }, [
+        el("span", { class: "dev-note",
+          text: `Viac než ${MAX_VARIANTS} rozlíšení na jednu vrstvu sa už nedá prečítať v mape ani tu.` })
+      ]));
+      return parts;
+    }
+
+    // ---- pridanie ----
+    const atributy = scanAttrs(layer);
+    if (!atributy.size) {
+      parts.push(el("div", { class: "dev-sub" }, [
+        el("span", { class: "dev-note",
+          text: "V načítaných dlaždiciach táto vrstva nemá atribút, ktorým by sa "
+            + "dala rozlíšiť. Posuň sa tam, kde sa kreslí, alebo priblíž." })
+      ]));
+      return parts;
+    }
+    const brane = new Set(varianty.flatMap((v) => v.values.map((x) => `${v.attr}=${x}`)));
+    const vybraneAttr = variantAttr.get(layer.id) || [...atributy.keys()][0];
+    const vybraneHodnoty = variantValues.get(layer.id) || new Set();
+
+    parts.push(el("div", { class: "dev-sub" }, [
+      selectField({
+        label: "atribút",
+        value: vybraneAttr,
+        options: [...atributy].map(([k, v]) => [k, `${k} (${v.size} hodnôt)`]),
+        onChange: (k) => {
+          variantAttr.set(layer.id, k);
+          variantValues.set(layer.id, new Set());
+          // Len stav panela – mapa sa nemení, tak sa ani neprekresľuje.
+          render();
+        }
+      }),
+      el("button", {
+        type: "button",
+        class: "dev-btn",
+        text: "Pridať rozlíšenie",
+        title: vybraneHodnoty.size
+          ? `Vybrané hodnoty dostanú vlastnú vrstvu; zvyšok ostane v predlohe`
+          : "Najprv vyber aspoň jednu hodnotu",
+        onclick: () => {
+          if (!vybraneHodnoty.size) return;
+          setVariants(layer.id, [
+            ...varianty,
+            { attr: vybraneAttr, values: [...vybraneHodnoty], label: [...vybraneHodnoty].join(", ") }
+          ]);
+          variantValues.set(layer.id, new Set());
+          apply({ immediate: true });
+        }
+      })
+    ]));
+
+    const hodnoty = [...(atributy.get(vybraneAttr) || new Map())]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    parts.push(el("div", { class: "dev-chips" }, hodnoty.map(([val, pocet]) => {
+      const uz = brane.has(`${vybraneAttr}=${val}`);
+      const on = vybraneHodnoty.has(val);
+      return el("button", {
+        type: "button",
+        class: `dev-chip${on ? " on" : ""}${uz ? " off" : ""}`,
+        text: `${val} · ${pocet}`,
+        title: uz
+          ? "Túto hodnotu už berie iné rozlíšenie – dve vrstvy nad tým istým "
+            + "prvkom by sa kreslili cez seba"
+          : `${pocet} prvkov v načítaných dlaždiciach`,
+        onclick: () => {
+          if (uz) return;
+          if (on) vybraneHodnoty.delete(val);
+          else vybraneHodnoty.add(val);
+          variantValues.set(layer.id, vybraneHodnoty);
+          render();
+        }
+      });
+    })));
+    return parts;
   }
 
   // ---------- tab: prvky ----------
@@ -3449,8 +3903,13 @@ export function initDevMode({
       const m = PAINT_RANGES[prop];
       rows.push(propRow(layer, prop, "paint", m));
     }
+    // Rovnako ako v záložke Vrstiev: ponúka sa to, čo na vrstve niečo znamená,
+    // nie to, čo štýl náhodou nastavil (rozpis pri `layoutPropsFor`). Bez toho
+    // sa nedal zaviesť rozostup tam, kde ho štýl nechal na predvolenom –
+    // a práve to je otázka „ako často má byť číslo cesty vidieť".
+    const daSa = new Set(layoutPropsFor(layer));
     for (const prop of role.layout || []) {
-      if ((layer.layout || {})[prop] === undefined) continue;
+      if (!daSa.has(prop)) continue;
       rows.push(propRow(layer, prop, "layout", LAYOUT_PROPS[prop]));
     }
     return el("div", { class: `dev-sub${zmenene ? " changed" : ""}` }, [

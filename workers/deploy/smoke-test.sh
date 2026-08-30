@@ -78,6 +78,11 @@ echo "Kontrolujem $BASE"
 check "$BASE/tiles/manifest.json" 200 "manifest.json"
 check "$BASE/sprites/$SPRITE.json" 200 "sprite index"
 check "$BASE/sprites/$SPRITE.png" 200 "sprite bitmapa"
+# RETINA VARIANT. Telefón si pýta práve tento – a keď ho nedostane, nenakreslí
+# ŽIADNE ikony (nie „len mäkšie"). Na počítači sa to nemusí prejaviť vôbec,
+# takže to je presne tá vec, ktorú musí povedať smoke test a nie používateľ.
+check "$BASE/sprites/$SPRITE@2x.json" 200 "sprite index @2x (retina, telefóny)"
+check "$BASE/sprites/$SPRITE@2x.png" 200 "sprite bitmapa @2x (retina, telefóny)"
 check "$BASE/styles/$REGION-svetla.json" 200 "style.json"
 # Typy máp: každý má vlastný štýl pre každú tému; overíme jeden iný
 # než predvolený, nech sa nestane, že sa nasadí len ten starý názov.

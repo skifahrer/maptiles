@@ -16,6 +16,8 @@
  * tried OSM pokryje asi tretinu, navyše s rámčekom okolo symbolu.
  */
 
+import { DEFAULT_ARROW_IMAGE } from "./arrows.js";
+
 export const ICON_SOURCES = [
   {
     id: "osm-liberty",
@@ -26,9 +28,8 @@ export const ICON_SOURCES = [
     license: "BSD-3-Clause, ikony maki (CC0)",
     suffix: "_11",
     note:
-      "Klasická sada maki – najširšie pokrytie tried a jediná so šípkou " +
-      "jednosmeriek. V origináli je každý symbol v bielom koliesku, ktoré " +
-      "pipeline odstráni."
+      "Klasická sada maki – najširšie pokrytie tried OSM. V origináli je " +
+      "každý symbol v bielom koliesku, ktoré pipeline odstráni."
   },
   {
     id: "osm-liberty-topo",
@@ -39,8 +40,7 @@ export const ICON_SOURCES = [
     license: "BSD-3-Clause",
     suffix: "_11",
     note:
-      "Turistická odvodenina osm-liberty s doplnenými outdoorovými symbolmi. " +
-      "Nemá šípku jednosmeriek – tá vrstva sa jednoducho nevykreslí."
+      "Turistická odvodenina osm-liberty s doplnenými outdoorovými symbolmi."
   },
   {
     id: "osm-bright",
@@ -104,6 +104,11 @@ export function specialIcons(id, overrides) {
     peak: `mountain${suffix}`,
     volcano: `volcano${suffix}`,
     airport: `airport${suffix}`,
-    arrow: "arrow"
+    // ŠÍPKA JEDNOSMERKY NIE JE ZO SADY. Kým to bola cudzia `arrow`, mala ju
+    // jediná z troch overených sád – pri ostatných sa vrstva `road-oneway`
+    // do štýlu vôbec nedostala, takže sa nedalo nastaviť ani ako často sú
+    // šípky, ani akej sú farby (rozpis v `poc/web/arrows.js`). Kreslíme si ju
+    // preto sami a pečieme do každého spritu, ako štítky ciest a značky trás.
+    arrow: DEFAULT_ARROW_IMAGE
   };
 }
