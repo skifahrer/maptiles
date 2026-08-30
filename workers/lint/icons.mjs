@@ -3,7 +3,7 @@
  * Kontrola IKON: vlastných obrázkov, vlastných sád a `layout` vlastností.
  * Volá ju `Kontrola · lint workflowov`.
  *
- * Je to šesť tichých vecí – nič z toho nič nezhodí a všetko sa prejaví až
+ * Je to sedem tichých vecí – nič z toho nič nezhodí a všetko sa prejaví až
  * v mape (alebo v nej naopak nebude vidieť nič):
  *
  * 1. **Vlastná ikona, ktorá sa nedopečie.** Obrázok leží v úpravách ako PNG
@@ -39,6 +39,12 @@
  *    `collectPatternNames` vrátilo medzi kreslené vzory, prepísal by ho
  *    rasterizér šrafovaním.
  *
+ * 7. **Šípka jednosmerky, ktorú sada nemá.** Kým bola `arrow` z cudzieho
+ *    spritu, mala ju jediná z troch overených sád – pri ostatných sa vrstva
+ *    `road-oneway` do štýlu vôbec nedostala, takže sa nedalo nastaviť ani ako
+ *    často sú šípky, ani akej sú farby. Odvtedy si ich kreslíme sami
+ *    (`poc/web/arrows.js`) a kontrola drží, že vrstva vznikne pri KAŽDEJ sade.
+ *
  * Spustenie (aj lokálne):
  *   node workers/lint/icons.mjs
  */
@@ -55,7 +61,8 @@ import {
   LAYOUT_PROP_IDS,
   CUSTOM_ICON_PREFIX
 } from "../../poc/web/themes.js";
-import { CUSTOM_SET_PREFIX, allIconSources } from "../../poc/web/icon-sources.js";
+import { CUSTOM_SET_PREFIX, allIconSources, ICON_SOURCE_IDS } from "../../poc/web/icon-sources.js";
+import { arrowImages, DEFAULT_ARROW_IMAGE } from "../../poc/web/arrows.js";
 import { collectPatternNames } from "../../poc/web/patterns.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -355,8 +362,44 @@ try {
   }
 }
 
+// ---------- 7. šípky jednosmeriek sú v KAŽDEJ sade ----------
+// Kým bola šípka `arrow` z cudzieho spritu, mala ju jediná z troch overených
+// sád – a pri ostatných vrstva `road-oneway` do štýlu VÔBEC NEVZNIKLA, takže
+// sa nedalo nastaviť ani ako často sú šípky, ani akej sú farby či veľkosti.
+// Nespadlo nič; v paneli len nebolo čo nastavovať. Odvtedy si šípky kreslíme
+// sami a pečú sa do každého spritu – kontrola drží obe strany tej vety:
+// meno, ktoré štýl žiada, musí byť medzi tými, ktoré `arrows.mjs` pečie.
+{
+  const vsetky = arrowImages();
+  if (!vsetky.includes(DEFAULT_ARROW_IMAGE)) {
+    chyba("poc/web/arrows.js",
+      `štýl žiada šípku "${DEFAULT_ARROW_IMAGE}", ale medzi pečenými nie je ` +
+      `(${vsetky.join(", ")}) – vrstva jednosmeriek by sa ticho vynechala.`);
+  }
+  for (const set of ICON_SOURCE_IDS) {
+    // `hasIcon` dostáva to, čo je v sprite. Sada bez vlastnej `arrow` je
+    // presne ten prípad, kvôli ktorému si šípky kreslíme sami.
+    const style = buildStyle({
+      theme: Object.keys(THEMES)[0],
+      tilesUrl: "pmtiles://x/t.pmtiles",
+      spriteUrl: "https://x/sprite",
+      // Pole, nie Set: `hasIcon` sa pýta na `.length` a `.includes`, takže
+      // Set by kontrolu ticho vypol a prešlo by čokoľvek.
+      icons: vsetky,
+      sdfIcons: true,
+      overrides: { ...overrides, icons: set }
+    });
+    if (!style.layers.some((l) => l.id === "road-oneway")) {
+      chyba("poc/web/icon-sources.js",
+        `pri sade "${set}" nie je v štýle vrstva "road-oneway" – jednosmerky ` +
+        `by nemali šípky a v paneli by nebolo čo nastaviť.`);
+    }
+  }
+}
+
 console.log(
   `ikony: ${bad} chýb (${LAYOUT_PROP_IDS.length} vlastností z layout, ` +
-    `${overrides.customIcons.length} vlastných ikon, ${overrides.iconSets.length} vlastných sád)`
+    `${overrides.customIcons.length} vlastných ikon, ${overrides.iconSets.length} vlastných sád, ` +
+    `${arrowImages().length} šípok × ${ICON_SOURCE_IDS.length} sád)`
 );
 process.exit(bad ? 1 : 0);

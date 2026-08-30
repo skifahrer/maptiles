@@ -42,6 +42,8 @@ import {
   emptyOverrides,
   normalizeOverrides,
   paintValue,
+  scaleExpr,
+  MAX_VARIANTS,
   MAX_DISPLAY_Z
 } from "../../poc/web/themes.js";
 import { dashArray, dashIdOf } from "../../poc/web/patterns.js";
@@ -566,9 +568,180 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
   }
 }
 
+// ---------- 8. relatívna hodnota `{scale, add}` ----------
+// „Nechaj krivku zo štýlu, len ju preškáluj". Dve veci sa tu strážia a obe
+// boli tiché:
+//
+//   * `scaleExpr` nad PÁSMAMI. Kým to vedela len krivka, obrys nad čiarou so
+//     šírkou v pásmach dostal výraz NEZMENENÝ – čiže bol presne taký široký
+//     ako čiara, teda neviditeľný. Štýl platný, mapa načítaná, nikto nič.
+//   * `{scale: 1, add: 0}` nesmie prejsť: uložené by bolo len šumom v súbore
+//     a v paneli by nad nezmenenou vrstvou svietilo „zmenené".
+const rel = (value, prop = "line-width") =>
+  normalizeOverrides({ layers: { x: { paint: { [prop]: value } } } });
+
+for (const [popis, value, prop, musiPrejst] of [
+  ["percento", { scale: 1.4 }, "line-width", true],
+  ["konštanta", { add: 0.5 }, "line-width", true],
+  ["oboje", { scale: 1.4, add: 0.5 }, "line-width", true],
+  ["nič nemení", { scale: 1, add: 0 }, "line-width", false],
+  ["nula ako násobok", { scale: 0 }, "line-width", false],
+  ["mimo medze", { scale: 99 }, "line-width", false],
+  ["nečíslo", { scale: "hodne" }, "line-width", false],
+  ["nad farbou", { scale: 1.4 }, "line-color", false]
+]) {
+  const { overrides, problems } = rel(value, prop);
+  const prijate = overrides.layers.x?.paint?.[prop] !== undefined;
+  if (musiPrejst && (!prijate || problems.length)) {
+    chyba("poc/web/themes.js",
+      `relatívna hodnota (${popis}) neprešla cez normalizeOverrides: ` +
+      `${problems[0] || "zahodená bez dôvodu"}`);
+  }
+  if (!musiPrejst && (prijate || !problems.length)) {
+    chyba("poc/web/themes.js",
+      `relatívna hodnota (${popis}) prešla cez normalizeOverrides – a nemala.`);
+  }
+}
+
+// Krivka si musí nechať DRUH interpolácie: `zw` je `exponential 1.5` a lineárna
+// náhrada by šírky medzi zlomami ticho posunula.
+const skalovana = scaleExpr(
+  ["interpolate", ["exponential", 1.5], ["zoom"], 11, 0.4, 16, 2.2], { scale: 2 }
+);
+if (JSON.stringify(skalovana.slice(0, 3)) !== JSON.stringify(["interpolate", ["exponential", 1.5], ["zoom"]])) {
+  chyba("poc/web/themes.js", "scaleExpr zmenil druh interpolácie – šírky medzi zlomami by sedeli inde.");
+}
+for (const [z, cakane] of [[11, 0.8], [16, 4.4]]) {
+  if (valueAtZoom(skalovana, z) !== cakane) {
+    chyba("poc/web/themes.js",
+      `scaleExpr nad krivkou dal pri z${z} ${valueAtZoom(skalovana, z)}, čakalo sa ${cakane}.`);
+  }
+}
+// A to isté nad PÁSMAMI – práve tie `widenExpr` kedysi prepustil nezmenené.
+const pasmaSkalovane = scaleExpr(paintValue([[9, 11, 2], [12, 17, 5]]), { add: 3 });
+for (const [z, cakane] of [[9, 5], [12, 8]]) {
+  if (valueAtZoom(pasmaSkalovane, z) !== cakane) {
+    chyba("poc/web/themes.js",
+      `scaleExpr nad pásmami dal pri z${z} ${valueAtZoom(pasmaSkalovane, z)}, ` +
+      `čakalo sa ${cakane} – obrys nad takou čiarou by bol presne taký široký ako ona.`);
+  }
+}
+// Výraz podľa atribútu prvku sa prepisovať NESMIE – naslepo zmenená farba či
+// šírka podľa dát je tichá zmena mapy.
+const podlaDat = ["match", ["get", "x"], "a", 1, 2];
+if (JSON.stringify(scaleExpr(podlaDat, { scale: 2 })) !== JSON.stringify(podlaDat)) {
+  chyba("poc/web/themes.js", "scaleExpr prepísal výraz podľa atribútu prvku.");
+}
+
+// Obrys nad čiarou so šírkou v PÁSMACH musí byť naozaj širší než čiara.
+{
+  const { overrides } = normalizeOverrides({
+    layers: {
+      "road-path": {
+        paint: { "line-width": [[11, 13, 2], [14, 20, 5]] },
+        outline: { color: "#112233", width: 1.5 }
+      }
+    }
+  });
+  const s = buildStyle({ theme: Object.keys(THEMES)[0], tilesUrl: "pmtiles://x/t.pmtiles",
+                         spriteUrl: "https://x/sprite", overrides });
+  const ciara = s.layers.find((l) => l.id === "road-path");
+  const obrys = s.layers.find((l) => l.id === "road-path__outline");
+  if (!ciara || !obrys) {
+    chyba("poc/web/themes.js", "obrys nad čiarou s pásmami vôbec nevznikol.");
+  } else {
+    for (const z of [12, 16]) {
+      const a = valueAtZoom(ciara.paint["line-width"], z);
+      const b = valueAtZoom(obrys.paint["line-width"], z);
+      if (!(b > a)) {
+        chyba("poc/web/themes.js",
+          `obrys pri z${z} je ${b}, čiara ${a} – obrys, ktorý nie je širší, nie je vidieť.`);
+      }
+    }
+  }
+}
+
+// ---------- 9. rozlíšenie podľa atribútu OSM ----------
+// PRVOK SA SMIE NAKRESLIŤ RAZ. Variant si berie svoje hodnoty, predloha si
+// k filtru pridá ich negáciu – bez toho druhého by sa čiara kreslila dvakrát
+// cez seba a vyzeralo by to len „nejako hrubšie".
+let variantov = 0;
+{
+  const test = (v) => normalizeOverrides({ layers: { "road-track": { variants: v } } });
+  for (const [popis, v, musiPrejst] of [
+    ["jeden variant", [{ attr: "surface", values: ["paved"] }], true],
+    ["bez hodnôt", [{ attr: "surface", values: [] }], false],
+    ["bez atribútu", [{ values: ["paved"] }], false],
+    ["neplatné meno atribútu", [{ attr: "s urface!", values: ["paved"] }], false],
+    ["dva varianty nad tou istou hodnotou",
+     [{ attr: "surface", values: ["paved"] }, { attr: "surface", values: ["paved"] }], false],
+    ["viac než strop", Array.from({ length: MAX_VARIANTS + 1 },
+      (_, i) => ({ attr: "surface", values: [`v${i}`] })), false]
+  ]) {
+    const { overrides, problems } = test(v);
+    const prijate = (overrides.layers["road-track"]?.variants || []).length === v.length;
+    if (musiPrejst && (!prijate || problems.length)) {
+      chyba("poc/web/themes.js",
+        `variant (${popis}) neprešiel cez normalizeOverrides: ${problems[0] || "zahodený bez dôvodu"}`);
+    }
+    if (!musiPrejst && (prijate || !problems.length)) {
+      chyba("poc/web/themes.js", `variant (${popis}) prešiel cez normalizeOverrides – a nemal.`);
+    }
+  }
+
+  const { overrides } = normalizeOverrides({
+    layers: {
+      "road-track": {
+        variants: [{ attr: "surface", values: ["paved", "asphalt"], label: "spevnené",
+                     dash: "solid", outline: { color: "#8a7a6a", width: { scale: 1.6 } } }]
+      }
+    }
+  });
+  const s = buildStyle({ theme: Object.keys(THEMES)[0], tilesUrl: "pmtiles://x/t.pmtiles",
+                         spriteUrl: "https://x/sprite", overrides });
+  const predloha = s.layers.find((l) => l.id === "road-track");
+  const variant = s.layers.find((l) => l.id === "road-track__var1");
+  const obrys = s.layers.find((l) => l.id === "road-track__var1__outline");
+  variantov = [predloha, variant, obrys].filter(Boolean).length;
+  const testExpr = JSON.stringify(["in", ["coalesce", ["get", "surface"], ""],
+                                   ["literal", ["paved", "asphalt"]]]);
+  if (!variant) {
+    chyba("poc/web/themes.js", "variant vrstvy sa v štýle nevyrobil.");
+  } else if (!JSON.stringify(variant.filter).includes(testExpr)) {
+    chyba("poc/web/themes.js", "filter variantu neobsahuje test atribútu.");
+  }
+  if (!predloha || !JSON.stringify(predloha.filter).includes(`["!",${testExpr}]`)) {
+    chyba("poc/web/themes.js",
+      "filter predlohy nie je zúžený o negáciu variantu – prvok by sa nakreslil " +
+      "dvakrát cez seba a v mape by to vyzeralo len „nejako hrubšie“.");
+  }
+  // Obrys variantu sa musí hlásiť ku KOREŇU, inak ho presun poradia nechá
+  // stáť tam, kde predloha už nie je.
+  if (!obrys || (obrys.metadata || {})["frico:derived"] !== "road-track") {
+    chyba("poc/web/themes.js",
+      "obrys variantu sa nehlási k predlohe – presun poradia by ho nechal za ňou.");
+  }
+  // Obrys je 1,6× čiara, teda naozaj širší na KAŽDOM zoome (o to pri percente ide).
+  if (variant && obrys) {
+    for (const z of [11, 16, 20]) {
+      const a = valueAtZoom(variant.paint["line-width"], z);
+      const b = valueAtZoom(obrys.paint["line-width"], z);
+      if (!(b > a)) {
+        chyba("poc/web/themes.js",
+          `obrys variantu pri z${z} je ${b}, čiara ${a} – percento má držať pomer na všetkých zoomoch.`);
+      }
+    }
+  }
+  const idcka = s.layers.map((l) => l.id);
+  if (new Set(idcka).size !== idcka.length) {
+    chyba("poc/web/themes.js", "varianty vyrobili dve vrstvy s tým istým id – MapLibre taký štýl odmietne.");
+  }
+}
+
 console.log(
   `úpravy: ${bad} chýb (${odfotenych} odfotených vrstiev, ${skusok} vložení, ` +
-  `7 tvarov zoomových pásiem, ` +
+  `7 tvarov zoomových pásiem, 8 tvarov relatívnej hodnoty, ` +
+  `6 tvarov variantu, ${variantov} vrstiev z variantu, ` +
   `${Object.keys(THEMES).length} tém × ${MAP_TYPE_IDS.length} typov mapy)`
 );
 process.exit(bad ? 1 : 0);

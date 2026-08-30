@@ -31,6 +31,29 @@ for ext in .json .png; do
   [ -s "$SITE/sprites/$SPRITE$ext" ] || { echo "::error::chýba sprites/$SPRITE$ext"; fail=1; }
 done
 
+# RETINA VARIANT (@2x). Mapa si ho pýta podľa hustoty displeja, takže telefón
+# siahne na `<sprite>@2x.json` a nie na `<sprite>.json` – a keď ho nedostane,
+# NEVYKRESLÍ ŽIADNE IKONY, nie „len mäkšie". Na počítači sa to nemusí prejaviť
+# vôbec. Doteraz sa `@2x` nekontroloval nikde: sťahuje sa „ak je", pečie sa doň
+# „ak je", a či je, nikto nepovedal.
+#
+# A MUSÍ MAŤ TIE ISTÉ MENÁ. Štítky ciest, značky trás, šípky aj vlastné ikony
+# sa pečú do oboch variantov zvlášť; keby sa jedno pečenie nepodarilo, sprite
+# by ostal platný a v mape by na retine chýbala presne tá skupina obrázkov.
+for ext in @2x.json @2x.png; do
+  [ -s "$SITE/sprites/$SPRITE$ext" ] \
+    || { echo "::error::chýba sprites/$SPRITE$ext – na displeji s vyššou hustotou (telefón) si mapa pýta práve tento variant a bez neho nenakreslí ANI JEDNU ikonu"; fail=1; }
+done
+if [ -s "$SITE/sprites/$SPRITE@2x.json" ]; then
+  CHYBAJU=$(jq -r --slurpfile dva "$SITE/sprites/$SPRITE@2x.json" \
+    '[keys[] | select(. as $k | ($dva[0] | has($k)) | not)] | join(", ")' \
+    "$SITE/sprites/$SPRITE.json")
+  if [ -n "$CHYBAJU" ]; then
+    echo "::error::sprites/$SPRITE@2x.json nemá obrázky, ktoré sú v 1×: $CHYBAJU"
+    fail=1
+  fi
+fi
+
 # glyfy – iba ak si ich hostíme sami.
 # Názvy fontstackov obsahujú medzery ("Noto Sans Regular"), preto read -r.
 if jq -e '.glyphs | contains("openmaptiles.org") | not' "$STYLE" >/dev/null; then
@@ -64,6 +87,22 @@ if jq -e '[.layers[] | select(.id | endswith("-mark"))] | length > 0' "$STYLE" >
   done < <(node -e "
     import('./poc/web/marks.js').then((m) => {
       for (const z of m.markImages()) console.log(z.name);
+    });
+  ")
+fi
+
+# ŠÍPKY JEDNOSMERIEK. Tú istú úvahu ako pri značkách trás: kreslíme si ich
+# sami a pečieme do každej sady, takže vrstva `road-oneway` má byť v štýle
+# vždy. Keby chýbal obrázok, vrstva sa ticho vynechá – a to je presne stav,
+# ktorý sme týmto odstraňovali.
+if jq -e '[.layers[] | select(.id == "road-oneway")] | length > 0' "$STYLE" >/dev/null; then
+  while IFS= read -r img; do
+    [ -n "$img" ] || continue
+    jq -e --arg i "$img" 'has($i)' "$SITE/sprites/$SPRITE.json" >/dev/null \
+      || { echo "::error::štýl kreslí jednosmerky, ale šípka '$img' v sprite nie je"; fail=1; }
+  done < <(node -e "
+    import('./poc/web/arrows.js').then((m) => {
+      for (const z of m.arrowImages()) console.log(z);
     });
   ")
 fi

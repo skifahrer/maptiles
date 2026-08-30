@@ -84,6 +84,13 @@ while read -r id url; do
     # nespadne: pozdĺž trasy sa kreslí ikonka druhu trasy ako predtým.
     node workers/assets/marks.mjs --sprite="_site/sprites/$id" \
       || echo "::warning::Značky trás sa do sady $id nepodarilo dopiecť – trasy budú s ikonkou druhu, nie so značkou."
+    # A ŠÍPKY JEDNOSMERIEK. Tie sme si predtým brali z cudzej sady a mala ich
+    # jediná z troch – pri ostatných vrstva `road-oneway` do štýlu vôbec
+    # nevznikla, takže sa nedalo nastaviť ani ako často sú šípky, ani akej sú
+    # farby (rozpis v `poc/web/arrows.js`). Keď sa nedopečú, mapa nespadne:
+    # vrstva sa vynechá presne tak ako predtým.
+    node workers/assets/arrows.mjs --sprite="_site/sprites/$id" \
+      || echo "::warning::Šípky jednosmeriek sa do sady $id nepodarilo dopiecť – jednosmerky budú bez šípok."
     # A nakoniec VLASTNÉ IKONY z úprav – obrázky, ktoré si niekto nahral
     # v developer móde. Sú v `style-overrides.json` ako PNG, takže sa len
     # dekódujú a vložia do atlasu.

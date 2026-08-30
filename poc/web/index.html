@@ -112,6 +112,9 @@
       border-radius: 999px; padding: 3px 9px; font-size: 11px; cursor: pointer;
     }
     .dev-chip.on { background: #3a6ea5; border-color: #3a6ea5; color: #fff; }
+    /* Hodnota, ktorú už berie iné rozlíšenie. Nechýba zámerne – keby zmizla,
+       nedalo by sa zistiť, prečo sa nedá vybrať. */
+    .dev-chip.off { opacity: .4; cursor: not-allowed; text-decoration: line-through; }
 
     .dev-bulk {
       display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
@@ -280,6 +283,12 @@
     .dev-field { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #888; }
     .dev-field > span { white-space: nowrap; }
     .dev-field .dev-num { width: 46px; }
+    /* „× 1,4" a „+ 0,5" – úprava NAD krivkou zo štýlu (rozpis pri
+       `relativeInputs` v devmode.js). Sú užšie než pevná hodnota zámerne:
+       stoja vedľa nej v jednom riadku a hlavná odpoveď je tá prvá. */
+    .dev-relpair { display: flex; align-items: center; gap: 2px; }
+    .dev-relpair > span { opacity: .7; }
+    .dev-field .dev-num.dev-rel { width: 34px; }
     /* V podsekciách má farba zaberať len toľko, koľko potrebuje – inak by
        roztlačila popisky vedľajších polí. */
     .dev-sub .dev-colorrow { flex: 0 0 auto; }

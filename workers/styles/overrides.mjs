@@ -30,6 +30,7 @@ import {
   TRAIL_GAP_ZOOM,
   TRAIL_MARK_DEFAULTS,
   TRAIL_MARK_ZOOM,
+  isRelative,
   mapTypeDef
 } from "../../poc/web/themes.js";
 
@@ -98,6 +99,25 @@ const rezoomed = Object.entries(overrides.layers).filter(
 );
 const patterned = Object.entries(overrides.layers).filter(([, o]) => o.pattern);
 const outlined = Object.entries(overrides.layers).filter(([, o]) => o.outline);
+// RELATÍVNE ÚPRAVY („nechaj krivku zo štýlu, len ju preškáluj"). V súhrne majú
+// vlastný riadok, hoci sedia v `paint` ako farby: sú to jediné úpravy, ktoré
+// menia hodnotu podľa toho, čo v štýle práve JE – takže „prefarbené vrstvy: 3"
+// by o nich nepovedalo to podstatné, totiž o koľko.
+const relPopis = (v) =>
+  [v.scale != null ? `${v.scale}×` : null, v.add != null ? `${v.add > 0 ? "+" : ""}${v.add}` : null]
+    .filter(Boolean).join(" a ");
+const skalovane = Object.entries(overrides.layers).flatMap(([id, o]) => [
+  ...Object.entries(o.paint || {}).filter(([, v]) => isRelative(v))
+    .map(([prop, v]) => `${id} ${prop} ${relPopis(v)}`),
+  ...Object.entries(o.layout || {}).filter(([, v]) => isRelative(v))
+    .map(([prop, v]) => `${id} ${prop} ${relPopis(v)}`),
+  ...(isRelative(o.outline?.width) ? [`${id} okraj ${relPopis(o.outline.width)}`] : [])
+]);
+// ROZLÍŠENIE PODĽA ATRIBÚTU OSM. Nie je to prefarbenie ani okraj – je to
+// VRSTVA NAVYŠE a k nej zúžený filter predlohy, teda zmena v tom, čo sa vôbec
+// kreslí. V súhrne preto musí byť vidieť aj to, čím sa delí.
+const rozlisene = Object.entries(overrides.layers).flatMap(([id, o]) =>
+  (o.variants || []).map((v) => `${id}: ${v.attr} = ${v.values.join(", ")}`));
 const dashed = Object.entries(overrides.layers).filter(([, o]) => o.dash);
 const reiconed = Object.entries(overrides.layers).filter(([, o]) => o.icon);
 if (hidden.length) summary.push(`  skryté vrstvy: ${hidden.map(([id]) => id).join(", ")}`);
@@ -114,6 +134,8 @@ if (patterned.length) {
   );
 }
 if (outlined.length) summary.push(`  okraje: ${outlined.map(([id]) => id).join(", ")}`);
+if (skalovane.length) summary.push(`  preškálované podľa štýlu: ${skalovane.join(", ")}`);
+if (rozlisene.length) summary.push(`  rozlíšenie podľa OSM: ${rozlisene.join(" · ")}`);
 if (dashed.length) {
   summary.push(`  prerušenie čiar: ${dashed.map(([id, o]) => `${id} → ${o.dash}`).join(", ")}`);
 }
