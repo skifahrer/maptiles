@@ -83,6 +83,15 @@
       border: none; background: none; cursor: pointer;
       font-size: 15px; color: #888; padding: 0 2px;
     }
+    /* Rýchly prepínač svetlá/tmavá v hlavičke panela – rozpis pri `renderThemeToggle`
+       v devmode.js. Vlastný rámik, nech je vidieť, že je to tlačidlo, nie popisok. */
+    .dev-themetoggle {
+      font-size: 11px; border: 1px solid #ccc; border-radius: 10px;
+      padding: 3px 9px;
+    }
+    .dev-themetoggle:hover { border-color: #999; color: #333; }
+    body.dark .dev-themetoggle { border-color: #444; color: #bbb; }
+    body.dark .dev-themetoggle:hover { border-color: #666; color: #fff; }
     /* `flex-wrap` je poistka, nie ozdoba: záložiek je sedem a panel má 420 px,
        takže na užšom okne by sa posledná („Súbor") inak orezala preč. */
     .dev-tabs {
@@ -299,6 +308,10 @@
     }
     .dev-prop { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
     .dev-propname { font-size: 10px; color: #888; width: 96px; flex: none; }
+    /* Tmavý variant farby (🌙) – vlastný odtieň mena, nech sa v zozname farieb
+       dá od svetlého variantu rozoznať aj bez čítania textu. */
+    .dev-prop-dark .dev-propname { color: #6a7aa5; }
+    .dev-prop-dark.changed .dev-propname { color: #4a5a90; font-weight: 600; }
     /* Hlavička nad farbami, ktoré vrstva berie z palety (nie zo svojho paint) */
     .dev-prophead { margin-top: 7px; border-top: 1px solid #eee; padding-top: 5px; }
     .dev-prophead .dev-propname { width: auto; font-style: italic; }
@@ -431,6 +444,8 @@
     body.dark .dev-head, body.dark .dev-tabs, body.dark .dev-status { border-color: #33334a; }
     body.dark .dev-status, body.dark .dev-hint, body.dark .dev-note,
     body.dark .dev-bulklabel, body.dark .dev-propname { color: #999; }
+    body.dark .dev-prop-dark .dev-propname { color: #8a9ad0; }
+    body.dark .dev-prop-dark.changed .dev-propname { color: #aab8f0; }
     body.dark .dev-tab { color: #aaa; }
     body.dark .dev-tab.on { background: #2b2b40; color: #fff; }
     body.dark .dev-bulk { background: #26263a; }

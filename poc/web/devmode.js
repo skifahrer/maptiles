@@ -332,6 +332,9 @@ function zoomRangeFor(layer, z, on) {
  * @param {HTMLElement} opts.root      prázdny kontajner pre panel
  * @param {() => object} opts.getStyle aktuálny (už upravený) MapLibre štýl
  * @param {() => string} opts.getTheme kľúč aktuálnej témy
+ * @param {(theme: string) => void} [opts.setTheme] prepne tému (hlavička
+ *        panela ňou ponúka rýchly prepínač svetlá/tmavá, nech sa dá ladiť
+ *        tmavý variant farieb bez toho, aby sa zatváral developer mode)
  * @param {() => string} [opts.getMapType] id práve zobrazeného typu mapy
  * @param {() => object} opts.getMap   inštancia mapy
  * @param {() => object[]} [opts.getIconSets] nasadené sady ikoniek
@@ -341,6 +344,7 @@ export function initDevMode({
   root,
   getStyle,
   getTheme,
+  setTheme,
   getMapType,
   getMap,
   getIconSets,
@@ -437,9 +441,32 @@ export function initDevMode({
   /** Bitmapy spritov pre náhľad ikoniek – načítajú sa raz. */
   const spriteImages = new Map();
 
+  // Rýchly prepínač svetlá/tmavá – bez neho by ladenie tmavého variantu farby
+  // (`paintDark`, záložka „Vrstvy") znamenalo zatvoriť developer mode, prepnúť
+  // tému v paneli nastavení a otvoriť ho znova. Prepína len medzi týmito
+  // dvoma: ostatné dve témy (Outdoor, Retro) ostávajú vo výbere pod ⚙,
+  // lebo tmavý variant patrí len téme „tmava" (rozpis pri `applyLayerOverrides`
+  // v themes.js).
+  const themeToggle = setTheme
+    ? el("button", {
+        class: "dev-mini dev-themetoggle",
+        type: "button",
+        onclick: () => setTheme(getTheme() === "tmava" ? "svetla" : "tmava")
+      })
+    : null;
+  function renderThemeToggle() {
+    if (!themeToggle) return;
+    const dark = getTheme() === "tmava";
+    themeToggle.textContent = dark ? "☀️ svetlá" : "🌙 tmavá";
+    themeToggle.title = dark
+      ? "Prepnúť náhľad na svetlú tému"
+      : "Prepnúť náhľad na tmavú tému – tu sa ladí jej vlastná farba (🌙)";
+  }
+
   root.appendChild(
     el("div", { class: "dev-head" }, [
       el("b", { text: "🛠 Developer mode" }),
+      ...(themeToggle ? [themeToggle] : []),
       el("button", {
         class: "dev-x",
         type: "button",
@@ -757,6 +784,12 @@ export function initDevMode({
       ...(base.paint || own.paint
         ? { paint: { ...(base.paint || {}), ...(own.paint || {}) } }
         : {}),
+      // Tá istá otázka, čo `paint`, len pre jeho tmavý variant (rozpis pri
+      // `setLayerPaintDark`) – bez toho by úprava „len táto mapa" v paneli
+      // ukazovala tmavú farbu zo spoločnej úpravy, ale zlúčenie by ju stratilo.
+      ...(base.paintDark || own.paintDark
+        ? { paintDark: { ...(base.paintDark || {}), ...(own.paintDark || {}) } }
+        : {}),
       ...(base.layout || own.layout
         ? { layout: { ...(base.layout || {}), ...(own.layout || {}) } }
         : {})
@@ -775,6 +808,7 @@ export function initDevMode({
       else cur[k] = v;
     }
     if (cur.paint && !Object.keys(cur.paint).length) delete cur.paint;
+    if (cur.paintDark && !Object.keys(cur.paintDark).length) delete cur.paintDark;
     if (cur.layout && !Object.keys(cur.layout).length) delete cur.layout;
     if (Object.keys(cur).length) bucket[id] = cur;
     else delete bucket[id];
@@ -786,6 +820,20 @@ export function initDevMode({
     if (value === undefined) delete cur[prop];
     else cur[prop] = value;
     setLayerOverride(id, { paint: Object.keys(cur).length ? cur : undefined });
+  }
+
+  /**
+   * Tmavý variant jednej farby vrstvy – tá istá zápisová logika ako
+   * `setLayerPaint`, len do vlastného priečinka `paintDark`. Vlastná funkcia,
+   * a nie `setLayerPaint` s iným kľúčom: tmavý variant platí len v téme
+   * `tmava` (`applyLayerOverrides` v themes.js), takže sa nesmie zliať s
+   * farbou, ktorú vidia aj ostatné tri témy.
+   */
+  function setLayerPaintDark(id, prop, value) {
+    const cur = { ...((scopedOverride(id) || {}).paintDark || {}) };
+    if (value === undefined) delete cur[prop];
+    else cur[prop] = value;
+    setLayerOverride(id, { paintDark: Object.keys(cur).length ? cur : undefined });
   }
 
   /**
@@ -2563,6 +2611,40 @@ export function initDevMode({
               })
         ])
       );
+      // ---- tmavý variant tejto farby ----
+      // Bez výplne nemá zmysel dopĺňať: priehľadná farba je priehľadná
+      // v každej téme, dark mode by pri nej nemal čo prepísať.
+      if (!bezVyplne) {
+        const darkValue = (o.paintDark || {})[prop];
+        const hasDark = darkValue !== undefined;
+        parts.push(
+          el("div", { class: `dev-prop dev-prop-dark${hasDark ? " changed" : ""}` }, [
+            el("span", { class: "dev-propname", text: "🌙 v tmavej téme" }),
+            hasDark
+              ? colorControl({
+                  value: darkValue,
+                  changed: true,
+                  onInput: (v) => {
+                    setLayerPaintDark(layer.id, prop, v);
+                    apply({ rerender: false });
+                  },
+                  onReset: () => {
+                    setLayerPaintDark(layer.id, prop, undefined);
+                    apply({ immediate: true });
+                  }
+                })
+              : el("button", {
+                  type: "button",
+                  class: "dev-btn",
+                  text: "Vlastná farba pre tmavú tému",
+                  onclick: () => {
+                    setLayerPaintDark(layer.id, prop, value);
+                    apply({ immediate: true });
+                  }
+                })
+          ])
+        );
+      }
       if (canNoFill) {
         const box = el("input", { type: "checkbox", class: "dev-check" });
         box.checked = !!bezVyplne;
@@ -3045,6 +3127,32 @@ export function initDevMode({
             apply({ rerender: false });
           }
         }),
+        // Tmavý variant farby okraja – tá istá otázka ako pri `paintDark`
+        // vyššie, len na vlastnosti, ktorá nesedí v `paint` (okraj je
+        // odvodená vrstva, rozpis pri `cleanLayers` v themes.js).
+        out.colorDark !== undefined
+          ? colorControl({
+              value: out.colorDark,
+              changed: true,
+              note: "🌙 v tmavej téme",
+              onInput: (v) => {
+                patchSub(layer.id, "outline", { colorDark: v });
+                apply({ rerender: false });
+              },
+              onReset: () => {
+                patchSub(layer.id, "outline", { colorDark: undefined });
+                apply({ immediate: true });
+              }
+            })
+          : el("button", {
+              type: "button",
+              class: "dev-btn",
+              text: "🌙 vlastná farba pre tmavú tému",
+              onclick: () => {
+                patchSub(layer.id, "outline", { colorDark: out.color });
+                apply({ immediate: true });
+              }
+            }),
         outlineWidthField(layer, out, isArea),
         dashField({
           label: "čiara",
@@ -5176,6 +5284,7 @@ export function initDevMode({
   }
 
   function render() {
+    renderThemeToggle();
     renderTabs();
     renderBody();
     renderStatus();

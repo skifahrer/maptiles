@@ -24,7 +24,11 @@ import sys
 
 import yaml
 
-DRUHY = {"mapa", "vrstevnice-skaly", "tienovanie", "wikipedia"}
+# Druhy balíkov, ktoré `baliky` v `publish-map.py` naozaj vyrába (`""` sa do
+# katalógu zapisuje ako `mapa`) – táto množina musí sedieť s tým zoznamom,
+# inak balík, ktorý pipeline práve pridala (naposledy `linie` a `body`, línie
+# a body z OSM), zhodí lint napriek tomu, že v katalógu je zo skutočného behu.
+DRUHY = {"mapa", "vrstevnice-skaly", "tienovanie", "wikipedia", "linie", "body"}
 # ZRUŠENÉ DRUHY – v katalógu ešte môžu byť (kraj, ktorý sa odvtedy nestaval),
 # ale publikovanie ich už NEVYRÁBA: `search` sa presťahoval DOVNÚTRA balíka
 # `mapa` a jeho veľkosť je pod ním v `casti`. Hlásiť ich ako neznámy druh by
