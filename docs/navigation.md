@@ -219,6 +219,27 @@ ho číta, si musia sedieť a nesúlad vyzerá ako pokazená trasa.
 **Ktorý z tých dvoch klient má, sa pozná z `graf.json`** (`rozsah`), nie
 z veľkosti súboru ani z priečinka.
 
+### 7c. Prázdny graf je VAROVANIE, nie pád behu
+
+Koľko je v grafe ciest, hovorí `graf.json` (`cesty`) a berie sa to z toho, čo
+si Valhalla pri stavbe narátala sama – **`routable ways`, teda aj chodník
+(`highway=footway`), pešia cesta (`path`), schody a `sidewalk`**, lebo aj po
+tých sa trasa vedie (profil `pedestrian`). Nula preto neznamená „nie sú tu
+cesty pre autá“, ale že v PBF nie je nič, po čom by sa dalo ísť.
+
+Podľa **veľkosti** grafu to poznať nejde a chvíľu sa to skúšalo: `graph.sh`
+mal na `valhalla_tiles.tar` spodnú hranicu 1 MB a zhadzoval na nej správne
+postavené grafy malých výrezov (beh 33412856848 – 20 KB tar, v ktorom bolo 29
+ciest a 42 hrán). Veľkosť tare hovorí o veľkosti územia, nie o tom, či sa
+v ňom dá niekam dôjsť.
+
+Prázdny graf preto **beh nezhadzuje** – malý `area` či štvorec rýchleho testu
+ho môžu mať legitímne a zhodiť kvôli nemu celý build mapy by znamenalo zahodiť
+aj dlaždice, vrstevnice a trasy, ktoré sú v poriadku. Nezmizne to ale ticho:
+v logu je `::warning::` a číslo je v balíku, takže „trasa sa nenašla“ sa
+v telefóne dá odlíšiť od pokazenej navigácie. Chýbajúci alebo useknutý súbor
+zo štvorice pád behu **je** – to nie je malé územie, ale rozbitý balík.
+
 ## 8. Čo z tohto je hotové
 
 | kus | čo robí |
@@ -230,7 +251,7 @@ z veľkosti súboru ani z priečinka.
 
 | `workers/data/routing-areas.json` | na aký CELOŠTÁTNY rozsah sa graf stavia |
 | `workers/routing/pbf.sh` | štátne extrakty z osm.fr, zliate `osmium merge`; **nič sa nereže** |
-| `workers/routing/graph.sh` | graf Valhally v Dockeri pre OBA rozsahy (`AREA` = štát, `REGION_KEY` = kraj), overenie všetkých štyroch súborov, `graf.json` s verziou motora a s tým, kam trasa smie |
+| `workers/routing/graph.sh` | graf Valhally v Dockeri pre OBA rozsahy (`AREA` = štát, `REGION_KEY` = kraj), overenie všetkých štyroch súborov, `graf.json` s verziou motora, počtom ciest a s tým, kam trasa smie |
 | `.github/workflows/navigation.yml` | „Mapa · Build navigácia“ – celoštátny graf, vlastný balík na Drive, zápis do `maps.json` |
 | `.github/workflows/navigation-region.yml` | graf KRAJA z PBF mapy; artefakt `navigacia-graf` ide do `<kraj>.zip` aj `.aar`, nie na Pages |
 | `workers/lint/navigation.py` | rozsah má vlastný uzol v katalógu, celoštátny PBF sa nereže, graf kraja o svojej hranici hovorí, `admins.sqlite` sa nestratí, formulár sedí s číselníkom |
