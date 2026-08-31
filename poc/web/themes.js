@@ -1861,6 +1861,34 @@ function cleanPaintScalar(prop, value, id, problems, where, atZoom = "") {
 }
 
 /**
+ * TMAVÝ VARIANT jednej farby (`paintDark`, `outline.colorDark`) – rozpis pri
+ * `cleanLayers`. Vlastný čistič, a nie `cleanPaintScalar` s iným menom:
+ * tmavý variant pozná LEN farbu (nikdy krivku, pásma ani percento – tie sa
+ * tvárou vrstvy nemenia, len jej farbou), takže vlastnosť, ktorá nekončí na
+ * "-color", je tu vždy chyba, kým `cleanPaintScalar` na tom istom mene prijme
+ * aj krytie či hrúbku.
+ */
+function cleanDarkColor(prop, value, id, problems, where) {
+  const kde = `${where}Vrstva "${id}": ${prop} (tmavý variant)`;
+  if (!prop.endsWith("-color")) {
+    problems.push(`${kde} – tmavý variant sa dá zadať len pre vlastnosti "*-color".`);
+    return undefined;
+  }
+  if (value === NO_FILL) {
+    if (!NO_FILL_PROPS.has(prop)) {
+      problems.push(`${kde} nemôže byť "${NO_FILL}" – rovnako ako pri svetlom variante.`);
+      return undefined;
+    }
+    return NO_FILL;
+  }
+  if (!isColor(value)) {
+    problems.push(`${kde} nie je hex farba (${value}).`);
+    return undefined;
+  }
+  return String(value).toLowerCase();
+}
+
+/**
  * Jedna hodnota vlastnosti z `layout` (bez zoomu).
  *
  * Oddelené od `cleanPaintScalar` preto, že sa pýta na inú vec: `paint`
@@ -2426,6 +2454,19 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
     }
     if (Object.keys(paint).length) clean.paint = paint;
 
+    // ---- tmavý variant farieb (dark mode) ----
+    // Kým `paint` je „farba je odteraz TAKÁTO", `paintDark` je „a v tmavej
+    // téme takáto" – druhá, nezávislá vrstva nad tou istou vlastnosťou, lebo
+    // svetlá a tmavá téma nepotrebujú tú istú hodnotu (biela cesta na svetlom
+    // podklade je na tmavom oslnivá). Platí len pre tému `tmava`
+    // (`applyLayerOverrides`) – ostatné tri témy zostanú pri `paint`.
+    const paintDark = {};
+    for (const [prop, value] of Object.entries(def.paintDark || {})) {
+      const c = cleanDarkColor(prop, value, id, problems, where);
+      if (c !== undefined) paintDark[prop] = c;
+    }
+    if (Object.keys(paintDark).length) clean.paintDark = paintDark;
+
     // ---- rozloženie (veľkosť ikony, rozostup po čiare, veľkosť písma) ----
     // Ten istý tvar hodnoty ako pri `paint`: skalár, krivka `[[zoom, v], …]`
     // alebo pásma `[[od, do, v], …]`. Preto sa aj kontroluje tou istou bránou,
@@ -2523,6 +2564,16 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
           opacity: Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 1
         };
         if (!clean.outline.dash) delete clean.outline.dash;
+        // Tmavý variant okraja – tá istá otázka ako pri `paintDark`, len na
+        // jednej farbe, ktorá nie je v `paint` (okraj je odvodená vrstva).
+        if (def.outline.colorDark != null) {
+          if (!isColor(def.outline.colorDark)) {
+            problems.push(`${where}Vrstva "${id}": tmavá farba okraja nie je hex `
+              + `(${def.outline.colorDark}).`);
+          } else {
+            clean.outline.colorDark = String(def.outline.colorDark).toLowerCase();
+          }
+        }
       }
     }
 
@@ -2703,6 +2754,12 @@ export function resolveOverrides(overrides, mapType) {
           ...def,
           ...(base.paint || def.paint
             ? { paint: { ...(base.paint || {}), ...(def.paint || {}) } }
+            : {}),
+          // Tá istá otázka, čo `paint`, len pre jeho tmavý variant – bez
+          // toho by mapová výnimka prepísala aj tmavé farby, ktoré nastavuje
+          // len spoločná úprava.
+          ...(base.paintDark || def.paintDark
+            ? { paintDark: { ...(base.paintDark || {}), ...(def.paintDark || {}) } }
             : {}),
           // To isté, čo `paint`, aj pre `layout`: mieša sa po vlastnostiach,
           // aby sa dal na jednej mape prepísať len rozostup a veľkosť ikony
@@ -3037,8 +3094,12 @@ function outlineLayer(layer, outline) {
  * @param {(name: string) => boolean} [hasIcon] je taká ikona v sprite? Ikona,
  *        ktorú vybraná sada nemá, sa nenastaví – chýbajúci obrázok znamená
  *        nevykreslený symbol a v pipeline navyše zhodí kontrolu štýlu.
+ * @param {string} [theme] kľúč aktuálnej témy – rozhoduje, či sa nad `paint`
+ *        a `outline.color` naviac uplatní ich tmavý variant (`paintDark`,
+ *        `outline.colorDark`, rozpis pri `cleanLayers`). Bez neho (staršie
+ *        volania, kontroly) sa tmavý variant jednoducho nikdy nepoužije.
  */
-function applyLayerOverrides(style, layerOverrides, hasIcon = () => true) {
+function applyLayerOverrides(style, layerOverrides, hasIcon = () => true, theme) {
   if (!layerOverrides) return style;
   const out = [];
 
@@ -3094,6 +3155,16 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true) {
         if (v !== undefined) layer.paint[prop] = v;
       }
     }
+    // Tmavý variant je vždy JEDNA farba (nikdy krivka, pásma ani percento –
+    // rozpis pri `cleanLayers`), takže ide rovno na vrstvu, nie cez
+    // `overrideValue`. Platí len v téme `tmava` a len navrch toho, čo už
+    // nastavil `paint` (alebo štýl sám) – ostatné tri témy ho nevidia.
+    if (theme === "tmava" && o.paintDark) {
+      layer.paint = { ...(layer.paint || {}) };
+      for (const [prop, value] of Object.entries(o.paintDark)) {
+        layer.paint[prop] = paintValue(value);
+      }
+    }
     // `layout` len na SYMBOLOVEJ vrstve: `icon-size` na čiare je pre MapLibre
     // neznáma vlastnosť a taký štýl odmietne CELÝ (na rozdiel od `paint`,
     // kde neznáme len ignoruje). Developer mode ich inde než na symbole
@@ -3129,8 +3200,15 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true) {
       layer.filter = layer.filter ? ["all", layer.filter, nie] : nie;
     }
 
-    // Okraj čiary ide pod ňu, okraj plochy a vzor nad ňu.
-    const outline = o.outline ? outlineLayer(layer, o.outline) : null;
+    // Okraj čiary ide pod ňu, okraj plochy a vzor nad ňu. Tmavý variant jeho
+    // farby je tá istá otázka ako pri `paintDark` vyššie, len na vlastnosti,
+    // ktorá nesedí v `paint` (okraj je odvodená vrstva) – preto sa rieši tu,
+    // pred `outlineLayer`, a nie v ňom.
+    const outline = o.outline
+      ? outlineLayer(layer, theme === "tmava" && o.outline.colorDark
+          ? { ...o.outline, color: o.outline.colorDark }
+          : o.outline)
+      : null;
     if (outline && layer.type === "line") out.push(outline);
     out.push(layer);
     if (outline && layer.type !== "line") out.push(outline);
@@ -6105,7 +6183,7 @@ export function buildStyle({
   // Poradie kreslenia sa mení až NAD hotovým štýlom: presúva sa aj vzor
   // a okraj, ktoré vznikli práve v `applyLayerOverrides`.
   return applyLayerOrder(
-    applyLayerOverrides(style, overrides?.layers, hasIcon),
+    applyLayerOverrides(style, overrides?.layers, hasIcon, theme),
     overrides?.order
   );
 }

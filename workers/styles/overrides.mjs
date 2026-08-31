@@ -94,6 +94,13 @@ if (overrides.order.length) {
 }
 const hidden = Object.entries(overrides.layers).filter(([, o]) => o.visible === false);
 const recolored = Object.entries(overrides.layers).filter(([, o]) => o.paint);
+// TMAVÝ VARIANT (rozpis pri `applyLayerOverrides` v themes.js). Vlastný
+// riadok, hoci sedí v tých istých vrstvách ako `recolored`: bez neho by beh
+// ukázal len počet prefarbených vrstiev a nebolo by vidieť, ktoré z nich majú
+// pre tému „tmava" inú farbu než zvyšné tri.
+const darkened = Object.entries(overrides.layers).filter(
+  ([, o]) => (o.paintDark && Object.keys(o.paintDark).length) || o.outline?.colorDark
+);
 const rezoomed = Object.entries(overrides.layers).filter(
   ([, o]) => o.minzoom != null || o.maxzoom != null
 );
@@ -122,6 +129,9 @@ const dashed = Object.entries(overrides.layers).filter(([, o]) => o.dash);
 const reiconed = Object.entries(overrides.layers).filter(([, o]) => o.icon);
 if (hidden.length) summary.push(`  skryté vrstvy: ${hidden.map(([id]) => id).join(", ")}`);
 if (recolored.length) summary.push(`  prefarbené vrstvy: ${recolored.length}`);
+if (darkened.length) {
+  summary.push(`  z toho s vlastnou farbou pre tmavú tému: ${darkened.map(([id]) => id).join(", ")}`);
+}
 if (rezoomed.length) summary.push(`  zmenený rozsah zoomu: ${rezoomed.length}`);
 if (patterned.length) {
   summary.push(
@@ -225,10 +235,16 @@ for (const [typeId, m] of Object.entries(overrides.maps)) {
   const on = own.filter(([, o]) => o.visible === true).map(([id]) => id);
   const zoomed = own.filter(([, o]) => o.minzoom != null || o.maxzoom != null);
   const styled = own.filter(([, o]) => o.paint || o.dash || o.pattern || o.outline || o.icon);
+  const darkenedOwn = own.filter(
+    ([, o]) => (o.paintDark && Object.keys(o.paintDark).length) || o.outline?.colorDark
+  );
   if (off.length) parts.push(`skryté: ${off.join(", ")}`);
   if (on.length) parts.push(`zapnuté navyše: ${on.join(", ")}`);
   if (zoomed.length) parts.push(`zoom: ${zoomed.length}`);
   if (styled.length) parts.push(`štýl: ${styled.length}`);
+  if (darkenedOwn.length) {
+    parts.push(`z toho pre tmavú tému: ${darkenedOwn.map(([id]) => id).join(", ")}`);
+  }
   if (m.poi?.hidden?.length) parts.push(`skryté POI: ${m.poi.hidden.join(", ")}`);
   if (parts.length) {
     summary.push(`  mapa ${mapTypeDef(typeId).label}: ${parts.join(" · ")}`);

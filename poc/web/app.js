@@ -502,6 +502,15 @@ function setDevMode(on, manifest) {
     root: devEl,
     getStyle: () => currentStyle,
     getTheme: () => themeSelect.value,
+    // Prepínač tmavá/svetlá priamo v paneli (rozpis pri `renderThemeToggle`
+    // v devmode.js) – ide cez ten istý výber, aký má gombík ⚙, takže sa
+    // znova spustí jeho `change` (prekreslenie mapy aj `dev.refresh()`)
+    // a obe miesta ostanú vždy zhodné.
+    setTheme: (key) => {
+      if (themeSelect.value === key) return;
+      themeSelect.value = key;
+      themeSelect.dispatchEvent(new Event("change"));
+    },
     getMapType: () => mapTypeSelect.value,
     getMap: () => map,
     getIconSets: () => iconSets,
