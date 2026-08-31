@@ -62,6 +62,11 @@ else
   exit 1
 fi
 IMAGE="${VALHALLA_IMAGE:-ghcr.io/valhalla/valhalla-scripted:latest}"
+# Log stavby sa ODKLADÁ, nielen vypisuje: Valhalla si v ňom sama napíše, koľko
+# ciest z PBF je prejazdných, a to je jediné poctivé meradlo toho, či v grafe
+# niečo je (kontrola pod stavbou). Nie je v `custom_files` – ten priečinok je
+# vnútro obrazu, nie miesto na naše súbory.
+BUILD_LOG="valhalla-build.log"
 
 [ -s "$PBF" ] || {
   echo "::error::Chýba $PBF – najprv musí prejsť $ROBI."
@@ -105,15 +110,25 @@ docker run --rm \
   -e tileset_name=valhalla_tiles \
   -e server_threads="$(nproc)" \
   -v "$PWD/custom_files:/custom_files" \
-  "$IMAGE"
+  "$IMAGE" 2>&1 | tee "$BUILD_LOG"
 echo "::endgroup::"
 
 # ČO SA NEOVERÍ, TO SA NEUROBILO. Obraz môže dobehnúť s nulou aj vtedy, keď
-# niektorý krok preskočil – a prázdny alebo nekompletný graf je presne ten
-# tichý omyl, kvôli ktorému by trasa „len nešla" a vyzeralo by to ako chyba
-# aplikácie. Preto sa kontroluje KAŽDÝ zo štyroch súborov, aj jeho veľkosť.
+# niektorý krok preskočil – a nekompletný graf je presne ten tichý omyl, kvôli
+# ktorému by trasa „len nešla" a vyzeralo by to ako chyba aplikácie. Preto sa
+# kontroluje KAŽDÝ zo štyroch súborov.
+#
+# SPODNÁ HRANICA VEĽKOSTI JE LEN NA TROCH Z NICH. `valhalla.json` a oba
+# `.sqlite` sú vždy tie isté (konfigurácia a dva hotové číselníky), takže
+# useknutý súbor sa na veľkosti pozná. PRI GRAFE TO NEPLATÍ – a stálo tam
+# 1 MB: graf kraja má desiatky MB, ale graf malého výrezu má legitímne
+# kilobajty, takže tá hranica zhadzovala správne postavené grafy (beh
+# 33412856848 padol na 20 KB tare, v ktorej bolo 29 ciest a 42 hrán). Koľko
+# toho v grafe je, sa preto neháda z bajtov, ale číta pod týmto cyklom z toho,
+# čo si Valhalla narátala sama. `0` je teda zámer, nie zabudnutá hodnota:
+# prázdny súbor chytí `-s` o riadok vyššie.
 chyba=0
-for pair in "valhalla_tiles.tar:1000000:graf" \
+for pair in "valhalla_tiles.tar:0:graf" \
             "valhalla.json:200:konfigurácia" \
             "admins.sqlite:20000:hranice štátov a strana jazdy" \
             "timezones.sqlite:20000:časové pásma"; do
@@ -126,7 +141,7 @@ for pair in "valhalla_tiles.tar:1000000:graf" \
   fi
   size=$(stat -c%s "$src")
   if [ "$size" -lt "$min" ]; then
-    echo "::error::$f má len ${size} B ($popis) – to je prázdny výsledok, nie graf. Najčastejšie to znamená, že PBF neobsahoval cesty, alebo že stavbu zabil limit pamäte (zníž server_threads)."
+    echo "::error::$f má len ${size} B ($popis) – to je useknutý súbor. Tento súbor je pri každom behu rovnaký, takže to nie je malým územím; pozri log kroku vyššie, či stavbu nezabil limit pamäte (zníž server_threads)."
     chyba=1
     continue
   fi
@@ -135,13 +150,38 @@ for pair in "valhalla_tiles.tar:1000000:graf" \
 done
 [ "$chyba" = 0 ] || exit 1
 
+# KOĽKO JE V GRAFE CIEST – A NIE SÚ TO LEN CESTY PRE AUTÁ. Valhalla si pri
+# stavbe sama napíše, koľko ciest z PBF je „routable", a v tom čísle je aj
+# chodník (`highway=footway`), pešia cesta (`path`), schody aj `sidewalk` –
+# všetko sú to hrany profilu `pedestrian`, po ktorých sa trasa vedie. Preto
+# nula neznamená „nie sú tu cesty pre autá", ale že v PBF nie je NIČ, po čom
+# by sa dalo ísť. Toto je jediné poctivé meradlo prázdneho grafu: veľkosť
+# tare hovorí o veľkosti územia, nie o tom, či sa v ňom dá niekam dôjsť.
+#
+# JE TO VAROVANIE, NIE PÁD BEHU. Prázdny výrez je legitímny výsledok zadania
+# (malý `area`, štvorec rýchleho testu) a zhodiť kvôli nemu celý build mapy by
+# znamenalo zahodiť aj dlaždice, vrstevnice a trasy, ktoré sú v poriadku.
+# Ticho to nezmizne (pravidlo 8): číslo ide aj do `graf.json`, takže balík
+# o sebe povie, koľko ciest v ňom je, a klient to nemusí hádať z toho, že sa
+# trasa nenašla.
+CESTY=$(grep -oE '[0-9]+ routable ways' "$BUILD_LOG" | tail -1 \
+        | grep -oE '^[0-9]+' || true)
+if [ -z "$CESTY" ]; then
+  echo "::warning::V logu stavby nie je riadok „routable ways“, takže sa nedá povedať, koľko ciest graf pokrýva – do \`graf.json\` ide \`cesty: null\`. Pravdepodobne sa zmenil výpis obrazu $IMAGE."
+elif [ "$CESTY" = 0 ]; then
+  echo "::warning::Valhalla v PBF nenašla ANI JEDNU cestu, po ktorej sa dá ísť – ani cestu pre autá, ani chodník, pešiu cestu, schody či \`sidewalk\`. Graf ($POPIS) je prázdny: trasa sa v ňom nespočíta. Pri malom výreze alebo pri rýchlom teste je to očakávané a beh preto nepadá; inak sa pozri, či sa PBF nerezal na územie, kde nič nie je."
+else
+  echo "Ciest v grafe: $CESTY (aj chodníky, pešie cesty a \`sidewalk\`)"
+fi
+
 # Čo je v balíku a z čoho – vedľa `obsah.json`, ktorý dopisuje
 # `workers/deploy/publish-map.py`. Toto je tá časť, ktorú o sebe vie len tento
 # krok: rozsah, verzia motora a PBF, z ktorého graf je.
-python3 - "$ROZSAH" "${AREA:-$REGION_KEY}" "$VALHALLA_VER" "$PBF_MB" \
+python3 - "$ROZSAH" "${AREA:-$REGION_KEY}" "$VALHALLA_VER" "$PBF_MB" "$CESTY" \
         > _site/routing/graf.json <<'PY'
 import json, os, sys, time
 druh, kluc, valhalla, pbf_mb = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+cesty = int(sys.argv[5]) if sys.argv[5] else None
 graf = {
     # AKÝ ROZSAH TEN GRAF POKRÝVA je pri navigácii to hlavné, čo o ňom treba
     # vedieť – od toho závisí, kam sa v ňom dá doviezť. `area` je celý štát
@@ -150,6 +190,13 @@ graf = {
     "rozsah": druh,
     "kluc": kluc,
     "pbf_mb": pbf_mb,
+    # KOĽKO CIEST V GRAFE JE – vrátane chodníkov, pešich ciest a `sidewalk`,
+    # lebo aj po tých sa trasa vedie (profil `pedestrian`). Je to tu preto,
+    # že prázdny graf beh NEZHADZUJE: malý výrez legitímne nemusí obsahovať
+    # nič, po čom sa dá ísť, a keby to balík o sebe nepovedal, „trasa sa
+    # nenašla" by v telefóne vyzeralo ako pokazená navigácia. `null` znamená,
+    # že sa to z logu stavby nedalo prečítať – nie nulu.
+    "cesty": cesty,
     # Verzia motora MUSÍ byť v balíku: graf a knižnica si musia sedieť.
     "valhalla": valhalla or "neznáma",
     "profily": ["auto", "bus", "bicycle", "pedestrian"],
