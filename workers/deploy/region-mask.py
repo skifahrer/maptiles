@@ -170,11 +170,35 @@ def mask_geojson(obrysy, diery):
     }
 
 
+def pad_bbox(bbox, meters):
+    """`bbox` zväčšený o `meters` na každú stranu (stupne podľa šírky).
+
+    NA ČO TO JE. `region-poly.py` polygón NAFÚKNE o kus von – prekryv so
+    susedným krajom namiesto medzery na hranici (rozpis tam). Bez tohto by
+    `--bbox` nižšie bol ešte TESNÝ obdĺžnik z `workers/data/regions.json`
+    (presne okolo pôvodného, nenafúknutého polygónu) a orez „mapa je menšia
+    než kraj" (`orez` nižšie) by nafúknutý pás pri KAŽDOM bežnom behu odrezal
+    späť na starú, presnú hranicu – presne to, čo mal `--pad-m` zabrániť.
+    """
+    if not meters:
+        return bbox
+    w, s, e, n = bbox
+    lat0 = max(min((s + n) / 2, LAT_MAX), -LAT_MAX)
+    dlat = meters / 110540.0
+    dlon = meters / (111320.0 * math.cos(math.radians(lat0)))
+    return (w - dlon, s - dlat, e + dlon, n + dlat)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--poly", default="data/region.geojson",
                     help="polygón regiónu z workers/plan/region-poly.py")
     ap.add_argument("--bbox", default="", help="bbox behu: west,south,east,north")
+    ap.add_argument("--pad-m", type=float, default=0.0,
+                    help="o koľko m zväčšiť --bbox pred orezom – rovnaké "
+                         "číslo, o aké `region-poly.py` nafúkol --poly "
+                         "(BORDER_BUFFER_M), inak orez z tejto vrstvy "
+                         "nafúknutý pás zase odreže (viď `pad_bbox`)")
     ap.add_argument("--out", default="_site/region.geojson")
     args = ap.parse_args()
 
@@ -195,7 +219,8 @@ def main():
     if args.bbox:
         try:
             w, s, e, n = (float(v) for v in args.bbox.split(","))
-            bbox = (w, max(s, -LAT_MAX), e, min(n, LAT_MAX))
+            bbox = pad_bbox((w, max(s, -LAT_MAX), e, min(n, LAT_MAX)),
+                            args.pad_m)
         except ValueError:
             print(f"::error::--bbox má byť west,south,east,north, prišlo "
                   f"'{args.bbox}'.", file=sys.stderr)

@@ -80,9 +80,27 @@ POLY="${2:-data/region.poly}"
 # „nič som nenastavil" nemalo znamenať „mapa presahuje".
 CLIP_ON="${OPT_REGION_CLIP:-true}"
 
+# NAFÚKNUTÉ O PREKRYV SO SUSEDOM (`workers/plan/area.py::BORDER_BUFFER_M`) –
+# TO ISTÉ ČÍSLO, o aké `region-poly.py` nafúkol `$POLY`. Bez toho by
+# `--bounds` (vetva nižšie, `region_clip=false` = dnešný default) dal
+# Planetileru presne TESNÝ obdĺžnik okolo pôvodnej, nenafúknutej hranice – a
+# nafúknutý pás v `$POLY` aj v PBF, z ktorého sa dlaždice stavajú, by tak
+# nemal ako vzniknúť. Len v tejto vetve: keď sa `--polygon` naozaj používa
+# (nižšie), Planetiler si okno spočíta z neho a `--bounds` sa nedáva vôbec
+# (rozpis v hlavičke – oba naraz by ho ticho vypli).
+pad_bbox() {
+  python3 - "$1" <<'PY'
+import sys
+sys.path.insert(0, "workers/plan")
+from area import pad_bbox, BORDER_BUFFER_M
+w, s, e, n = pad_bbox([float(v) for v in sys.argv[1].split(",")], BORDER_BUFFER_M)
+print(f"{w},{s},{e},{n}")
+PY
+}
+
 # Argumenty idú na stdout (volajúci si ich načíta), vysvetlenie do logu.
 if [ -s "$POLY" ] && [ "$CLIP_ON" != 'true' ]; then
-  if [ -n "$BBOX" ]; then echo "--bounds=$BBOX"; fi
+  if [ -n "$BBOX" ]; then echo "--bounds=$(pad_bbox "$BBOX")"; fi
   echo "::warning::Orez na región je vypnutý (\`region_clip=false\`), takže sa dlaždice vyrobia na celom obdĺžniku bboxu – na Bratislavskom kraji je to o 26 % dlaždíc viac a je v nich územie za hranicou kraja (aj cudzie sídla). V mape to nevidno, lebo hranicu dokresľuje maska v štýle. Späť to zapneš \`region_clip=true\` v inpute \`options\`." >&2
 elif [ -s "$POLY" ]; then
   echo "--polygon=$POLY"
