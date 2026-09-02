@@ -34,10 +34,34 @@ import sys
 M_PER_DEG_LAT = 110540.0
 M_PER_DEG_LON = 111320.0
 
+# TÁ ISTÁ HODNOTA AKO `BORDER_BUFFER_M` v `workers/plan/region-poly.py`
+# (definovaná tu, lebo ten súbor má v mene pomlčku a normálne sa `import`-núť
+# nedá – opačný smer, `region-poly.py` odtiaľto normálne importuje).
+#
+# PREČO JU POTREBUJE AJ TOTO. `region-poly.py` nafúkne polygón kraja o kus
+# von (prekryv so susedom namiesto medzery na hranici – rozpis tam), ale
+# vrstvy z výškového modelu (vrstevnice, skaly, tieňovanie) sa počítajú na
+# OKNE `dem_bbox` – a pri `area: cely_region` je to práve bbox z
+# `workers/data/regions.json`, teda TESNÝ obdĺžnik okolo PÔVODNÉHO
+# (nenafúknutého) polygónu, bez rezervy navyše. Nafúknutý `-cutline` by tak
+# von z obdĺžnika nemal čo orezať – okno na disku by končilo skôr, než začne
+# nafúknutý pás, a susedné kraje by sa v teréne prekrývali len na papieri.
+# Preto sa aj toto okno nafúkne o to isté číslo: obe vrstvy (vektorová mapa
+# aj DEM) tak siahajú do rovnakého pása za hranicou kraja.
+BORDER_BUFFER_M = 2500
+
 
 def bbox_km2(w, s, e, n):
     return ((e - w) * M_PER_DEG_LON * math.cos(math.radians((s + n) / 2))
             * (n - s) * M_PER_DEG_LAT) / 1e6
+
+
+def pad_bbox(bbox, meters):
+    """Obdĺžnik zväčšený o `meters` na každú stranu (stupne podľa šírky)."""
+    w, s, e, n = bbox
+    dlat = meters / M_PER_DEG_LAT
+    dlon = meters / (M_PER_DEG_LON * math.cos(math.radians((s + n) / 2)))
+    return [w - dlon, s - dlat, e + dlon, n + dlat]
 
 
 def test_square(bbox, km2, at=""):
@@ -84,7 +108,14 @@ def main():
     ap.add_argument("--out", default="", help="kam zapísať (default stdout)")
     args = ap.parse_args()
 
-    region = [float(v) for v in args.region_bbox.split(",")]
+    # NAFÚKNUTÉ O TO ISTÉ, O ČO `region-poly.py` NAFÚKNE POLYGÓN (rozpis pri
+    # `BORDER_BUFFER_M`): inak by `-cutline` na hranici kraja siahal ďalej,
+    # než kam vôbec siaha okno, z ktorého sa terén číta, a nafúknutie by na
+    # DEM vrstvách nebolo vidieť. Región je vtedy stále „ten istý kraj", len
+    # s rezervou navyše – to isté, čo si `workers/data/areas.json` už dnes
+    # dopisuje ručne ku každému pohoriu.
+    region = pad_bbox([float(v) for v in args.region_bbox.split(",")],
+                      BORDER_BUFFER_M)
     raw = (args.area or "").strip()
     # Vo formulári sa „celý región" nedá vyjadriť prázdnou položkou výberu,
     # tak má vlastný názov. Tu je to to isté ako prázdno.

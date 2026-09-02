@@ -225,7 +225,25 @@ fi
 # územie. Celý kraj s terénom len na štvorci sa dá stále dostať –
 # `crop_bbox` prázdny a switch `test` odškrtnutý plus `area` na pohorie.
 TEST_KM2="$OPT_TEST_KM2"
-DEM_BBOX="$BBOX"
+# NAFÚKNUTÉ O PREKRYV SO SUSEDOM (`workers/plan/area.py::BORDER_BUFFER_M`) –
+# TO ISTÉ ČÍSLO, o aké `region-poly.py` nafúkol `.poly`/`region.geojson`
+# (rozpis tam: nezávisle zjednodušené hranice susedných krajov nechávajú
+# medzi stiahnutými mapami medzeru 3 – 5 km). TIEŇOVANIE ČÍTA PRIAMO TOTO
+# OKNO (je vždy na celý región, nie na `area`, viď input `shading_source`
+# vyššie) – bez nafúknutia by `-cutline` v ňom vytŕčal z okna, ktoré ho má
+# orezať, a nafúknutý pás by na hillshade nebol vidieť. Vrstevnice a skaly
+# dostanú to isté nafúknutie cez `workers/plan/area.py` (`AREA_BBOX`, ten
+# istý `pad_bbox`) o kus nižšie. Len `dem_bbox`, nie `bbox`: mapa (dlaždice,
+# katalóg, rozpočet stránky) toto nafúknutie nepotrebuje o nič viac, než už
+# má – kraj je aj bez neho len zlomok svojho obdĺžnika (rozpis vyššie).
+DEM_BBOX=$(python3 - "$BBOX" <<'PY'
+import sys
+sys.path.insert(0, "workers/plan")
+from area import pad_bbox, BORDER_BUFFER_M
+w, s, e, n = pad_bbox([float(v) for v in sys.argv[1].split(",")], BORDER_BUFFER_M)
+print(f"{w},{s},{e},{n}")
+PY
+)
 if [ "${TEST_KM2:-0}" != "0" ]; then
   AREA="$AREA_IN"
   AREA_BBOX="$OPT_AREA_BBOX"

@@ -842,9 +842,16 @@ jobs:
       # znamenal mapu bez plôch, čo presahujú do susedného kraja.
       # Tú istú hranicu chce aj `--polygon` Planetileru, `-cutline` vrstevníc,
       # maska tieňovania a hranica pre viewer.
+      #
+      # `gdal-bin` + `libsqlite3-mod-spatialite`: polygón sa v skripte NAFÚKNE
+      # o prekryv so susedným krajom cez `ogr2ogr`/`ST_Buffer` (rozpis tam,
+      # ten istý nástroj ako `contours-rocks/build.sh`). Bez nich skript
+      # nespadne, len prekryv preskočí (`::warning::`).
       - name: Polygón kraja (orez mapy aj vrstiev z DEM)
         run: |
           set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gdal-bin libsqlite3-mod-spatialite
           python3 workers/plan/region-poly.py --region='${{ inputs.region }}' \
             --out=data/region.geojson --poly-out=data/region.poly
 
@@ -2195,9 +2202,14 @@ jobs:
 
       - name: Hranica regiónu pre viewer
         run: |
+          # `--pad-m`: `--bbox` je tesný obdĺžnik okolo PÔVODNÉHO polygónu,
+          # kým `region.geojson` je už nafúknutý o prekryv so susedom (rozpis
+          # pri `--pad-m` v region-mask.py) – bez neho by tu orez ten prekryv
+          # pri každom behu odrezal späť.
           python3 workers/deploy/region-mask.py \
             --poly=data/region.geojson \
             --bbox='${{ needs.plan.outputs.bbox }}' \
+            --pad-m=3000 \
             --out=_site/region.geojson
 
       - name: Setup Pages
