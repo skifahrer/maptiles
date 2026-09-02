@@ -2171,6 +2171,17 @@ súbor a commitnúť druhý, so zeleným behom. Meno súboru preto chodí do
 `catalog.sh` **výstupom kroku** (`steps.publish.outputs.maps_file`), nie
 natvrdo.
 
+Tá istá otázka sa pritom kladie **dvakrát za sebou**, a preto musí mať
+`katalog_subor()` zakaždým tú istú odpoveď: `apple-archive.sh` si meno vypýta
+(`catalog.py --subor`), aby vedel, ktorý katalóg si stiahnuť z vetvy, a podá
+ho `publish-map.py` v `--maps` – ten sa pýta znova, už nad testovacím menom.
+Kým sa `-test` lepilo bez pozerania, vyšlo z toho `maps-test-test.json`:
+v behu 33677718750 boli oba joby zelené, päť `.aar` na Drive, a
+`maps-test.json` o nich nevedel – zápis šiel do súboru, ktorý `catalog.sh` ani
+necommitol (nový súbor, o ktorom `git diff` mlčí; oboje je odvtedy opravené a
+stráži to `workers/lint/catalog.py`). Katalóg rýchlych testov mal preto
+`formats.zip` a nikdy `formats.aar`.
+
 **Kedy tá mapa vznikla, hovorí položka dvakrát:** `updated_at` je ISO 8601
 v UTC (dá sa prečítať okom a zoradiť ako text) a `updated_ts` sú sekundy od
 epochy (vek mapy je jedno odčítanie, bez parsovania dátumu). Sú to dva zápisy

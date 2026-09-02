@@ -62,9 +62,18 @@ else
   echo "::warning::Vetvu $BRANCH sa nepodarilo načítať – commitujem na SHA, s ktorou beh začal. Keď medzitým do katalógu zapísal iný job, push si vypýta rebase."
 fi
 
-if git diff --quiet -- "$MAPS_JSON"; then
-  echo "$MAPS_JSON sa nezmenil (tá istá mapa s tými istými odkazmi) – bez commitu."
-  exit 0
+# NOVÝ SÚBOR JE TIEŽ ZMENA. `git diff` porovnáva SLEDOVANÉ súbory a o tom,
+# ktorý v repozitári ešte nie je, mlčí – návratový kód nula, hláška „nezmenil
+# sa" a koniec so zeleným behom. Katalóg pritom raz nový je vždy: `maps.json`
+# pri prvej mape, `maps-test.json` pri prvom rýchlom teste. Nový súbor sa
+# preto pozná podľa indexu (`ls-files`), nie podľa `diff`.
+if git ls-files --error-unmatch -- "$MAPS_JSON" >/dev/null 2>&1; then
+  if git diff --quiet -- "$MAPS_JSON"; then
+    echo "$MAPS_JSON sa nezmenil (tá istá mapa s tými istými odkazmi) – bez commitu."
+    exit 0
+  fi
+else
+  echo "$MAPS_JSON v repozitári ešte nie je – zakladám ho."
 fi
 
 git add "$MAPS_JSON"

@@ -593,6 +593,11 @@ def _skuska_katalogu():
         ostry = mod.katalog_subor(CATALOG)
         os.environ["TEST_KM2"] = "4"
         testovy = mod.katalog_subor(CATALOG)
+        # Meno testovacieho katalógu prejde pipeline dvakrát – raz ho vyrobí
+        # `apple-archive.sh` a raz ten istý výpočet zopakuje `publish-map.py`
+        # nad tým, čo dostal v `--maps`. Druhé kolo teda dostáva na vstup UŽ
+        # testovacie meno a musí ho nechať tak.
+        dvakrat = mod.katalog_subor(testovy)
     finally:
         if stary is None:
             os.environ.pop("TEST_KM2", None)
@@ -605,6 +610,19 @@ def _skuska_katalogu():
         chyby.append(f"{CATALOG_PY}: rýchly test by zapisoval do `{testovy}`, "
                      f"nie do `{CATALOG_TEST}` – mapa s terénom na pár km² by "
                      f"skončila medzi hotovými mapami.")
+    if dvakrat != CATALOG_TEST:
+        # Toto NIE JE hypotetické: presne takto sa `.aar` z rýchleho testu
+        # nikdy nedostal do katalógu. `apple-archive.sh` si meno vypýta
+        # (`catalog.py --subor`) a podá ho `publish-map.py` v `--maps`; ten sa
+        # pýta znova, meno dostalo druhé `-test` a zápis skončil v súbore,
+        # ktorý nikto necommitne. Beh pritom zelený, balíky na Drive, katalóg
+        # bez `formats.aar` (beh 33677718750).
+        chyby.append(f"{CATALOG_PY}: `katalog_subor()` nie je idempotentná – "
+                     f"z `{CATALOG_TEST}` spraví `{dvakrat}`. Meno katalógu "
+                     f"putuje pipeline ďalej (`--subor` → `--maps`), takže sa "
+                     f"tá istá otázka kladie dvakrát a odpoveď musí byť tá "
+                     f"istá; inak `.aar` zapíše do súboru, ktorý sa "
+                     f"necommituje.")
     return chyby
 
 
