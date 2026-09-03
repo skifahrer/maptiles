@@ -1,0 +1,661 @@
+name: Mapa · Pregeneruj vrstvu kraja
+
+# JEDNA VRSTVA JEDNÉHO KRAJA NANOVO – bez toho, aby sa prestavala mapa.
+#
+# Build kraja („Mapa · Build map region") postaví VŠETKO: dlaždice, vrstevnice,
+# skaly, tieňovanie, trasy, prvky, hľadanie aj navigáciu. Trvá to hodiny a je
+# to správne vtedy, keď sa mapa naozaj celá mení. Lenže veľká časť zmien sa
+# týka JEDNEJ vrstvy – pribudne trieda do `workers/features/points.yml`, opraví
+# sa schéma obmedzení, dvihne sa verzia Valhally – a prestavať kvôli tomu celú
+# mapu znamená zaplatiť hodiny za pár minút práce a pri tom prepísať na Drive
+# aj balíky, na ktorých sa nič nezmenilo.
+#
+# Tento workflow postaví LEN TÚ VRSTVU a na Drive prepíše LEN JEJ BALÍK:
+#
+#     co: body        `{kraj}-body.zip`        body z OSM (points.yml)
+#     co: linie       `{kraj}-linie.zip`       značené trasy + obmedzenia ciest
+#     co: navigacia   `{kraj}-navigacia.zip`   graf Valhally
+#
+# ── PREČO PRÁVE TIETO TRI ─────────────────────────────────────────────────
+# Sú to vrstvy, ktoré sa počítajú z toho istého OSM PBF ako mapa a nič iné
+# z buildu nepotrebujú – stačí im príprava (`workers/plan/pbf.sh`) a vlastný
+# Planetiler (resp. Docker s Valhallou). A hlavne: KAŽDÁ Z NICH MÁ VLASTNÝ
+# BALÍK na Drive, takže sa dá prepísať sama za seba.
+#
+# Vrstevnice, skaly a tieňovanie tu ZÁMERNE NIE SÚ. Potrebujú sklad výškového
+# modelu, jeho doplnenie (`check-dem` a päť `mirror-*` jobov), kľúče cache aj
+# orez na výrez – to je polovica `build-map-region.yml` a druhá kópia toho
+# všetkého by bola presne ten druh dvoch právd, ktorý sa raz rozíde. Na ne je
+# `rebuild` v samotnom builde: zahodí cache tej jednej vrstvy a zvyšok behu si
+# ju z cache vezme. Rozpis je v hlavičke `workers/state/jobs.py`.
+#
+# ── ČO SA NA DRIVE STANE (a čo nie) ───────────────────────────────────────
+# Balí a do katalógu zapisuje ten istý skript ako build mapy
+# (`workers/deploy/publish-map.py`), len s `--only=<balík>`. Vtedy sa:
+#   * nahrá JEDEN balík a starý súbor toho mena sa prepíše (mená sú stále),
+#   * položka v `maps.json` sa DOPLNÍ, nie prepíše – ostatné balíky, bbox,
+#     zoomy ani zdroje výšok tento beh nepozná a nesmie ich prepísať,
+#   * balíky, ktoré tento beh nevyrobil, sa NEMAŽÚ. To je celý rozdiel oproti
+#     buildu mapy: tam „vrstva v builde nie je" znamená „nemá tam čo robiť",
+#     tu znamená len „o tejto vrstve tento beh nič nevie".
+# Je to tá istá cesta, akou publikuje „Mapa · Build wiki" – jeden packer
+# a jeden zápis do katalógu pre všetky pipeline (pravidlo 1 v CLAUDE.md).
+#
+# NA PAGES NEJDE NIČ. Stránka je celá mapa a tento beh má v `_site` jednu
+# vrstvu; nahrať to na Pages by znamenalo mapu zmazať.
+#
+# `.aar` SA MUSÍ PREROBIŤ TIEŽ, a preto je tu druhý job. Balíky majú stále
+# mená a na Drive ležia obe podoby vedľa seba – keby sa prepísal len ZIP,
+# ostal by pri ňom `.aar` z predošlého behu, katalóg by ponúkal oba a kto by
+# si stiahol ten druhý, dostal by starú vrstvu. Nie chýbajúcu: STARÚ, a na
+# ničom by to nebolo vidieť.
+#
+# CELÚ KRAJINU NARAZ spustí „Mapa · Regenerate state" (regenerate-state.yml) –
+# tá istá štafeta ako pri „Build map state", len nad krajom spúšťa toto.
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "Kraj, ktorého vrstva sa pregeneruje"
+        required: true
+        default: bratislavsky
+        type: choice
+        options:
+          - slovensko
+          - bratislavsky
+          - trnavsky
+          - trenciansky
+          - nitriansky
+          - zilinsky
+          - banskobystricky
+          - presovsky
+          - kosicky
+      # Zoznam drží `workers/state/jobs.py` – tie isté kľúče, aké ponúka
+      # dávka nad celou krajinou. Že sa tieto dva zoznamy nerozídu, stráži
+      # `workers/lint/regenerate.py`: voľba, ktorá je v dávke a nie tu, by
+      # znamenala, že dávka spustí beh s hodnotou, ktorú tento formulár
+      # nepozná – a ten spadne hneď na vstupe, osemkrát za sebou.
+      co:
+        description: "Ktorá vrstva sa má pregenerovať"
+        required: true
+        default: body
+        type: choice
+        options:
+          - body
+          - linie
+          - navigacia
+      test:
+        description: "Rýchly test: len 4 km² zo stredu kraja (skúška pipeline)"
+        required: false
+        default: false
+        type: boolean
+      # Napr. `publish=false` (nič nenahrávať), `apple_archive=false`
+      # (nerobiť `.aar`), `features_maxzoom=16`, `trails_maxzoom=15`.
+      # Celý zoznam aj s predvolenými hodnotami je vo workers/plan/options.py
+      # a neznámy kľúč je chyba, nie ticho ignorovaná hodnota. TEN ISTÝ súbor
+      # ako pri builde mapy zámerne: `features_maxzoom` má jednu predvolenú
+      # hodnotu a keby si ju táto pipeline držala vlastnú, pregenerovaná
+      # vrstva by mala iný strop zoomu než tá z buildu – a v katalógu by pri
+      # nej ostalo číslo z buildu, teda lož.
+      options:
+        description: "Zriedka menené nastavenia ako kľúč=hodnota (viď workers/plan/options.py)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+# ZÁMERNE BEZ `concurrency: pages`. Na Pages nejde nič a s buildom mapy si
+# tento beh nekonkuruje o stránku – konkuruje si o BALÍK na Drive, a to je
+# vec toho, kto ho spustí. Skupina `pages` by naopak znamenala, že
+# pregenerovanie bodov čaká na trojhodinový build kraja.
+
+env:
+  # Prihlásenie na Drive pre celý workflow, nie po kroku: číta sa z neho cache
+  # (Planetiler, PBF) a nahrávajú sa naň balíky. Keby token stál pri jednom
+  # kroku, druhý by sa ticho vrátil k sťahovaniu všetkého odznova. Stráži to
+  # „Kontrola · lint workflowov".
+  GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+  DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
+  DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
+  DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
+  OSMFR_BASE: https://download.openstreetmap.fr/extracts
+  # PODIELY NA ROZPOČTE STRÁNKY. Tie isté čísla ako v `build-map-region.yml` –
+  # `env:` workflowu sa nededí ani cez `workflow_call`, takže sa musia napísať
+  # druhýkrát (tá istá cena, akú platí `roads.yml`, len tam sa podávajú
+  # inputom). Že sa nerozídu, stráži `workers/lint/regenerate.py`: vrstva
+  # pregenerovaná pod iným podielom by varovala inak než tá z buildu.
+  BUDGET_TRAILS_PCT: "3"
+  BUDGET_FEATURES_PCT: "4"
+  BUDGET_ROADS_PCT: "2"
+
+jobs:
+  # ---------- príprava: región a PBF ----------
+  # To isté, čo robí `plan` v builde mapy, len bez toho, čo tu netreba: bez
+  # Pages, bez výrezu a bez výškového modelu. Skripty sú TIE ISTÉ – „ktorý
+  # súbor je región" a „čo znamenajú voľby" sú jedna otázka a odpoveď na ňu má
+  # jedno miesto (pravidlo 1).
+  plan:
+    name: Príprava (región, PBF)
+    runs-on: ubuntu-latest
+    outputs:
+      key: ${{ steps.region.outputs.key }}
+      name: ${{ steps.region.outputs.name }}
+      bbox: ${{ steps.region.outputs.bbox }}
+      day: ${{ steps.day.outputs.d }}
+      balik: ${{ steps.co.outputs.balik }}
+      opt_test_km2: ${{ steps.opts.outputs.opt_test_km2 }}
+      opt_publish: ${{ steps.opts.outputs.opt_publish }}
+      opt_apple_archive: ${{ steps.opts.outputs.opt_apple_archive }}
+      opt_region_clip: ${{ steps.opts.outputs.opt_region_clip }}
+      opt_size_limit_mb: ${{ steps.opts.outputs.opt_size_limit_mb }}
+      opt_trails_maxzoom: ${{ steps.opts.outputs.opt_trails_maxzoom }}
+      opt_features_maxzoom: ${{ steps.opts.outputs.opt_features_maxzoom }}
+      opt_roads_maxzoom: ${{ steps.opts.outputs.opt_roads_maxzoom }}
+      opt_valhalla_image: ${{ steps.opts.outputs.opt_valhalla_image }}
+      opt_custom_pbf_url: ${{ steps.opts.outputs.opt_custom_pbf_url }}
+      opt_custom_name: ${{ steps.opts.outputs.opt_custom_name }}
+      budget_roads_pct: ${{ env.BUDGET_ROADS_PCT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # KTORÝ BALÍK SA IDE PREPÍSAŤ, POVIE ČÍSELNÍK. Keby to bol `case`
+      # v kroku publikovania, dala by sa sem pridať voľba a zabudnúť na balík –
+      # a beh by prepísal ten predošlý, teda cudzí.
+      - name: Ktorý balík to je
+        id: co
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import importlib.util
+          spec = importlib.util.spec_from_file_location("jobs", "workers/state/jobs.py")
+          jobs = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(jobs)
+          import os
+          print("balik=" + jobs.job(os.environ["CO"])["balik"])
+          PY
+        env:
+          CO: ${{ inputs.co }}
+
+      # TEN ISTÝ rozklad volieb ako pri builde mapy. Zdroje výšok sa
+      # nepodávajú – ich predvolená hodnota v `options.py` je `ziadne`, čo je
+      # tu presne správne: táto pipeline výškový model nečíta vôbec.
+      - name: Rozlož voľby
+        id: opts
+        run: |
+          set -euo pipefail
+          python3 workers/plan/options.py \
+            --options='${{ inputs.options }}' \
+            --test='${{ inputs.test }}' \
+            --publish-pages=false \
+            --out="$GITHUB_OUTPUT" \
+            --summary="$GITHUB_STEP_SUMMARY"
+
+      - name: Dnešný dátum do kľúča cache
+        id: day
+        run: |
+          echo "d=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          mkdir -p steps-out
+          : > steps-out/plan.tsv
+
+      # POLYGÓN KRAJA. Potrebuje ho už sám PBF (kraj sa podľa neho reže
+      # z rodičovského extraktu) a potom `--polygon` Planetileru. Ten istý
+      # skript ako v builde – dve hranice toho istého kraja by znamenali
+      # vrstvu orezanú inak než mapa pod ňou.
+      - name: Polygón kraja
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gdal-bin libsqlite3-mod-spatialite
+          python3 workers/plan/region-poly.py --region='${{ inputs.region }}' \
+            --out=data/region.geojson --poly-out=data/region.poly
+
+      # Kľúč je ten istý ako v builde mapy (`pbf-v5-…`), takže si beh vezme
+      # PBF, ktoré dnes stiahol build – a naopak. Bola by škoda ťahať 373 MB
+      # druhýkrát v ten istý deň kvôli tomu, že to spustila iná pipeline.
+      - name: Cache PBF regiónu (restore)
+        id: pbf-cache
+        uses: ./.github/actions/cache-restore
+        with:
+          path: data/region.osm.pbf
+          key: pbf-v5-${{ inputs.region }}-${{ steps.opts.outputs.opt_custom_pbf_url }}-${{ steps.opts.outputs.opt_crop_bbox }}-t${{ steps.opts.outputs.opt_test_km2 }}-acely_region${{ steps.opts.outputs.opt_area_bbox }}-at${{ steps.opts.outputs.opt_test_at }}-${{ steps.day.outputs.d }}
+
+      - name: Stiahni PBF iba daného regiónu
+        id: region
+        env:
+          AREA_IN: cely_region
+          OPT_AREA_BBOX: ${{ steps.opts.outputs.opt_area_bbox }}
+          OPT_CROP_BBOX: ${{ steps.opts.outputs.opt_crop_bbox }}
+          OPT_CUSTOM_BBOX: ${{ steps.opts.outputs.opt_custom_bbox }}
+          OPT_CUSTOM_NAME: ${{ steps.opts.outputs.opt_custom_name }}
+          OPT_CUSTOM_PBF_URL: ${{ steps.opts.outputs.opt_custom_pbf_url }}
+          OPT_TEST_AT: ${{ steps.opts.outputs.opt_test_at }}
+          OPT_TEST_KM2: ${{ steps.opts.outputs.opt_test_km2 }}
+          REGION: ${{ inputs.region }}
+        run: workers/plan/pbf.sh
+
+      - name: Cache PBF regiónu (save)
+        if: ${{ always() && steps.pbf-cache.outputs.cache-hit != 'true' && hashFiles('data/region.osm.pbf') != '' }}
+        continue-on-error: true
+        uses: ./.github/actions/cache-save
+        with:
+          path: data/region.osm.pbf
+          key: ${{ steps.pbf-cache.outputs.cache-primary-key }}
+
+      - name: Odlož polygón kraja
+        uses: actions/upload-artifact@v7
+        with:
+          name: region-poly
+          path: |
+            data/region.geojson
+            data/region.poly
+          retention-days: 1
+
+      # Mená artefaktov (`pbf`, `region-poly`) sú tie isté ako v builde mapy
+      # ZÁMERNE: `roads.yml` a `navigation-region.yml` sú spoločné pre obe
+      # pipeline a sťahujú si ich menom.
+      - name: Odlož PBF pre vrstvu
+        uses: actions/upload-artifact@v7
+        with:
+          name: pbf
+          path: data/region.osm.pbf
+          retention-days: 1
+          compression-level: 0
+
+  # ---------- body z OSM ----------
+  # `workers/features/build.sh` vyrába DVA súbory naraz (línie s plochami
+  # a body) z jedného predfiltra – balík `body` je z toho druhého. Že sa tu
+  # spočíta aj `-features.pmtiles`, ktoré tento beh nepublikuje, je vedomá
+  # cena: druhý beh Planetileru je pár minút, kým vlastná vetva skriptu by
+  # bola druhá pravda o tom, ako sa prvky filtrujú.
+  body:
+    name: Body z OSM
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'body' }}
+    runs-on: ubuntu-latest
+    outputs:
+      points_enabled: ${{ steps.features.outputs.points_enabled }}
+      points_size_mb: ${{ steps.features.outputs.points_size_mb }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Priprav priečinok na meranie
+        run: mkdir -p steps-out
+
+      - name: Stiahni PBF z prípravy
+        uses: actions/download-artifact@v8
+        with:
+          name: pbf
+          path: data
+
+      - name: Stiahni polygón regiónu
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: region-poly
+          path: data
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Cache Planetileru (restore)
+        id: planetiler-cache
+        uses: ./.github/actions/cache-restore
+        with:
+          path: planetiler.jar
+          key: planetiler-latest-${{ needs.plan.outputs.day }}
+
+      - name: Stiahni Planetiler
+        run: workers/lib/planetiler.sh
+      - name: Cache Planetileru (save)
+        if: ${{ always() && steps.planetiler-cache.outputs.cache-hit != 'true' && hashFiles('planetiler.jar') != '' }}
+        continue-on-error: true
+        uses: ./.github/actions/cache-save
+        with:
+          path: planetiler.jar
+          key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
+
+      - name: Krajinné prvky z OSM → PMTiles
+        id: features
+        env:
+          OPT_FEATURES_MAXZOOM: ${{ needs.plan.outputs.opt_features_maxzoom }}
+          OPT_REGION_CLIP: ${{ needs.plan.outputs.opt_region_clip }}
+          REGION_BBOX: ${{ needs.plan.outputs.bbox }}
+          REGION_KEY: ${{ needs.plan.outputs.key }}
+          SIZE_LIMIT_MB: ${{ needs.plan.outputs.opt_size_limit_mb }}
+        run: workers/features/build.sh
+
+      # PRÁZDNA VRSTVA JE TVRDÁ CHYBA, nie varovanie – na rozdiel od buildu
+      # mapy. Tam „v území nie je ani jeden prameň" znamená mapu bez tej
+      # vrstvy a mapa je aj tak celá; tu by to znamenalo, že sa nemá čím
+      # prepísať balík, ktorý na Drive LEŽÍ – a `publish-map.py` by ho
+      # nechal tak. Radšej spadnúť tu, kým je vidieť prečo.
+      - name: Vznikli nejaké body?
+        run: |
+          set -euo pipefail
+          if [ '${{ steps.features.outputs.points_enabled }}' != 'true' ]; then
+            echo "::error::V kraji ${{ needs.plan.outputs.key }} nevznikol ani jeden bodový prvok, takže nie je čím prepísať balík -body.zip na Drive. Pri ostrom behu to znamená pokazený predfilter alebo schému (workers/features/points.yml), pri rýchlom teste len to, že štvorec padol na lúku."
+            exit 1
+          fi
+
+      - name: Odlož vrstvu na zabalenie
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-features
+          path: _site
+          retention-days: 1
+          compression-level: 0
+
+      - name: Odlož meranie krokov
+        if: ${{ always() && hashFiles('steps-out/*') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: steps-features
+          path: steps-out
+          retention-days: 1
+          if-no-files-found: ignore
+
+  # ---------- línie z OSM: značené trasy ----------
+  # Balík `linie` sú DVE vrstvy (trasy a obmedzenia na ceste) a obe musia
+  # vzniknúť – balík sa prepisuje celý, takže polovica nového a polovica
+  # starého by z neho spravila balík, ktorý o sebe klame. Preto sú to dva
+  # joby a publikovanie beží, len keď ani jeden z nich nespadol.
+  trasy:
+    name: Značené trasy
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'linie' }}
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.trails.outputs.enabled }}
+      count: ${{ steps.trails.outputs.count }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Priprav priečinok na meranie
+        run: mkdir -p steps-out
+
+      - name: Stiahni PBF z prípravy
+        uses: actions/download-artifact@v8
+        with:
+          name: pbf
+          path: data
+
+      - name: Stiahni polygón regiónu
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: region-poly
+          path: data
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Cache Planetileru (restore)
+        id: planetiler-cache
+        uses: ./.github/actions/cache-restore
+        with:
+          path: planetiler.jar
+          key: planetiler-latest-${{ needs.plan.outputs.day }}
+
+      - name: Stiahni Planetiler
+        run: workers/lib/planetiler.sh
+      - name: Cache Planetileru (save)
+        if: ${{ always() && steps.planetiler-cache.outputs.cache-hit != 'true' && hashFiles('planetiler.jar') != '' }}
+        continue-on-error: true
+        uses: ./.github/actions/cache-save
+        with:
+          path: planetiler.jar
+          key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
+
+      - name: Trasy z OSM relácií → PMTiles
+        id: trails
+        env:
+          OPT_TRAILS_MAXZOOM: ${{ needs.plan.outputs.opt_trails_maxzoom }}
+          OPT_REGION_CLIP: ${{ needs.plan.outputs.opt_region_clip }}
+          REGION_BBOX: ${{ needs.plan.outputs.bbox }}
+          REGION_KEY: ${{ needs.plan.outputs.key }}
+          SIZE_LIMIT_MB: ${{ needs.plan.outputs.opt_size_limit_mb }}
+        run: workers/trails/build.sh
+
+      # To isté pravidlo ako pri bodoch: balík sa prepisuje celý, takže
+      # prázdna vrstva je tu chyba a nie mapa bez trás.
+      - name: Vznikli nejaké trasy?
+        run: |
+          set -euo pipefail
+          if [ '${{ steps.trails.outputs.enabled }}' != 'true' ]; then
+            echo "::error::V kraji ${{ needs.plan.outputs.key }} nevznikla ani jedna značená trasa, takže nie je čím prepísať polovicu balíka -linie.zip na Drive. Pozri workers/trails/routes.py a schému trás."
+            exit 1
+          fi
+
+      - name: Odlož vrstvu na zabalenie
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-trails
+          path: _site
+          retention-days: 1
+          compression-level: 0
+
+      - name: Odlož meranie krokov
+        if: ${{ always() && hashFiles('steps-out/*') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: steps-trails
+          path: steps-out
+          retention-days: 1
+          if-no-files-found: ignore
+
+  # ---------- línie z OSM: obmedzenia na ceste ----------
+  # TEN ISTÝ workflow, aký volá build mapy – nie kópia jeho jobu. Podiel na
+  # rozpočte stránky mu chodí inputom presne preto, že `env:` sa cez
+  # `workflow_call` nededí (rozpis v hlavičke `roads.yml`).
+  cesty:
+    name: Obmedzenia na ceste
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'linie' }}
+    uses: ./.github/workflows/roads.yml
+    secrets: inherit                      # cache na Drive; `env` sa nededí
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      region_bbox: ${{ needs.plan.outputs.bbox }}
+      maxzoom: ${{ needs.plan.outputs.opt_roads_maxzoom }}
+      region_clip: ${{ needs.plan.outputs.opt_region_clip }}
+      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      budget_pct: ${{ needs.plan.outputs.budget_roads_pct }}
+      day: ${{ needs.plan.outputs.day }}
+
+  # ---------- navigačný graf ----------
+  # Opäť ten istý workflow, aký volá build mapy. Graf odloží ako artefakt
+  # `navigacia-graf` (nie `site-…`, lebo na Pages nemá čo robiť) a balenie si
+  # ho stiahne menom – presne ako v builde.
+  navigacia:
+    name: Navigačný graf (Valhalla)
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'navigacia' }}
+    uses: ./.github/workflows/navigation-region.yml
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      valhalla_image: ${{ needs.plan.outputs.opt_valhalla_image }}
+
+  # ---------- balík na Drive a katalóg ----------
+  publish:
+    name: Balík na Drive a katalóg
+    needs: [plan, body, trasy, cesty, navigacia]
+    # Ani jeden z jobov vrstvy nesmie spadnúť. `skipped` je v poriadku (beží
+    # vždy len tá vrstva, ktorá je vo formulári), `failure` nie – balík sa
+    # prepisuje celý a z polovice novej a polovice starej vrstvy by vznikol
+    # balík, ktorý o sebe klame.
+    if: >-
+      ${{ !cancelled() && needs.plan.result == 'success'
+          && needs.body.result != 'failure'
+          && needs.trasy.result != 'failure'
+          && needs.cesty.result != 'failure'
+          && needs.navigacia.result != 'failure'
+          && needs.plan.outputs.opt_publish == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      # `write`, a je to jediné miesto, kde do repozitára niečo ide: katalóg
+      # `maps.json` sa po nahratí balíka commitne do vetvy, z ktorej beh vyšiel.
+      contents: write
+    outputs:
+      published: ${{ steps.publish.outcome }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Kusy vrstvy. Vzor `site-*`, nie mená: pri `linie` sú to dva artefakty
+      # (trasy a obmedzenia) a pri `body` jeden, takže menami by sa to muselo
+      # napísať pre každú vrstvu zvlášť.
+      #
+      # PRI `navigacia` SA TENTO KROK PRESKAKUJE. Graf sa zámerne nevolá
+      # `site-…` (na Pages nemá čo robiť), takže by vzor nesadol na nič –
+      # a `download-artifact` s prázdnym výsledkom padá, nie mlčí.
+      - name: Pozbieraj vrstvu
+        if: ${{ inputs.co != 'navigacia' }}
+        uses: actions/download-artifact@v8
+        with:
+          pattern: site-*
+          path: _site
+          merge-multiple: true
+
+      # Graf sa nevolá `site-…` (na Pages nemá čo robiť), takže sa sťahuje
+      # menom. BEZ `continue-on-error` – na rozdiel od buildu mapy, kde je
+      # mapa bez navigácie stále mapa, je tu graf JEDINÝ obsah balíka. Keby
+      # artefakt nebol, `publish-map.py` by spadol o krok nižšie na „balík
+      # nemá ani jeden súbor" a nebolo by z toho vidieť, že chýba práve graf.
+      - name: Stiahni navigačný graf
+        if: ${{ inputs.co == 'navigacia' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: navigacia-graf
+          path: _site
+
+      - name: Čo prišlo od jobov vrstvy
+        run: |
+          set -uo pipefail
+          echo "body=${{ needs.body.result }}, trasy=${{ needs.trasy.result }}, cesty=${{ needs.cesty.result }}, navigácia=${{ needs.navigacia.result }}"
+          find _site -type f -printf '%10s  %p\n' 2>/dev/null || true
+
+      # TEN ISTÝ packer a ten istý zápis do katalógu ako pri builde mapy, len
+      # s `--only`: publikuje jediný balík a položku regiónu DOPLNÍ, nie
+      # prepíše. Druhý packer by bol druhá pravda o tom istom.
+      - name: Publikuj balík na Drive a zapíš do maps.json
+        id: publish
+        env:
+          REGION_KEY: ${{ needs.plan.outputs.key }}
+          AREA_KEY: cely
+          TEST_KM2: ${{ needs.plan.outputs.opt_test_km2 }}
+          CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
+          CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
+          # ČO JE V BALÍKU, POVIE BALÍK SÁM. Bez tohto by `obsah.json`
+          # zložený z premenných buildu tvrdil „bez_vrstevnic, bez_skal,
+          # bez_tienovania" – čo pri balíku jednej vrstvy nie je opis, ale
+          # lož o mape, ktorú tento beh vôbec nevidel.
+          MAP_LAYERS: ${{ inputs.co }}
+          # `TILES_MAXZOOM` tu zámerne nie je: je to strop dlaždíc MAPY a tú
+          # tento beh nestaval. Prázdne pole v `obsah.json` je pravdivejšie
+          # než číslo odhadnuté z inej vrstvy. To isté robí „Build wiki".
+        run: |
+          set -euo pipefail
+          python3 workers/deploy/publish-map.py \
+            --only='${{ needs.plan.outputs.balik }}' \
+            --site=_site --maps=maps.json \
+            --summary="$GITHUB_STEP_SUMMARY"
+
+      # Ten istý skript, akým katalóg commituje build mapy – vrátane rebasu,
+      # keď medzitým pushol iný beh (a pri dávke nad krajinou pushne).
+      - name: Commitni maps.json
+        if: ${{ steps.publish.outcome == 'success' }}
+        env:
+          MAPS_JSON: ${{ steps.publish.outputs.maps_file || 'maps.json' }}
+          BRANCH: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: workers/deploy/catalog.sh
+
+      # Aby `.aar` mohol vyrobiť job na macOS, musí sa k nemu vrstva dostať –
+      # v tom istom behu a bez druhého počítania.
+      - name: Odlož vrstvu pre Apple Archive
+        if: ${{ steps.publish.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: regenerate-site
+          path: _site
+          retention-days: 1
+          compression-level: 0
+
+      - name: Súhrn
+        if: ${{ always() }}
+        run: |
+          set -uo pipefail
+          {
+            echo "## Pregenerovaná vrstva"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| kraj | \`${{ needs.plan.outputs.key }}\` |"
+            echo "| vrstva | \`${{ inputs.co }}\` |"
+            echo "| balík | \`${{ needs.plan.outputs.balik }}\` |"
+            echo
+            echo "Prepísal sa LEN tento balík. Ostatné balíky kraja (mapa,"
+            echo "vrstevnice, tieňovanie a čo tento beh nerobil) na Drive ležia"
+            echo "ďalej a v \`maps.json\` sa im nič nezmenilo – položka sa"
+            echo "dopĺňa, nie prepisuje."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------- ten istý balík ešte raz ako .aar ----------
+  # MUSÍ TO BYŤ, nie „je to navyše": balíky majú stále mená a na Drive ležia
+  # obe podoby vedľa seba. Keby sa prepísal len ZIP, ostal by pri ňom `.aar`
+  # z predošlého behu – katalóg by ponúkal oba a kto by si stiahol ten druhý,
+  # dostal by STARÚ vrstvu bez toho, aby to na čomkoľvek bolo vidieť.
+  #
+  # Vlastný job a na macOS preto, že nástroj `aa` je súčasť macOS a inde
+  # neexistuje. Beží AŽ PO tom, čo sa nahral ZIP: `--only` položku katalógu
+  # DOPĹŇA, takže ZIP musí byť zapísaný prvý.
+  apple-archive:
+    name: Balík ako Apple Archive (.aar)
+    needs: [plan, publish]
+    if: ${{ !cancelled() && needs.publish.outputs.published == 'success' && needs.plan.outputs.opt_apple_archive == 'true' }}
+    runs-on: macos-latest
+    permissions:
+      contents: write     # `maps.json` – to isté, čo robí `publish`
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Stiahni vrstvu z predošlého jobu
+        uses: actions/download-artifact@v8
+        with:
+          name: regenerate-site
+          path: _site
+      - name: Zabaľ a nahraj .aar na Drive
+        id: publish
+        env:
+          ONLY: ${{ needs.plan.outputs.balik }}
+          SITE: _site
+          REGION_KEY: ${{ needs.plan.outputs.key }}
+          AREA_KEY: cely
+          TEST_KM2: ${{ needs.plan.outputs.opt_test_km2 }}
+          CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
+          CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
+          # MUSÍ to byť tá istá hodnota, akú dostal job so ZIPom: `obsah.json`
+          # sa skladá z nej a inou by `.aar` o sebe tvrdil niečo iné než ZIP
+          # s tým istým obsahom.
+          MAP_LAYERS: ${{ inputs.co }}
+          # Z ktorej vetvy si vypýtať čerstvý `maps.json` – ten predošlý job
+          # doň práve zapísal a checkout má stav spred toho.
+          BRANCH: ${{ github.ref_name }}
+        run: workers/deploy/apple-archive.sh
+      - name: Commitni maps.json
+        if: ${{ steps.publish.outcome == 'success' }}
+        env:
+          MAPS_JSON: ${{ steps.publish.outputs.maps_file || 'maps.json' }}
+          BRANCH: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: workers/deploy/catalog.sh

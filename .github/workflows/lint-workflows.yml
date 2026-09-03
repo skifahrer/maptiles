@@ -559,6 +559,16 @@ jobs:
       - name: Dávka krajiny stavia to isté, čo jeden kraj ručne
         run: python3 workers/lint/state.py
 
+      # Dávka „Regenerate state" je to isté o stupeň zložitejšie: okrem
+      # nastavení, ktoré cez ňu prechádzajú, si vyberá aj to, ČO sa má
+      # pregenerovať – a podľa toho spúšťa dve rôzne pipeline (číselník je
+      # `workers/state/jobs.py`). Voľba, ktorú číselník nepozná, pole, ktoré
+      # cieľový formulár nemá, alebo balík, ktorý `publish-map.py` nepozná, sa
+      # inak zistia až po tom, čo dávka spustila osem behov. Rozpis:
+      # `workers/lint/regenerate.py`.
+      - name: Dávka pregenerovania pregeneruje to, čo sľubuje
+        run: python3 workers/lint/regenerate.py
+
       # Glyfy ani webový viewer sa do balíkov nebalia: viewer je na Pages,
       # glyfy si nesie appka v sebe. Vynechať súbor z balíka je pritom
       # jednoriadková zmena, ktorá sa dá spraviť aj tam, kde ho nie je odkiaľ

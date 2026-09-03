@@ -29,8 +29,8 @@ nespustí, lebo skript chce env z workflowu.
 
 VÝNIMKA SÚ KUSY, KTORÉ SA `source`-UJÚ. `.sh`, ktorý si iný skript číta cez
 `.`, nie je krok, ale kus toho skriptu: beží v jeho shelli a berie si jeho
-premenné (`contours-rocks/rocks.sh` je druhá polovica `build.sh`). Sám by
-spadol na prvom riadku,
+premenné (`contours-rocks/rocks.sh` je druhá polovica `build.sh`,
+`state/estafeta.sh` je jadro oboch štafiet). Sám by spadol na prvom riadku,
 takže `+x` na ňom nie je záruka, ale sľub, ktorý sa nedá dodržať – a preto sa
 od neho nevyžaduje.
 

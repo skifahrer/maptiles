@@ -46,6 +46,25 @@ Mapa · Build map state       CELÁ KRAJINA na jedno kliknutie: spustí
                                vypnuté): stránka unesie jednu mapu, osem
                                behov by ju osemkrát prepísalo
 
+Mapa · Regenerate state      JEDNA VRSTVA v celej krajine: body, línie,
+(manuálne, výber vrstvy)     navigačné dáta, vrstevnice, skaly, tieňovanie
+                             ─► tá istá štafeta, kraj po kraji
+                             ▲ body, línie a navigácia sú MINÚTY na kraj:
+                               majú vlastný balík, takže sa dá prepísať len
+                               on („Mapa · Pregeneruj vrstvu kraja")
+                             ▲ vrstvy z výškového modelu idú celým buildom
+                               kraja s `rebuild` – bez skladu DEM sa počítať
+                               nedajú (rozpis workers/state/jobs.py)
+
+Mapa · Pregeneruj vrstvu     JEDNA VRSTVA JEDNÉHO KRAJA nanovo, bez toho,
+kraja (manuálne, jeden kraj) aby sa prestavala mapa:
+                               body     ─► {kraj}-body.zip
+                               línie    ─► {kraj}-linie.zip
+                               navigácia ─► {kraj}-navigacia.zip
+                             ▲ na Drive sa prepíše LEN ten balík a v
+                               `maps.json` sa položka DOPLNÍ, nie prepíše
+                             ▲ na Pages NEJDE – je to jedna vrstva, nie mapa
+
 Mapa · Build wiki            objekty regiónu s `wikipedia`/`wikidata`
 (manuálne, ten istý región)  ─► články (NDJSON, dávky po 50)
                              ─► {región}-wikipedia.zip na Drive
@@ -3370,7 +3389,9 @@ napísaný ako „spusti a čakaj, spusti a čakaj" by teda spoľahlivo umrel
 v polovici: tri kraje postavené, zvyšok nikdy, a v behu nič, čo by povedalo,
 že zvyšok nepríde.
 
-Preto je jeden beh dávky **jeden úsek štafety** (`workers/state/relay.sh`):
+Preto je jeden beh dávky **jeden úsek štafety** — jadro je vo
+`workers/state/estafeta.sh` (spoločné s dávkou `Regenerate state`),
+čo nad krajom spúšťa, je vo `workers/state/relay.sh`:
 
 ```
 úsek:  počkaj na kraj, ktorý beží  ─►  spusti ďalší kraj
@@ -3420,6 +3441,77 @@ a s akým výsledkom. Kto chce zastaviť všetko, zruší posledný beh reťaze 
 **Skúška dávky:** zapni `test`. Každý kraj sa potom postaví len na 4 km² zo
 stredu, takže celá reťaz prebehne za minúty namiesto dňa a je vidieť, či
 dobehne celá (zapisuje sa do `maps-test.json`, nie medzi hotové mapy).
+
+## Jedna vrstva v celej krajine (`Mapa · Regenerate state`)
+
+Build kraja postaví **všetko** — dlaždice, vrstevnice, skaly, tieňovanie,
+trasy, prvky, hľadanie aj navigáciu. Trvá to hodiny a je to správne vtedy, keď
+sa mapa naozaj celá mení. Lenže veľká časť zmien sa týka **jednej vrstvy**:
+pribudne trieda do `workers/features/points.yml`, opraví sa schéma obmedzení,
+dvihne sa verzia Valhally. Prestavať kvôli tomu osem krajov znamená zaplatiť
+deň za pár minút práce — a pri tom prepísať na Drive aj balíky, na ktorých sa
+nič nezmenilo.
+
+**Mapa · Regenerate state** je ten istý dispečer ako `Build map state`, len
+nad krajom nespúšťa celý build, ale to jedno, čo si vyberieš (`co`):
+
+| voľba | čo sa prepíše | ako a čo to stojí |
+|---|---|---|
+| `body` | `{kraj}-body.zip` | vlastná pipeline, **minúty** na kraj |
+| `linie` | `{kraj}-linie.zip` | vlastná pipeline, **minúty** na kraj |
+| `navigacia` | `{kraj}-navigacia.zip` | vlastná pipeline, **minúty** na kraj |
+| `vrstevnice` | `{kraj}-vrstevnice-skaly.zip` | celý build kraja, `rebuild: vrstevnice` |
+| `skaly` | `{kraj}-vrstevnice-skaly.zip` | celý build kraja, `rebuild: skaly` |
+| `tienovanie` | `{kraj}-tienovanie.zip` | celý build kraja, `rebuild: tienovanie` |
+
+**Zoznam je číselník, nie `case` v skripte** (`workers/state/jobs.py`): jedno
+miesto vie, čo sa dá pregenerovať, ktorý workflow to nad krajom spraví a s
+akými poľami. Tú istú otázku si inak kladie formulár dávky, formulár nad
+jedným krajom aj štafeta — a keby si na ňu odpovedali samy, pribudnutá voľba
+by vo formulári bola a štafeta by na nej spadla. Alebo horšie: spustila by
+niečo iné, než si vybral, a beh by bol zelený. Stráži to
+`workers/lint/regenerate.py`.
+
+### Dve cesty, dve ceny — a prečo
+
+Body, línie a navigácia sa počítajú z **toho istého OSM PBF** ako mapa a nič
+iné z buildu nepotrebujú. A hlavne: každá z nich má **vlastný balík** na
+Drive, takže sa dá postaviť len tá vrstva a prepísať len jej súbor. Robí to
+**Mapa · Pregeneruj vrstvu kraja** (`regenerate-region.yml`) — príprava PBF,
+jeden job vrstvy a `publish-map.py --only=<balík>`.
+
+Vrstevnice, skaly a tieňovanie takú cestu nemajú a je to zámer. Potrebujú
+sklad výškového modelu, jeho doplnenie (`check-dem` a päť jobov `mirror-*`),
+kľúče cache aj orez na výrez — to je polovica `build-map-region.yml`. Druhá
+kópia toho všetkého by bola presne ten druh dvoch právd, ktorý sa raz rozíde
+a vrstevnice by z „pregenerovania" vyšli inak než z buildu. `rebuild` je páka,
+ktorá na presne toto existuje: zahodí cache tej jednej vrstvy a zvyšok behu si
+ju z cache vezme. Stojí to celý build kraja — to je cena za jednu pravdu o
+tom, ako vrstevnice vznikajú.
+
+### Čo sa na Drive stane a čo nie
+
+Pri `body`, `linie` a `navigacia` sa nahrá **jeden** balík (ZIP aj `.aar`),
+starý súbor toho mena sa prepíše a položka v `maps.json` sa **doplní, nie
+prepíše**. Ostatné balíky kraja sa nedotknú — a to je celý rozdiel oproti
+buildu mapy: tam „vrstva v builde nie je" znamená „nemá tam čo robiť", tu len
+„o tejto vrstve tento beh nič nevie" (`--only` v
+`workers/deploy/publish-map.py`, tá istá cesta, akou publikuje `Build wiki`).
+
+`.aar` sa prerába **spolu so ZIPom**, nie voliteľne: mená sú stále a obe
+podoby ležia na Drive vedľa seba, takže prepísať len ZIP by znamenalo nechať
+pri ňom `.aar` z predošlého behu. Katalóg by ponúkal oba a kto by si stiahol
+ten druhý, dostal by **starú** vrstvu — nie chýbajúcu, a na ničom by to
+nebolo vidieť.
+
+### Štafeta je tá istá
+
+Čakanie na kraj, kolík `pokracovanie`, súhrn s celou tabuľkou aj poistka proti
+nekonečnej reťazi sú spoločné jadro `workers/state/estafeta.sh`; obe dávky
+(`relay.sh` pre `Build map state`, `regenerate.sh` pre `Regenerate state`) sú
+nad ním len to, **čo** nad krajom spúšťajú a s akými poľami. Dve kópie štafety
+by sa raz rozišli práve v tom, či reťaz pokračuje — a to je chyba, ktorú
+z behu nevidno, lebo úsek skončí zelený.
 
 ## Lokálny vývoj
 
