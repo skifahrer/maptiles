@@ -98,7 +98,25 @@ def katalog_subor(base=KATALOG):
     if test_km2 in ("", "0"):
         return base
     koren, _, pripona = base.rpartition(".")
-    return f"{koren or base}-test" + (f".{pripona}" if koren else "")
+    kmen = koren or base
+    # DVAKRÁT SA TO PRIPOJIŤ NESMIE. Odpoveď tejto funkcie chodí po pipeline
+    # ďalej ako meno súboru: `apple-archive.sh` si ju vypýta (`--subor`), aby
+    # vedel, ktorý katalóg si stiahnuť z vetvy, a podá ju `publish-map.py`
+    # v `--maps`. Ten sa tú istú otázku pýta znova – a kým sa `-test` lepilo
+    # bez pozerania, vyšlo z toho `maps-test-test.json`.
+    #
+    # Nebolo to teoretické a nebolo to ani vidieť: v behu 33677718750 boli oba
+    # joby ZELENÉ, päť `.aar` na Drive, a `maps-test.json` o nich nevedel –
+    # zápis šiel do `maps-test-test.json`, ktorý `catalog.sh` ani necommitol
+    # (nový súbor, `git diff` o ňom mlčí). Katalóg rýchlych testov preto mal
+    # `formats.zip` a nikdy `formats.aar`.
+    #
+    # Preto sa najprv pozrie, či na mene `-test` už nie je. Meno testovacieho
+    # katalógu je odpoveď na otázku „ktorý súbor to je", a tá má byť rovnaká
+    # bez ohľadu na to, koľkokrát sa spýtaš.
+    if kmen.endswith("-test"):
+        return base
+    return f"{kmen}-test" + (f".{pripona}" if koren else "")
 
 
 def region_entry(man):
