@@ -1080,7 +1080,10 @@ jobs:
           # z `workers/lib/`: `contour-blocks.py` reže obrysy na bloky a lepí
           # švy (oprava zlepovania by sa bez neho na už spočítanom regióne
           # neprejavila) a `rock-plan.py` vyberá mriežku, na ktorej sa trasuje.
-          SCHEMA_HASH: ${{ hashFiles('workers/contours-rocks/contours.yml', 'workers/contours-rocks/rocks.yml', 'workers/contours-rocks/rock-areas.py', 'workers/contours-rocks/rock-plan.py', 'workers/contours-rocks/smooth-shapes.py', 'workers/contours-rocks/build.sh', 'workers/lib/contour-blocks.py') }}
+          # `rocks.sh` je druhá polovica `build.sh` (ten prerástol 800 riadkov,
+          # tak sa rozdelil) – bez neho v otlačku by sa zmena vo výpočte skál
+          # ticho vrátila z cache ako pôvodné skaly.
+          SCHEMA_HASH: ${{ hashFiles('workers/contours-rocks/contours.yml', 'workers/contours-rocks/rocks.yml', 'workers/contours-rocks/rock-areas.py', 'workers/contours-rocks/rock-plan.py', 'workers/contours-rocks/smooth-shapes.py', 'workers/contours-rocks/build.sh', 'workers/contours-rocks/rocks.sh', 'workers/lib/contour-blocks.py') }}
         run: workers/plan/cache-keys.sh
 
       # Kým starý záznam existuje, nový sa pod ten istý kľúč neuloží (na Drive
