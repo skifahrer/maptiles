@@ -36,13 +36,20 @@ nedá) – náhradný obdĺžnik z bboxu je presne to, čo Planetiler robí aj b
 neho, takže by len predstieral orez.
 
 PREKRYV SO SUSEDNÝM KRAJOM (`buffer_rings`, rozpis pri nej): `.poly` z osm.fr
-je zjednodušená čiara a KAŽDÝ kraj má svoju vlastnú, nezávisle zjednodušenú –
-susedné kraje preto nemusia zdieľať tú istú hranicu. Namerané: dva stiahnuté
-susediace kraje mali v mieste spoločnej hranice medzeru 3 – 5 km bez cesty,
-vrstevnice aj tieňovania, lebo oba sa orezali „dovnútra" od skutočnej čiary.
-Polygón sa preto pred zápisom nafúkne o kus VON – nie preto, že by to bola
-presnejšia hranica (tú osm.fr nedáva), ale aby sa susedné mapy v tom páse
-PREKRÝVALI namiesto toho, aby medzi nimi ostala diera.
+je zjednodušená čiara (body na mriežke 0,005° ≈ 550 m) a KAŽDÝ kraj má svoju
+vlastnú – susedné kraje preto nemusia zdieľať tú istú hranicu. Polygón sa
+pred zápisom nafúkne o kus VON, aby sa dve susedné mapy v tom páse
+PREKRÝVALI namiesto toho, aby medzi nimi ostala diera; nie je to presnejšia
+hranica (tú osm.fr nedáva), je to rezerva.
+
+KOĽKO TEJ REZERVY TREBA, SA TERAZ MERIA, NIE HÁDA (`seam.py`, volá sa nižšie).
+Pôvodný popis tu tvrdil „namerané: medzera 3 – 5 km medzi dvoma stiahnutými
+susedmi". Prepočítané na `.poly` všetkých ôsmich krajov to tak NIE JE: osm.fr
+si polygóny okolo hranice sám rozširuje, takže sa susedné kraje prekrývajú už
+BEZ nafúknutia (2 – 4 km) a medzera na spoločnej hranici vychádza 0 m. Číslo
+v tvrdení sa opraviť dalo len tak, že sa začne merať v každom behu – kým sa
+nemeralo, nikto by sa o skutočnej medzere nedozvedel ani vtedy, keby raz
+naozaj vznikla.
 
 Použitie:
     python3 workers/plan/region-poly.py --region=presovsky --out=data/region.geojson
@@ -72,6 +79,7 @@ _DATA = os.path.join(_WORKERS, "data")
 # čo vidieť.
 sys.path.insert(0, _HERE)
 from area import BORDER_BUFFER_M  # noqa: E402
+import seam  # noqa: E402  (šev so susedmi – meranie, rozpis v tom súbore)
 
 # Polygóny ležia vedľa extraktov, ale v inom priečinku a BEZ `-latest` v mene:
 # `extracts/europe/slovakia/presovsky-latest.osm.pbf` → `polygons/europe/slovakia/presovsky.poly`.
@@ -238,13 +246,17 @@ def buffer_rings(rings, meters=BORDER_BUFFER_M):
     """Nafúkne obrysy o `meters` VON (diery vnútri o to isté DNU).
 
     PREČO. `.poly` z osm.fr je zjednodušená čiara a každý kraj má svoju
-    vlastnú, nezávisle zjednodušenú – susedné kraje preto nemusia zdieľať tú
-    istú hranicu (namerané: medzera 3 – 5 km medzi dvomi stiahnutými susedmi,
-    bez cesty, vrstevnice aj tieňovania). Presnejšiu hranicu odtiaľ nedostaneme
-    – ale PREKRYV namiesto medzery áno: keď sa polygón oboch krajov nafúkne
-    von, pás popri hranici sa v oboch mapách PREKRÝVA, a to je presne to, čo
-    medzeru zavrie (rovnaká úvaha ako pri bboxoch pohorí v
-    `workers/data/areas.json`).
+    vlastnú – susedné kraje preto nemusia zdieľať tú istú hranicu. Presnejšiu
+    hranicu odtiaľ nedostaneme, ale PREKRYV áno: keď sa polygón oboch krajov
+    nafúkne von, pás popri hranici je v oboch mapách, takže na seba nadväzujú
+    aj vtedy, keď sa ich hranice o kus líšia (rovnaká úvaha ako pri bboxoch
+    pohorí v `workers/data/areas.json`).
+
+    KOĽKO TREBA: dnes `BORDER_BUFFER_M` = 2 500 m na každej strane, teda
+    5 km spolu. Že to na skutočné hranice stačí, sa v každom behu ZMERIA
+    (`seam.py` – nameraná medzera na spoločnej hranici je dnes 0 m, lebo
+    osm.fr polygóny okolo hranice sám rozširuje). Keď to raz stačiť
+    prestane, povie to beh; predtým to nebolo z čoho zistiť.
 
     AKO. Rovinný `ST_Buffer` (GEOS cez SpatiaLite) v metrickej sústave
     (EPSG:3035, tá istá, v akej tento repozitár už robí rovinné operácie –
@@ -302,6 +314,60 @@ def buffer_rings(rings, meters=BORDER_BUFFER_M):
     return buffered, True
 
 
+def stiahni_rings(reg, timeout=20):
+    """`.poly` regiónu zo servera → prstence, alebo `None`.
+
+    Kratší `timeout` než pri vlastnom polygóne je zámer: toto je meranie
+    navyše, a keď osm.fr práve nedvíha, nemá to k trom hodinám buildu
+    pridať osem čakaní po minúte.
+
+    Bez `::warning::` a bez náhrady za bboxom: je to pomocník pre SUSEDOV
+    (`susedne_rings`), kde chýbajúci polygón nie je chyba behu – len sa
+    o toho suseda šev nedá zmerať. Región, ktorý sa práve stavia, si to
+    v `main` rieši sám a nahlas.
+    """
+    url = poly_url(reg)
+    if not url:
+        return None
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return parse_poly(r.read().decode("utf-8", "replace"))
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        return None
+
+
+def susedne_rings(regs, key):
+    """Polygóny SÚRODENCOV a RODIČA daného regiónu (na meranie švu).
+
+    Súrodenec = iný región s tým istým `osmfr.parent`, ktorého bbox sa toho
+    nášho aspoň dotýka. Zoznam susedov sa NIKDE NEPÍŠE RUČNE (pravidlo 1):
+    číselník by sa raz rozišiel s hranicami a chýbajúci sused by ticho
+    znamenal „šev je v poriadku", teda presne ten omyl, ktorý má meranie
+    odhaliť. Bboxy sú v `regions.json` a hranice na osm.fr – to stačí.
+
+    Vracia `({kľúč: prstence}, prstence_rodiča)`; čo sa nestiahlo, chýba.
+    """
+    reg = regs.get(key) or {}
+    parent = ((reg.get("osmfr") or {}).get("parent") or "")
+    if not parent:
+        return {}, None
+    w, s, e, n = reg["bbox"]
+    susedia = {}
+    for k, r in regs.items():
+        if k == key or not isinstance(r, dict):
+            continue
+        if ((r.get("osmfr") or {}).get("parent") or "") != parent:
+            continue
+        bw, bs, be, bn = r.get("bbox") or (0, 0, 0, 0)
+        if bw > e or be < w or bs > n or bn < s:
+            continue            # bboxy sa ani nedotýkajú – nie je to sused
+        rings = stiahni_rings(r)
+        if rings:
+            susedia[k] = rings
+    rodic = stiahni_rings(regs.get(parent) or {})
+    return susedia, rodic
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--region", required=True, help="kľúč z data/regions.json")
@@ -310,6 +376,8 @@ def main():
     ap.add_argument("--poly-out", default="",
                     help="kam uložiť surový .poly (pre Planetiler --polygon)")
     ap.add_argument("--summary", default="", help="kam dopísať súhrn")
+    ap.add_argument("--no-seam", action="store_true",
+                    help="nemerať šev so susednými krajmi (sťahuje ich .poly)")
     args = ap.parse_args()
 
     regs = regions(args.regions or None)
@@ -345,6 +413,7 @@ def main():
     # neriešilo – susedný gap vzniká medzi dvoma NEZÁVISLE zjednodušenými
     # polygónmi, nie medzi dvoma obdĺžnikmi.
     buffer_ok = False
+    povodne = rings                 # nenafúknuté – na meranie švu nižšie
     if zo_servera:
         rings, buffer_ok = buffer_rings(rings)
 
@@ -363,6 +432,26 @@ def main():
         os.makedirs(os.path.dirname(args.poly_out) or ".", exist_ok=True)
         with open(args.poly_out, "w") as f:
             f.write(rings_to_poly_text(rings, args.region))
+
+    # ŠEV SO SUSEDMI. Až TERAZ, keď je polygón na disku: je to MERANIE, nie
+    # výroba – keby padlo alebo trvalo, mapa už má z čoho vzniknúť.
+    #
+    # Nafúknutie hore je len POLOVICA odpovede na otázku „nadväzuje na našu
+    # mapu tá susedná?" – druhú polovicu robí sused na svojej strane a nikto
+    # ich nikdy nedal dokopy. Toto ich dá: zmeria, či medzeru medzi dvoma
+    # PÔVODNÝMI hranicami vôbec zavrú dve nafúknutia (rozpis vo `seam.py`).
+    # Zlyhanie merania nie je chyba behu – mapa je hotová, len sa o švíku
+    # nedozvieme; ticho to ale nebude.
+    sev = None
+    if zo_servera and not args.no_seam:
+        try:
+            susedia, rodic = susedne_rings(regs, args.region)
+            if susedia:
+                sev = seam.zmeraj_sev(povodne, susedia, rodic,
+                                      BORDER_BUFFER_M)
+        except Exception as exc:                        # noqa: BLE001
+            print(f"::warning::Šev so susedmi sa nepodarilo zmerať ({exc}). "
+                  f"Mapa je hotová, len sa nevie, či na ňu susedná nadväzuje.")
 
     pw, ps, pe, pn = ring_bbox(rings)
     plocha = sum(ring_area_km2(r) for r, hole in rings if not hole) \
@@ -393,6 +482,9 @@ def main():
           f"bboxu = {podiel:.0f} %")
     print(f"  mimo kraj            {bbox_km2 - plocha:,.0f} km² "
           f"({100 - podiel:.0f} % bboxu) sa už nepočíta")
+    if sev:
+        for riadok in seam.sprava(sev, BORDER_BUFFER_M):
+            print(riadok)
     if args.summary:
         with open(args.summary, "a") as f:
             f.write(f"- **Orez na kraj**: {plocha:,.0f} km² z "
@@ -406,6 +498,16 @@ def main():
                        f"krajov)\n" if buffer_ok else
                        "sa nepodarilo dopočítať – polygón ostáva presne na "
                        "hranici kraja (viď `::warning::` v logu)\n"))
+            if sev and sev["bodov"]:
+                f.write(
+                    f"- **Šev so susedmi**: "
+                    + (f"zavretý ✓ (najhoršie miesto "
+                       f"{sev['najhorsia_m'] / 1000:.2f} km, zavrú sa "
+                       f"{sev['limit_m'] / 1000:.2f} km)\n" if sev["zavrety"]
+                       else f"**MEDZERA {sev['najhorsia_m'] / 1000:.2f} km** "
+                            f"pri susedovi `{sev['sused']}` – dve nafúknutia "
+                            f"zavrú len {sev['limit_m'] / 1000:.2f} km, medzi "
+                            f"mapami tam ostane pás bez mapy\n"))
     return 0
 
 

@@ -227,8 +227,9 @@ fi
 TEST_KM2="$OPT_TEST_KM2"
 # NAFÚKNUTÉ O PREKRYV SO SUSEDOM (`workers/plan/area.py::BORDER_BUFFER_M`) –
 # TO ISTÉ ČÍSLO, o aké `region-poly.py` nafúkol `.poly`/`region.geojson`
-# (rozpis tam: nezávisle zjednodušené hranice susedných krajov nechávajú
-# medzi stiahnutými mapami medzeru 3 – 5 km). TIEŇOVANIE ČÍTA PRIAMO TOTO
+# (rozpis tam: pás popri hranici má byť v mape kraja aj v mape jeho suseda,
+# nech na seba nadväzujú – meria to `workers/plan/seam.py`).
+# TIEŇOVANIE ČÍTA PRIAMO TOTO
 # OKNO (je vždy na celý región, nie na `area`, viď input `shading_source`
 # vyššie) – bez nafúknutia by `-cutline` v ňom vytŕčal z okna, ktoré ho má
 # orezať, a nafúknutý pás by na hillshade nebol vidieť. Vrstevnice a skaly
