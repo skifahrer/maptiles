@@ -85,8 +85,13 @@ vrátila staré (širšie) fonty. Preto je skript teraz v `hashFiles(...)`.
 > a je v tom, ktorý si človek naozaj stiahne – v ZÁKLADNEJ MAPE. Balík
 > `-search` zanikol (`ZRUSENE`), starý sa na Drive maže a `maps.json` má
 > veľkosť indexu pod balíkom `mapa` v `casti.search.raw_size`. Tým istým
-> spôsobom sa do mapy dostal aj navigačný graf Valhally
-> (`casti.navigacia`, `docs/navigation.md`).
+> spôsobom sa do mapy dostal aj navigačný graf Valhally – a **pri ňom to
+> neplatí a je to zmerané**: graf kraja váži 170–190 MB a mapa s ním 283 MB,
+> čiže dve tretiny „základnej mapy". To nie sú percentá, to je ten istý
+> prípad ako vrstevnice a tieňovanie, takže má odteraz vlastný balík
+> `-navigacia.zip` a v katalógu vlastnú položku (`maps.navigacia`), nie
+> `casti`. Rozdiel oproti indexu je práve to číslo, nie iná úvaha –
+> `docs/navigation.md` §7a.
 >
 > Dôvod je v poslednom odseku tejto sekcie a v čísle: úspora 4–6,5 MB na
 > balíku, ktorý má 65–152 MB, je 4–8 %. Za to sa kúpila mapa, v ktorej

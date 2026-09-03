@@ -179,14 +179,40 @@ Graf sa stavia **v dvoch rozsahoch a obidva sú potrebné**, lebo odpovedajú na
 dve rôzne otázky. Stavia ich ten istý skript (`workers/routing/graph.sh`) –
 dva by boli dve pravdy o tom, ako sa graf stavia a čo sa v ňom kontroluje.
 
-### 7a. Graf KRAJA – vnútri balíka mapy
+### 7a. Graf KRAJA – vlastný balík vedľa mapy
 
 Mapu si človek sťahuje po krajoch a chce v nej navigáciu. Preto sa ku každému
 kraju stavia graf z **toho istého PBF, z akého je mapa** (`data/region.osm.pbf`,
-job `navigacia` → `.github/workflows/navigation-region.yml`) a **balí sa
-DOVNÚTRA `<kraj>.zip` a `<kraj>.aar`** do `routing/`, nie do vlastného súboru.
-To isté rozhodnutie ako pri vyhľadávacom indexe a z toho istého dôvodu: druhý
-balík, o ktorom sa v aplikácii nedozvie, je mapa, ktorá „nefunguje“.
+job `navigacia` → `.github/workflows/navigation-region.yml`) a balí sa do
+**vlastného `<kraj>-navigacia.zip` a `.aar`** vedľa mapy toho kraja, s cestami
+`routing/*` vnútri.
+
+**Prvá verzia ho balila DOVNÚTRA `<kraj>.zip`** – to isté rozhodnutie ako pri
+vyhľadávacom indexe a z toho istého dôvodu: druhý balík, o ktorom sa
+v aplikácii nedozvie, je mapa, ktorá „nefunguje“. Argument stál na tom, že je
+to „jednotky až desiatky MB proti stovkám za dlaždice“. **Namerané to tak nie
+je** (`maps.json`, beh 6):
+
+| kraj | mapa spolu | z toho graf |
+|---|--:|--:|
+| Banskobystrický | 283 MB | 192 MB |
+| Prešovský | 276 MB | 189 MB |
+| Bratislavský | 172 MB | 176 MB\* |
+
+\* `raw_size` pred zabalením, preto viac než celý ZIP.
+
+Dve tretiny „základnej mapy“ teda bola sieť, po ktorej sa jazdí, nie mapa,
+ktorá sa kreslí – a to je presne prípad vrstevníc a tieňovania: ťažká vec,
+ktorú mapa na to, aby sa nakreslila, nepotrebuje. Kto navigáciu nechce, ju
+odteraz nemá za čo sťahovať; **kto ju chce, sa o nej dozvie z katalógu** –
+`maps.json` nesie `-navigacia.zip` pod `maps.navigacia` vedľa `linie` a `body`,
+takže je v aplikácii v tom istom zozname na stiahnutie ako ony. Argument
+z prvej verzie tým nepadol, len ho drží katalóg a nie balenie.
+
+Rozbaľuje sa **do toho istého priečinka regiónu** ako mapa, takže po rozbalení
+je graf v `…/<kraj>-navigacia/routing/` – appka ho hľadá skenom priečinka
+(`RoutingGraphPath` v `skifahrer/rikimaps`), nie na pevnej ceste, takže je
+jedno, z ktorého balíka prišiel.
 
 **Trasa v ňom končí na hranici kraja.** PBF je rezaný `osmium extract -s smart`
 – celé cesty a doplnení členovia relácií, urobené pre **plochy** – takže hrana,
@@ -197,8 +223,8 @@ hranici regiónu…"`) – mlčanie by sa dalo čítať ako pokazený graf.
 
 Na Pages ten graf **nejde** (nie je čo kresliť a rozpočet stránky je 900 MB na
 celú mapu), preto sa jeho artefakt volá `navigacia-graf` a nie `site-…`:
-`deploy` ho sťahuje až za krokom, ktorý nahráva na Pages. Koľko z balíka je,
-hovorí `maps.json` – pod balíkom `mapa`, `casti.navigacia.raw_size`.
+`deploy` ho sťahuje až za krokom, ktorý nahráva na Pages. Koľko váži, hovorí
+`maps.json` – `maps.navigacia.size`, ako pri každom inom balíku.
 
 ### 7b. Graf ŠTÁTU a susedov – vlastný balík
 
@@ -253,8 +279,9 @@ zo štvorice pád behu **je** – to nie je malé územie, ale rozbitý balík.
 | `workers/routing/pbf.sh` | štátne extrakty z osm.fr, zliate `osmium merge`; **nič sa nereže** |
 | `workers/routing/graph.sh` | graf Valhally v Dockeri pre OBA rozsahy (`AREA` = štát, `REGION_KEY` = kraj), overenie všetkých štyroch súborov, `graf.json` s verziou motora, počtom ciest a s tým, kam trasa smie |
 | `.github/workflows/navigation.yml` | „Mapa · Build navigácia“ – celoštátny graf, vlastný balík na Drive, zápis do `maps.json` |
-| `.github/workflows/navigation-region.yml` | graf KRAJA z PBF mapy; artefakt `navigacia-graf` ide do `<kraj>.zip` aj `.aar`, nie na Pages |
-| `workers/lint/navigation.py` | rozsah má vlastný uzol v katalógu, celoštátny PBF sa nereže, graf kraja o svojej hranici hovorí, `admins.sqlite` sa nestratí, formulár sedí s číselníkom |
+| `.github/workflows/navigation-region.yml` | graf KRAJA z PBF mapy; artefakt `navigacia-graf` ide do vlastného `<kraj>-navigacia.zip` aj `.aar`, nie na Pages |
+| `workers/lint/navigation.py` | rozsah má vlastný uzol v katalógu, celoštátny PBF sa nereže, graf kraja o svojej hranici hovorí a má vlastný balík, `admins.sqlite` sa nestratí, formulár sedí s číselníkom |
+| `workers/lint/packaging.py` | čo je v ktorom balíku – čítané z NAOZAJ zabalených ZIPov: graf je celý v `-navigacia.zip` a v základnej mape nie je (inak by sa sťahoval dvakrát) |
 | `workers/roads/*` | obmedzenia na ceste v DLAŽDICIACH (výška, šírka, hmotnosť, rýchlosť) – §1, „Áčko“ |
 
 Trasu už teda počítať **je z čoho**: graf existuje, dá sa postaviť a stiahnuť.

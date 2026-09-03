@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 """
-Hotová mapa na Google Drive – ŠTYRI ZIPy so stálym menom.
+Hotová mapa na Google Drive – balíky so stálym menom.
 
 ČO TO ROBÍ. Z `_site` (celý web: dlaždice, štýly, vrstevnice, skaly,
-tieňovanie, fonty a sprity) a z priečinka s článkami (`--wiki`) sa zabalia
-balíky a nahrajú na Drive do priečinka podľa toho, čoho sa mapa týka:
+tieňovanie, cestný graf, fonty a sprity) a z priečinka s článkami (`--wiki`)
+sa zabalia balíky a nahrajú na Drive do priečinka podľa toho, čoho sa mapa
+týka:
 
     <koreň>/slovensko/presovsky/vysoke_tatry/
         presovsky-vysoke_tatry.zip                    základná mapa, BEZ nižšie
-                                                      (ale S hľadaním a navigáciou –
-                                                      tie sú jej časti, nie balíky;
-                                                      bez glyfov a viewera – viď nižšie)
+                                                      (ale S hľadaním – to je jej
+                                                      časť, nie balík; bez glyfov
+                                                      a viewera – viď nižšie)
         presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy
         presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice
+        presovsky-vysoke_tatry-linie.zip              trasy a obmedzenia na ceste
+        presovsky-vysoke_tatry-body.zip               body z OSM
+        presovsky-vysoke_tatry-navigacia.zip          cestná a chodníková sieť
+                                                      z OSM ako graf Valhally
         presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
 
 GLYFY A WEBOVÝ VIEWER SA NEBALIA. Fonty boli po dlaždiciach druhá najväčšia vec
@@ -44,23 +49,31 @@ nechce – vážia porovnateľne s mapou samou (rozpis v `docs/velkost-balikov.m
 Kto ich chce, rozbalí príslušný ZIP navrch (cesty vnútri sú tie isté ako
 v `_site`, takže sa dá rozbaliť jeden cez druhý).
 
-HĽADANIE A NAVIGÁCIA SÚ NAOPAK V NEJ – SÚ TO ČASTI, NIE BALÍKY. Vlastný
-`-search.zip` mali a bola to chyba v tom, čo mapa sľubuje: kto si stiahol mapu
-kraja, dostal mapu, v ktorej sa nedá nič nájsť ani nikam doviesť, a že mu chýba
-druhý súbor, nemal ako vedieť – žiadny „stiahni si aj toto" v nej nie je.
-Cena za to je jednotky až desiatky MB proti stovkám, ktoré vážia dlaždice,
-takže sa tu ani nemá čo šetriť. Balík `-search` preto zanikol (`ZRUSENE`) a
-starý sa na Drive maže; graf Valhally (`_site/routing/`) sa balí rovnako.
+HĽADANIE JE NAOPAK V NEJ – JE TO ČASŤ, NIE BALÍK. Vlastný `-search.zip` malo
+a bola to chyba v tom, čo mapa sľubuje: kto si stiahol mapu kraja, dostal
+mapu, v ktorej sa nedá nič nájsť, a že mu chýba druhý súbor, nemal ako
+vedieť. Cena za to je desiatky MB proti stovkám, ktoré vážia dlaždice, takže
+sa tu ani nemá čo šetriť. Balík `-search` preto zanikol (`ZRUSENE`) a starý
+sa na Drive maže.
 
-OBE SÚ VŽDY ZA TEN JEDEN REGIÓN, ktorého je balík. Pri hľadaní to platilo
-odjakživa (index je z toho istého PBF ako mapa); graf sa preto stavia
-z `data/region.osm.pbf` toho istého behu. Trasa v ňom KONČÍ NA HRANICI
-REGIÓNU – hrana, ktorej v rezanom PBF chýba druhý koniec, je slepá ulica –
-a kto potrebuje prejsť hranicu, má na to celoštátny graf z `navigation.yml`.
-Je to zámer, nie opomenutie, a `graf.json` v balíku to o sebe hovorí
+NAVIGÁCIA MÁ NAOPAK VLASTNÝ BALÍK a je to zmena oproti prvej verzii: graf sa
+balil dovnútra mapy s tým istým argumentom ako index, lenže NAMERANÉ TO TAK
+NIE JE. Graf kraja váži 170 až 190 MB a mapa s ním 283 MB – dve tretiny
+„základnej mapy" teda bola sieť, po ktorej sa jazdí, nie mapa, ktorá sa
+kreslí. To je presne prípad vrstevníc a tieňovania: ťažká vec, ktorú mapa na
+to, aby sa nakreslila, nepotrebuje, a ktorú si preto netreba sťahovať, keď ju
+človek nechce. Že sa o nej dozvie, drží katalóg: `-navigacia.zip` má
+v `maps.json` vlastnú položku vedľa `linie` a `body`, takže je v aplikácii
+v tom istom zozname na stiahnutie ako ony.
+
+HĽADANIE AJ NAVIGÁCIA SÚ VŽDY ZA TEN JEDEN REGIÓN. Index je z toho istého PBF
+ako mapa; graf sa z neho stavia tiež. Trasa v ňom KONČÍ NA HRANICI REGIÓNU –
+hrana, ktorej v rezanom PBF chýba druhý koniec, je slepá ulica – a kto
+potrebuje prejsť hranicu, má na to celoštátny graf z `navigation.yml`. Je to
+zámer, nie opomenutie, a `graf.json` v balíku to o sebe hovorí
 (`rozsah: "region"`).
 
-KOĽKO Z BALÍKA TIE ČASTI SÚ, MUSÍ BYŤ VIDIEŤ. Časť, ktorá sa nedá odmerať, je
+KOĽKO Z BALÍKA TÁ ČASŤ JE, MUSÍ BYŤ VIDIEŤ. Časť, ktorá sa nedá odmerať, je
 presne to, čím bol `search-index.db` predtým, než sa naň niekto pozrel: bol
 v balíku dvakrát a na veľkosti to nikto nepoznal. Každá časť sa preto premeria
 a jej veľkosť ide do `maps.json` pod balík `mapa` (kľúč `casti`).
@@ -131,6 +144,7 @@ casti_baliku = subory.casti_baliku
 kde_su_glyfy = subory.kde_su_glyfy
 linie_subory = subory.linie_subory
 manifest_data = subory.manifest_data
+navigacia_subory = subory.navigacia_subory
 mimo_balika = subory.mimo_balika
 tienovanie_subory = subory.tienovanie_subory
 velkost_casti = subory.velkost_casti
@@ -340,15 +354,15 @@ def meno(kind="", fmt="zip"):
 def obsah(kind, man, fmt="zip", casti=None):
     """`obsah.json` do balíka – to, čo kedysi nieslo meno súboru.
 
-    `casti` sú kúsky, ktoré cestujú V ZÁKLADNEJ MAPE (hľadanie, navigácia) –
-    píšu sa aj s veľkosťou a aj vtedy, keď v mape nie sú (`files: 0`). Kto
-    balík rozbalí, sa tak nemusí pýtať priečinka, či v ňom graf je.
+    `casti` sú kúsky, ktoré cestujú V ZÁKLADNEJ MAPE (dnes hľadanie) – píšu sa
+    aj s veľkosťou a aj vtedy, keď v mape nie sú (`files: 0`). Kto balík
+    rozbalí, sa tak nemusí pýtať priečinka, či v ňom index je.
     """
     reg = catalog.region_entry(man)
     return {
         "balik": kind or "mapa",
         # Časti sú vec ZÁKLADNEJ MAPY; vo vlastnom balíku vrstiev by kľúč
-        # `casti` sľuboval, že tam hľadanie a navigácia môžu byť.
+        # `casti` sľuboval, že tam hľadanie môže byť.
         **({"casti": velkost_casti(casti)} if not kind and casti else {}),
         # Meno TOHO súboru, v ktorom `obsah.json` leží – čiže aj s príponou
         # formátu. Keby tu bolo natvrdo `.zip`, `.aar` by o sebe tvrdil, že
@@ -467,19 +481,20 @@ def main():
     # počítajú od tej bázy, takže vnútri je `articles.ndjson`, nie
     # `_wiki/articles.ndjson`.
     #
-    # Vrstevnice, skaly, tieňovanie, línie z OSM (trasy, obmedzenia na ceste)
-    # a body z OSM sa počítajú PRED základnou mapou, lebo tá ich musí
-    # VYNECHAŤ – majú vlastné balíky práve preto, aby si ich človek nemusel
-    # sťahovať, keď ich nechce (viď hlavička súboru). Každý sa počíta RAZ
+    # Vrstevnice, skaly, tieňovanie, línie z OSM (trasy, obmedzenia na ceste),
+    # body z OSM a navigačný graf sa počítajú PRED základnou mapou, lebo tá
+    # ich musí VYNECHAŤ – majú vlastné balíky práve preto, aby si ich človek
+    # nemusel sťahovať, keď ich nechce (viď hlavička súboru). Každý sa počíta RAZ
     # a to isté pole ide aj do vlastného balíka: druhé volanie tej istej
     # funkcie je druhá odpoveď na tú istú otázku.
     vrstvy_pack = vrstvy_subory(args.site, man)
     tien_pack = tienovanie_subory(args.site, man)
     linie_pack = linie_subory(args.site, man)
     body_pack = body_subory(args.site, man)
-    # ČASTI ZÁKLADNEJ MAPY – hľadanie a navigácia. Zo základnej mapy sa
-    # NEVYNÍMAJÚ (sú v nej, o to ide); počítajú sa preto, aby sa dali premerať
-    # a ich veľkosť išla do katalógu pod balík `mapa`.
+    nav_pack = navigacia_subory(args.site, man)
+    # ČASTI ZÁKLADNEJ MAPY – dnes hľadanie. Zo základnej mapy sa NEVYNÍMAJÚ
+    # (sú v nej, o to ide); počítajú sa preto, aby sa dali premerať a ich
+    # veľkosť išla do katalógu pod balík `mapa`.
     #
     # Pri `--only` sa nepočítajú vôbec: tá pipeline základnú mapu nerobí a jej
     # `_site` mapu ani neobsahuje, takže by premerala PRÁZDNO a katalóg by
@@ -498,10 +513,11 @@ def main():
                f"{folder.human(sum(os.path.getsize(p) for p in subory))}"
                if subory else "TENTO BUILD JU NEVYROBIL, v mape nebude"))
     baliky = [
-        ("", "základná mapa (aj s hľadaním a navigáciou) – bez vrstevníc, "
-             "skál, tieňovania, línií a bodov z OSM, glyfov a viewera",
+        ("", "základná mapa (aj s hľadaním) – bez vrstevníc, skál, "
+             "tieňovania, línií a bodov z OSM, navigácie, glyfov a viewera",
          args.site, zaklad_subory(args.site, vrstvy_pack + tien_pack
-                                  + linie_pack + body_pack + von_pack)),
+                                  + linie_pack + body_pack + nav_pack
+                                  + von_pack)),
         ("vrstevnice-skaly", "vrstevnice a skalné plochy (.pmtiles)",
          args.site, vrstvy_pack),
         ("tienovanie", "výškové dlaždice pre tieňovanie a 3D terén (raster .pmtiles)",
@@ -510,6 +526,9 @@ def main():
          args.site, linie_pack),
         ("body", "pramene, jaskyne, rozhľadne a ďalšie body z OSM (.pmtiles)",
          args.site, body_pack),
+        ("navigacia", "cestná a chodníková sieť z OSM ako navigačný graf "
+                      "(Valhalla) – trasa končí na hranici regiónu",
+         args.site, nav_pack),
     ]
     # WIKIPÉDIA SA PRIDÁ, LEN KEĎ O NEJ TENTO BEH VIE. Odkedy má vlastnú
     # pipeline (`.github/workflows/wiki.yml`), Build map články nesťahuje –
@@ -687,9 +706,10 @@ def main():
             [(k, n, v, i, f) for k, n, _p, v, _pr, i, f in hotove],
             man, iba=args.only, merge="zip" not in formaty, kat=kat,
             layers=vrstvy(), spravuje=spravuje,
-            # KOĽKO Z MAPY JE HĽADANIE A KOĽKO NAVIGÁCIA. Odkedy nemajú vlastný
-            # balík, je toto jediné miesto, kde sa to dá prečítať bez toho, aby
-            # si človek stiahol stovky MB a rozbalil ich.
+            # KOĽKO Z MAPY JE HĽADANIE. Odkedy nemá vlastný balík, je toto
+            # jediné miesto, kde sa to dá prečítať bez toho, aby si človek
+            # stiahol stovky MB a rozbalil ich. (Navigácia už vlastný balík
+            # má, takže jej veľkosť je v katalógu pod ním.)
             casti=None if args.only else velkost_casti(casti),
             # Balík, ktorý už neexistuje, a odkaz, za ktorým už súbor nie je –
             # dve veci, ktoré v katalógu vyzerajú ako ponuka na stiahnutie
@@ -718,7 +738,7 @@ def main():
             # čítať aj ako „zabudlo sa to premerať".
             if casti:
                 f.write("Z toho v základnej mape cestuje (vlastný balík "
-                        "nemajú):\n\n")
+                        "nemá):\n\n")
                 f.write("| časť | čo to je | veľkosť |\n|---|---|--:|\n")
                 for kluc, popis, subory in casti:
                     bajtov = sum(os.path.getsize(x) for x in subory)

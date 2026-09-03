@@ -9,14 +9,13 @@ teda tam, kde sa mení otázka, rovnako ako pri `catalog.py`.
 
 TRI DRUHY ODPOVEDÍ SÚ TU:
 
-  * VLASTNÝ BALÍK (`vrstvy_subory`, `tienovanie_subory`). Ťažké vrstvy
-    z výškového modelu, ktoré mapa na to, aby sa nakreslila, nepotrebuje –
-    a ktoré vážia porovnateľne s ňou samou, takže sa oplatí nesťahovať ich.
-  * ČASŤ ZÁKLADNEJ MAPY (`casti_baliku`: hľadanie a navigácia). Jednotky až
-    desiatky MB proti stovkám za dlaždice; vlastný balík by znamenal mapu,
-    v ktorej sa nedá nič nájsť ani nikam doviesť, a nikto by nemal ako
-    zistiť, že mu druhý súbor chýba. Premeriavajú sa (`velkost_casti`),
-    aby bolo v katalógu vidieť, koľko z balíka sú.
+  * VLASTNÝ BALÍK (`vrstvy_subory`, `tienovanie_subory`, `navigacia_subory`).
+    Ťažké veci, ktoré mapa na to, aby sa nakreslila, nepotrebuje – a ktoré
+    vážia porovnateľne s ňou samou, takže sa oplatí nesťahovať ich.
+  * ČASŤ ZÁKLADNEJ MAPY (`casti_baliku`: hľadanie). Desiatky MB proti stovkám
+    za dlaždice; vlastný balík by znamenal mapu, v ktorej sa nedá nič nájsť,
+    a nikto by nemal ako zistiť, že mu druhý súbor chýba. Premeriava sa
+    (`velkost_casti`), aby bolo v katalógu vidieť, koľko z balíka je.
   * MIMO BALÍKA (`mimo_balika`: glyfy a viewer). Viewer je web, ktorý si
     aplikácia nespúšťa, a glyfy si appka nesie vo vlastnom binári – vynechajú
     sa preto VŽDY, nie podľa tvaru adresy v manifeste (rozpis v hlavičke
@@ -152,13 +151,43 @@ def tienovanie_subory(site, man):
             if n.endswith("-terrain.pmtiles")]
 
 
+def navigacia_subory(site, man):
+    """Súbory balíka `navigacia` – cestná a chodníková sieť z OSM ako graf.
+
+    CELÝ PRIEČINOK `_site/routing/`, a nie výber podľa mien: graf sú štyri
+    súbory, ktoré si musia sedieť (`valhalla_tiles.tar`, `valhalla.json`,
+    `admins.sqlite`, `timezones.sqlite`) plus `graf.json` s tým, z čoho a čím
+    je postavený – a keby sa vyberali menami, prvý ďalší súbor od Valhally by
+    z balíka ticho vypadol a trasa by „len nešla". `routing/` je zároveň
+    jediný priečinok v `_site`, ktorý patrí grafu, takže tu na rozdiel od
+    `tiles/` nič cudzie nehrozí.
+
+    VLASTNÝ BALÍK, A NIE ČASŤ ZÁKLADNEJ MAPY. Kým sa balil dovnútra, znel
+    argument „jednotky až desiatky MB proti stovkám za dlaždice" – ale
+    namerané to tak nie je: graf kraja má 170 až 190 MB a mapa s ním váži
+    283 MB, čiže DVE TRETINY základnej mapy je sieť, po ktorej sa jazdí, nie
+    mapa, ktorá sa kreslí. To je presne ten dôvod, pre ktorý majú vlastný
+    balík vrstevnice a tieňovanie: kto navigáciu nechce, nemá ju za čo
+    sťahovať. Že sa o balíku dá dozvedieť, je vec katalógu – `maps.json` ho
+    nesie pod `maps.navigacia` vedľa ostatných, tak ako `linie` a `body`.
+
+    Že je graf za JEDEN REGIÓN a trasa v ňom končí na jeho hranici, hovorí
+    `graf.json` v ňom (`rozsah: "region"`); rozpis je v `docs/navigation.md`.
+    """
+    base = os.path.join(site, "routing")
+    if not os.path.isdir(base):
+        return []
+    return sorted(os.path.join(root, n)
+                  for root, _dirs, names in os.walk(base) for n in names)
+
+
 # ---------- časti, ktoré cestujú V ZÁKLADNEJ MAPE ----------
-# Hľadanie a navigácia NIE SÚ balíky (rozpis v hlavičke súboru). Sú to časti
-# základnej mapy a jediné, čo o nich publikovanie navyše robí, je, že ich
-# PREMERIA – veľkosť ide do `maps.json` pod balík `mapa`, aby sa dalo povedať,
-# koľko z tých stoviek MB je mapa a koľko to, čo v nej jazdí a hľadá.
+# Hľadanie NIE JE balík (rozpis v hlavičke súboru). Je to časť základnej mapy
+# a jediné, čo o nej publikovanie navyše robí, je, že ju PREMERIA – veľkosť
+# ide do `maps.json` pod balík `mapa`, aby sa dalo povedať, koľko z tých
+# stoviek MB je mapa a koľko to, čo v nej hľadá.
 #
-# Vlastnú funkciu majú preto, že sa nedajú vybrať podľa priečinka: `tiles/` je
+# Vlastnú funkciu má preto, že sa nedá vybrať podľa priečinka: `tiles/` je
 # spoločný pre všetky vrstvy, takže „všetko v priečinku" by za index vyhlásilo
 # aj dlaždice.
 
@@ -178,28 +207,6 @@ def hladanie_subory(site, man):
             if n.endswith(".db") and "search" in n.lower()]
 
 
-def navigacia_subory(site, man):
-    """Časť `navigacia` – navigačný graf Valhally z `_site/routing/`.
-
-    CELÝ PRIEČINOK, a nie výber podľa mien: graf sú štyri súbory, ktoré si
-    musia sedieť (`valhalla_tiles.tar`, `valhalla.json`, `admins.sqlite`,
-    `timezones.sqlite`) plus `graf.json` s tým, z čoho a čím je postavený –
-    a keby sa vyberali menami, prvý ďalší súbor od Valhally by z balíka ticho
-    vypadol a trasa by „len nešla". `routing/` je zároveň jediný priečinok
-    v `_site`, ktorý patrí grafu, takže tu na rozdiel od `tiles/` nič cudzie
-    nehrozí.
-
-    Že je graf za JEDEN REGIÓN a trasa v ňom končí na jeho hranici, hovorí
-    `graf.json` v ňom (`rozsah: "region"`); rozpis je v hlavičke súboru
-    a v `docs/navigation.md`.
-    """
-    base = os.path.join(site, "routing")
-    if not os.path.isdir(base):
-        return []
-    return sorted(os.path.join(root, n)
-                  for root, _dirs, names in os.walk(base) for n in names)
-
-
 def casti_baliku(site, man):
     """Časti základnej mapy: `[(kľúč, popis, súbory)]` – aj tie, čo nie sú.
 
@@ -207,12 +214,15 @@ def casti_baliku(site, man):
     zoznam sa zapíše ako `0` a to je odpoveď „hľadanie v tejto mape nie je".
     Mlčanie by sa dalo čítať aj ako „zabudlo sa to premerať" – ten istý dôvod,
     pre ktorý meno balíka nesie `bez_skal`.
+
+    NAVIGÁCIA TU UŽ NIE JE a nie je to opomenutie: graf má vlastný balík
+    (`navigacia_subory`), lebo bol dvomi tretinami základnej mapy. Jeho
+    veľkosť je preto v katalógu pod `maps.navigacia.size` ako pri každom
+    inom balíku, nie pod `maps.mapa.casti`.
     """
     return [
         ("search", "index na offline hľadanie (SQLite FTS5)",
          hladanie_subory(site, man)),
-        ("navigacia", "navigačný graf Valhally pre tento región",
-         navigacia_subory(site, man)),
     ]
 
 
@@ -309,11 +319,11 @@ def mimo_balika(site, man):
 def zaklad_subory(site, vylucit):
     """Súbory balíka `mapa` – všetko z `_site` OKREM toho, čo doň nepatrí.
 
-    `vylucit` je dvoje. Jedno sú súbory balíkov `vrstevnice-skaly`
-    a `tienovanie`: keby aj tie ostali v základnej mape, mali by ich cesty
-    vnútri dvakrát – raz tu, raz v tom druhom ZIPe – a „iba mapa" by vážila
-    rovnako ako mapa so všetkým, čo je presne to, kvôli čomu majú vlastné
-    balíky. Druhé je to, čo v balíku nemá čo robiť – viewer (je na Pages)
+    `vylucit` je dvoje. Jedno sú súbory balíkov `vrstevnice-skaly`,
+    `tienovanie`, `linie`, `body` a `navigacia`: keby aj tie ostali
+    v základnej mape, mali by ich cesty vnútri dvakrát – raz tu, raz v tom
+    druhom ZIPe – a „iba mapa" by vážila rovnako ako mapa so všetkým, čo je
+    presne to, kvôli čomu majú vlastné balíky. Druhé je to, čo v balíku nemá čo robiť – viewer (je na Pages)
     a glyfy (nesie si ich appka), teda `mimo_balika`. Oboje sa podáva zvonku,
     aby sa tá istá otázka nepočítala dvakrát; čo je čo, hovorí hlavička
     `publish-map.py`.
@@ -323,9 +333,9 @@ def zaklad_subory(site, vylucit):
     sa stalo `search-index.db` – mal vlastný balík a zo základnej mapy ho nikto
     nevybral, takže si ho každý stiahol dvakrát.
 
-    HĽADANIE A NAVIGÁCIA SEM NAOPAK NEPATRIA a nie je to opomenutie: druhý
-    balík nemajú, sú to ČASTI tejto mapy (`casti_baliku`). Vynímať ich by
-    znamenalo mapu, v ktorej sa nedá nič nájsť ani nikam doviesť.
+    HĽADANIE SEM NAOPAK NEPATRÍ a nie je to opomenutie: druhý balík nemá, je
+    to ČASŤ tejto mapy (`casti_baliku`). Vynímať ho by znamenalo mapu,
+    v ktorej sa nedá nič nájsť.
     """
     von = {os.path.abspath(p) for p in vylucit}
     return [p for p in vsetky_subory(site) if os.path.abspath(p) not in von]

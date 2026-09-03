@@ -24,18 +24,19 @@
 # zadáva s TAGOM (nie `latest`) a to, čo sa naozaj použilo, sa zapíše.
 #
 # DVA ROZSAHY, JEDEN SKRIPT. Graf sa stavia raz pre CELÝ ŠTÁT (workflow
-# „Mapa · Build navigácia", vlastný balík na Drive, `AREA` z
-# `workers/data/routing-areas.json`) a raz pre JEDEN REGIÓN, kde ide priamo
-# DOVNÚTRA balíka mapy toho regiónu (job `navigacia` v `build-map-region.yml`,
-# `REGION_KEY` a PBF, ktoré si beh už aj tak stiahol). Dva skripty by boli dve
-# pravdy o tom, ako sa graf stavia a čo sa v ňom kontroluje (pravidlo 1).
+# „Mapa · Build navigácia", `AREA` z `workers/data/routing-areas.json`) a raz
+# pre JEDEN REGIÓN (job `navigacia` v `build-map-region.yml`, `REGION_KEY`
+# a PBF, ktoré si beh už aj tak stiahol). VLASTNÝ BALÍK NA DRIVE MÁ KAŽDÝ
+# z nich: celoštátny svoj vlastný priečinok, regionálny `<kraj>-navigacia.zip`
+# vedľa mapy toho kraja. Dva skripty by boli dve pravdy o tom, ako sa graf
+# stavia a čo sa v ňom kontroluje (pravidlo 1).
 #
 # ČO SA PRI REGIÓNE MENÍ: PBF je REZANÝ na hranicu kraja, takže hrana, ktorej
 # chýba druhý koniec, je slepá ulica – trasa v takom grafe KONČÍ NA HRANICI
-# REGIÓNU. Je to zámer (mapa aj hľadanie sú za ten istý región a človek, ktorý
-# si stiahol kraj, má v ňom aj navigáciu), nie opomenutie, a `graf.json` to
-# o sebe hovorí: `rozsah: "region"` a `hranica: "trasa končí na hranici
-# regiónu"`. Kto potrebuje prejsť hranicu, má na to celoštátny balík.
+# REGIÓNU. Je to zámer (mapa, hľadanie aj navigácia sú za ten istý región),
+# nie opomenutie, a `graf.json` to o sebe hovorí: `rozsah: "region"`
+# a `hranica: "trasa končí na hranici regiónu"`. Kto potrebuje prejsť hranicu,
+# má na to celoštátny balík.
 #
 # Vstup:  ROUTING_PBF (default data/routing.osm.pbf), AREA alebo REGION_KEY,
 #         VALHALLA_IMAGE
@@ -53,12 +54,12 @@ if [ -n "$AREA" ]; then
   PBF="${ROUTING_PBF:-data/routing.osm.pbf}"
   ROBI="workers/routing/pbf.sh"
 elif [ -n "$REGION_KEY" ]; then
-  ROZSAH="region"                     # jeden kraj, graf ide do jeho mapy
+  ROZSAH="region"                     # jeden kraj, vlastný balík vedľa mapy
   POPIS="región \`$REGION_KEY\`"
   PBF="${ROUTING_PBF:-data/region.osm.pbf}"
   ROBI="workers/plan/pbf.sh (krok „PBF regiónu“)"
 else
-  echo "::error::Povedz, na aký rozsah sa graf stavia: buď AREA (kľúč z workers/data/routing-areas.json, celoštátny balík), alebo REGION_KEY (kraj, graf ide dovnútra jeho mapy). Bez toho by sa nedalo napísať do graf.json, čo ten graf pokrýva – a rozsah je pri navigácii to hlavné, čo o nej treba vedieť."
+  echo "::error::Povedz, na aký rozsah sa graf stavia: buď AREA (kľúč z workers/data/routing-areas.json, celoštátny balík), alebo REGION_KEY (kraj, vlastný balík vedľa jeho mapy). Bez toho by sa nedalo napísať do graf.json, čo ten graf pokrýva – a rozsah je pri navigácii to hlavné, čo o nej treba vedieť."
   exit 1
 fi
 IMAGE="${VALHALLA_IMAGE:-ghcr.io/valhalla/valhalla-scripted:latest}"
@@ -185,8 +186,8 @@ cesty = int(sys.argv[5]) if sys.argv[5] else None
 graf = {
     # AKÝ ROZSAH TEN GRAF POKRÝVA je pri navigácii to hlavné, čo o ňom treba
     # vedieť – od toho závisí, kam sa v ňom dá doviezť. `area` je celý štát
-    # (alebo štáty) z číselníka a má vlastný balík; `region` je jeden kraj
-    # a graf je vnútri balíka jeho mapy.
+    # (alebo štáty) z číselníka; `region` je jeden kraj. Vlastný balík má
+    # každý z nich, ten regionálny leží vedľa mapy svojho kraja.
     "rozsah": druh,
     "kluc": kluc,
     "pbf_mb": pbf_mb,
@@ -248,6 +249,6 @@ MB=$(( $(du -sb _site/routing | cut -f1) / 1048576 ))
 echo "graph_mb=$MB" >> "$GITHUB_OUTPUT"
 echo "valhalla=${VALHALLA_VER:-neznama}" >> "$GITHUB_OUTPUT"
 SEK=$(( $(date +%s) - T ))
-echo "::notice::Graf hotový: ${MB} MB za $(( SEK / 60 )) min $(( SEK % 60 )) s (PBF ${PBF_MB} MB, $POPIS). Pri celoštátnom behu patrí toto číslo do workers/data/routing-areas.json; pri kraji je v katalógu pod balíkom mapy (`casti.navigacia`)."
+echo "::notice::Graf hotový: ${MB} MB za $(( SEK / 60 )) min $(( SEK % 60 )) s (PBF ${PBF_MB} MB, $POPIS). Pri celoštátnom behu patrí toto číslo do workers/data/routing-areas.json; pri kraji je v katalógu pod vlastným balíkom (`maps.navigacia`)."
 printf '%s\t%s\t%s\t%s\n' "20" "Navigačný graf (Valhalla)" "$SEK" \
   "${MB} MB z ${PBF_MB} MB PBF" >> steps-out/routing.tsv
