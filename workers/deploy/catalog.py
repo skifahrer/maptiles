@@ -440,13 +440,18 @@ def zapis(path, data, popis):
 
 
 def zapis_casti(mapy, casti):
-    """Koľko z balíka `mapa` je hľadanie a koľko navigácia.
+    """Koľko z balíka `mapa` je hľadanie.
 
-    HĽADANIE A NAVIGÁCIA NEMAJÚ VLASTNÝ BALÍK – cestujú v základnej mape
-    (rozpis v hlavičke `publish-map.py`), takže toto je jediné miesto, kde sa
-    ich veľkosť dá prečítať bez toho, aby si človek stiahol stovky MB
-    a rozbalil ich. Píše sa aj `0`: „hľadanie v tejto mape nie je" je odpoveď,
-    kým chýbajúci kľúč sa dá čítať aj ako „zabudlo sa to premerať".
+    HĽADANIE NEMÁ VLASTNÝ BALÍK – cestuje v základnej mape (rozpis v hlavičke
+    `publish-map.py`), takže toto je jediné miesto, kde sa jeho veľkosť dá
+    prečítať bez toho, aby si človek stiahol stovky MB a rozbalil ich. Píše sa
+    aj `0`: „hľadanie v tejto mape nie je" je odpoveď, kým chýbajúci kľúč sa dá
+    čítať aj ako „zabudlo sa to premerať".
+
+    KĽÚČ, KTORÝ TENTO BEH NEPREMERAL, SA ZAHODÍ – `casti` sa PREPISUJE, nie
+    dopĺňa. Presne to upratalo `navigacia` zo starých položiek, keď sa graf
+    presťahoval do vlastného balíka: dopĺňanie by nechalo v katalógu veľkosť
+    niečoho, čo v mape už nie je.
 
     Číslo sa volá `raw_size` a stojí vedľa `size` toho istého balíka zámerne:
     `size` je zabalený ZIP, `raw_size` bajty pred zabalením (vlastný archív tá

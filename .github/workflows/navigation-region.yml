@@ -1,10 +1,14 @@
 name: Mapa · navigačný graf kraja
 
-# NAVIGAČNÝ GRAF (Valhalla) PRE JEDEN KRAJ – a ide DOVNÚTRA balíka jeho mapy,
-# nie do vlastného ZIPu. Kto si stiahol kraj, má v ňom aj to, čo ho v ňom
-# dovezie; druhý súbor, o ktorom sa v aplikácii nedozvie, by znamenal mapu
-# s navigáciou, ktorá „nefunguje". To isté rozhodnutie ako pri vyhľadávacom
-# indexe – rozpis je v hlavičke `workers/deploy/publish-map.py`.
+# NAVIGAČNÝ GRAF (Valhalla) PRE JEDEN KRAJ – cestná a chodníková sieť z OSM,
+# a od tejto verzie má VLASTNÝ BALÍK `<kraj>-navigacia.zip` vedľa mapy toho
+# kraja. Balil sa dovnútra mapy s tým istým argumentom ako vyhľadávací index
+# („pár MB proti stovkám za dlaždice“), lenže namerané to tak nie je: graf
+# kraja váži 170 až 190 MB a mapa s ním 283 MB, čiže dve tretiny „základnej
+# mapy" bola sieť, po ktorej sa jazdí. Že sa o balíku dá dozvedieť, drží
+# katalóg – `maps.json` ho nesie vedľa `linie` a `body`, takže je v appke
+# v tom istom zozname na stiahnutie. Rozpis je v hlavičke
+# `workers/deploy/publish-map.py` a v `docs/navigation.md`.
 #
 # TRASA V ŇOM KONČÍ NA HRANICI KRAJA. PBF je rezaný na hranicu (mapa je mapa
 # kraja) a hrana, ktorej chýba druhý koniec, je slepá ulica. Je to ZÁMER, nie
@@ -77,7 +81,8 @@ jobs:
       # ARTEFAKT SA NEVOLÁ `site-…` ZÁMERNE. Kusy `site-*` zlieva `deploy` do
       # `_site` PRED nahratím na Pages a graf na Pages nemá čo robiť – nie je
       # čo kresliť a zjedol by rozpočet stránky. Balenie si ho preto stiahne
-      # menom, až za tým krokom.
+      # menom, až za tým krokom, a `publish-map.py` z neho spraví vlastný
+      # balík (`_site/routing/` → `<kraj>-navigacia.zip`).
       - name: Odlož graf pre balenie
         if: ${{ always() && hashFiles('_site/routing/*') != '' }}
         uses: actions/upload-artifact@v7

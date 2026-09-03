@@ -1940,7 +1940,7 @@ jobs:
 
   # ---------- navigačný graf pre tento kraj ----------
   # Vo vlastnom súbore, lebo tento je pri strope 128 KiB – dôvod aj rozpis
-  # (prečo graf ide DOVNÚTRA mapy a prečo trasa končí na hranici kraja) je
+  # (prečo má graf VLASTNÝ balík a prečo trasa končí na hranici kraja) je
   # v `navigation-region.yml`.
   navigacia:
     name: Navigačný graf (Valhalla)
@@ -2347,12 +2347,12 @@ jobs:
           PAGES_BUILD_TYPE: ${{ needs.plan.outputs.pages_build_type }}
         run: workers/deploy/smoke-test.sh
 
-      # NAVIGAČNÝ GRAF AŽ TU, ZA PAGES. Do balíka patrí (kto si stiahol kraj,
-      # má v ňom aj navigáciu), na stránku nie – nie je čo kresliť a zjedol by
+      # NAVIGAČNÝ GRAF AŽ TU, ZA PAGES. Balí sa z neho vlastný balík
+      # `-navigacia.zip`, na stránku nejde – nie je čo kresliť a zjedol by
       # rozpočet Pages. Preto sa artefakt nevolá `site-…`: krok „Pozbieraj
       # kusy stránky“ berie `site-*` a graf by sa doňho zlial ešte pred
       # nahratím na Pages. `continue-on-error`, lebo mapa bez navigácie je
-      # mapa – katalóg o nej povie `casti.navigacia: 0 súborov`.
+      # mapa – ten balík vtedy jednoducho nevznikne.
       - name: Stiahni navigačný graf do balíka
         if: ${{ always() && needs.navigacia.result == 'success' }}
         continue-on-error: true
@@ -2507,10 +2507,10 @@ jobs:
         with:
           name: deploy-site
           path: _site
-      # NAVIGAČNÝ GRAF MUSÍ BYŤ AJ V `.aar`. `.aar` je ten istý obsah ako ZIP,
-      # len inak zabalený – balík, v ktorom by graf chýbal, by o sebe cez
-      # `obsah.json` tvrdil to isté, čo ZIP, a nesedelo by to. Do `site-*`
-      # graf nepatrí (na Pages nemá čo robiť), takže sa sťahuje menom.
+      # NAVIGAČNÝ GRAF MUSÍ BYŤ AJ TU. `.aar` je ten istý obsah ako ZIP, len
+      # inak zabalený – keby graf chýbal, `-navigacia.aar` by vôbec nevznikol
+      # a v priečinku by vedľa ZIPu chýbal. Do `site-*` graf nepatrí (na
+      # Pages nemá čo robiť), takže sa sťahuje menom.
       # `continue-on-error`: mapa bez navigácie je mapa.
       - name: Stiahni navigačný graf do balíka
         continue-on-error: true

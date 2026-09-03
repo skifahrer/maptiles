@@ -28,7 +28,8 @@ import yaml
 # katalógu zapisuje ako `mapa`) – táto množina musí sedieť s tým zoznamom,
 # inak balík, ktorý pipeline práve pridala (naposledy `linie` a `body`, línie
 # a body z OSM), zhodí lint napriek tomu, že v katalógu je zo skutočného behu.
-DRUHY = {"mapa", "vrstevnice-skaly", "tienovanie", "wikipedia", "linie", "body"}
+DRUHY = {"mapa", "vrstevnice-skaly", "tienovanie", "wikipedia", "linie", "body",
+         "navigacia"}
 # ZRUŠENÉ DRUHY – v katalógu ešte môžu byť (kraj, ktorý sa odvtedy nestaval),
 # ale publikovanie ich už NEVYRÁBA: `search` sa presťahoval DOVNÚTRA balíka
 # `mapa` a jeho veľkosť je pod ním v `casti`. Hlásiť ich ako neznámy druh by
@@ -39,7 +40,8 @@ ZRUSENE = {"search"}
 # Meno balíka: `<kraj>[-<výsek>][-testNkm2]` + prípona druhu. Sedí to s
 # `zaklad()` a `meno()` vo `workers/deploy/publish-map.py`.
 MENO = re.compile(r"^[a-z0-9_]+(-[a-z0-9_]+)*(-test[0-9.]+km2)?"
-                  r"(-vrstevnice-skaly|-tienovanie|-wikipedia|-search)?\.zip$")
+                  r"(-vrstevnice-skaly|-tienovanie|-wikipedia|-navigacia"
+                  r"|-search)?\.zip$")
 CATALOG = "maps.json"
 # RÝCHLY TEST MÁ VLASTNÝ SÚBOR. `maps.json` je jediná odpoveď na „ktoré mapy sú
 # hotové" a mapa s terénom na 4 km² medzi ne nepatrí – uzol testu tam síce mal
@@ -297,12 +299,14 @@ for kluc, preco in (
         ("terrain_source", "z ktorého modelu je TIEŇOVANIE, v položke nie je "
                            "– pri prechode na náhradný model by atribúcia "
                            "tvrdila DMR 5.0 nad reliéfom zo Sonnyho"),
-        ("casti", "koľko z balíka `mapa` je HĽADANIE a koľko NAVIGÁCIA, "
-                  "v položke nie je. Vlastný balík tie dve veci nemajú "
-                  "(cestujú v mape), takže katalóg je jediné miesto, kde sa "
-                  "ich veľkosť dá prečítať bez stiahnutia stoviek MB – a "
-                  "kým sa nedala, ležal `search-index.db` v balíku dvakrát "
-                  "a nikto to na veľkosti nepoznal")):
+        ("casti", "koľko z balíka `mapa` je HĽADANIE, v položke nie je. "
+                  "Vlastný balík index nemá (cestuje v mape), takže katalóg "
+                  "je jediné miesto, kde sa jeho veľkosť dá prečítať bez "
+                  "stiahnutia stoviek MB – a kým sa nedala, ležal "
+                  "`search-index.db` v balíku dvakrát a nikto to na veľkosti "
+                  "nepoznal. (Navigačný graf tu už nie je: bol dvomi "
+                  "tretinami mapy, takže má vlastný balík `navigacia` a "
+                  "veľkosť pod ním.)")):
     if kmap and kluc not in kmap:
         bad.append(f"{CATALOG_PY}: {preco}. Doplň to z `manifest.json` – "
                    f"pozná to, lebo podľa toho číta dlaždice aj viewer.")

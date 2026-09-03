@@ -1790,6 +1790,8 @@ Priečinok hovorí, čoho sa mapa týka, a čo chýba, sa vyrobí:
                                                   LÍNIE z OSM (.pmtiles)
     presovsky-vysoke_tatry-body.zip               pramene, jaskyne, rozhľadne, … –
                                                   BODY z OSM (.pmtiles)
+    presovsky-vysoke_tatry-navigacia.zip          cestná a chodníková sieť z OSM
+                                                  ako graf Valhally
     presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
 
 Každý balík je aj ako **`.aar` (Apple Archive)** – ten istý obsah, to isté
@@ -1817,6 +1819,11 @@ výlučne o veľkosť sťahovania:
 | `linie` | značené trasy a obmedzenia na ceste – ČISTO líniové dáta z OSM | `-trails`, `-roads` |
 | `body` | pramene, jaskyne, rozhľadne, pamiatky, banské dedičstvo, geodetické body | `-points` |
 
+`linie` je cestná sieť **na kreslenie**, `navigacia` (nižšie) tá istá sieť **na
+jazdenie**. Nie je to tá istá vec dvakrát: dlaždica je kreslený obraz
+s orezanou a zjednodušenou geometriou bez odbočovacích zákazov, takže sa z nej
+routovať nedá – rozpis v [`docs/navigation.md`](../docs/navigation.md) §1.
+
 Krajinné línie a plochy (`-features.pmtiles`: násypy, múry, ploty, vedenia,
 parkoviská, zjazdovky, …) VLASTNÝ balík nemajú a ostávajú v základnej mape –
 sú to línie AJ plochy naraz, takže by nesadli čisto do ani jedného z balíkov
@@ -1831,15 +1838,23 @@ spoločné (`workers/features/build.sh` beží Planetiler nad tým istým PBF
 druhýkrát, raz na každú schému) – rozdelenie sa na to, čo je na mape VIDIEŤ,
 neprejaví, len na tom, v ktorom súbore to leží.
 
-**Hľadanie a navigácia sú naopak V NEJ – sú to časti, nie balíky.** Vlastný
-`-search.zip` mali a bola to chyba v tom, čo mapa sľubuje: kto si stiahol mapu
-kraja, dostal mapu, v ktorej sa nedá nič nájsť ani nikam doviesť, a že mu chýba
-druhý súbor, nemal ako vedieť – žiadny „stiahni si aj toto" v aplikácii nie je.
-Cena je jednotky až desiatky MB proti stovkám za dlaždice. Balík `-search`
-preto zanikol (`ZRUSENE` v `publish-map.py`) a starý sa na Drive maže; graf
-Valhally (`_site/routing/`) sa balí rovnako.
+**Hľadanie je naopak V NEJ – je to časť, nie balík.** Vlastný `-search.zip`
+malo a bola to chyba v tom, čo mapa sľubuje: kto si stiahol mapu kraja, dostal
+mapu, v ktorej sa nedá nič nájsť, a že mu chýba druhý súbor, nemal ako vedieť.
+Cena je desiatky MB proti stovkám za dlaždice. Balík `-search` preto zanikol
+(`ZRUSENE` v `publish-map.py`) a starý sa na Drive maže.
 
-**Obe sú vždy za ten jeden región**, ktorého je balík. Index je z toho istého
+**Navigácia má VLASTNÝ balík `-navigacia.zip`** – cestná a chodníková sieť
+z OSM ako graf Valhally (`_site/routing/`: `valhalla_tiles.tar`,
+`valhalla.json`, `admins.sqlite`, `timezones.sqlite`, `graf.json`). Balila sa
+dovnútra mapy s tým istým argumentom ako index, lenže namerané to tak nie je:
+**graf kraja váži 170 až 190 MB a mapa s ním 283 MB**, čiže dve tretiny
+„základnej mapy" bola sieť, po ktorej sa jazdí, nie mapa, ktorá sa kreslí. To
+je presne prípad vrstevníc a tieňovania. Že sa o balíku dá dozvedieť, drží
+katalóg: `maps.json` ho nesie pod `maps.navigacia` vedľa `linie` a `body`,
+takže je v aplikácii v tom istom zozname na stiahnutie ako ony.
+
+**Obe sú vždy za ten jeden región**, ktorého je mapa. Index je z toho istého
 PBF ako mapa; graf sa stavia z `data/region.osm.pbf` toho istého behu
 (workflow [`navigation-region.yml`](../.github/workflows/navigation-region.yml)),
 takže **trasa v ňom končí na hranici kraja** – hrana, ktorej v rezanom PBF
@@ -1848,7 +1863,7 @@ o sebe hovorí (`rozsah: "region"`, `hranica: …`); kto potrebuje prejsť
 hranicu, má na to celoštátny graf z [`navigation.yml`](../.github/workflows/navigation.yml).
 Rozpis oboch je v [`docs/navigation.md`](../docs/navigation.md).
 
-**Koľko z balíka tie časti sú, je vidieť v katalógu** – `maps.json` má pod
+**Koľko z balíka tá časť je, je vidieť v katalógu** – `maps.json` má pod
 balíkom `mapa` kľúč `casti` s `raw_size` (bajty pred zabalením, preto iné meno
 než `size` balíka) a počtom súborov. Časť, ktorá sa nedá odmerať, je presne to,
 čím bol `search-index.db` predtým, než sa naň niekto pozrel: ležal v balíku
