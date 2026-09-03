@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updated_at": "2026-08-29T20:16:11.065Z",
+  "updated_at": "2026-09-03T00:00:00.000Z",
   "icons": "osm-liberty",
   "hillshade": true,
   "palette": {},
@@ -87,7 +87,7 @@
             "line-color": "#ffcc77"
           },
           "paintDark": {
-            "line-color": "#d89931"
+            "line-color": "#ad7a27"
           }
         },
         "road-primary-casing": {
@@ -138,7 +138,7 @@
             "line-color": "#ececf1"
           },
           "paintDark": {
-            "line-color": "#c2c2cc"
+            "line-color": "#47474a"
           }
         },
         "road-secondary": {
@@ -146,7 +146,7 @@
             "line-color": "#faee75"
           },
           "paintDark": {
-            "line-color": "#c1b53e"
+            "line-color": "#7e7628"
           }
         },
         "road-secondary-casing": {
@@ -170,14 +170,14 @@
             "line-color": "#ececf1"
           },
           "paintDark": {
-            "line-color": "#c8c8d0"
+            "line-color": "#78787c"
           },
           "dash": "solid",
           "outline": {
             "color": "#828285",
             "width": 1,
             "opacity": 1,
-            "colorDark": "#595969"
+            "colorDark": "#4e4e5c"
           }
         },
         "road-footway": {
@@ -185,14 +185,19 @@
             "line-color": "#e0e5f2"
           },
           "paintDark": {
-            "line-color": "#bbc2d2"
+            "line-color": "#646871"
           },
           "dash": "solid",
           "outline": {
             "color": "#a9a9b2",
             "width": 1,
             "opacity": 1,
-            "colorDark": "#636374"
+            "colorDark": "#474754"
+          }
+        },
+        "road-minor": {
+          "paintDark": {
+            "line-color": "#524d65"
           }
         },
         "landuse-residential": {
@@ -208,7 +213,7 @@
             "line-color": "#ffffff"
           },
           "paintDark": {
-            "line-color": "#a69696"
+            "line-color": "#504848"
           }
         },
         "road-tertiary": {
@@ -216,7 +221,7 @@
             "line-color": "#ffffff"
           },
           "paintDark": {
-            "line-color": "#d0c8c8"
+            "line-color": "#5e5a5a"
           }
         },
         "road-tertiary-bridge": {
@@ -224,7 +229,7 @@
             "line-color": "#ffffff"
           },
           "paintDark": {
-            "line-color": "#d0c8c8"
+            "line-color": "#5e5a5a"
           }
         },
         "road-tertiary-casing-bridge": {
