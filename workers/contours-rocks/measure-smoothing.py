@@ -3,7 +3,7 @@
 Koľko hladenia vrstevníc je akurát – merané, nie odhadnuté.
 
 NIE JE TO ČASŤ PIPELINE. Nevolá to žiadny workflow; je to nástroj, ktorým sa
-vyberali tri hodnoty v `env:` build-map.yml (`CONTOUR_DEM_LOWPASS`,
+vyberali tri hodnoty v `env:` build-map-region.yml (`CONTOUR_DEM_LOWPASS`,
 `CONTOUR_SIMPLIFY`, `CONTOUR_SMOOTH`). Leží tu preto, že bez neho sa čísla
 v tých komentároch nedajú overiť – a raz sa to už vypomstilo (nižšie).
 

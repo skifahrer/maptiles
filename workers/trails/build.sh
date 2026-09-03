@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Značené trasy z OSM relácií → `{región}-trails.pmtiles`.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map.yml` má strop 128 kB a nad ním ho GitHub
+# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho GitHub
 # ticho neprijme (stráži to „Kontrola · lint workflowov").
 #
 # PREČO PREDFILTER. Celé Slovensko je ~380 MB a index polôh uzlov nad ním by

@@ -31,7 +31,7 @@ import sys
 
 import yaml
 
-WORKFLOW = ".github/workflows/build-map.yml"
+WORKFLOW = ".github/workflows/build-map-region.yml"
 OPTIONS = "workers/plan/options.py"
 
 bad = []

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Kľúče cache pre celý build – na jednom mieste.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map.yml` má strop 128 kB a nad ním ho GitHub
+# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho GitHub
 # ticho neprijme (stráži to „Kontrola · lint workflowov").
 #
 # PREČO JEDEN ZDROJ. Kľúč potrebuje restore, save AJ mazanie pri pregenerovaní.
@@ -40,7 +40,7 @@ TS="$OPT_SHADING_SOURCE"
   # z cache namiesto druhých.
   # Ladenie hladkosti vrstevníc (okno na vyhladenie DEM, tolerancia
   # zjednodušenia, priehyb pri zaoblení) je v kľúči TIEŽ, hoci ho
-  # `SCHEMA_HASH` nevidí: tie tri hodnoty sú v `env:` build-map.yml, nie
+  # `SCHEMA_HASH` nevidí: tie tri hodnoty sú v `env:` build-map-region.yml, nie
   # v žiadnom z hashovaných súborov. Bez nich by sa dala prestaviť hladkosť
   # a beh by vrátil z cache staré vrstevnice – zelený, tichý a s tvarom,
   # ktorý o nastavení nič nevie (pravidlo 8).

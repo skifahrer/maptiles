@@ -35,7 +35,7 @@ URL="${PLANETILER_URL:-https://github.com/onthegomap/planetiler/releases/latest/
 JAVA_MIN="${JAVA_MIN:-21}"
 
 if ! command -v java >/dev/null 2>&1; then
-  echo "::error::Na runneri nie je \`java\`, a Planetiler je JAR. Pridaj do jobu krok \`- uses: actions/setup-java@v5\` s \`distribution: temurin\` a \`java-version: \"$JAVA_MIN\"\` (tak, ako to majú joby v \`build-map.yml\`)."
+  echo "::error::Na runneri nie je \`java\`, a Planetiler je JAR. Pridaj do jobu krok \`- uses: actions/setup-java@v5\` s \`distribution: temurin\` a \`java-version: \"$JAVA_MIN\"\` (tak, ako to majú joby v \`build-map-region.yml\`)."
   exit 1
 fi
 

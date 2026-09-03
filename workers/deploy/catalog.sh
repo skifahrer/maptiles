@@ -7,7 +7,7 @@
 # súborov; tento krok ten súbor už len uloží do repozitára, aby ho bolo vidieť
 # aj bez prístupu na Drive.
 #
-# PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: `build-map.yml` má strop
+# PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: `build-map-region.yml` má strop
 # 128 KiB a nad ním ho GitHub ticho neprijme (stráži to „Kontrola · lint workflowov").
 #
 # NEZACYKLÍ SA TO. `Build map` sa spúšťa len ručne (`workflow_dispatch`), takže
@@ -35,7 +35,7 @@
 # prišiel konflikt, beh nezhodíme – mapa je nahratá a katalóg dopíše ďalší
 # build; len to musí byť v logu.
 #
-# Hodnoty z prostredia (viď krok „Zapíš mapu do maps.json" v build-map.yml):
+# Hodnoty z prostredia (viď krok „Zapíš mapu do maps.json" v build-map-region.yml):
 #   MAPS_JSON   ktorý súbor commitnúť (default maps.json)
 #   BRANCH      do ktorej vetvy pushnúť (github.ref_name)
 #   RUN_URL     odkaz na beh do commit message

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Zapni GitHub Pages a prepni zdroj na Actions – a keď sa nedá, povedz to.
 #
-# PREČO SKRIPT A NIE `run:` BLOK: `build-map.yml` je pri strope 128 KiB, nad
+# PREČO SKRIPT A NIE `run:` BLOK: `build-map-region.yml` je pri strope 128 KiB, nad
 # ktorým GitHub workflow TICHO NEPRIJME (rozpis v hlavičke `roads.yml`), a
 # veľký `run:` blok patrí do `workers/` (pravidlo 3 v CLAUDE.md). Obsah je ten
 # istý, čo v ňom bol – nič sa v ňom nemení.

@@ -135,7 +135,7 @@ jobs:
       # predvolene 17. Bez tohto kroku sa `java -jar` nespustí vôbec
       # (`UnsupportedClassVersionError`) – a spadne to až za sťahovaním
       # podkladov, teda po tom, čo beh minútu pracoval. Tú istú vec má päť
-      # jobov v `build-map.yml`; ktoré číslo to je, hovorí `JAVA_MIN`
+      # jobov v `build-map-region.yml`; ktoré číslo to je, hovorí `JAVA_MIN`
       # vo `workers/lib/planetiler.sh` a stráži `workers/lint/planetiler.py`.
       - name: Setup Java 21
         uses: actions/setup-java@v5

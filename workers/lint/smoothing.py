@@ -41,7 +41,7 @@ _WORKERS = os.path.dirname(_HERE)
 _ROOT = os.path.dirname(_WORKERS)
 SMOOTH = os.path.join(_WORKERS, "contours-rocks", "smooth-shapes.py")
 KEYS = os.path.join(_WORKERS, "plan", "cache-keys.sh")
-WF = os.path.join(_ROOT, ".github", "workflows", "build-map.yml")
+WF = os.path.join(_ROOT, ".github", "workflows", "build-map-region.yml")
 
 # Kto zaobľuje a čím sa v tom súbore volá `smooth-shapes.py`. Cesta je
 # relatívna k `workers/`; `volanie` je to, čím sa v tom súbore skladá príkaz.
@@ -111,7 +111,7 @@ def main():
     for kluc in ("CONTOUR_SMOOTH", "ROCK_SMOOTH"):
         m = re.search(rf'^\s*{kluc}:\s*"(\d+)"', wf, re.M)
         if not m:
-            bad.append(f"V `build-map.yml` nie je `{kluc}` – bez neho sa "
+            bad.append(f"V `build-map-region.yml` nie je `{kluc}` – bez neho sa "
                        f"zaoblenie riadi predvolenou hodnotou skriptu a "
                        f"formulár o nej klame.")
             continue
@@ -195,7 +195,7 @@ def main():
                    "`contours=`. Zmena tvaru vrstevníc sa bez nej neprejaví – "
                    "cache vráti tie staré a build bude zelený.")
     if not re.search(r"^\s*ROCK_ALGO:\s*v\d+", wf, re.M):
-        bad.append("V `build-map.yml` nie je `ROCK_ALGO: v<číslo>` – meno "
+        bad.append("V `build-map-region.yml` nie je `ROCK_ALGO: v<číslo>` – meno "
                    "assetu so skalami by potom nenieslo TVAR obrysu a sklad by "
                    "vrátil staré zubaté skaly.")
 

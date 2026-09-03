@@ -15,7 +15,7 @@ name: Mapa · navigačný graf kraja
 # vlastný balík na Drive a vlastný uzol v katalógu. Rozpis oboch je
 # v `docs/navigation.md`.
 #
-# PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map.yml`: ten je pri strope
+# PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map-region.yml`: ten je pri strope
 # 128 KiB, nad ktorým GitHub workflow TICHO NEPRIJME (dôvod aj čísla sú
 # v hlavičke `roads.yml`). Ten istý vzor, tá istá cena – vstupy sa píšu
 # dvakrát a `workflow_call` nededí `env` volajúceho.

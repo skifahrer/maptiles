@@ -86,7 +86,7 @@ jobs:
       # cestou k súboru, s červeným krížikom, aj keď má workflow len
       # `workflow_dispatch`. Vyzerá to, že sa spustil sám po mergi.
       #
-      # `build-map.yml` cez ten strop prešiel o 122 bajtov (beh 33) a stálo
+      # `build-map-region.yml` cez ten strop prešiel o 122 bajtov (beh 33) a stálo
       # to šesť kôl sond, kým sa to našlo: actionlint ani JSON schéma
       # o veľkosti nevedia. Preto radšej varovanie už od 120 KiB – veľký
       # `run:` blok patrí do `workers/`, nie do YAMLu.
@@ -224,7 +224,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import json, sys, yaml
-          d = yaml.safe_load(open(".github/workflows/build-map.yml"))
+          d = yaml.safe_load(open(".github/workflows/build-map-region.yml"))
           on = d[[k for k in d if k is True or k == "on"][0]]
           opts = on["workflow_dispatch"]["inputs"]["area"]["options"]
           areas = [k for k in json.load(open("workers/data/areas.json"))
@@ -309,13 +309,13 @@ jobs:
           # Kde je volanie a ktorej vrstve patrí. Keď pribudne ďalšie, pridaj
           # ho sem aj do `layer_area_key` v workers/dem/check.sh.
           # Cesta sa mení, keď sa `run:` blok presunie do workers/ (a to sa
-          # deje – build-map.yml má strop 128 KiB). Preto sa každá vrstva
+          # deje – build-map-region.yml má strop 128 KiB). Preto sa každá vrstva
           # hľadá vo VIACERÝCH kandidátoch a stačí, že ju nájde jeden;
           # keby sa hľadalo len na jednom mieste, presun by kontrolu umlčal.
           CALLS = {
               ("workers/contours-rocks/build.sh",): ("contours", "rocks"),
               ("workers/terrain/build.sh",
-               ".github/workflows/build-map.yml"): ("terrain",),
+               ".github/workflows/build-map-region.yml"): ("terrain",),
           }
           # Vrstvy, o ktorých check-dem.sh tvrdí, že kľúč NEpodávajú.
           src = open("workers/dem/check.sh").read()
@@ -542,6 +542,14 @@ jobs:
       - name: Katalóg máp drží tvar a nikto ho neobchádza
         run: python3 workers/lint/catalog.py
 
+      # Dávka „Build map state" je formulár pred formulárom: zdroje výšok,
+      # prah skál aj `options` cez ňu len prechádzajú do behov jednotlivých
+      # krajov. Rozíde sa to ticho – vstup, ktorý dávka pýta a `relay.sh`
+      # nepodá ďalej, znamená CELÚ KRAJINU postavenú s predvolenými hodnotami,
+      # a beh je pritom zelený. Rozpis: `workers/lint/state.py`.
+      - name: Dávka krajiny stavia to isté, čo jeden kraj ručne
+        run: python3 workers/lint/state.py
+
       # Glyfy ani webový viewer sa do balíkov nebalia: viewer je na Pages,
       # glyfy si nesie appka v sebe. Vynechať súbor z balíka je pritom
       # jednoriadková zmena, ktorá sa dá spraviť aj tam, kde ho nie je odkiaľ
@@ -758,7 +766,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import json, sys, yaml
-          d = yaml.safe_load(open(".github/workflows/build-map.yml"))
+          d = yaml.safe_load(open(".github/workflows/build-map-region.yml"))
           on = d[[k for k in d if k is True or k == "on"][0]]
           inputs = on["workflow_dispatch"]["inputs"]
           srcs = {k: v.get("for", [])
@@ -841,7 +849,7 @@ jobs:
       # je to iná jednotka. Skript sa čítá zhora nadol, takže sa dá rozdeliť na
       # moduly (a `shading-rocks.py` 2023 → 715, `drive-auth.py` 894 → 752,
       # `dmr5-drive.py` 888 → 684, `dmr5-raster.py` 853 → 419 sa aj rozdelilo).
-      # Workflow je GRAF JOBOV a `build-map.yml` má 2013 riadkov, z ktorých je
+      # Workflow je GRAF JOBOV a `build-map-region.yml` má 2013 riadkov, z ktorých je
       # 598 komentár a 197 vnútro `run:` blokov – **holej YAML štruktúry je
       # 1100 na 17 jobov**. Aj keby sa zmazal každý komentár a každý `run:`
       # blok, ostane 1218 riadkov. Pod 800 sa teda dostať nedá presunutím

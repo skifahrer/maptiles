@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Obmedzenia na ceste z OSM → `{región}-roads.pmtiles`.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map.yml` má strop 128 kB a nad ním ho GitHub
+# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho GitHub
 # ticho neprijme (stráži to „Kontrola · lint workflowov").
 #
 # DVA PRIECHODY FILTROM, a nie jeden. `osmium tags-filter` vie len ALEBO, kým

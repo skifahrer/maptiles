@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Články z Wikipédie ku všetkému, čo v regióne odkazuje na wiki.
 #
-# PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: `build-map.yml` má strop
+# PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: `build-map-region.yml` má strop
 # 128 KiB a nad ním ho GitHub ticho neprijme (stráži to „Kontrola · lint workflowov").
 #
 # ČO TU JE a čo je vo `collect.py`: tu inštalácia, voľby z formulára a výstupy

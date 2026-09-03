@@ -5,7 +5,7 @@
 # bežia súbežne, takže čas by hovoril len o tom, ktorý runner bol rýchlejší.
 #
 # PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: workflow súbor má strop
-# 128 KiB a `build-map.yml` bol tesne nad ním. GitHub taký súbor NEPRIJME –
+# 128 KiB a `build-map-region.yml` bol tesne nad ním. GitHub taký súbor NEPRIJME –
 # neohlási chybu, len po pushi vyrobí beh bez jobov, pomenovaný cestou
 # k súboru. Deväť kilobajtov markdownu je preto tu.
 #

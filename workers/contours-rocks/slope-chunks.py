@@ -323,7 +323,7 @@ def main():
     ap.add_argument("--dem-cell-m", type=float, default=0.0,
                     help="bunka zdroja v metroch (na `--res=auto`); "
                          "pri --drive je to 1")
-    # 0 = bez stropu času (viď ROCK_BUDGET_MIN v build-map.yml)
+    # 0 = bez stropu času (viď ROCK_BUDGET_MIN v build-map-region.yml)
     ap.add_argument("--budget-min", type=float, default=0.0)
     ap.add_argument("--chunk-cells", type=float, default=150e6)
     ap.add_argument("--tries", type=int, default=3,

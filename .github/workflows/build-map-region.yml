@@ -1,4 +1,4 @@
-name: Mapa · Build map
+name: Mapa · Build map region
 
 # Stiahne PBF export IBA zvoleného regiónu z osm.fr regionálnych exportov
 # (https://download.openstreetmap.fr/extracts/ – Európa aj svet, rezané po
@@ -502,7 +502,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Rozhodovanie je vo `workers/dem/check.sh`: build-map.yml je blízko
+      # Rozhodovanie je vo `workers/dem/check.sh`: build-map-region.yml je blízko
       # k stropu, nad ktorým ho GitHub neprijme, a hlavne – to isté
       # rozhodovanie („ktorý sklad, ktoré súbory") si robí aj
       # `workers/dem/fetch.sh`, tak ho oba berú z `workers/dem/target.py`.

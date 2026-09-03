@@ -31,7 +31,7 @@ spoliehať netreba: čo je v YAMLe `secrets.*`, sa nahradí značkou už tu.
 
 Použitie:
     python3 workers/plan/summary-inputs.py \\
-        --inputs="$INPUTS_JSON" --workflow=.github/workflows/build-map.yml \\
+        --inputs="$INPUTS_JSON" --workflow=.github/workflows/build-map-region.yml \\
         --with-env
 """
 import argparse
@@ -96,7 +96,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--inputs", default="",
                     help="JSON s hodnotami inputov behu (toJSON(inputs))")
-    ap.add_argument("--workflow", default=".github/workflows/build-map.yml")
+    ap.add_argument("--workflow", default=".github/workflows/build-map-region.yml")
     ap.add_argument("--with-env", action="store_true",
                     help="pridať aj tabuľku `env:` workflowu (nastavenia, "
                          "ktoré vo formulári nie sú)")

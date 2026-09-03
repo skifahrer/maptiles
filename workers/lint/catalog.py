@@ -49,7 +49,7 @@ CATALOG = "maps.json"
 # s tým istým tvarom.
 CATALOG_TEST = "maps-test.json"
 CATALOGS = (CATALOG, CATALOG_TEST)
-WORKFLOW = ".github/workflows/build-map.yml"
+WORKFLOW = ".github/workflows/build-map-region.yml"
 # Samostatné pipeline, ktoré do TOHO ISTÉHO katalógu zapisujú tiež – tým istým
 # skriptom (`publish-map.py`, pri článkoch s `--only=wikipedia`). Platia na ne
 # tie isté dve pravidlá: musia mať právo commitnúť a nesmú zapísať po

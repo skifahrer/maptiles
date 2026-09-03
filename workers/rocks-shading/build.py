@@ -459,7 +459,7 @@ def main():
                          "kroku mriežky dlaždice (0 = zaoblenie vypnuté)")
     # Maxzoom .pmtiles so skalami – z neho vyjde krok mriežky, podľa ktorého
     # sa zaoblený obrys vzorkuje. `rocks.yml` ide predvolene na 16 (strop
-    # Planetilera, `ROCK_MAXZOOM` v build-map.yml) a nie je kam ho dvíhať.
+    # Planetilera, `ROCK_MAXZOOM` v build-map-region.yml) a nie je kam ho dvíhať.
     ap.add_argument("--maxzoom", type=int, default=16,
                     help="maxzoom dlaždíc so skalami (mriežka `extent`)")
     ap.add_argument("--jobs", type=int, default=12, help="paralelné sťahovanie")

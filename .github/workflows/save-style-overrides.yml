@@ -168,6 +168,6 @@ jobs:
               cat poc/web/style-overrides.json
               echo '```'
               echo ""
-              echo "Aby sa dostali do nasadenej mapy, spusti workflow **Mapa · Build map**."
+              echo "Aby sa dostali do nasadenej mapy, spusti workflow **Mapa · Build map region**."
             fi
           } >> "$GITHUB_STEP_SUMMARY"

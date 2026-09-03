@@ -23,7 +23,7 @@
 #
 # KTORÝ SKLAD A KTORÉ SÚBORY nerozhoduje tento skript – rozhoduje
 # `workers/dem/target.py`, lebo tú istú otázku si kladie aj job `check-dem`
-# v build-map.yml a musia si odpovedať rovnako. Kým to bolo napísané dvakrát,
+# v build-map-region.yml a musia si odpovedať rovnako. Kým to bolo napísané dvakrát,
 # rozišlo sa to: kontrola hľadala výrez v `dem-ugkk`, kým tieňovanie sťahovalo
 # dlaždice z `dem-dmr5` (beh 31307163093).
 #
@@ -31,7 +31,7 @@
 #   workers/dem/fetch.sh <bbox W,S,E,N> <adresár> [tsv] [zdroj] [kľúč výrezu]
 #
 # KĽÚČ VÝREZU JE TO, ČO PREPÍNA PODOBU DMR 5.0. Vrstevnice a skaly ho podávajú
-# (`contours-build.sh`), tieňovanie nie (build-map.yml, krok „Tieňovanie
+# (`contours-build.sh`), tieňovanie nie (build-map-region.yml, krok „Tieňovanie
 # reliéfu“) – to sa robí na celý región, kde 1 m verzia neexistuje. Kto zmení
 # jedno z tých volaní, musí zmeniť aj tabuľku vrstiev v `check-dem`.
 #

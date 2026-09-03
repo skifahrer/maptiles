@@ -14,7 +14,7 @@ ale `GITHUB_TOKEN` má, keď mu workflow dá `actions: write` (behy) a
 1. **Behy zrušených workflowov.** Keď sa súbor workflowu zmaže, jeho behy
    ostanú a s nimi aj položka v ľavom zozname Actions – navždy. Zmizne až
    vtedy, keď má nula behov. Sem patria sondy `zz-*`, ktorými sa hľadalo,
-   prečo GitHub odmietal `build-map.yml`, aj staršie zrušené workflowy.
+   prečo GitHub odmietal `build-map-region.yml`, aj staršie zrušené workflowy.
 
 2. **Behy odmietnutých súborov.** Keď je súbor workflowu neplatný (napr. nad
    stropom 128 KiB), GitHub to neohlási ako chybu – pri pushi vyrobí beh

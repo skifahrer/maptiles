@@ -568,7 +568,7 @@
   <div id="error">
     <h2 id="error-title">Dlaždice sa nepodarilo načítať</h2>
     <p id="error-text">Pravdepodobne ešte nebola spustená pipeline, ktorá vygeneruje PMTiles.
-       Spusti workflow <b>„Mapa · Build map"</b> na GitHube
+       Spusti workflow <b>„Mapa · Build map region"</b> na GitHube
        (Actions → Run workflow), vyber región a počkaj na nasadenie.</p>
     <p id="error-detail"></p>
   </div>
@@ -608,7 +608,7 @@
             "Stránka sa načítala, ale viewer sa nespustil, takže sa nevykreslí " +
             "žiadna mapa. Nie je to chyba dát – tie sú nasadené; nenabehol " +
             "kód stránky. Skús obnoviť stránku (Ctrl-F5); ak to trvá, je to " +
-            "chyba buildu a patrí do <b>Actions → Mapa · Build map</b>.";
+            "chyba buildu a patrí do <b>Actions → Mapa · Build map region</b>.";
         }
         if (d) d.textContent = detail || "";
         box.style.display = "block";

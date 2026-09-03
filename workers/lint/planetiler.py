@@ -122,7 +122,7 @@ for path in sorted(glob.glob(".github/workflows/*.yml")):
                 f"pre {CHCE} – `java -jar` spadne na UnsupportedClassVersionError, "
                 f"a to až po tom, čo job odpracoval všetko pred ním. Pridaj "
                 f"`- uses: actions/setup-java@v5` s `distribution: temurin` a "
-                f"`java-version: \"{CHCE}\"` (tak, ako to majú joby v build-map.yml).")
+                f"`java-version: \"{CHCE}\"` (tak, ako to majú joby v build-map-region.yml).")
 
 # ---- 4. `--bounds` a `--polygon` naraz (rozpis v hlavičke) ----
 # Hľadá sa v texte skriptov, nie v YAMLe: samotné volanie Planetileru je

@@ -5,7 +5,7 @@
 # Terén preto ide z externého DEM: Sonny's LiDAR DTM (presnejší, bez stromov
 # a budov) alebo Copernicus GLO-30 (celosvetový).
 #
-# Vstup vyrába workflow build-map.yml:
+# Vstup vyrába workflow build-map-region.yml:
 #   gdal_contour → ogr2ogr (dopočíta `level`)        → data/contours.gpkg
 #
 # SKALY TU UŽ NIE SÚ – majú vlastný .pmtiles a vlastnú schému
