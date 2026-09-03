@@ -65,11 +65,11 @@ Kontrola v `workers/deploy/check.sh` overuje len existenciu
 orezanie rozsahov ani jednému neprekáža.
 
 Vedľajší efekt, ktorý oprava rieši spolu s tým: `BUDGET_ASSETS_MB: "40"`
-v `build-map.yml` počítal s tým, že fonty a ikonky majú 40 MB. Mali 100 MB,
+v `build-map-region.yml` počítal s tým, že fonty a ikonky majú 40 MB. Mali 100 MB,
 takže rozpočet na dlaždice bol o ~60 MB optimistickejší, než aká bola
 skutočnosť. Po oreze sa do tých 40 MB zmestia s veľkou rezervou.
 
-Pozor na cache: kľúč `assets-…` v `build-map.yml` `workers/assets/glyphs.sh`
+Pozor na cache: kľúč `assets-…` v `build-map-region.yml` `workers/assets/glyphs.sh`
 neobsahoval, takže samotná zmena zoznamu rozsahov by sa neprejavila – cache by
 vrátila staré (širšie) fonty. Preto je skript teraz v `hashFiles(...)`.
 

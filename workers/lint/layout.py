@@ -45,6 +45,7 @@ ZNAME = {
     "tiles": "job `tiles`",
     "wiki": "workflow „Build wiki“ (wiki.yml)",
     "world": "workflow „Build svet“ (world-map.yml)",
+    "state": "workflow „Build map state“ (dávka krajov krajiny)",
     "assets": "job `assets`",
     "styles": "štýly pre web aj iOS",
     "deploy": "job `deploy` a publikovanie",

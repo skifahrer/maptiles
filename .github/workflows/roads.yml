@@ -6,17 +6,17 @@ name: Mapa · obmedzenia ciest
 # `workers/roads/roads.yml`), takže sa to isté PBF čítá druhýkrát vlastnou
 # schémou. Ten istý vzor ako značené trasy a krajinné prvky.
 #
-# PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map.yml`. Ten súbor má 128 232 B
+# PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map-region.yml`. Ten súbor má 128 232 B
 # a strop je 128 KiB (131 072 B) – nad ním GitHub workflow TICHO NEPRIJME:
 # vznikne beh bez jobov, s červeným krížikom a prázdnym logom, ktorý vyzerá,
 # že sa spustil sám (pravidlo 3 v CLAUDE.md). Do zvyšných 2,8 kB sa job
 # s Planetilerom, cache a artefaktmi nezmestí, takže je to `workflow_call`
-# a v `build-map.yml` po ňom ostalo desať riadkov.
+# a v `build-map-region.yml` po ňom ostalo desať riadkov.
 #
 # Cena za to je, že vstupy sa píšu dvakrát (v `inputs:` tu a vo `with:` tam)
 # a že `workflow_call` NEDEDÍ ani `env`, ani `secrets` volajúceho – oboje sa
 # musí podať. Podiel na rozpočte stránky preto chodí ako input: definovaný je
-# raz, v `env:` `build-map.yml` vedľa ostatných podielov, lebo tam ho číta aj
+# raz, v `env:` `build-map-region.yml` vedľa ostatných podielov, lebo tam ho číta aj
 # job `tiles`, keď si počíta, koľko mu z rozpočtu zostalo.
 
 on:

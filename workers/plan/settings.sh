@@ -23,7 +23,7 @@ OUT="$RUNNER_TEMP/nastavenia.md"
 # 1) čo si vypýtal vo formulári + `env:` workflowu (prahy, sklady, rozpočty)
 python3 workers/plan/summary-inputs.py \
   --inputs="$INPUTS_JSON" \
-  --workflow=.github/workflows/build-map.yml \
+  --workflow=.github/workflows/build-map-region.yml \
   --with-env >> "$OUT"
 
 # 2) čo z toho vyšlo. Ten istý skript, aký si o kus ďalej rozoberá voľby pre

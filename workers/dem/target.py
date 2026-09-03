@@ -5,7 +5,7 @@ Jedna odpoveď na otázku „z ktorého skladu a ktoré súbory“ – pre celý
 PREČO EXISTUJE. Tú istú otázku si kladú DVE miesta a musia si odpovedať
 rovnako:
 
-  check-dem (build-map.yml)   čo hľadať v sklade a či to treba doplniť
+  check-dem (build-map-region.yml)   čo hľadať v sklade a či to treba doplniť
   workers/dem/fetch.sh        čo naozaj stiahnuť
 
 Kým bola odpoveď napísaná dvakrát, rozišli sa – a presne to zhodilo beh

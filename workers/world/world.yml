@@ -2,7 +2,7 @@
 #
 # Tri veci a nič viac: vodstvo, hranice štátov a regióny, na ktoré je OSM
 # rozdelené na sťahovanie. Je to podklad pod výber „ktorý kus si stiahnuť",
-# nie mapa na chodenie – tá vzniká v `build-map.yml` z regionálneho PBF.
+# nie mapa na chodenie – tá vzniká v `build-map-region.yml` z regionálneho PBF.
 #
 # Vstup vyrába `workers/world/sources.py` (prečo práve tieto zdroje a prečo nie
 # `planet.osm.pbf`, je rozpísané tam):

@@ -197,7 +197,7 @@ def sklady_sa_nerozidu():
     """5. Ten istý `*_STORE` v dvoch workflowoch musí mať tú istú hodnotu.
 
     Sklad má PISATEĽA a ČITATEĽA a sú to spravidla dva workflowy:
-    `shading-rocks.yml` do `ROCK_IMG_STORE` zapisuje, `build-map.yml` z neho
+    `shading-rocks.yml` do `ROCK_IMG_STORE` zapisuje, `build-map-region.yml` z neho
     číta. Keby sa tie dve konštanty rozišli, nespadne nič – čitateľ sa pozrie
     do skladu, do ktorého nikto nepíše, a povie „pre tento výrez tam nič nie
     je". To je tichý omyl (pravidlo 8) a hľadá sa zle, lebo obe strany

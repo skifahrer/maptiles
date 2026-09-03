@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Balíky mapy ešte raz ako Apple Archive (`.aar`) a hore na Drive.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map.yml` má strop 128 KiB a nad ním ho GitHub
+# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 KiB a nad ním ho GitHub
 # ticho NEPRIJME – po pushi vznikne beh bez jobov s prázdnym logom. Job, ktorý
 # toto volá, pridal do súboru dva kilobajty a bol už na 125; rozpis teda patrí
 # sem (stráži to `Kontrola · lint workflowov`).
@@ -16,7 +16,7 @@
 # job na `macos-latest`. Keby tu `aa` nebol, `publish-map.py` spadne sám a
 # povie prečo; kontrola nižšie je len o to skôr a s menej mätúcou hláškou.
 #
-# Hodnoty z prostredia (viď job „Balíky ako Apple Archive" v build-map.yml) –
+# Hodnoty z prostredia (viď job „Balíky ako Apple Archive" v build-map-region.yml) –
 # je to ten istý zoznam, aký dostáva krok „Publikuj mapu na Drive", lebo sa
 # z neho skladá `obsah.json` v balíku:
 #   REGION_KEY AREA_KEY AREA_BBOX TEST_KM2 TILES_MAXZOOM

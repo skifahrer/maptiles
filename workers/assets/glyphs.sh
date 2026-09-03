@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Glyfy (fonty) k sebe na Pages, nech mapa nezávisí od cudzej služby.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map.yml` má strop 128 kB a nad ním ho GitHub
+# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho GitHub
 # ticho neprijme (stráži to „Kontrola · lint workflowov").
 #
 # Keď sa balík nestiahne, mapa pôjde ďalej a štýl siahne na

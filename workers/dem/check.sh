@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Je v sklade na Drive výškový model pre naše územie – a keď nie, čo doplniť?
 #
-# PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: build-map.yml má k stropu,
+# PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: build-map-region.yml má k stropu,
 # nad ktorým ho GitHub NEPRIJME (128 kB), blízko – a nepovie to; po pushi len
 # vyrobí beh bez jobov. Rovnako sú na tom `contours-build.sh` či `fetch-dem.sh`.
 # Bokom od toho je to aj tak správnejšie: takto sa dá rozhodovanie spustiť
@@ -19,7 +19,7 @@
 #
 #   contours  workers/contours-rocks/build.sh … "$src" "$AREA_KEY_IN"   → výrez
 #   rocks     to isté (jeden job, jeden skript)                   → výrez
-#   terrain   build-map.yml, „Tieňovanie reliéfu" … "$TDEM"        → dlaždice
+#   terrain   build-map-region.yml, „Tieňovanie reliéfu" … "$TDEM"        → dlaždice
 #
 # Tieňovanie sa robí na CELÝ REGIÓN, kde 1 m verzia neexistuje, tak kľúč
 # nepodáva. Kým tu bol pre všetky tri vrstvy ten istý `AREA_KEY`, kontrola

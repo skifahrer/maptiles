@@ -9,7 +9,7 @@
 # aj predfilter sú pre oba súbory ROVNAKÉ, líši sa len schéma, ktorú nad ním
 # beží Planetiler – druhý beh je preto len pár riadkov navyše, nie druhý job.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map.yml` má strop 128 kB a nad ním ho GitHub
+# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho GitHub
 # ticho neprijme (stráži to „Kontrola · lint workflowov").
 #
 # Zoznam tagov je vo `workers/features/filter.txt` vedľa oboch schém, nech sa

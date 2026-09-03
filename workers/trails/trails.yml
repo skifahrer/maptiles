@@ -5,7 +5,7 @@
 # v dlaždiciach je len cesta, bez značenia. Značenie (farba pásika, sieť,
 # názov) sa preto vyťahuje samostatne a ide do vlastného `.pmtiles`.
 #
-# Vstup vyrába workflow build-map.yml:
+# Vstup vyrába workflow build-map-region.yml:
 #   osmium tags-filter (r/route=…) → workers/trails/routes.py → data/trails.geojson
 #
 # Jedna línia = jedna trasa na jednej ceste. Po ceste ich vedie aj päť naraz,

@@ -24,7 +24,7 @@ docs/          návrhy (iOS / multiplatform), podrobný popis pipeline
 ## Ako funguje pipeline
 
 ```
-Mapa · Build map             deväť jobov, tie dlhé bežia súbežne:
+Mapa · Build map region      deväť jobov, tie dlhé bežia súbežne:
 (manuálne, výber regiónu)      plan     región + PBF z osm.fr exportov
                                tiles    Planetiler ─► {región}.pmtiles
                                contours vrstevnice + skaly z DEM
@@ -34,6 +34,17 @@ Mapa · Build map             deväť jobov, tie dlhé bežia súbežne:
                                deploy   zloží _site ─► GitHub Pages
                                apple-archive  balíky ešte raz ako .aar
                                         (macOS runner – nástroj `aa`)
+
+Mapa · Build map state       CELÁ KRAJINA na jedno kliknutie: spustí
+(manuálne, výber krajiny)    „Build map region" pre každý jej kraj, jeden
+                             po druhom, a nechá ťa tak
+                             ▲ ŠTAFETA, nie jeden dlhý job: kraj trvá aj 3 h,
+                               krajov je osem a job má strop 6 h. Jeden beh =
+                               jeden úsek (počkaj – spusti – odovzdaj), takže
+                               dávka môže trvať deň a nemá ju čo zabiť.
+                             ▲ na Pages NEJDE (`publish_pages` natvrdo
+                               vypnuté): stránka unesie jednu mapu, osem
+                               behov by ju osemkrát prepísalo
 
 Mapa · Build wiki            objekty regiónu s `wikipedia`/`wikidata`
 (manuálne, ten istý región)  ─► články (NDJSON, dávky po 50)
@@ -365,7 +376,7 @@ rovnaký počet zubov, a väčšia vrstva nie je len väčšia: rozpočet strán
 mohol zobrať celý zoom, čo je proti zubatosti oveľa horšie.
 
 Ovláda to `CONTOUR_DEM_LOWPASS`, `CONTOUR_SIMPLIFY` a `CONTOUR_SMOOTH` v `env:`
-build-map.yml: okno v metroch (`0` = nehladiť DEM), záporné číslo = koľko
+build-map-region.yml: okno v metroch (`0` = nehladiť DEM), záporné číslo = koľko
 **štvrtín** bunky DEM (`-1` = štvrtina), `0` = presná čiara, kladné číslo =
 tolerancia v metroch; `CONTOUR_SMOOTH: 0` zaoblenie vypne. Všetky tri sú aj
 v kľúči cache, takže po ich zmene sa vrstevnice naozaj prepočítajú.
@@ -1510,7 +1521,7 @@ Ovládanie vo workflowe: `rock_source` (z ktorého modelu – alebo `ziadne`,
 50°); mriežka obrysu je voľba `options: rock_res=…` (číslo v metroch alebo
 `auto`, default `auto`).
 Ostatné ladenie je v `env:` na začiatku
-[build-map.yml](../.github/workflows/build-map.yml): `ROCK_SIMPLIFY` (0 = presný
+[build-map-region.yml](../.github/workflows/build-map-region.yml): `ROCK_SIMPLIFY` (0 = presný
 obrys), `ROCK_SMOOTH` (priehyb zaoblenia v štvrtinách kroku mriežky
 dlaždice, 0 = vypnúť),
 `ROCK_CLIFF_PLUS` (o koľko ° nad prahom začína trieda `cliff`),
@@ -2329,7 +2340,7 @@ si blok číta priamo z workflowu ([workers/plan/summary-inputs.py](plan/summary
 takže sa s formulárom nemôžu rozísť.
 
 Za formulárom je druhá tabuľka: **`env:` workflowu**, teda nastavenia, ktoré
-vo formulári nie sú a menia sa prepísaním `build-map.yml` – prahy skál,
+vo formulári nie sú a menia sa prepísaním `build-map-region.yml` – prahy skál,
 hladenie vrstevníc, mená skladov, rozpočty veľkosti na vrstvu. Kľúče sú
 z workflowu, hodnoty z prostredia behu, takže je vidieť to, s čím beh naozaj
 ide. Čo je v YAMLe `secrets.*`, sa nevypisuje: repozitár je public a súhrn
@@ -3148,7 +3159,7 @@ pre celé Slovensko nechaj pipeline zvoliť najvyšší zoom, ktorý sa zmestí.
    ktorý po každom pushi nasadí koreň repozitára a mapu prepíše. Keby na to
    token nemal práva, beh sa zastaví v tretej sekunde s návodom –
    Settings → Pages → Build and deployment → Source: **GitHub Actions**.
-2. Actions → **Mapa · Build map** → *Run workflow*.
+2. Actions → **Mapa · Build map region** → *Run workflow*.
    Formulár má **desať polí** – viac `workflow_dispatch` inputov GitHub
    neprijme (pri 26 sa workflow prestal načítať a beh skončil ako „failure"
    s nula jobmi). Vo formulári sú preto veci, ktoré sa naozaj menia:
@@ -3265,6 +3276,81 @@ na fontstacky a ikony, ktoré tam naozaj sú.
 > Pozn.: ak deploy zlyhá na ochrane prostredia `github-pages`, povoľ v
 > Settings → Environments → github-pages nasadzovanie aj z tejto vetvy
 > (alebo zmerguj do default vetvy a spusti workflow tam).
+
+## Celá krajina naraz (`Mapa · Build map state`)
+
+Kraj sa stavia pipeline **Mapa · Build map region**, jeden formulár = jedna
+mapa. Krajov je osem, takže „postav Slovensko" bolo osem otvorení formulára,
+osemkrát tie isté nastavenia a čakanie pri každom z nich, kým dobehne ten
+predošlý — človek v role dispečera. **Mapa · Build map state** je ten
+dispečer: zadáš krajinu, ona spustí beh pre každý jej kraj, jeden po druhom,
+a nechá ťa tak.
+
+**Zoznam krajov je z číselníka, nie z formulára.** Kraj krajiny je položka
+`workers/data/regions.json` s `admin_level: 4` a `country` rovným krajine
+(`workers/state/queue.py`). Keby bol zoznam napísaný vo workflowe, pribudnutý
+kraj by v dávke ticho chýbal a dávka by skončila zelená s mapou o jeden kraj
+menšou. Poradie je poradie číselníka — od západu na východ, takže v zozname
+behov je vidieť, kde dávka je.
+
+### Prečo je to štafeta a nie jeden dlhý job
+
+Kraj sa stavia aj **tri hodiny**, krajov je osem, čiže dávka je zhruba deň.
+Job na GitHube má strop **šesť hodín** a po ňom ho GitHub zabije. Dispečer
+napísaný ako „spusti a čakaj, spusti a čakaj" by teda spoľahlivo umrel
+v polovici: tri kraje postavené, zvyšok nikdy, a v behu nič, čo by povedalo,
+že zvyšok nepríde.
+
+Preto je jeden beh dávky **jeden úsek štafety** (`workers/state/relay.sh`):
+
+```
+úsek:  počkaj na kraj, ktorý beží  ─►  spusti ďalší kraj
+                                   ─►  spusti ďalší SVOJ beh a skonči
+```
+
+Reťaz behov strop nemá — každý článok je nový job s vlastnými šiestimi
+hodinami. Keby kraj bežal dlhšie než rozpočet úseku (5 h), štafeta sa
+odovzdá s tým istým kolíkom a čaká ďalší článok; job sa tak nikdy nepriblíži
+k šiestim hodinám.
+
+`workflow_dispatch` cez `GITHUB_TOKEN` beh naozaj **spustí** — je to výslovná
+výnimka z pravidla „udalosti z GITHUB_TOKENu nespúšťajú ďalšie behy" (spolu
+s `repository_dispatch`). Práve preto je štafeta postavená na ňom: cez `push`
+by ticho nespravila nič a žiadala by osobný token v secrete.
+
+**Stav dávky nesie vstup, nie súbor v repozitári.** Kolík `pokracovanie` má
+tvar `<id behu>:<kraj>|<čo ešte nebolo>|<hotové>|<číslo úseku>`. Je to vstup
+zámerne: stav je vidieť priamo na behu (Actions → beh → inputs), dá sa z neho
+pokračovať ručne, a nevznikajú z neho commity, ktoré by sa bili s `maps.json`,
+ktorý práve zapisuje bežiaci kraj. Súhrn každého článku pritom ukazuje **celú
+tabuľku** — hotové, bežiace aj čakajúce kraje —, takže sa stav dávky nemusí
+skladať z ôsmich behov.
+
+### V čom sa dávka líši od jedného kraja
+
+V dvoch veciach a obe sú dôsledok toho, že ide o celú krajinu:
+
+| | |
+|---|---|
+| `area` | natvrdo **`cely_region`** — výrez je pohorie a vyberať jedno pohorie pre osem krajov nedáva zmysel |
+| `publish_pages` | natvrdo **vypnuté** — na Pages je JEDNA mapa, takže osem behov za sebou by stránku osemkrát prepísalo a nechalo na nej posledný kraj |
+
+Všetko ostatné je ten istý formulár s tými istými predvolenými hodnotami
+a podáva sa ďalej nezmenené: zdroje výšok, prah skál, `rebuild`, rýchly test
+aj `options`. Že sa tie dva formuláre nerozídu — a že `relay.sh` naozaj podá
+každé pole, ktoré sa dávka spýtala — stráži `workers/lint/state.py`. Vstup,
+ktorý sa spýta a nepodá, by znamenal celú krajinu postavenú s predvolenými
+hodnotami, a beh by bol pritom zelený.
+
+**Spadnutý kraj dávku nezastaví.** Zmysel dávky je „postav Slovensko a nechaj
+ma tak", takže sa pokračuje ďalším krajom; posledný úsek na tom **spadne**,
+aby dávka neskončila zelená s dierou v mape, a v súhrne je vidieť ktoré kraje
+a s akým výsledkom. Kto chce zastaviť všetko, zruší posledný beh reťaze —
+ďalší článok už nevznikne.
+
+**Skúška dávky:** zapni `test`. Každý kraj sa potom postaví len na 4 km² zo
+stredu, takže celá reťaz prebehne za minúty namiesto dňa a je vidieť, či
+dobehne celá (zapisuje sa do `maps-test.json`, nie medzi hotové mapy).
 
 ## Lokálny vývoj
 

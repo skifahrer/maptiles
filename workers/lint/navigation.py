@@ -52,10 +52,10 @@ REGIONS = os.path.join(_DATA, "regions.json")
 VIGNETTES = os.path.join(_DATA, "vignettes.json")
 WORKFLOW = os.path.join(".github", "workflows", "navigation.yml")
 # Druhý rozsah toho istého grafu: JEDEN KRAJ, a graf ide dovnútra balíka jeho
-# mapy. Volá ho `build-map.yml` cez `workflow_call` (vlastný súbor, lebo ten
+# mapy. Volá ho `build-map-region.yml` cez `workflow_call` (vlastný súbor, lebo ten
 # je pri strope 128 KiB).
 REGION_WORKFLOW = os.path.join(".github", "workflows", "navigation-region.yml")
-BUILD_MAP = os.path.join(".github", "workflows", "build-map.yml")
+BUILD_MAP = os.path.join(".github", "workflows", "build-map-region.yml")
 PBF_SH = os.path.join(_WORKERS, "routing", "pbf.sh")
 GRAPH_SH = os.path.join(_WORKERS, "routing", "graph.sh")
 
@@ -177,12 +177,12 @@ def main():
         if os.path.exists(BUILD_MAP):
             bm = open(BUILD_MAP, encoding="utf-8").read()
             if "navigation-region.yml" not in bm:
-                err(".github/workflows/build-map.yml",
+                err(".github/workflows/build-map-region.yml",
                     "build mapy nevolá `navigation-region.yml`, takže kraj "
                     "sa zabalí bez navigácie – a nikto to nepovie: mapa je "
                     "v poriadku, len sa v nej nedá nikam doviezť.")
             if "name: navigacia-graf" not in bm:
-                err(".github/workflows/build-map.yml",
+                err(".github/workflows/build-map-region.yml",
                     "graf sa pri balení nesťahuje (`navigacia-graf`). Job ho "
                     "postaví, artefakt vznikne a do ZIPu sa nedostane – "
                     "presne ten druh tichého omylu, ktorý vidno až v telefóne.")

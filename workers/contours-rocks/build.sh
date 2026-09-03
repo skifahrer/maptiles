@@ -9,7 +9,7 @@
 # či `build-terrain.py`.
 #
 # Hodnoty z formulára a z prípravy chodia cez prostredie (viď krok
-# „Vrstevnice a skaly z DEM" v build-map.yml):
+# „Vrstevnice a skaly z DEM" v build-map-region.yml):
 #   REGION_BBOX REGION_KEY AREA_KEY_IN AREA_NAME_IN AREA_BBOX_IN AREA_KM2
 #   CONTOUR_INTERVAL OPT_CONTOUR_LINES OPT_CONTOUR_SOURCE
 #   OPT_CONTOUR_SMOOTHING OPT_CONTOUR_MAXZOOM OPT_ROCK_MAXZOOM
@@ -75,7 +75,7 @@ if [ "$AREA_KEY" != "cely" ]; then
 fi
 
 # ---------- ktorá polovica ----------
-# Vrstevnice a skaly sú DVA SAMOSTATNÉ JOBY (viď build-map.yml), ale jeden
+# Vrstevnice a skaly sú DVA SAMOSTATNÉ JOBY (viď build-map-region.yml), ale jeden
 # skript: obe polovice stoja na tom istom výreze, tom istom DEM a tom istom
 # rozpočte, takže dve kópie by sa časom rozišli. Čo sa má počítať, hovorí
 # `ONLY` – a keďže sa každá polovica gatuje premennou, ktorú si už skript

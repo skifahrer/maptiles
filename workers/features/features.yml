@@ -18,7 +18,7 @@
 # v jeho hlavičke. Rovnaký vstup, rovnaký predfilter, len druhý beh
 # Planetileru nad tým istým PBF.
 #
-# Vstup vyrába workflow build-map.yml:
+# Vstup vyrába workflow build-map-region.yml:
 #   osmium tags-filter → data/features.osm.pbf
 # Predfilter je zámerne ŠIRŠÍ než tento súbor (vypúšťa napr. `barrier=gate`,
 # ktorý si berie POI vrstva OpenMapTiles). Keď sem (alebo do `points.yml`)
@@ -34,7 +34,7 @@
 # je maxzoom vygenerovaných dlaždíc, Planetiler zahodí – a NEPOVIE O TOM NIČ.
 # Presne to sa raz stalo: ploty a živé ploty majú `min_zoom: 15`, dlaždice sa
 # robili po z14 a v mape ich bola nula. Preto je `features_maxzoom`
-# predvolene 15 a job v build-map.yml porovná najvyšší `min_zoom` v tomto
+# predvolene 15 a job v build-map-region.yml porovná najvyšší `min_zoom` v tomto
 # súbore (aj v `points.yml`) so zvoleným maxzoomom a rozdiel ohlási
 # varovaním. Znížiť maxzoom kvôli veľkosti je legitímne – len to má byť
 # vidieť, nie sa to dozvedieť z chýbajúcich plotov v mape.

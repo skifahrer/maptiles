@@ -58,7 +58,7 @@ on:
         type: boolean
 
 # Drive: sem ide hotový balík. Prihlásenie pre celý workflow, nie po kroku –
-# rovnako ako v `build-map.yml`, a z toho istého dôvodu (stráži to
+# rovnako ako v `build-map-region.yml`, a z toho istého dôvodu (stráži to
 # „Kontrola · lint workflowov").
 env:
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}

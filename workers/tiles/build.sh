@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PBF → `{región}.pmtiles` Planetilerom, s rozpočtom na veľkosť.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map.yml` má strop 128 kB a nad ním ho GitHub
+# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho GitHub
 # ticho neprijme (stráži to „Kontrola · lint workflowov").
 #
 # ROZPOČET JE NA CELÚ STRÁNKU, nielen na tieto dlaždice: Pages zvládne ~1 GB

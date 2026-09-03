@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PBF regiónu na disk – stiahnutie, prípadné orezanie, kľúč a bbox pre build.
 #
-# PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: `build-map.yml` má strop
+# PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: `build-map-region.yml` má strop
 # 128 kB, nad ktorým ho GitHub NEPRIJME – a nepovie to; po pushi len vyrobí beh
 # bez jobov s červeným krížikom a prázdnym logom. Toto bol jeho najväčší `run:`
 # blok (128 riadkov). Bokom od toho je to aj tak správnejšie: takto sa dá

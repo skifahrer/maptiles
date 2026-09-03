@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SDF sprity zo sád ikoniek → `_site/sprites/`.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map.yml` má strop 128 kB a nad ním ho GitHub
+# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho GitHub
 # ticho neprijme (stráži to „Kontrola · lint workflowov").
 #
 # ZOZNAM ZDROJOV JE V `poc/web/icon-sources.js` – jedno miesto pre web aj

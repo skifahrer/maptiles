@@ -26,7 +26,7 @@
 # DVA ROZSAHY, JEDEN SKRIPT. Graf sa stavia raz pre CELÝ ŠTÁT (workflow
 # „Mapa · Build navigácia", vlastný balík na Drive, `AREA` z
 # `workers/data/routing-areas.json`) a raz pre JEDEN REGIÓN, kde ide priamo
-# DOVNÚTRA balíka mapy toho regiónu (job `navigacia` v `build-map.yml`,
+# DOVNÚTRA balíka mapy toho regiónu (job `navigacia` v `build-map-region.yml`,
 # `REGION_KEY` a PBF, ktoré si beh už aj tak stiahol). Dva skripty by boli dve
 # pravdy o tom, ako sa graf stavia a čo sa v ňom kontroluje (pravidlo 1).
 #
