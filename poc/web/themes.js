@@ -367,7 +367,13 @@ export const THEMES = {
     steps: "#7a4030",
     track: "#5a4a35",
     rail: "#26263a",
-    railHatch: "#c2c2d4",
+    // Priečky na železnici sú v svetlej téme BIELE – čiže presne tak svetlé
+    // ako podklad, a vidieť ich je len proti tmavej čiare koľajnice. Prepis
+    // toho na „skoro bielu" tu robil opak: proti tmavému podkladu z nich bol
+    // najsvetlejší prvok mapy hneď po popiskoch (kontrast 9,8 : 1) a v meste,
+    // kde je koľajísk najviac, svietili. Tmavý variant sa preto počíta OD
+    // TMAVÉHO PODKLADU: proti koľajnici drží (2,6 : 1), proti pozadiu už nie.
+    railHatch: "#65656f",
     ferry: "#3a4a66",
     aerialway: "#55556a",
     pier: "#2a2833",
@@ -2460,6 +2466,15 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
     // svetlá a tmavá téma nepotrebujú tú istú hodnotu (biela cesta na svetlom
     // podklade je na tmavom oslnivá). Platí len pre tému `tmava`
     // (`applyLayerOverrides`) – ostatné tri témy zostanú pri `paint`.
+    //
+    // POČÍTA SA OD TMAVÉHO PODKLADU, NIE STLMENÍM SVETLEJ FARBY. Biela ulica
+    // je vo svetlej téme čitateľná práve preto, že je skoro ako podklad
+    // (kontrast 1,15 : 1) – nesie ju tmavý obrys. Keď sa z nej spraví tmavý
+    // variant tak, že sa o kúsok stlmí (`#ffffff` → `#d0c8c8`), proti tmavému
+    // podkladu je z toho 10,5 : 1. Na jednej ceste to nevidno; ulice v dedine
+    // a v meste sú ale sieť a celé sídlo z nej svieti ako škvrna – miestna
+    // ulica bola v tmavej téme nápadnejšia než diaľnica. Váhu dvojice stráži
+    // `workers/lint/overrides.mjs` (bod 4).
     const paintDark = {};
     for (const [prop, value] of Object.entries(def.paintDark || {})) {
       const c = cleanDarkColor(prop, value, id, problems, where);
