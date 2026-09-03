@@ -392,6 +392,15 @@ jobs:
       # Rozpis: `workers/lint/stores.py`.
       - name: Sklady sedia s tým, čo pipeline pozná
         run: python3 workers/lint/stores.py
+      # PREKRYV NA HRANICI MUSÍ BYŤ AJ V MENE ULOŽENEJ VRSTVY. Polygón kraja
+      # sa nafukuje o `BORDER_BUFFER_M`, aby na mapu jedného kraja nadviazala
+      # mapa toho vedľajšieho – lenže tieňovanie a skaly sa berú zo skladu
+      # podľa mena, a kým to číslo v mene nebolo, sklad po jeho zmene vrátil
+      # vrstvu orezanú ešte po starom (namerané na balíku Trnavského kraja:
+      # mapa siahala za hranicu, reliéf pod ňou nie). Rozpis:
+      # `workers/lint/border-overlap.py`.
+      - name: Uložené vrstvy z DEM nesú prekryv so susedom
+        run: python3 workers/lint/border-overlap.py
       # CACHE PATRÍ NA DRIVE. GitHubová má na repozitár 10 GB a keď sa naplní,
       # NIČ NEPOVIE – ticho vyhodí najstaršie záznamy. Jeden výrez do nej
       # ukladal desiatky GB (DEM dlaždice, sklad častí sklonu, vrstevnice,

@@ -523,7 +523,15 @@ if [ "$OPT_ROCKS" = 'true' ]; then
   # súbor zahodí a počíta odznova.
   # Výrez je v mene súboru: skaly len z Tatier sa nesmú nabudúce
   # vydávať za skaly celého kraja.
-  ROCK_ASSET="rock-${REGION_KEY}-${AREA_KEY}-${ROCK_DEM_USED:-none}-s${ROCK_SLOPE}-g${RR}-${ROCK_ALGO}.gpkg.zst"
+  # A PREKRYV SO SUSEDNÝM KRAJOM tiež (`o…`). Pri `area: cely_region` je
+  # oknom `dem_bbox`, ktorý `workers/plan/pbf.sh` nafukuje o
+  # `BORDER_BUFFER_M`, a orezáva sa polygónom kraja, ktorý je nafúknutý
+  # o to isté – nafúknutie teda mení, kam až skaly siahajú. Bez neho v mene
+  # by sklad na už postavenom kraji vrátil skaly orezané ešte podľa tesnej
+  # hranice a na hranici so susedom by končili skôr než mapa – presne to sa
+  # namerane stalo tieňovaniu (rozpis vo `workers/terrain/build.sh`).
+  ROCK_BORDER_M=$(python3 -c "import sys; sys.path.insert(0, 'workers/plan'); import area; print(int(area.BORDER_BUFFER_M))")
+  ROCK_ASSET="rock-${REGION_KEY}-${AREA_KEY}-${ROCK_DEM_USED:-none}-s${ROCK_SLOPE}-g${RR}-${ROCK_ALGO}-o${ROCK_BORDER_M}.gpkg.zst"
   # TESTOVACÍ BEH SA SKLADU NESMIE DOTKNÚŤ. Pri `area: cely_region` totiž kľúč
   # výrezu ostáva `cely` aj v teste (prípona `_test4` by prepla podobu DMR 5.0
   # – viď workers/plan/area.py), takže by testovacie skaly zo 4 km² ležali

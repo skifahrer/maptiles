@@ -1690,6 +1690,60 @@ mriežke 2048 buniek je bunka ~100 m, kým dlaždica na z14 má ~1,5 km. Vrstevn
 a skaly dostanú polygón ako `-cutline` do gdalwarpu (bez `-crop_to_cutline` –
 okno má ostať bboxom, nech sa kľúče cache nemenia).
 
+### Nadväzuje na mapu kraja tá susedná? – meria sa to, nepredpokladá
+
+Kraje sa stavajú **po jednom** a každý sa oreže vlastným `.poly` z osm.fr.
+Aby medzi dvoma stiahnutými mapami neostal pás bez mapy, polygón sa pred
+orezom **nafúkne** o `BORDER_BUFFER_M` (2 500 m,
+[`workers/plan/area.py`](plan/area.py)) VON – to isté číslo nafukuje aj okno
+pre vrstvy z DEM, `--bounds` Planetileru aj masku pre viewer. Či to stačí, sa
+ale nikde nemeralo: obe mapy boli zelené a medzeru by uvidel až človek
+s telefónom v teréne (pravidlo 8).
+
+**[`workers/plan/seam.py`](plan/seam.py) to meria v každom behu.** Mapa
+každého kraja siaha `BORDER_BUFFER_M` za jeho hranicu, takže medzi dvoma
+mapami ostane diera práve vtedy, keď sú od seba obe **pôvodné** hranice ďalej
+než dve nafúknutia dokopy:
+
+    medzera(p) = vzdialenosť bodu p na našej hranici k najbližšiemu súrodencovi
+    šev je zavretý  ⟺  medzera(p) < 2 × BORDER_BUFFER_M   pre každé vnútorné p
+
+Susedia sa **nikde nepíšu ručne**: súrodenec je región s tým istým
+`osmfr.parent`, ktorého bbox sa toho nášho dotýka (`regions.json`), a jeho
+hranica sa stiahne z osm.fr. Ručný číselník susedov by sa raz rozišiel
+s hranicami a chýbajúci sused by ticho znamenal „šev je v poriadku".
+
+**Vnútorná hranica** znamená bod aspoň 5 km vnútri polygónu rodiča (celej
+krajiny). Bez toho by kontrola hlásila štátnu hranicu: polygóny z osm.fr sú
+okolo hranice rozšírené a **každý inak** – bod 16,9510 48,2620 leží presne na
+hranici Bratislavského kraja (teda na tej rakúskej) a od obrysu Slovenska je
+2,04 km, takže pri prahu 2 km z neho vyšla „medzera 28 km" k Trnavskému kraju,
+ktorý tam nemá čo hľadať.
+
+Namerané na všetkých ôsmich krajoch (`python3 workers/plan/seam.py
+--region=…`): susedné kraje sa prekrývajú **už v samotných `.poly`** (osm.fr
+si ich okolo hranice rozširuje sám), takže `medzera` vychádza na celej
+vnútornej hranici **0,00 km** – šev je zavretý s rezervou 5 km. Kontrola dnes
+teda prechádza; jej zmysel je povedať to v deň, keď prestane.
+
+**Uložená vrstva z DEM nesmie zmenu prekryvu prežiť.** Tieňovanie aj skaly sa
+odkladajú na Drive a nabudúce sa len stiahnu podľa mena – a to meno prekryv
+dlho nenieslo, hoci ho mení. Namerané na balíku Trnavského kraja z 3. 9. 2026
+(build 33738121698):
+
+| súbor v tom istom balíku | rozsah |
+|---|---|
+| `trnavsky.pmtiles` (mapa) | 16,8812 47,7174 18,0388 48,9226 — **nafúknutý** |
+| `region.geojson` (maska) | 16,8811 47,7175 18,0389 48,9225 — **nafúknutá** |
+| `trnavsky-terrain.pmtiles` (tieňovanie) | 16,915 47,74 18,005 48,9 — **tesný bbox kraja** |
+
+Mapa teda pokračovala za hranicu, reliéf pod ňou nie. Meno assetu preto nesie
+`-o<BORDER_BUFFER_M>` ([`workers/terrain/build.sh`](terrain/build.sh),
+[`workers/contours-rocks/build.sh`](contours-rocks/build.sh)) a stráži to
+kontrola [`workers/lint/border-overlap.py`](lint/border-overlap.py). Prvý beh
+po tejto zmene tieňovanie a skaly **prepočíta** – to je tá cena za to, že sa
+prekryv naozaj dostane až do stiahnutej mapy.
+
 ### Dlaždica DEM musí mať aj DÁTA, nie len rozsah
 
 Pokrytie sa meralo z **rozsahov** dlaždíc („mozaika sa dotýka celého bboxu") a to

@@ -61,7 +61,19 @@ REBUILD="${TERRAIN_REBUILD:-false}"
 # z nej zoom a stiahnuť sa skúsil súbor, ktorý neexistuje). Nič nespadlo, len
 # to trvalo – pravidlo 8 v čistej podobe.
 ENC_VER=v6
-asset_name() { echo "terrain-${REGION_KEY}-${TDEM}-z${1}-${ENC_VER}.pmtiles"; }
+# A NESIE AJ PREKRYV SO SUSEDNÝM KRAJOM. `workers/plan/region-poly.py` nafúkne
+# polygón kraja o `BORDER_BUFFER_M` von, aby na našu mapu tá susedná
+# NADVIAZALA – lenže tieňovanie sa počíta na `--poly` a na `dem_bbox`, čiže
+# nafúknutie mení OBSAH aj ROZSAH týchto dlaždíc. Kým to číslo v mene nebolo,
+# sklad vrátil dlaždice spočítané ešte podľa PÔVODNEJ, tesnej hranice a oprava
+# sa na už postavenom kraji neprejavila NIKDY – namerané na balíku Trnavského
+# kraja z 3. 9. 2026: `trnavsky.pmtiles` a `region.geojson` v ňom už mali
+# nafúknutý rozsah (16,8812…48,9226), kým `trnavsky-terrain.pmtiles` z toho
+# istého balíka stále tesný bbox kraja (16,915…48,9). Mapa teda pokračovala
+# za hranicu, ale reliéf pod ňou nie. Pravidlo 8: meno musí hovoriť, čo
+# v súbore naozaj je.
+BORDER_M=$(python3 -c "import sys; sys.path.insert(0, 'workers/plan'); import area; print(int(area.BORDER_BUFFER_M))")
+asset_name() { echo "terrain-${REGION_KEY}-${TDEM}-z${1}-${ENC_VER}-o${BORDER_M}.pmtiles"; }
 
 # Hotové = leží tu hotový archív. Kým to bol strom PNG, stačilo „priečinok
 # nie je prázdny" – lenže polovica stromu je tiež neprázdny priečinok.
@@ -82,7 +94,7 @@ else
   # jemnejšie dlaždice, než sa žiadalo, a stránka by sa nemusela zmestiť).
   HAVE_Z=$(python3 workers/drive/store.py --names --store="$TERRAIN_STORE" \
       2>/dev/null \
-    | sed -n "s/^terrain-${REGION_KEY}-${TDEM}-z\([0-9]\+\)-${ENC_VER}\.pmtiles$/\1/p" \
+    | sed -n "s/^terrain-${REGION_KEY}-${TDEM}-z\([0-9]\+\)-${ENC_VER}-o${BORDER_M}\.pmtiles$/\1/p" \
     | awk -v want="$TZ" '$1 <= want' | sort -n | tail -1)
   if [ -n "$HAVE_Z" ] && python3 workers/drive/store.py --get \
        --store="$TERRAIN_STORE" --name="$(asset_name "$HAVE_Z")" --dir=/tmp; then
