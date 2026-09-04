@@ -133,33 +133,48 @@ DEFAULTS = {
     # nedvihne –, ale to, čo sa NAOZAJ použilo, ide do `graf.json` v balíku.
     "valhalla_image": ("ghcr.io/valhalla/valhalla-scripted:latest",
                        "docker obraz, ktorým sa stavia navigačný graf"),
-    # OBMEDZENIA NA CESTE (workers/roads/roads.yml): výška podjazdov a tunelov,
-    # šírka, hmotnosť, maximálna rýchlosť, jazdné pruhy, stúpanie. Tie hodnoty
-    # vrstva `transportation` OpenMapTiles nenesie vôbec, takže sa – rovnako
-    # ako trasy a krajinné prvky – ťahajú z toho istého PBF druhýkrát. Zapínač
-    # je tu a nie vo formulári, lebo `workflow_dispatch` má strop 10 inputov
-    # a ten je vyčerpaný.
-    "roads": ("true", "generovať obmedzenia na ceste (výška, šírka, rýchlosť)"),
-    # 15, nie 16: štítok s obmedzením je popisok pozdĺž čiary a na z16 už
-    # nepribúda, čo by ukázal – pribúdajú len bajty. Bloky schémy majú
-    # `min_zoom` 12 a 14, takže na tichú stratu (min_zoom nad maxzoomom) tu
-    # miesto nie je; build.sh to aj tak porovná a spadne.
-    "roads_maxzoom": ("15", "max zoom dlaždíc s obmedzeniami na ceste"),
     # DOPRAVNÁ SIEŤ (workers/transport/transport.yml): všetko, po čom sa dá
-    # cestovať – cesty od diaľnice po schody, železnice, trajekty, lanovky.
-    # Je to JADRO BALÍKA `linie`: cestná sieť v základnej mape je vrstva
+    # cestovať – cesty od diaľnice po schody, železnice, trajekty, lanovky,
+    # a k tomu OBMEDZENIA NA CESTE (výška podjazdu, šírka, hmotnosť, rýchlosť,
+    # pruhy, stúpanie) ako atribúty tých istých ciest. Tie hodnoty vrstva
+    # `transportation` OpenMapTiles nenesie vôbec, takže sa – rovnako ako
+    # trasy a krajinné prvky – ťahajú z toho istého PBF druhýkrát.
+    #
+    # Je to CELÝ BALÍK `cesty`: cestná sieť v základnej mape je vrstva
     # OpenMapTiles stavaná na kreslenie a leží v jednom archíve so zvyškom
     # mapy, takže „chcem len siete, po ktorých sa dá cestovať" dnes znamená
     # stiahnuť stovky MB. Zapínač je tu a nie vo formulári, lebo
     # `workflow_dispatch` má strop 10 inputov a ten je vyčerpaný.
+    #
+    # Obmedzenia mali vlastný zapínač (`roads`) a vlastnú vrstvu; boli to ale
+    # atribúty tých istých ciest, takže bolo možné vypnúť jedno a nechať druhé
+    # a dostať mapu, ktorá o ceste vie meno, ale nie výšku podjazdu.
     "transport": ("true", "generovať dopravnú sieť (cesty, trate, trajekty, "
-                          "lanovky) do balíka `linie`"),
+                          "lanovky) aj s obmedzeniami na ceste – balík `cesty`"),
     # 14, nie 15: najvyšší `min_zoom` v schéme je 14 (`service` cesty), takže
     # vyššie už nepribúda, čo by sa ukázalo – pribúdajú len bajty, a je ich
     # veľa: je to najhustejšia vrstva, akú táto pipeline stavia vlastnou
     # schémou. Na tichú stratu (min_zoom nad maxzoomom) tu miesto nie je,
     # build.sh to aj tak porovná a spadne.
     "transport_maxzoom": ("14", "max zoom dlaždíc s dopravnou sieťou"),
+    # HRANICE ÚZEMÍ A ICH NÁZVY (workers/boundaries/boundaries.yml): štát,
+    # kraj, okres a obec ako plochy aj čiary, s menom a úrovňou, plus body
+    # sídel. Vrstva `boundary` OpenMapTiles je čiara BEZ MENA územia, ktoré
+    # ohraničuje – z nej sa nedá povedať, v ktorej obci nejaký bod je.
+    "boundaries": ("true", "generovať hranice území a ich názvy – balík "
+                           "`hranice`"),
+    # 12, nie viac: hranica je čiara medzi územiami a nad z12 už nepribúda,
+    # čo by ukázala – pribúdajú len body sídel, ktorých najhustejší blok má
+    # `min_zoom: 10`. Na tichú stratu tu miesto nie je; build.sh to porovná.
+    "boundaries_maxzoom": ("12", "max zoom dlaždíc s hranicami"),
+    # VODSTVO (workers/water/water.yml): rieky, potoky, kanály, jazerá,
+    # priehrady, zálivy a pobrežie – každý prvok AJ S MENOM. V OpenMapTiles je
+    # voda v troch vrstvách a meno leží mimo geometrie.
+    "water": ("true", "generovať vodstvo (rieky, jazerá, more) – balík "
+                      "`vodstvo`"),
+    # 14: najvyšší `min_zoom` v schéme je 13 (jarky a odvodňovacie kanály),
+    # takže o jeden vyššie je rezerva na detail brehu a nič viac.
+    "water_maxzoom": ("14", "max zoom dlaždíc s vodstvom"),
     # INTERVAL VRSTEVNÍC. Bol to input vo formulári a presťahoval sa sem, keď
     # si miesto vzal switch `wikipedia` (ten sa medzitým odsťahoval do
     # `wiki.yml`) – `workflow_dispatch` dovolí najviac 10 inputov. Je to ten
@@ -469,18 +484,19 @@ def main():
         print(f"::error::Voľba „features“ musí byť true alebo false, "
               f"nie „{values['features']}“.", file=sys.stderr)
         return 1
-    # To isté pre obmedzenia na ceste – `roads=1` by ich ticho vyplo a zistilo
-    # by sa to až tým, že v mape nie je výška ani jedného podjazdu.
-    if values["roads"] not in ("true", "false"):
-        print(f"::error::Voľba „roads“ musí byť true alebo false, "
-              f"nie „{values['roads']}“.", file=sys.stderr)
-        return 1
     # To isté pre dopravnú sieť – `transport=1` by ju ticho vyplo a zistilo
     # by sa to až tým, že v balíku `linie` nie je ani jedna cesta.
     if values["transport"] not in ("true", "false"):
         print(f"::error::Voľba „transport“ musí byť true alebo false, "
               f"nie „{values['transport']}“.", file=sys.stderr)
         return 1
+    # To isté pre hranice a vodstvo – `boundaries=1` by ich ticho vyplo
+    # a balík by na Drive chýbal bez toho, aby to niečo povedalo.
+    for volba, co in (("boundaries", "hranice"), ("water", "vodstvo")):
+        if values[volba] not in ("true", "false"):
+            print(f"::error::Voľba „{volba}“ ({co}) musí byť true alebo "
+                  f"false, nie „{values[volba]}“.", file=sys.stderr)
+            return 1
     # To isté pre vyhľadávací index – `search=0` by ho ticho vyplo
     # a v aplikácii by chýbalo offline hľadávanie.
     if values["search"] not in ("true", "false"):
@@ -613,8 +629,9 @@ def main():
     print(f"\nVrstevnice: {contour_src}   Skaly: {rock_src}   "
           f"Tieňovanie: {shading_src}   Trasy: {values['trails']}   "
           f"Krajinné prvky: {values['features']}   "
-          f"Obmedzenia na ceste: {values['roads']}   "
-          f"Dopravná sieť: {values['transport']}")
+          f"Dopravná sieť: {values['transport']}   "
+          f"Hranice: {values['boundaries']}   "
+          f"Vodstvo: {values['water']}")
     print("Rýchly test: " + (f"ZAPNUTÝ, terén (vrstevnice, skaly, tieňovanie) "
                              f"len na {values['test_km2']} km² zo stredu "
                              f"výrezu; mapa ostáva celý región a otvorí sa tam"

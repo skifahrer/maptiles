@@ -109,7 +109,9 @@ on:
         type: choice
         options:
           - body
-          - linie
+          - cesty
+          - hranice
+          - vodstvo
           - navigacia
           - vrstevnice
           - skaly
@@ -201,8 +203,9 @@ env:
   # pregenerovaná pod iným podielom by varovala inak než tá z buildu.
   BUDGET_TRAILS_PCT: "3"
   BUDGET_FEATURES_PCT: "4"
-  BUDGET_ROADS_PCT: "2"
   BUDGET_TRANSPORT_PCT: "8"
+  BUDGET_BOUNDARIES_PCT: "3"
+  BUDGET_WATER_PCT: "5"
   # A to isté pre vrstvy z výškového modelu – `dem-layers.yml` ich dostáva
   # inputom, lebo `env` sa cez `workflow_call` nededí ani od jedného volajúceho.
   BUDGET_CONTOURS_PCT: "25"
@@ -231,13 +234,15 @@ jobs:
       opt_size_limit_mb: ${{ steps.opts.outputs.opt_size_limit_mb }}
       opt_trails_maxzoom: ${{ steps.opts.outputs.opt_trails_maxzoom }}
       opt_features_maxzoom: ${{ steps.opts.outputs.opt_features_maxzoom }}
-      opt_roads_maxzoom: ${{ steps.opts.outputs.opt_roads_maxzoom }}
       opt_transport_maxzoom: ${{ steps.opts.outputs.opt_transport_maxzoom }}
+      opt_boundaries_maxzoom: ${{ steps.opts.outputs.opt_boundaries_maxzoom }}
+      opt_water_maxzoom: ${{ steps.opts.outputs.opt_water_maxzoom }}
       opt_valhalla_image: ${{ steps.opts.outputs.opt_valhalla_image }}
       opt_custom_pbf_url: ${{ steps.opts.outputs.opt_custom_pbf_url }}
       opt_custom_name: ${{ steps.opts.outputs.opt_custom_name }}
-      budget_roads_pct: ${{ env.BUDGET_ROADS_PCT }}
       budget_transport_pct: ${{ env.BUDGET_TRANSPORT_PCT }}
+      budget_boundaries_pct: ${{ env.BUDGET_BOUNDARIES_PCT }}
+      budget_water_pct: ${{ env.BUDGET_WATER_PCT }}
       # ---------- pre vrstvy z výškového modelu (`dem-layers.yml`) ----------
       # Podiely rozpočtu idú cez výstup a nie z `env:` preto, že `env` sa vo
       # `with:` volaného workflowu čítať nesmie – to isté a z toho istého
@@ -499,127 +504,22 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # ---------- línie z OSM: značené trasy ----------
-  # Balík `linie` sú TRI vrstvy (dopravná sieť, značené trasy a obmedzenia na
-  # ceste) a všetky tri musia vzniknúť – balík sa prepisuje celý, takže
-  # polovica nového a polovica starého by z neho spravila balík, ktorý o sebe
-  # klame. Preto sú to tri joby a publikovanie beží, len keď ani jeden z nich
-  # nespadol.
-  trasy:
-    name: Značené trasy
-    needs: plan
-    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'linie' }}
-    runs-on: ubuntu-latest
-    outputs:
-      enabled: ${{ steps.trails.outputs.enabled }}
-      count: ${{ steps.trails.outputs.count }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-      - name: Priprav priečinok na meranie
-        run: mkdir -p steps-out
-
-      - name: Stiahni PBF z prípravy
-        uses: actions/download-artifact@v8
-        with:
-          name: pbf
-          path: data
-
-      - name: Stiahni polygón regiónu
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with:
-          name: region-poly
-          path: data
-
-      - name: Setup Java 21
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Cache Planetileru (restore)
-        id: planetiler-cache
-        uses: ./.github/actions/cache-restore
-        with:
-          path: planetiler.jar
-          key: planetiler-latest-${{ needs.plan.outputs.day }}
-
-      - name: Stiahni Planetiler
-        run: workers/lib/planetiler.sh
-      - name: Cache Planetileru (save)
-        if: ${{ always() && steps.planetiler-cache.outputs.cache-hit != 'true' && hashFiles('planetiler.jar') != '' }}
-        continue-on-error: true
-        uses: ./.github/actions/cache-save
-        with:
-          path: planetiler.jar
-          key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
-
-      - name: Trasy z OSM relácií → PMTiles
-        id: trails
-        env:
-          OPT_TRAILS_MAXZOOM: ${{ needs.plan.outputs.opt_trails_maxzoom }}
-          OPT_REGION_CLIP: ${{ needs.plan.outputs.opt_region_clip }}
-          REGION_BBOX: ${{ needs.plan.outputs.bbox }}
-          REGION_KEY: ${{ needs.plan.outputs.key }}
-          SIZE_LIMIT_MB: ${{ needs.plan.outputs.opt_size_limit_mb }}
-        run: workers/trails/build.sh
-
-      # To isté pravidlo ako pri bodoch: balík sa prepisuje celý, takže
-      # prázdna vrstva je tu chyba a nie mapa bez trás.
-      - name: Vznikli nejaké trasy?
-        run: |
-          set -euo pipefail
-          if [ '${{ steps.trails.outputs.enabled }}' != 'true' ]; then
-            echo "::error::V kraji ${{ needs.plan.outputs.key }} nevznikla ani jedna značená trasa, takže nie je čím prepísať polovicu balíka -linie.zip na Drive. Pozri workers/trails/routes.py a schému trás."
-            exit 1
-          fi
-
-      - name: Odlož vrstvu na zabalenie
-        uses: actions/upload-artifact@v7
-        with:
-          name: site-trails
-          path: _site
-          retention-days: 1
-          compression-level: 0
-
-      - name: Odlož meranie krokov
-        if: ${{ always() && hashFiles('steps-out/*') != '' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: steps-trails
-          path: steps-out
-          retention-days: 1
-          if-no-files-found: ignore
-
-  # ---------- línie z OSM: obmedzenia na ceste ----------
-  # TEN ISTÝ workflow, aký volá build mapy – nie kópia jeho jobu. Podiel na
-  # rozpočte stránky mu chodí inputom presne preto, že `env:` sa cez
-  # `workflow_call` nededí (rozpis v hlavičke `roads.yml`).
-  cesty:
-    name: Obmedzenia na ceste
-    needs: plan
-    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'linie' }}
-    uses: ./.github/workflows/roads.yml
-    secrets: inherit                      # cache na Drive; `env` sa nededí
-    with:
-      region_key: ${{ needs.plan.outputs.key }}
-      region_bbox: ${{ needs.plan.outputs.bbox }}
-      maxzoom: ${{ needs.plan.outputs.opt_roads_maxzoom }}
-      region_clip: ${{ needs.plan.outputs.opt_region_clip }}
-      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
-      budget_pct: ${{ needs.plan.outputs.budget_roads_pct }}
-      day: ${{ needs.plan.outputs.day }}
-
-  # ---------- línie z OSM: CELÁ dopravná sieť ----------
-  # TRETIA časť balíka `linie` a jeho jadro: cesty od diaľnice po schody,
-  # železnice, električky a metro, trajekty a lanovky. Ten istý workflow, aký
-  # volá build mapy – rozpis, čo v tej vrstve je, je v hlavičke
+  # ---------- cesty a chodníky: CELÁ dopravná sieť ----------
+  # Celý balík `cesty`: cesty od diaľnice po schody, železnice, električky
+  # a metro, trajekty a lanovky – a k tomu obmedzenia na ceste (výška
+  # podjazdu, hmotnosť, rýchlosť) ako atribúty tých istých ciest. Ten istý
+  # workflow, aký volá build mapy; rozpis, čo v tej vrstve je, je v hlavičke
   # `workers/transport/transport.yml`.
+  #
+  # JEDEN JOB, A JE TO ZMENA. Kým sa balík volal `linie`, boli v ňom tri
+  # vrstvy z troch jobov a všetky tri museli vzniknúť naraz (balík sa
+  # prepisuje CELÝ). Odkedy sú obmedzenia atribútmi tej istej siete a značené
+  # trasy cestujú v základnej mape, je balík jedna vrstva z jedného jobu –
+  # a polovica nová s polovicou starou už nemá ako vzniknúť.
   doprava:
-    name: Dopravná sieť
+    name: Cesty a chodníky
     needs: plan
-    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'linie' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'cesty' }}
     uses: ./.github/workflows/transport.yml
     secrets: inherit                      # cache na Drive; `env` sa nededí
     with:
@@ -629,6 +529,43 @@ jobs:
       region_clip: ${{ needs.plan.outputs.opt_region_clip }}
       size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
       budget_pct: ${{ needs.plan.outputs.budget_transport_pct }}
+      day: ${{ needs.plan.outputs.day }}
+
+  # ---------- hranice území a ich názvy ----------
+  # Ten istý workflow, aký volá build mapy. Rozpis, čo v tej vrstve je a prečo
+  # nestačí hranica zo základnej mapy, je v hlavičke
+  # `workers/boundaries/boundaries.yml`.
+  hranice:
+    name: Hranice území
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'hranice' }}
+    uses: ./.github/workflows/boundaries.yml
+    secrets: inherit                      # cache na Drive; `env` sa nededí
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      region_bbox: ${{ needs.plan.outputs.bbox }}
+      maxzoom: ${{ needs.plan.outputs.opt_boundaries_maxzoom }}
+      region_clip: ${{ needs.plan.outputs.opt_region_clip }}
+      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      budget_pct: ${{ needs.plan.outputs.budget_boundaries_pct }}
+      day: ${{ needs.plan.outputs.day }}
+
+  # ---------- vodstvo ----------
+  # Ten istý workflow, aký volá build mapy. Rozpis je v hlavičke
+  # `workers/water/water.yml`.
+  vodstvo:
+    name: Vodstvo
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'vodstvo' }}
+    uses: ./.github/workflows/water.yml
+    secrets: inherit                      # cache na Drive; `env` sa nededí
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      region_bbox: ${{ needs.plan.outputs.bbox }}
+      maxzoom: ${{ needs.plan.outputs.opt_water_maxzoom }}
+      region_clip: ${{ needs.plan.outputs.opt_region_clip }}
+      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      budget_pct: ${{ needs.plan.outputs.budget_water_pct }}
       day: ${{ needs.plan.outputs.day }}
 
   # ---------- navigačný graf ----------
@@ -715,7 +652,7 @@ jobs:
   # ---------- balík na Drive a katalóg ----------
   publish:
     name: Balík na Drive a katalóg
-    needs: [plan, body, trasy, cesty, doprava, navigacia, dem]
+    needs: [plan, body, doprava, hranice, vodstvo, navigacia, dem]
     # Ani jeden z jobov vrstvy nesmie spadnúť. `skipped` je v poriadku (beží
     # vždy len tá vrstva, ktorá je vo formulári), `failure` nie – balík sa
     # prepisuje celý a z polovice novej a polovice starej vrstvy by vznikol
@@ -723,9 +660,9 @@ jobs:
     if: >-
       ${{ !cancelled() && needs.plan.result == 'success'
           && needs.body.result != 'failure'
-          && needs.trasy.result != 'failure'
-          && needs.cesty.result != 'failure'
           && needs.doprava.result != 'failure'
+          && needs.hranice.result != 'failure'
+          && needs.vodstvo.result != 'failure'
           && needs.navigacia.result != 'failure'
           && needs.dem.result != 'failure'
           && needs.plan.outputs.opt_publish == 'true' }}
@@ -740,9 +677,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Kusy vrstvy. Vzor `site-*`, nie mená: pri `linie` sú to tri artefakty
-      # (dopravná sieť, trasy a obmedzenia) a pri `body` jeden, takže menami by
-      # sa to muselo napísať pre každú vrstvu zvlášť.
+      # Kusy vrstvy. Vzor `site-*`, nie mená: pri vrstvách z DEM sú to dva
+      # artefakty (vrstevnice a skaly sú jeden balík) a inde jeden, takže
+      # menami by sa to muselo napísať pre každú vrstvu zvlášť.
       #
       - name: Pozbieraj vrstvu
         uses: actions/download-artifact@v8
@@ -766,7 +703,7 @@ jobs:
       - name: Čo prišlo od jobov vrstvy
         run: |
           set -uo pipefail
-          echo "body=${{ needs.body.result }}, trasy=${{ needs.trasy.result }}, cesty=${{ needs.cesty.result }}, doprava=${{ needs.doprava.result }}, navigácia=${{ needs.navigacia.result }}, vrstvy z DEM=${{ needs.dem.result }} (vrstevnice=${{ needs.dem.outputs.res_contours }}, tieňovanie=${{ needs.dem.outputs.res_terrain }})"
+          echo "body=${{ needs.body.result }}, cesty=${{ needs.doprava.result }}, hranice=${{ needs.hranice.result }}, vodstvo=${{ needs.vodstvo.result }}, navigácia=${{ needs.navigacia.result }}, vrstvy z DEM=${{ needs.dem.result }} (vrstevnice=${{ needs.dem.outputs.res_contours }}, tieňovanie=${{ needs.dem.outputs.res_terrain }})"
           find _site -type f -printf '%10s  %p\n' 2>/dev/null || true
 
       # TEN ISTÝ packer a ten istý zápis do katalógu ako pri builde mapy, len
@@ -782,7 +719,8 @@ jobs:
           CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
           # ČO JE V BALÍKU, POVIE BALÍK SÁM.
           #
-          # Pri vrstvách z PBF (`body`, `linie`, `navigacia`) je to meno tej
+          # Pri vrstvách z PBF (`body`, `cesty`, `hranice`, `vodstvo`,
+          # `navigacia`) je to meno tej
           # vrstvy: bez neho by `obsah.json` zložený z premenných buildu
           # tvrdil „bez_vrstevnic, bez_skal, bez_tienovania", čo pri takom
           # balíku nie je opis, ale lož o mape, ktorú tento beh nevidel.
@@ -792,7 +730,7 @@ jobs:
           # povie job (zdroj modelu, interval, prah sklonu), presne ako
           # v builde. To sú údaje, ktoré `obsah.json` o tomto balíku naozaj
           # má povedať, a napísať ich sem druhýkrát by bola druhá pravda.
-          MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'linie' || inputs.co == 'navigacia') && inputs.co || '' }}
+          MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'cesty' || inputs.co == 'hranice' || inputs.co == 'vodstvo' || inputs.co == 'navigacia') && inputs.co || '' }}
           CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
           CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
           CONTOUR_INTERVAL: ${{ needs.plan.outputs.opt_contour_interval }}
@@ -890,7 +828,7 @@ jobs:
           # MUSIA to byť tie isté hodnoty, aké dostal job so ZIPom:
           # `obsah.json` sa skladá z nich a inými by `.aar` o sebe tvrdil
           # niečo iné než ZIP s tým istým obsahom.
-          MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'linie' || inputs.co == 'navigacia') && inputs.co || '' }}
+          MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'cesty' || inputs.co == 'hranice' || inputs.co == 'vodstvo' || inputs.co == 'navigacia') && inputs.co || '' }}
           CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
           CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
           CONTOUR_INTERVAL: ${{ needs.plan.outputs.opt_contour_interval }}

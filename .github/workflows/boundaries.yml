@@ -1,29 +1,30 @@
-name: Mapa · obmedzenia ciest
+name: Mapa · hranice území
 
-# Obmedzenia na ceste – výška podjazdov a tunelov, šírka, hmotnosť, maximálna
-# rýchlosť – do vlastného `.pmtiles`. Vrstva `transportation` OpenMapTiles
-# z toho nenesie ANI JEDNU hodnotu (overený zoznam jej polí je v hlavičke
-# `workers/roads/roads.yml`), takže sa to isté PBF čítá druhýkrát vlastnou
-# schémou. Ten istý vzor ako značené trasy a krajinné prvky.
+# HRANICE ÚZEMÍ A ICH NÁZVY z OSM do vlastného `.pmtiles`: štát, kraj, okres
+# a obec ako plochy aj ako čiary, s menom a úrovňou, plus body sídel. Rozpis,
+# čo to je a prečo to nestačí brať zo základnej mapy, je v hlavičke
+# `workers/boundaries/boundaries.yml`; krátko – hranica vo vrstve `boundary`
+# OpenMapTiles je ČIARA BEZ MENA územia, ktoré ohraničuje, takže sa z nej nedá
+# povedať, v ktorej obci alebo v ktorom okrese je nejaký bod. Táto vrstva je
+# balík `hranice`.
 #
-# PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map-region.yml`. Ten súbor má 128 232 B
-# a strop je 128 KiB (131 072 B) – nad ním GitHub workflow TICHO NEPRIJME:
-# vznikne beh bez jobov, s červeným krížikom a prázdnym logom, ktorý vyzerá,
-# že sa spustil sám (pravidlo 3 v CLAUDE.md). Do zvyšných 2,8 kB sa job
-# s Planetilerom, cache a artefaktmi nezmestí, takže je to `workflow_call`
-# a v `build-map-region.yml` po ňom ostalo desať riadkov.
+# JEDEN ROZDIEL OPROTI OSTATNÝM VRSTVÁM: predfilter musí doťahovať aj ČLENOV
+# RELÁCIÍ (`osmium tags-filter -r`), lebo hranica obce je relácia, ktorej
+# členovia `boundary=administrative` nemajú – a bez nich by Planetiler nemal
+# z čoho zložiť polygón. Robí to `workers/boundaries/build.sh`.
+#
+# PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map-region.yml`. Ten súbor je pri
+# strope 128 KiB a nad ním GitHub workflow TICHO NEPRIJME: vznikne beh bez
+# jobov, s červeným krížikom a prázdnym logom (pravidlo 3 v CLAUDE.md).
 #
 # Cena za to je, že vstupy sa píšu dvakrát (v `inputs:` tu a vo `with:` tam)
 # a že `workflow_call` NEDEDÍ ani `env`, ani `secrets` volajúceho – oboje sa
-# musí podať. Podiel na rozpočte stránky preto chodí ako input: definovaný je
-# raz, v `env:` `build-map-region.yml` vedľa ostatných podielov, lebo tam ho číta aj
-# job `tiles`, keď si počíta, koľko mu z rozpočtu zostalo.
-
+# musí podať.
 on:
   workflow_call:
     inputs:
       region_key:
-        description: "Kľúč regiónu – z neho je meno `{region}-roads.pmtiles`"
+        description: "Kľúč regiónu – z neho je meno `{region}-boundaries.pmtiles`"
         required: true
         type: string
       region_bbox:
@@ -31,9 +32,9 @@ on:
         required: true
         type: string
       maxzoom:
-        description: "Najvyšší zoom dlaždíc s obmedzeniami"
+        description: "Najvyšší zoom dlaždíc s hranicami"
         required: false
-        default: "15"
+        default: "12"
         type: string
       region_clip:
         description: "Orezať dlaždice na hranicu regiónu"
@@ -46,9 +47,9 @@ on:
         default: "900"
         type: string
       budget_pct:
-        description: "Podiel obmedzení na rozpočte stránky v percentách"
+        description: "Podiel hraníc na rozpočte stránky v percentách"
         required: false
-        default: "2"
+        default: "3"
         type: string
       day:
         description: "Dátum pre kľúč cache Planetileru"
@@ -57,14 +58,14 @@ on:
         type: string
     outputs:
       enabled:
-        description: "Vznikla vrstva? (v území nemusí byť ani jedno obmedzenie)"
-        value: ${{ jobs.roads.outputs.enabled }}
+        description: "Vznikla vrstva? (vo výreze nemusí byť ani jedna hranica)"
+        value: ${{ jobs.boundaries.outputs.enabled }}
       maxzoom:
         description: "Zoom, po ktorý dlaždice naozaj sú"
-        value: ${{ jobs.roads.outputs.maxzoom }}
+        value: ${{ jobs.boundaries.outputs.maxzoom }}
       size_mb:
         description: "Veľkosť vrstvy v MB"
-        value: ${{ jobs.roads.outputs.size_mb }}
+        value: ${{ jobs.boundaries.outputs.size_mb }}
     # `workflow_call` nededí secrets sám, takže ich volajúci musí podať
     # (`secrets: inherit`) a tento workflow prijať. Bez nich sa cache na Drive
     # nemá ako otvoriť a Planetiler (93 MB) sa ťahá pri každom behu. Dva tvary
@@ -91,13 +92,13 @@ env:
   DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
 
 jobs:
-  roads:
-    name: Obmedzenia na ceste
+  boundaries:
+    name: Hranice území
     runs-on: ubuntu-latest
     outputs:
-      enabled: ${{ steps.roads.outputs.enabled }}
-      maxzoom: ${{ steps.roads.outputs.maxzoom }}
-      size_mb: ${{ steps.roads.outputs.size_mb }}
+      enabled: ${{ steps.boundaries.outputs.enabled }}
+      maxzoom: ${{ steps.boundaries.outputs.maxzoom }}
+      size_mb: ${{ steps.boundaries.outputs.size_mb }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -144,31 +145,30 @@ jobs:
           key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
 
       # TESTY SCHÉMY PRED STAVBOU. Sú v nej ako `examples` a je to jediná vec,
-      # ktorá o schéme povie pravdu bez celého behu – vrátane toho, že hodnota
-      # s jednotkou (`3.8 m`) aj v stopách (`12'6"`) prejde do dlaždice CELÁ
-      # a že sa dva bloky (rozmer od z12, rýchlosť od z14) navzájom vylučujú.
+      # ktorá o schéme povie pravdu bez celého behu – vrátane toho, že mestská
+      # časť ani chránené územie medzi administratívne hranice nepatria.
       # Beží ako prvé, nech to spadne za sekundy a nie po predfiltri.
-      - name: Testy schémy obmedzení
-        run: java -jar planetiler.jar verify workers/roads/roads.yml
+      - name: Testy schémy hraníc
+        run: java -jar planetiler.jar verify workers/boundaries/boundaries.yml
 
-      # Rozpis je vo `workers/roads/build.sh` (pravidlo 3: veľký `run:` blok
-      # patrí do `workers/`, nie do YAMLu).
-      - name: Obmedzenia na ceste z OSM → PMTiles
-        id: roads
+      # Rozpis je vo `workers/boundaries/build.sh` (pravidlo 3: veľký `run:`
+      # blok patrí do `workers/`, nie do YAMLu).
+      - name: Hranice území z OSM → PMTiles
+        id: boundaries
         env:
-          OPT_ROADS_MAXZOOM: ${{ inputs.maxzoom }}
+          OPT_BOUNDARIES_MAXZOOM: ${{ inputs.maxzoom }}
           OPT_REGION_CLIP: ${{ inputs.region_clip }}
           REGION_BBOX: ${{ inputs.region_bbox }}
           REGION_KEY: ${{ inputs.region_key }}
           SIZE_LIMIT_MB: ${{ inputs.size_limit_mb }}
-          BUDGET_ROADS_PCT: ${{ inputs.budget_pct }}
-        run: workers/roads/build.sh
+          BUDGET_BOUNDARIES_PCT: ${{ inputs.budget_pct }}
+        run: workers/boundaries/build.sh
 
       - name: Odlož časť stránky
         if: ${{ always() && hashFiles('_site/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
-          name: site-roads
+          name: site-boundaries
           path: _site
           retention-days: 1
           compression-level: 0
@@ -178,7 +178,7 @@ jobs:
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:
-          name: steps-roads
+          name: steps-boundaries
           path: steps-out
           retention-days: 1
           if-no-files-found: ignore

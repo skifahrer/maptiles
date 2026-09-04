@@ -205,18 +205,18 @@ Dve tretiny „základnej mapy“ teda bola sieť, po ktorej sa jazdí, nie mapa
 ktorá sa kreslí – a to je presne prípad vrstevníc a tieňovania: ťažká vec,
 ktorú mapa na to, aby sa nakreslila, nepotrebuje. Kto navigáciu nechce, ju
 odteraz nemá za čo sťahovať; **kto ju chce, sa o nej dozvie z katalógu** –
-`maps.json` nesie `-navigacia.zip` pod `maps.navigacia` vedľa `linie` a `body`,
+`maps.json` nesie `-navigacia.zip` pod `maps.navigacia` vedľa `cesty` a `body`,
 takže je v aplikácii v tom istom zozname na stiahnutie ako ony. Argument
 z prvej verzie tým nepadol, len ho drží katalóg a nie balenie.
 
 **Chvíľu cestoval graf v balíku `linie` a vrátil sa do vlastného.** Argument
 pre spojenie bol, že značené trasy, obmedzenia na ceste aj graf sú **tá istá
-sieť z toho istého PBF**, raz nakreslená a raz zjazdná. Odkedy je v `linie`
+sieť z toho istého PBF**, raz nakreslená a raz zjazdná. Odkedy je v balíku
 **celá dopravná sieť** (`-transport.pmtiles`: cesty od diaľnice po schody,
 železnice, trajekty, lanovky – rozpis v hlavičke
 [`workers/transport/transport.yml`](../workers/transport/transport.yml)), to už
-neplatí: tie tri kreslené vrstvy vážia desiatky MB proti 170–190 za graf, takže
-by z balíka bolo deväť desatín graf a kto chce sieť len vidieť, sťahoval by ho
+neplatí: tá kreslená sieť váži desiatky MB proti 170–190 za graf, takže by
+z balíka bolo deväť desatín graf a kto chce sieť len vidieť, sťahoval by ho
 tak či tak. Sú to teda zase dve položky v katalógu – a sú to dve otázky: „chcem
 vidieť, kadiaľ sa dá ísť“ a „chcem, aby ma to tam doviezlo“.
 
@@ -302,7 +302,16 @@ zo štvorice pád behu **je** – to nie je malé územie, ale rozbitý balík.
 | `.github/workflows/navigation-region.yml` | graf KRAJA z PBF mapy; artefakt `navigacia-graf` ide do `<kraj>-navigacia.zip` aj `.aar`, nie na Pages |
 | `workers/lint/navigation.py` | rozsah má vlastný uzol v katalógu, celoštátny PBF sa nereže, graf kraja o svojej hranici hovorí a má vlastný balík vedľa dopravnej siete, `admins.sqlite` sa nestratí, formulár sedí s číselníkom |
 | `workers/lint/packaging.py` | čo je v ktorom balíku – čítané z NAOZAJ zabalených ZIPov: graf je celý v `-navigacia.zip` a v základnej mape ani v `-linie.zip` nie je (inak by sa sťahoval dvakrát) |
-| `workers/roads/*` | obmedzenia na ceste v DLAŽDICIACH (výška, šírka, hmotnosť, rýchlosť) – §1, „Áčko“ |
+| `workers/transport/transport.yml` | obmedzenia na ceste v DLAŽDICIACH (výška, šírka, hmotnosť, rýchlosť) – sú to atribúty tej istej siete, balík `cesty`; §1, „Áčko“ |
+
+**A to isté obmedzenie sa dá aj POUŽIŤ, nielen pozrieť.** Profil pozná rozmery
+vozidla – `vehicle_height`, `vehicle_weight`, `vehicle_width`,
+`vehicle_length` (Valhalla `height`/`weight`/`width`/`length`, GraphHopper
+`max_height` a spol.) – takže „mám 3,9 m vysoké auto" znamená trasu, ktorá sa
+podjazdu vyhne. Tagy v grafe **vždy boli**: `workers/routing/pbf.sh` berie celé
+štátne extrakty a nefiltruje nič, takže chýbalo len to, aby si ich niekto
+vypýtal. Jednotka sa prepočítava tu a nie v dlaždici: motor chce číslo, kým
+v OSM je hodnota reťazec s jednotkou (`3.8 m`, `12'6"`).
 
 Trasu už teda počítať **je z čoho**: graf existuje, dá sa postaviť a stiahnuť.
 Čo v ňom nie je: `multimodal` (autobus a vlak), lebo ten stojí na GTFS; a tri
@@ -319,7 +328,6 @@ a kontroly. Prvý beh má doplniť namerané časy a veľkosti do
 
 ```bash
 python3 workers/lint/navigation.py
-python3 workers/lint/roads.py
 python3 workers/routing/profile.py --list
 python3 workers/routing/profile.py --check
 python3 workers/routing/profile.py --mode=auto --engine=valhalla \

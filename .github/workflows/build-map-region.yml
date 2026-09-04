@@ -245,9 +245,14 @@ env:
   # Krajinné prvky (workers/features/features.yml) sú línie, body a pár plôch. Plotov
   # je v OSM veľa, ale idú až od z15 a lepia sa – 4 % je s rezervou.
   BUDGET_FEATURES_PCT: "4"
-  # Obmedzenia na ceste: číta to job `tiles` (koľko mu zostalo) aj `roads.yml`,
-  # ktorý ho dostane inputom – `workflow_call` `env` nededí.
-  BUDGET_ROADS_PCT: "2"
+  # Hranice území: čítajú to job `tiles` (koľko mu zostalo) aj `boundaries.yml`,
+  # ktorý to dostane inputom – `workflow_call` `env` nededí. Sú to plochy
+  # a čiary štyroch úrovní plus body sídel; celé Slovensko sú jednotky MB.
+  BUDGET_BOUNDARIES_PCT: "3"
+  # Vodstvo: rieky a plochy s menom. Jarkov a odvodňovacích kanálov je
+  # v poľnohospodárskej krajine veľa, ale idú až od z13 a lepia sa – 5 % je
+  # s rezervou.
+  BUDGET_WATER_PCT: "5"
   # Dopravná sieť (workers/transport/transport.yml) je NAJHUSTEJŠIA vrstva,
   # akú táto pipeline stavia vlastnou schémou – je to celá cestná, koľajová
   # a chodníková sieť kraja, teda tá istá hustota, akú má vrstva
@@ -321,7 +326,8 @@ jobs:
   #
   # Podiely na rozpočte stránky chodia dole INPUTOM, nie z `env:` – `env`
   # sa cez `workflow_call` nededí a tie isté čísla číta aj job `tiles`, keď
-  # si počíta, koľko mu z rozpočtu zostalo. To isté robí `roads.yml`.
+  # si počíta, koľko mu z rozpočtu zostalo. To isté robia `boundaries.yml`
+  # a `water.yml`.
   dem:
     name: Vrstvy z výškového modelu
     needs: plan
@@ -446,12 +452,15 @@ jobs:
       opt_contour_smoothing: ${{ steps.opts.outputs.opt_contour_smoothing }}
       opt_trails_maxzoom: ${{ steps.opts.outputs.opt_trails_maxzoom }}
       opt_features_maxzoom: ${{ steps.opts.outputs.opt_features_maxzoom }}
-      opt_roads: ${{ steps.opts.outputs.opt_roads }}
-      opt_roads_maxzoom: ${{ steps.opts.outputs.opt_roads_maxzoom }}
-      budget_roads_pct: ${{ env.BUDGET_ROADS_PCT }}
       opt_transport: ${{ steps.opts.outputs.opt_transport }}
       opt_transport_maxzoom: ${{ steps.opts.outputs.opt_transport_maxzoom }}
       budget_transport_pct: ${{ env.BUDGET_TRANSPORT_PCT }}
+      opt_boundaries: ${{ steps.opts.outputs.opt_boundaries }}
+      opt_boundaries_maxzoom: ${{ steps.opts.outputs.opt_boundaries_maxzoom }}
+      budget_boundaries_pct: ${{ env.BUDGET_BOUNDARIES_PCT }}
+      opt_water: ${{ steps.opts.outputs.opt_water }}
+      opt_water_maxzoom: ${{ steps.opts.outputs.opt_water_maxzoom }}
+      budget_water_pct: ${{ env.BUDGET_WATER_PCT }}
       # To isté pre vrstvy z výškového modelu (`dem-layers.yml`) a z toho
       # istého dôvodu: `env` sa vo `with:` volaného workflowu nesmie čítať,
       # tak ide cez výstup prípravy. Definované sú RAZ, v `env:` nižšie, lebo
@@ -904,27 +913,12 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # Vo vlastnom súbore, lebo tento je pri strope 128 KiB – dôvod v `roads.yml`.
-  roads:
-    name: Obmedzenia na ceste
-    needs: plan
-    if: ${{ !cancelled() && needs.plan.outputs.opt_roads == 'true' }}
-    uses: ./.github/workflows/roads.yml
-    secrets: inherit                      # cache na Drive; `env` sa nededí
-    with:
-      region_key: ${{ needs.plan.outputs.key }}
-      region_bbox: ${{ needs.plan.outputs.bbox }}
-      maxzoom: ${{ needs.plan.outputs.opt_roads_maxzoom }}
-      region_clip: ${{ needs.plan.outputs.opt_region_clip }}
-      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
-      budget_pct: ${{ needs.plan.outputs.budget_roads_pct }}
-      day: ${{ needs.plan.outputs.day }}
-
+  # Vo vlastnom súbore, lebo tento je pri strope 128 KiB – dôvod v `transport.yml`.
   # ---------- celá dopravná sieť ----------
-  # Vo vlastnom súbore, lebo tento je pri strope 128 KiB – dôvod v `roads.yml`.
+  # Vo vlastnom súbore, lebo tento je pri strope 128 KiB – dôvod v `transport.yml`.
   # Rozpis, čo v tej vrstve je a prečo nestačí cestná sieť zo základnej mapy,
   # je v hlavičke `workers/transport/transport.yml`. Je to jadro balíka
-  # `linie`: kto chce len siete, po ktorých sa dá cestovať, si ich stiahne bez
+  # `cesty`: kto chce len siete, po ktorých sa dá cestovať, si ich stiahne bez
   # zvyšku mapy.
   transport:
     name: Dopravná sieť
@@ -939,6 +933,46 @@ jobs:
       region_clip: ${{ needs.plan.outputs.opt_region_clip }}
       size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
       budget_pct: ${{ needs.plan.outputs.budget_transport_pct }}
+      day: ${{ needs.plan.outputs.day }}
+
+  # ---------- hranice území a ich názvy ----------
+  # Vo vlastnom súbore, lebo tento je pri strope 128 KiB – dôvod v
+  # `boundaries.yml`. Rozpis, čo v tej vrstve je a prečo nestačí hranica zo
+  # základnej mapy, je v hlavičke `workers/boundaries/boundaries.yml`: vrstva
+  # `boundary` OpenMapTiles je čiara BEZ MENA územia, ktoré ohraničuje.
+  hranice:
+    name: Hranice území
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.opt_boundaries == 'true' }}
+    uses: ./.github/workflows/boundaries.yml
+    secrets: inherit                      # cache na Drive; `env` sa nededí
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      region_bbox: ${{ needs.plan.outputs.bbox }}
+      maxzoom: ${{ needs.plan.outputs.opt_boundaries_maxzoom }}
+      region_clip: ${{ needs.plan.outputs.opt_region_clip }}
+      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      budget_pct: ${{ needs.plan.outputs.budget_boundaries_pct }}
+      day: ${{ needs.plan.outputs.day }}
+
+  # ---------- vodstvo ----------
+  # Vo vlastnom súbore z toho istého dôvodu. Rozpis je v hlavičke
+  # `workers/water/water.yml`: voda je v OpenMapTiles v troch vrstvách a meno
+  # leží mimo geometrie, takže „chcem vodstvo a nič iné" znamená stiahnuť
+  # celú mapu a vytiahnuť si to z nej sám.
+  vodstvo:
+    name: Vodstvo
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.opt_water == 'true' }}
+    uses: ./.github/workflows/water.yml
+    secrets: inherit                      # cache na Drive; `env` sa nededí
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      region_bbox: ${{ needs.plan.outputs.bbox }}
+      maxzoom: ${{ needs.plan.outputs.opt_water_maxzoom }}
+      region_clip: ${{ needs.plan.outputs.opt_region_clip }}
+      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      budget_pct: ${{ needs.plan.outputs.budget_water_pct }}
       day: ${{ needs.plan.outputs.day }}
 
   # ---------- vyhľadávací index ----------
@@ -1202,7 +1236,7 @@ jobs:
   # bez nich, ale nasadiť.
   deploy:
     name: Zloženie a nasadenie
-    needs: [plan, dem, trails, features, roads, transport, search, navigacia, tiles, assets]
+    needs: [plan, dem, trails, features, transport, hranice, vodstvo, search, navigacia, tiles, assets]
     if: ${{ !cancelled() && needs.tiles.result == 'success' && needs.assets.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -1243,7 +1277,7 @@ jobs:
       - name: Čo prišlo od ostatných jobov
         run: |
           set -uo pipefail
-          echo "Výsledky jobov: vrstevnice=${{ needs.dem.outputs.res_contours }}, trasy=${{ needs.trails.result }}, prvky=${{ needs.features.result }}, obmedzenia=${{ needs.roads.result }}, doprava=${{ needs.transport.result }}, hľadanie=${{ needs.search.result }}, navigácia=${{ needs.navigacia.result }}, terén=${{ needs.dem.outputs.res_terrain }}, dlaždice=${{ needs.tiles.result }}, ikonky=${{ needs.assets.result }}"
+          echo "Výsledky jobov: vrstevnice=${{ needs.dem.outputs.res_contours }}, trasy=${{ needs.trails.result }}, prvky=${{ needs.features.result }}, doprava=${{ needs.transport.result }}, hranice=${{ needs.hranice.result }}, vodstvo=${{ needs.vodstvo.result }}, hľadanie=${{ needs.search.result }}, navigácia=${{ needs.navigacia.result }}, terén=${{ needs.dem.outputs.res_terrain }}, dlaždice=${{ needs.tiles.result }}, ikonky=${{ needs.assets.result }}"
           find _site -maxdepth 2 -mindepth 1 -type d -exec du -sh {} \; 2>/dev/null || true
           du -sm _site | cut -f1 | xargs -I{} echo "_site spolu: {} MB"
 
@@ -1294,8 +1328,8 @@ jobs:
             --features-maxzoom='${{ needs.features.outputs.maxzoom || '15' }}' \
             --points='${{ needs.features.outputs.points_enabled || 'false' }}' \
             --points-maxzoom='${{ needs.features.outputs.maxzoom || '15' }}' \
-            --roads='${{ needs.roads.outputs.enabled || 'false' }}' \
-            --roads-maxzoom='${{ needs.roads.outputs.maxzoom || '15' }}' \
+            --transport='${{ needs.transport.outputs.enabled || 'false' }}' \
+            --transport-maxzoom='${{ needs.transport.outputs.maxzoom || '14' }}' \
             --dem-source='${{ needs.dem.outputs.contours_dem_source || 'sonny' }}' \
             --dem-tiles-source='${{ needs.dem.outputs.terrain_dem_source || needs.dem.outputs.contours_dem_source || 'sonny' }}' \
             --dem-bounds='${{ needs.plan.outputs.test_bbox }}' \
@@ -1332,10 +1366,12 @@ jobs:
           FEATURES_ENABLED: ${{ needs.features.outputs.enabled || 'false' }}
           FEATURES_MAXZOOM: ${{ needs.features.outputs.maxzoom || '15' }}
           POINTS_ENABLED: ${{ needs.features.outputs.points_enabled || 'false' }}
-          ROADS_ENABLED: ${{ needs.roads.outputs.enabled || 'false' }}
-          ROADS_MAXZOOM: ${{ needs.roads.outputs.maxzoom || '15' }}
           TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
           TRANSPORT_MAXZOOM: ${{ needs.transport.outputs.maxzoom || '14' }}
+          BOUNDARIES_ENABLED: ${{ needs.hranice.outputs.enabled || 'false' }}
+          BOUNDARIES_MAXZOOM: ${{ needs.hranice.outputs.maxzoom || '12' }}
+          WATER_ENABLED: ${{ needs.vodstvo.outputs.enabled || 'false' }}
+          WATER_MAXZOOM: ${{ needs.vodstvo.outputs.maxzoom || '14' }}
           ICONS_AVAILABLE: ${{ needs.assets.outputs.available }}
           ICONS_NAME: ${{ needs.assets.outputs.name }}
           REGION_BBOX: ${{ needs.plan.outputs.bbox }}
@@ -1406,16 +1442,17 @@ jobs:
           TRAILS: ${{ needs.trails.outputs.enabled }}
           FEATURES: ${{ needs.features.outputs.enabled }}
           POINTS: ${{ needs.features.outputs.points_enabled }}
-          ROADS: ${{ needs.roads.outputs.enabled }}
+          BOUNDARIES: ${{ needs.hranice.outputs.enabled }}
+          WATER: ${{ needs.vodstvo.outputs.enabled }}
           PAGES_BUILD_TYPE: ${{ needs.plan.outputs.pages_build_type }}
         run: workers/deploy/smoke-test.sh
 
-      # NAVIGAČNÝ GRAF AŽ TU, ZA PAGES. Ide do balíka `-linie.zip` (je to tá
+      # NAVIGAČNÝ GRAF AŽ TU, ZA PAGES. Ide do vlastného balíka (je to tá
       # istá sieť ako trasy a obmedzenia, len zjazdná), na stránku nejde –
       # nie je čo kresliť a zjedol by rozpočet Pages. Preto sa artefakt nevolá
       # `site-…`: krok „Pozbieraj kusy stránky“ berie `site-*` a graf by sa
       # doňho zlial ešte pred nahratím na Pages. `continue-on-error`, lebo
-      # mapa bez navigácie je mapa – `-linie.zip` je vtedy len o ňu ľahší.
+      # mapa bez navigácie je mapa – `-navigacia.zip` sa vtedy nevyrobí.
       - name: Stiahni navigačný graf do balíka
         if: ${{ always() && needs.navigacia.result == 'success' }}
         continue-on-error: true
@@ -1438,8 +1475,9 @@ jobs:
           CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           FEATURES_ENABLED: ${{ needs.features.outputs.enabled || 'false' }}
-          ROADS_ENABLED: ${{ needs.roads.outputs.enabled || 'false' }}
           TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
+          BOUNDARIES_ENABLED: ${{ needs.hranice.outputs.enabled || 'false' }}
+          WATER_ENABLED: ${{ needs.vodstvo.outputs.enabled || 'false' }}
           REGION_KEY: ${{ needs.plan.outputs.key }}
           ROCKS_ENABLED: ${{ needs.dem.outputs.rocks_enabled || 'false' }}
           ROCKS_SOURCE: ${{ needs.dem.outputs.rock_source }}
@@ -1493,7 +1531,8 @@ jobs:
           R_SHADING_ROCKS: ${{ needs.dem.outputs.res_shading_rocks }}
           R_TRAILS: ${{ needs.trails.result }}
           R_FEATURES: ${{ needs.features.result }}
-          R_ROADS: ${{ needs.roads.result }}
+          R_HRANICE: ${{ needs.hranice.result }}
+          R_VODSTVO: ${{ needs.vodstvo.result }}
           R_TERRAIN: ${{ needs.dem.outputs.res_terrain }}
           R_TILES: ${{ needs.tiles.result }}
           R_ASSETS: ${{ needs.assets.result }}
@@ -1541,7 +1580,7 @@ jobs:
   # `needs` niekoho ďalšieho.
   apple-archive:
     name: Balíky ako Apple Archive (.aar)
-    needs: [plan, deploy, dem, trails, features, roads, transport, tiles]
+    needs: [plan, deploy, dem, trails, features, transport, hranice, vodstvo, tiles]
     if: ${{ !cancelled() && needs.deploy.result == 'success' && needs.plan.outputs.opt_publish == 'true' && needs.plan.outputs.opt_apple_archive == 'true' }}
     runs-on: macos-latest
     permissions:
@@ -1572,8 +1611,8 @@ jobs:
           name: deploy-site
           path: _site
       # NAVIGAČNÝ GRAF MUSÍ BYŤ AJ TU. `.aar` je ten istý obsah ako ZIP, len
-      # inak zabalený – keby graf chýbal, `-linie.aar` by bol o polovicu
-      # ľahší než `-linie.zip` a na ničom by to nebolo vidieť. Do `site-*`
+      # inak zabalený – keby graf chýbal, `-navigacia.aar` by bol prázdny
+      # proti `-navigacia.zip` a na ničom by to nebolo vidieť. Do `site-*`
       # graf nepatrí (na Pages nemá čo robiť), takže sa sťahuje menom.
       # `continue-on-error`: mapa bez navigácie je mapa.
       - name: Stiahni navigačný graf do balíka
@@ -1593,8 +1632,9 @@ jobs:
           CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           FEATURES_ENABLED: ${{ needs.features.outputs.enabled || 'false' }}
-          ROADS_ENABLED: ${{ needs.roads.outputs.enabled || 'false' }}
           TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
+          BOUNDARIES_ENABLED: ${{ needs.hranice.outputs.enabled || 'false' }}
+          WATER_ENABLED: ${{ needs.vodstvo.outputs.enabled || 'false' }}
           REGION_KEY: ${{ needs.plan.outputs.key }}
           ROCKS_ENABLED: ${{ needs.dem.outputs.rocks_enabled || 'false' }}
           ROCKS_SOURCE: ${{ needs.dem.outputs.rock_source }}

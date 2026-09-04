@@ -5,7 +5,7 @@
 #
 # PREČO DVA SÚBORY Z JEDNÉHO JOBU: appka ponúka na stiahnutie „línie z OSM"
 # a „body z OSM" ako dva rôzne balíky (`workers/deploy/publish-map.py`,
-# balíky `linie` a `body`) – rozpis prečo je v hlavičke `points.yml`. Vstup
+# balíky `cesty` a `body`) – rozpis prečo je v hlavičke `points.yml`. Vstup
 # aj predfilter sú pre oba súbory ROVNAKÉ, líši sa len schéma, ktorú nad ním
 # beží Planetiler – druhý beh je preto len pár riadkov navyše, nie druhý job.
 #

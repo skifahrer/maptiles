@@ -1,0 +1,345 @@
+# Planetiler custom schema – HRANICE ÚZEMÍ a ICH NÁZVY v jednom `.pmtiles`.
+#
+# PREČO VLASTNÝ SÚBOR, KEĎ HRANICE V MAPE UŽ SÚ. Vrstva `boundary` schémy
+# OpenMapTiles nesie `admin_level`, `disputed` a `maritime` – teda ČIARU, po
+# ktorej sa kreslí, a nič viac: hranica je tam rozsekaná na úseky medzi
+# susedmi, NEMÁ MENO územia, ktoré ohraničuje, a `admin_level` je v nej
+# orezaný (obce sa v OpenMapTiles kreslia až od vysokých zoomov). Kto sa pýta
+# „v ktorej obci som" alebo „ktorý okres to je", to z tých dlaždíc nevyčíta.
+#
+# Tento súbor je odpoveď na to: územia ako PLOCHY s menom a úrovňou, k tomu
+# body sídel, z ktorých sa mená kreslia. Štát, kraj, okres, obec – a to, ako
+# sa volajú.
+#
+# DVA TVARY TEJ ISTEJ VECI, A JE TO ZÁMER:
+#
+#     `boundary`      PLOCHA územia s menom a `admin_level`. Odpovedá na
+#                     „čo je pod týmto bodom" – hranica ako čiara na to
+#                     odpovedať nevie.
+#     `boundary_line` tá istá hranica ako ČIARA. Kreslí sa, plocha sa nie:
+#                     výplň cez celý kraj by prekryla mapu pod sebou.
+#     `place`         bod sídla (`place=city` … `hamlet`) s menom
+#                     a počtom obyvateľov – tam, kde sa meno má napísať.
+#
+# ÚROVNE SÚ SLOVENSKÉ, ALE ZOZNAM NIE JE. `admin_level` je v OSM celosvetový
+# a jeho význam je v každom štáte iný (u nás 2 štát, 4 kraj, 8 okres, 9 obec
+# a mestské časti sú 10; v Rakúsku 4 spolková krajina, 6 okres, 8 obec). Do
+# dlaždice sa preto dáva ČÍSLO, nie naše meno tej úrovne – kto stavia mapu
+# nad iným štátom, si ho vyloží po svojom, a keby sme sem napísali „kraj",
+# bola by to lož všade inde než doma.
+#
+# ZOOMY. Štát a kraj sú kostra a majú byť vidieť hneď (z2 a z4); okres od z6,
+# obec od z8. Nižšie by z obcí bola na prehľadovom zoome len sieť čiar, a je
+# ich rádovo najviac.
+#
+# POZOR NA `min_zoom` NAD MAXZOOMOM ARCHÍVU: čo má vyšší `min_zoom`, než je
+# maxzoom dlaždíc, Planetiler ZAHODÍ a nepovie o tom nič. Stráži to
+# `workers/boundaries/build.sh`.
+#
+# PREDFILTER (`workers/boundaries/filter.txt`) MUSÍ PUSTIŤ VŠETKO, ČO TU JE –
+# a musí pustiť aj ČLENOV relácií, inak Planetiler nemá z čoho zložiť polygón.
+schema_name: FricoMaps hranice území
+schema_description: >-
+  Hranice štátu, kraja, okresu a obce ako plochy aj ako čiary, s menom
+  a úrovňou územia, a k tomu body sídel, z ktorých sa tie mená kreslia
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>
+
+sources:
+  osm:
+    type: osm
+    local_path: data/boundaries.osm.pbf
+
+# `admin_level` je v OSM reťazec („8"), ale je to poradie – ako reťazec by sa
+# `admin_level < 6` v štýle ani v analýze nedalo povedať. `population` z toho
+# istého dôvodu.
+tag_mappings:
+  admin_level: integer
+  population: long
+
+definitions:
+  # Atribúty územia sa píšu RAZ – plocha aj čiara nesú to isté, len inú
+  # geometriu, a dve kópie zoznamu by sa raz rozišli.
+  - &area_attrs
+    - key: name
+    - key: name_en
+      value:
+        tag_value: "name:en"
+    - key: admin_level
+    - key: ref
+    # Kto územie spravuje – `wikidata` je to, čím sa dá napojiť na čokoľvek
+    # iné (aj na náš balík článkov z Wikipédie).
+    - key: wikidata
+    - key: wikipedia
+    - key: osm_id
+      value: '${ feature.id }'
+      type: long
+    - key: osm_type
+      value: '${ feature.osm_type }'
+
+layers:
+  # ---------- 1. územie ako plocha ----------
+  # Kvôli tomuto vrstva existuje: odpoveď na „v ktorom okrese je tento bod".
+  - id: boundary
+    features:
+      # --- štát: od z2 ---
+      - source: osm
+        geometry: polygon
+        min_zoom: 2
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["2"]
+        attributes: *area_attrs
+
+      # --- kraj (a čokoľvek, čo je v danom štáte úroveň 3 a 4): od z4 ---
+      - source: osm
+        geometry: polygon
+        min_zoom: 4
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["3", "4"]
+        attributes: *area_attrs
+
+      # --- okres: od z6 ---
+      - source: osm
+        geometry: polygon
+        min_zoom: 6
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["5", "6", "7"]
+        attributes: *area_attrs
+
+      # --- obec: od z8 ---
+      # Najhustejšia úroveň zo všetkých – na nižšom zoome by z nej bola len
+      # sieť čiar cez celú mapu.
+      - source: osm
+        geometry: polygon
+        min_zoom: 8
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["8"]
+        attributes: *area_attrs
+
+  # ---------- 2. tá istá hranica ako čiara ----------
+  # Plochy sa nekreslia (výplň cez celý kraj by prekryla mapu pod sebou),
+  # takže čiara je to, čo štýl naozaj nakreslí. Je to DRUHÝ tvar tej istej
+  # relácie, nie druhá pravda: mená aj úrovne sú tie isté atribúty.
+  - id: boundary_line
+    features:
+      - source: osm
+        geometry: line
+        min_zoom: 2
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["2"]
+        attributes: *area_attrs
+      - source: osm
+        geometry: line
+        min_zoom: 4
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["3", "4"]
+        attributes: *area_attrs
+      - source: osm
+        geometry: line
+        min_zoom: 6
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["5", "6", "7"]
+        attributes: *area_attrs
+      - source: osm
+        geometry: line
+        min_zoom: 8
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["8"]
+        attributes: *area_attrs
+
+    # Hranica je v OSM rozsekaná na úseky medzi susedmi, takže sa úseky
+    # s rovnakými hodnotami zlepia – inak by na jednej hranici okresu bolo
+    # dvadsať štítkov s tým istým menom.
+    tile_post_process:
+      merge_line_strings:
+        min_length: 0
+
+  # ---------- 3. kde sa to meno kreslí ----------
+  # Bod sídla. Hranica povie, kde územie KONČÍ; bod povie, kde sa jeho meno
+  # napíše – ťažisko polygónu je pri obci s dlhým chvostom mimo zastavanej
+  # časti a mapér to vie lepšie.
+  - id: place
+    features:
+      - source: osm
+        geometry: point
+        min_zoom: 2
+        include_when:
+          place: [country, state, region, province]
+        attributes: &place_attrs
+          - key: class
+            type: match_value
+          - key: name
+          - key: name_en
+            value:
+              tag_value: "name:en"
+          - key: population
+          - key: capital
+          - key: wikidata
+          - key: osm_id
+            value: '${ feature.id }'
+            type: long
+          - key: osm_type
+            value: '${ feature.osm_type }'
+
+      - source: osm
+        geometry: point
+        min_zoom: 5
+        include_when:
+          place: [county, district, municipality]
+        attributes: *place_attrs
+
+      - source: osm
+        geometry: point
+        min_zoom: 6
+        include_when:
+          place: [city, town]
+        attributes: *place_attrs
+
+      # Dedina a osada sú to, čoho je najviac – vlastný zoom a až od z10.
+      - source: osm
+        geometry: point
+        min_zoom: 10
+        include_when:
+          place: [village, hamlet, isolated_dwelling, suburb, quarter,
+                  neighbourhood, borough]
+        attributes: *place_attrs
+
+# ---------------------------------------------------------------------------
+# TESTY. Púšťa ich `java -jar planetiler.jar verify workers/boundaries/boundaries.yml`
+# a je to jediná vec, ktorá o tejto schéme povie pravdu bez celého behu.
+examples:
+  - name: Hranica štátu je plocha aj čiara, od z2, s menom
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        boundary: administrative
+        admin_level: "2"
+        name: Slovensko
+        "name:en": Slovakia
+    output:
+      - layer: boundary
+        geometry: polygon
+        min_zoom: 2
+        tags:
+          name: Slovensko
+          name_en: Slovakia
+          admin_level: 2
+      - layer: boundary_line
+        geometry: line
+        min_zoom: 2
+        tags:
+          name: Slovensko
+          admin_level: 2
+
+  - name: Kraj je od z4
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        boundary: administrative
+        admin_level: "4"
+        name: Prešovský kraj
+    output:
+      - layer: boundary
+        geometry: polygon
+        min_zoom: 4
+        tags:
+          name: Prešovský kraj
+          admin_level: 4
+      - layer: boundary_line
+        geometry: line
+        min_zoom: 4
+        tags:
+          name: Prešovský kraj
+          admin_level: 4
+
+  - name: Obec je od z8 a nesie meno, ktoré hranica v mape nemá
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        boundary: administrative
+        admin_level: "8"
+        name: Ždiar
+    output:
+      - layer: boundary
+        geometry: polygon
+        min_zoom: 8
+        tags:
+          name: Ždiar
+          admin_level: 8
+      - layer: boundary_line
+        geometry: line
+        min_zoom: 8
+        tags:
+          name: Ždiar
+          admin_level: 8
+
+  - name: Mestská časť (úroveň 10) sem nepatrí – obcou nie je
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        boundary: administrative
+        admin_level: "10"
+        name: Staré Mesto
+    output: []
+
+  - name: Chránené územie je hranica, ale nie administratívna
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        boundary: protected_area
+        name: TANAP
+    output: []
+
+  - name: Bod obce povie, kde sa meno kreslí
+    input:
+      source: osm
+      geometry: point
+      tags:
+        place: village
+        name: Ždiar
+        population: "1300"
+    output:
+      - layer: place
+        geometry: point
+        min_zoom: 10
+        tags:
+          class: village
+          name: Ždiar
+          population: 1300
+
+  - name: Krajské mesto je od z6
+    input:
+      source: osm
+      geometry: point
+      tags:
+        place: city
+        name: Prešov
+        population: "84000"
+    output:
+      - layer: place
+        geometry: point
+        min_zoom: 6
+        tags:
+          class: city
+          name: Prešov
+          population: 84000

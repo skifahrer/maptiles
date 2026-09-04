@@ -46,7 +46,9 @@ BUILD = ".github/workflows/build-map-region.yml"
 RELAY = "workers/state/regenerate.sh"
 JADRO = "workers/state/estafeta.sh"
 JOBS = "workers/state/jobs.py"
-PUBLISH = "workers/deploy/publish-map.py"
+CISELNIK = "workers/data/packages.json"
+with open(CISELNIK, encoding="utf-8") as _f:
+    ZNAME_BALIKY = {b["kluc"] for b in json.load(_f).get("baliky") or []}
 REGIONS = "workers/data/regions.json"
 WF_DIR = ".github/workflows"
 # Vstupy dávky, ktoré NIE SÚ nastavením behu: krajina je to, nad čím sa to
@@ -54,7 +56,8 @@ WF_DIR = ".github/workflows"
 VLASTNE = {"country", "co", "pokracovanie"}
 # Podiely na rozpočte stránky, ktoré `regenerate-region.yml` musí mať rovnaké
 # ako build mapy – `env:` workflowu sa nededí, takže sú napísané dvakrát.
-PODIELY = ("BUDGET_TRAILS_PCT", "BUDGET_FEATURES_PCT", "BUDGET_ROADS_PCT",
+PODIELY = ("BUDGET_TRAILS_PCT", "BUDGET_FEATURES_PCT", "BUDGET_TRANSPORT_PCT",
+           "BUDGET_BOUNDARIES_PCT", "BUDGET_WATER_PCT",
            "BUDGET_CONTOURS_PCT", "BUDGET_ROCKS_PCT", "BUDGET_TERRAIN_PCT")
 KRAJ_LEVEL = 4
 
@@ -144,9 +147,11 @@ for kluc, j in jobs.JOBS.items():
             chyba(JOBS, f"`{kluc}` podáva `{meno}={hodnota}`, ale "
                         f"`{j['workflow']}` ponúka {volby}.")
     # Balík, ktorý packer nepozná, spadne až na `--only` – teda v behu.
-    if f'("{j["balik"]}", "' not in open(PUBLISH, encoding="utf-8").read():
+    # Zoznam balíkov drží číselník (`workers/data/packages.json`) a berie ho
+    # odtiaľ aj `publish-map.py`, takže sa pýtame jeho.
+    if j["balik"] not in ZNAME_BALIKY:
         chyba(JOBS, f"`{kluc}` sľubuje balík `{j['balik']}`, ktorý "
-                    f"{PUBLISH} nepozná – beh by spadol na `--only`.")
+                    f"{CISELNIK} nepozná – beh by spadol na `--only`.")
 
 # ---------- 3b. každú voľbu niekto naozaj robí ----------
 # Voľba, ktorú ani jeden job nespomína vo svojej podmienke, je najtichšia

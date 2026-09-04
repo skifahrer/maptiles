@@ -96,7 +96,11 @@ class Profile:
                 return False
             raise ValueError(f"voľba `{key}` je prepínač – čakám ano/nie, "
                              f"dostal som `{text}`")
-        if kind in ("speed", "factor"):
+        if kind in ("speed", "factor", "size"):
+            # `size` je rozmer vozidla (výška, šírka, dĺžka, hmotnosť) –
+            # desatinné číslo v metroch alebo tonách. Vlastný typ, a nie
+            # `factor`: `factor` je bezrozmerná váha 0–1, kým toto má jednotku
+            # a rozsah, v ktorom má zmysel (`range` v číselníku).
             value = float(text)
         elif kind == "int":
             value = int(text)

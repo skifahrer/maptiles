@@ -89,10 +89,10 @@ vrátila staré (širšie) fonty. Preto je skript teraz v `hashFiles(...)`.
 > neplatí a je to zmerané**: graf kraja váži 170–190 MB a mapa s ním 283 MB,
 > čiže dve tretiny „základnej mapy". To nie sú percentá, to je ten istý
 > prípad ako vrstevnice a tieňovanie, takže je zo základnej mapy VON. Chvíľu
-> cestoval v balíku `linie` (trasy, obmedzenia a graf sú tá istá sieť z toho
-> istého PBF, raz nakreslená a raz zjazdná), lenže odkedy je v `linie` CELÁ
-> dopravná sieť, vážia tie tri kreslené vrstvy desiatky MB proti 170–190 za
-> graf – deväť desatín balíka by bol graf. Má preto zase VLASTNÝ
+> cestoval v balíku `linie` (kreslená sieť a graf sú tá istá vec z toho istého
+> PBF, raz nakreslená a raz zjazdná), lenže kreslená dopravná sieť váži
+> desiatky MB proti 170–190 za graf – deväť desatín balíka by bol graf. Má
+> preto VLASTNÝ
 > `-navigacia.zip` a veľkosť je v katalógu pod `maps.navigacia`, nie pod
 > `casti`. Rozdiel oproti indexu je práve to číslo, nie iná úvaha –
 > `docs/navigation.md` §7a.
@@ -215,3 +215,29 @@ skôr, než sa o ňom rozhodne.
 
 Čo naopak **nemá zmysel** riešiť: sprity (všetky tri sady majú v zdroji dokopy
 ~380 KB) a viewer (`poc/web` má 576 KB). Sú to promile.
+
+## Nález 5 – balíkov bolo osem názvov pre šesť otázok ✅ opravené
+
+> Opravené: zoznam balíkov drží **jedno miesto**
+> (`workers/data/packages.json`, číta ho `workers/deploy/baliky.py`) a berie
+> ho odtiaľ pipeline, formulár pregenerovania, dávka nad krajinou aj katalóg –
+> a cez `maps.json` (`app`, `symbol`) aj aplikácia.
+
+Balík bol napísaný na piatich miestach naraz: čo je v ňom (`subory.py`), ako sa
+volá (`publish-map.py`), čo sa dá pregenerovať (`state/jobs.py`), dva `choice`
+zoznamy vo formulároch a ešte raz tabuľka mien a ikon v aplikácii. Päť
+pravdivých odpovedí na jednu otázku sa raz rozíde – a rozíde sa TICHO: balík,
+ktorý pipeline vyrobí a appka nepozná, sa v nej zobrazí ako holý kľúč bez ikony,
+a voľba, ktorá je vo formulári a nie v packeri, spadne až v behu na `--only`.
+
+Pri tom sa zoznam aj upratal, lebo tri balíky neodpovedali na otázku, ktorú si
+kladie človek pri sťahovaní:
+
+| bolo | je | prečo |
+|---|---|---|
+| `linie` = dopravná sieť + značené trasy + obmedzenia na ceste | `cesty` = dopravná sieť **aj s obmedzeniami** ako jej atribútmi | tri vrstvy v jednom balíku boli tri odpovede; obmedzenia boli navyše ATRIBÚTY tých istých ciest, takže tá istá cesta ležala v dvoch archívoch a kto chcel oboje, spájal si ich cez `osm_id` |
+| značené trasy v `linie` | značené trasy **v základnej mape** | turistická mapa bez značiek nesľubuje to, načo si ju človek stiahol – ten istý dôvod, pre ktorý je v mape hľadanie. Sú to jednotky MB proti stovkám za dlaždice |
+| – | `hranice`, `vodstvo` | v mape sú obe veci NAKRESLENÉ, ale nie POUŽITEĽNÉ: hranica vo vrstve `boundary` OpenMapTiles je čiara bez mena územia (nedá sa z nej povedať, v ktorej obci si) a voda je v troch vrstvách s menom mimo geometrie |
+
+Balík `linie` je preto v `zrusene` – jeho starý ZIP aj `.aar` sa na Drive mažú,
+lebo mená sú stále a nový beh by ich neprepísal.

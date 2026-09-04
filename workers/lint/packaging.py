@@ -26,9 +26,11 @@ nie je), a pre všetkých ostatných musí adresa v štýle na niečo ukazovať.
      a viewer do `_site` ďalej KOPÍRUJE (na Pages ostať musí),
   5. `workers/world/style.mjs` neodkazuje na glyfy DO BALÍKA – tam už nie sú –,
      ale na adresu, z ktorej si ich vezme ten, kto nie je appka,
-  6. hľadanie zo základnej mapy nevypadlo a je premerané (vlastný balík nemá),
-  7. navigačný graf je NAOPAK von – cestuje v balíku `-linie.zip` – a v tom
-     balíku je celý; v základnej mape by ho každý stiahol druhýkrát.
+  6. hľadanie ANI ZNAČENÉ TRASY zo základnej mapy nevypadli a sú premerané
+     (vlastný balík nemajú),
+  7. navigačný graf je NAOPAK von – má vlastný balík a je v ňom celý;
+     v základnej mape by ho každý stiahol druhýkrát,
+  8. balík nie je v číselníku medzi živými a zrušenými naraz.
 
 Spustiť sa dá aj lokálne:
     python3 workers/lint/packaging.py
@@ -42,6 +44,7 @@ import tempfile
 import zipfile
 
 PUBLISH = "workers/deploy/publish-map.py"
+CISELNIK = "workers/data/packages.json"
 SUBORY = "workers/deploy/subory.py"
 SITE = "workers/deploy/site.sh"
 WORLD_STYLE = "workers/world/style.mjs"
@@ -75,7 +78,8 @@ def napln(site):
                 "tiles/kraj-contours.pmtiles", "tiles/kraj-rocks.pmtiles",
                 "tiles/kraj-terrain.pmtiles",
                 "tiles/kraj-transport.pmtiles", "tiles/kraj-trails.pmtiles",
-                "tiles/kraj-roads.pmtiles", "tiles/kraj-points.pmtiles",
+                "tiles/kraj-points.pmtiles", "tiles/kraj-boundaries.pmtiles",
+                "tiles/kraj-water.pmtiles",
                 "tiles/search-index.db", "routing/valhalla_tiles.tar",
                 "routing/valhalla.json", "routing/admins.sqlite",
                 "routing/timezones.sqlite", "routing/graf.json"):
@@ -170,14 +174,14 @@ if "fonts/Noto Sans Regular/0-255.pbf" in neznamy:
         f"Presne tak dopadol prvý ostrý beh `.aar` – desiatky MB navyše v každom "
         f"balíku, a na súbore to nikto nepozná.")
 
-# ---- 6. hľadanie z balíka VYPADNÚŤ NESMIE ----
+# ---- 6. hľadanie a značené trasy z balíka VYPADNÚŤ NESMÚ ----
 # Vlastný balík nemá: `search-index.db` ho mal a bola to mapa, v ktorej sa
 # nedalo nič nájsť, kým si človek nestiahol druhý ZIP – o ktorom sa v aplikácii
 # nedozvedel. Vypadnúť pritom môže jedným riadkom (stačí ho pridať medzi to, čo
 # `zaklad_subory` vynecháva) a NIČ NESPADNE – preto kontrola.
 baliky = zabalene()
 mapa_zip = baliky.get("mapa", set())
-linie_zip = baliky.get("linie", set())
+cesty_zip = baliky.get("cesty", set())
 navigacia_zip = baliky.get("navigacia", set())
 
 if baliky and "tiles/search-index.db" not in mapa_zip:
@@ -186,6 +190,17 @@ if baliky and "tiles/search-index.db" not in mapa_zip:
         f"vlastný balík nemá – cestuje v základnej mape a bez neho je to "
         f"mapa, v ktorej sa nedá nič nájsť. Nespadne pri tom nič; pozná sa to "
         f"až v telefóne.")
+
+# ZNAČENÉ TRASY SÚ V MAPE Z TOHO ISTÉHO DÔVODU. Cestovali v balíku `linie`
+# vedľa dopravnej siete a bola to tá istá chyba, akú mal `-search.zip`:
+# turistická mapa bez značiek nesľubuje to, načo si ju človek stiahol, a že mu
+# chýba druhý súbor, sa nemal ako dozvedieť. Sú to jednotky MB proti stovkám
+# za dlaždice, takže sa tu nemá čo šetriť – a vypadnúť môžu jedným riadkom.
+if baliky and "tiles/kraj-trails.pmtiles" not in mapa_zip:
+    bad.append(
+        f"{PUBLISH}: `tiles/kraj-trails.pmtiles` z balíka mapy VYPADOL. "
+        f"Značené trasy vlastný balík nemajú – cestujú v základnej mape a bez "
+        f"nich je to turistická mapa bez značiek. Nespadne pri tom nič.")
 
 # A musí byť aj PREMERANÉ – veľkosť ide do `maps.json` pod balík `mapa`
 # (`casti`). Časť, ktorú nikto nemeria, je presne to, čím bol `search-index.db`
@@ -196,16 +211,21 @@ sub = nacitaj_modul("deploy_subory", SUBORY)
 with _tf.TemporaryDirectory() as site:
     napln(site)
     merane = sub.velkost_casti(sub.casti_baliku(site, PAGES))
-if "search" not in merane:
-    bad.append(
-        f"{SUBORY}: časť `search` sa nepremeriava, takže sa jej veľkosť nemá "
-        f"ako dostať do `maps.json` – a keďže vlastný balík nemá, nedá sa "
-        f"zistiť inak než stiahnutím celej mapy.")
-elif not merane["search"].get("files"):
-    bad.append(
-        f"{SUBORY}: časť `search` nenašla ani jeden súbor v `_site`, hoci tam "
-        f"sú. Zmenil sa výber podľa mena alebo priečinka? V mape by tá časť "
-        f"ostala, len by o nej katalóg tvrdil, že tam nie je.")
+for _cast, _preco in (("search", "index na offline hľadanie"),
+                      ("trasy", "značené trasy")):
+    if _cast in merane and merane[_cast].get("files"):
+        continue
+    if _cast not in merane:
+        bad.append(
+            f"{SUBORY}: časť `{_cast}` ({_preco}) sa nepremeriava, takže sa "
+            f"jej veľkosť nemá ako dostať do `maps.json` – a keďže vlastný "
+            f"balík nemá, nedá sa zistiť inak než stiahnutím celej mapy.")
+    else:
+        bad.append(
+            f"{SUBORY}: časť `{_cast}` ({_preco}) nenašla ani jeden súbor "
+            f"v `_site`, hoci tam sú. Zmenil sa výber podľa mena alebo "
+            f"priečinka? V mape by tá časť ostala, len by o nej katalóg "
+            f"tvrdil, že tam nie je.")
 
 # ---- 7. navigačný graf: VLASTNÝ balík, a preto ZO ZÁKLADNEJ MAPY VON ----
 # Graf sa kedysi balil dovnútra mapy s argumentom „jednotky až desiatky MB
@@ -232,10 +252,10 @@ for meno in ("routing/valhalla_tiles.tar", "routing/valhalla.json",
             f"balík `-navigacia.zip`. Cesty vnútri sú tie isté, takže by ho mal "
             f"každý dvakrát: raz v mape, raz v balíku – a na veľkosti to nikto "
             f"nepozná. Patrí do `vylucit` v `zaklad_subory`.")
-    if meno in linie_zip:
+    if meno in cesty_zip:
         bad.append(
-            f"{PUBLISH}: `{meno}` je v balíku `-linie.zip`, kde už graf nie je. "
-            f"`linie` je kreslená dopravná sieť (desiatky MB), graf je 170 až "
+            f"{PUBLISH}: `{meno}` je v balíku `-cesty.zip`, kde graf nie je. "
+            f"`cesty` je kreslená dopravná sieť (desiatky MB), graf je 170 až "
             f"190 MB – v jednom balíku by z neho bolo deväť desatín a kto chce "
             f"sieť len vidieť, sťahoval by ho tak či tak.")
     if meno not in navigacia_zip:
@@ -251,10 +271,10 @@ for meno in ("routing/valhalla_tiles.tar", "routing/valhalla.json",
 for druh, meno in (("vrstevnice-skaly", "tiles/kraj-contours.pmtiles"),
                    ("vrstevnice-skaly", "tiles/kraj-rocks.pmtiles"),
                    ("tienovanie", "tiles/kraj-terrain.pmtiles"),
-                   ("linie", "tiles/kraj-transport.pmtiles"),
-                   ("linie", "tiles/kraj-trails.pmtiles"),
-                   ("linie", "tiles/kraj-roads.pmtiles"),
-                   ("body", "tiles/kraj-points.pmtiles")):
+                   ("cesty", "tiles/kraj-transport.pmtiles"),
+                   ("body", "tiles/kraj-points.pmtiles"),
+                   ("hranice", "tiles/kraj-boundaries.pmtiles"),
+                   ("vodstvo", "tiles/kraj-water.pmtiles")):
     if not baliky:
         break
     if meno in mapa_zip:
@@ -278,18 +298,25 @@ if "navigacia" in merane:
 # graf cestoval v `linie` – a `ZRUSENE` znamená „starý sa na Drive MAŽE".
 # Nechať ju tam teraz by znamenalo balík, ktorý beh nahrá a hneď za sebou
 # zmaže, alebo (podľa poradia) katalóg bez položky, ktorá na Drive leží.
-pmap_text = open(PUBLISH, encoding="utf-8").read()
-if re.search(r"^ZRUSENE\s*=.*\bnavigacia\b", pmap_text, re.M):
+# Odkedy zoznam balíkov drží číselník, je to jeden súbor a jeden pohľad:
+# balík nesmie byť v OBOCH zoznamoch naraz. „Vyrába sa" a „starý sa maže" sú
+# opačné tvrdenia a beh by podľa poradia balík nahral a hneď zmazal – alebo by
+# katalóg neniesol položku k súboru, ktorý na Drive leží.
+import json as _json                                          # noqa: E402
+with open(CISELNIK, encoding="utf-8") as _f:
+    _cis = _json.load(_f)
+_zive = {b["kluc"] for b in _cis.get("baliky") or []}
+_mrtve = set(_cis.get("zrusene") or ())
+for _k in sorted(_zive & _mrtve):
     bad.append(
-        f"{PUBLISH}: `navigacia` je v `ZRUSENE`, hoci sa ten balík zase "
-        f"vyrába. `ZRUSENE` znamená „starý sa maže“ – balík by tak zmizol "
-        f"z Drive aj z katalógu hneď po tom, čo ho beh nahral.")
-if '("navigacia", ' not in pmap_text:
-    bad.append(
-        f"{PUBLISH}: balík `navigacia` nie je v zozname `baliky`. Graf sa "
-        f"postaví, do `linie` už nepatrí (je tam celá kreslená dopravná sieť) "
-        f"a takto by neskončil nikde – mapa by vedela, kde čo je, ale nevedela "
-        f"by ťa tam doviezť.")
+        f"{CISELNIK}: balík `{_k}` je medzi živými AJ v `zrusene`. `zrusene` "
+        f"znamená „starý sa maže“ – balík by tak zmizol z Drive aj z katalógu "
+        f"hneď po tom, čo ho beh nahral.")
+for _k in ("navigacia", "cesty", "hranice", "vodstvo"):
+    if _k not in _zive:
+        bad.append(
+            f"{CISELNIK}: balík `{_k}` v číselníku nie je, takže sa nevyrobí "
+            f"a katalóg o ňom nepovie nič – vrstva sa postaví a skončí nikde.")
 
 # ---- 4. Pages tie súbory naozaj má ----
 with open(SITE, encoding="utf-8") as f:

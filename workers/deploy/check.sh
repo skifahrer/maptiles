@@ -123,8 +123,8 @@ PM="$SITE/tiles/$REGION_KEY.pmtiles"
 # a vrstva ticho chýba.
 for pair in "contours:vrstevnice" "rocks:skaly" "trails:značené trasy" \
             "features:krajinné prvky" "points:body v krajine" \
-            "roads:obmedzenia na ceste" \
-            "transport:dopravná sieť"; do
+            "transport:dopravná sieť (aj obmedzenia na ceste)" \
+            "boundaries:hranice území" "water:vodstvo"; do
   src="${pair%%:*}"; popis="${pair#*:}"
   jq -e ".sources.$src" "$STYLE" >/dev/null || continue
   f="$SITE/tiles/$REGION_KEY-$src.pmtiles"

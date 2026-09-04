@@ -1,0 +1,318 @@
+# Planetiler custom schema – VODSTVO z OSM v jednom `.pmtiles`.
+#
+# PREČO VLASTNÝ SÚBOR, KEĎ VODA V MAPE UŽ JE. Vrstvy `water`, `waterway`
+# a `water_name` schémy OpenMapTiles sú stavané na KRESLENIE: geometria je
+# zjednodušená podľa zoomu, potoky vypadávajú na nižších zoomoch, meno je
+# v tretej vrstve zvlášť a všetko to leží v jednom archíve s cestami, krajinnou
+# pokrývkou a popismi. Kto chce „vodstvo a nič iné" – na plánovanie, na export,
+# na vlastnú analýzu –, musí si stiahnuť celú mapu (stovky MB) a vytiahnuť si
+# to z nej sám.
+#
+# Tento súbor je odpoveď na to: JEDEN archív, v ktorom je všetko vodné, aj
+# s menom NA TOM ISTOM prvku – rieky, potoky, kanály, jazerá, priehrady,
+# rybníky, zálivy, prielivy a pobrežná čiara.
+#
+# PLOCHA OCEÁNU TU NIE JE A NEDÁ SA TU MAŤ. More v OSM nie je nakreslené ako
+# polygón: je to POBREŽNÁ ČIARA celej planéty, z ktorej sa plocha skladá až
+# nástrojom nad celým planétnym súborom (Planetiler na to má vlastný zdroj
+# `water_polygons`, a preto more v základnej mape JE). Z rezaného PBF kraja sa
+# zložiť nedá – zložilo by sa z nej more, ktoré končí na hranici výrezu. Do
+# dlaždice preto ide `natural=coastline` ako ČIARA a meno mora ako bod; plochu
+# kreslí základná mapa.
+#
+# ZOOMY SÚ TU TO HLAVNÉ ROZHODNUTIE. Potokov a jarkov je v OSM rádovo viac než
+# riek, takže rozhodujú o veľkosti súboru:
+#
+#     more, veľké rieky, veľké jazerá     od z4
+#     rieky a väčšie vodné plochy         od z8
+#     potoky, kanály, menšie plochy       od z11
+#     jarky, odvodňovacie kanály          od z13
+#
+# POZOR NA `min_zoom` NAD MAXZOOMOM ARCHÍVU: čo má vyšší `min_zoom`, než je
+# maxzoom dlaždíc, Planetiler ZAHODÍ a nepovie o tom nič. Stráži to
+# `workers/water/build.sh`.
+#
+# PREDFILTER (`workers/water/filter.txt`) MUSÍ PUSTIŤ VŠETKO, ČO TU JE – aj
+# členov relácií, inak z veľkých jazier ostane prázdno.
+schema_name: FricoMaps vodstvo
+schema_description: >-
+  Rieky, potoky, kanály, jazerá, priehrady, rybníky, zálivy a pobrežná čiara
+  z OSM, každý prvok aj s menom
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>
+
+sources:
+  osm:
+    type: osm
+    local_path: data/water.osm.pbf
+
+# `layer` je celé číslo (potok pod cestou), `width` je šírka toku v metroch –
+# ako reťazec by sa nedala porovnávať.
+tag_mappings:
+  layer: integer
+
+definitions:
+  # Atribúty sú pre všetky bloky ROVNAKÉ a píšu sa raz – dve kópie zoznamu by
+  # sa raz rozišli a jedna trieda vody by ticho prišla o meno.
+  - &water_attrs
+    # ČO TO JE. Oboje z toho, ČÍM sa blok trafil, nie vypísané pri každom
+    # bloku ručne: zoznam tried je v `include_when` a druhá kópia tých istých
+    # hodnôt by sa s ním raz rozišla.
+    #
+    #     class  hodnota tagu ako v OSM – `river`, `stream`, `water`, `bay`
+    #     druh   KĽÚČ tagu, teda rodina: `waterway`, `natural`, `landuse`
+    - key: class
+      type: match_value
+    - key: druh
+      type: match_key
+    # AKO SA VOLÁ – kvôli tomuto je meno na tom istom prvku ako geometria
+    # a nie vo vlastnej vrstve popiskov.
+    - key: name
+    - key: name_en
+      value:
+        tag_value: "name:en"
+    # AKÁ TO JE VODA. `water` odlíši jazero od priehrady a rybníka,
+    # `intermittent` povie, či tam voda je celý rok (na juhu polovica potokov
+    # v lete vyschne), `salt` slanú od sladkej.
+    - key: water
+    - key: intermittent
+    - key: salt
+    - key: tidal
+    # KADIAĽ A AKO. `tunnel` (potok pod cestou), `layer` (poradie nad sebou),
+    # `width` a `boat` – po ktorej rieke sa dá ísť loďou.
+    - key: tunnel
+    - key: layer
+    - key: width
+    - key: boat
+    - key: wikidata
+    - key: osm_id
+      value: '${ feature.id }'
+      type: long
+    - key: osm_type
+      value: '${ feature.osm_type }'
+
+layers:
+  # ---------- 1. tečúca voda ----------
+  - id: waterway
+    features:
+      # --- veľké rieky: od z4 ---
+      # Kostra vodstva: na prehľadovom zoome má byť vidieť, kadiaľ tečie Váh.
+      - source: osm
+        geometry: line
+        min_zoom: 4
+        include_when:
+          waterway: [river]
+        attributes: *water_attrs
+
+      # --- potoky a kanály: od z11 ---
+      - source: osm
+        geometry: line
+        min_zoom: 11
+        include_when:
+          waterway: [stream, canal, flowline]
+        attributes: *water_attrs
+
+      # --- jarky a odvodnenie: od z13 ---
+      # Vlastný blok a vlastný zoom: `ditch` a `drain` sú v poľnohospodárskej
+      # krajine najhustejšia trieda vôbec a na z11 by z nich bola mriežka cez
+      # celú mapu.
+      - source: osm
+        geometry: line
+        min_zoom: 13
+        include_when:
+          waterway: [ditch, drain]
+        attributes: *water_attrs
+
+  # ---------- 2. stojatá voda a more ----------
+  - id: water
+    features:
+      # --- vodné plochy: od z8 ---
+      # Jazero, priehrada, rybník aj široká rieka mapovaná ako plocha. Ktorá
+      # z nich to je, hovorí `water` (`lake`, `reservoir`, `pond`, `river`).
+      - source: osm
+        geometry: polygon
+        min_zoom: 8
+        include_when:
+          natural: [water]
+        attributes: *water_attrs
+
+      # --- vodné nádrže mapované ako využitie plochy: od z8 ---
+      # Tá istá vec, iný tag – mapéri ju značia oboma spôsobmi a vrstva, ktorá
+      # by poznala len jeden, by polovicu priehrad nemala.
+      - source: osm
+        geometry: polygon
+        min_zoom: 8
+        include_when:
+          landuse: [reservoir, basin]
+        attributes: *water_attrs
+
+      # --- záliv a prieliv: od z4 ---
+      # Pomenovaná časť mora. Plochu mora nekreslíme (viď hlavičku), ale to,
+      # ako sa ktorá jeho časť volá, patrí sem.
+      - source: osm
+        geometry: polygon
+        min_zoom: 4
+        include_when:
+          natural: [bay, strait]
+        attributes: *water_attrs
+
+      # --- pobrežná čiara: od z4, ako ČIARA ---
+      # Nie plocha – plocha oceánu z rezaného PBF nevznikne (rozpis v hlavičke).
+      - source: osm
+        geometry: line
+        min_zoom: 4
+        include_when:
+          natural: [coastline]
+        attributes: *water_attrs
+
+    # Rieka je v OSM rozsekaná na úseky (na každom moste, na každej hranici),
+    # takže sa úseky s rovnakými hodnotami zlepia. Nie je to len úspora miesta:
+    # meno sa kreslí podľa dĺžky čiary (`symbol-placement: line`), takže na
+    # dvadsiatich krátkych úsekoch by bolo dvadsať mien tej istej rieky.
+    tile_post_process:
+      merge_line_strings:
+        min_length: 0
+
+  # ---------- 3. pramene ----------
+  # Bodová voda. Prameň JE aj v balíku `body` (je to bod záujmu, chodí sa
+  # k nemu po vodu) – tu je preto, že je to začiatok toku a kto si stiahol
+  # vodstvo, ho čaká vo vodstve. Je to ten istý objekt z toho istého PBF, nie
+  # druhá pravda: `osm_id` je v oboch archívoch to isté číslo.
+  - id: water_point
+    features:
+      - source: osm
+        geometry: point
+        min_zoom: 12
+        include_when:
+          natural: [spring]
+        attributes: *water_attrs
+
+# ---------------------------------------------------------------------------
+# TESTY. Púšťa ich `java -jar planetiler.jar verify workers/water/water.yml`
+# a je to jediná vec, ktorá o tejto schéme povie pravdu bez celého behu.
+examples:
+  - name: Rieka je od z4 a nesie meno na sebe
+    input:
+      source: osm
+      geometry: line
+      tags:
+        waterway: river
+        name: Váh
+    output:
+      - layer: waterway
+        geometry: line
+        min_zoom: 4
+        tags:
+          class: river
+          druh: waterway
+          name: Váh
+
+  - name: Potok je od z11
+    input:
+      source: osm
+      geometry: line
+      tags:
+        waterway: stream
+        intermittent: "yes"
+    output:
+      - layer: waterway
+        geometry: line
+        min_zoom: 11
+        tags:
+          class: stream
+          druh: waterway
+          intermittent: "yes"
+
+  - name: Jarok má vlastný zoom (z13) – inak by z neho bola mriežka
+    input:
+      source: osm
+      geometry: line
+      tags:
+        waterway: ditch
+    output:
+      - layer: waterway
+        geometry: line
+        min_zoom: 13
+        tags:
+          class: ditch
+          druh: waterway
+
+  - name: Priehrada je plocha a povie, že je to nádrž
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        natural: water
+        water: reservoir
+        name: Domaša
+    output:
+      - layer: water
+        geometry: polygon
+        min_zoom: 8
+        tags:
+          class: water
+          druh: natural
+          water: reservoir
+          name: Domaša
+
+  - name: Nádrž mapovaná ako využitie plochy je tá istá vec
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        landuse: reservoir
+        name: Zemplínska šírava
+    output:
+      - layer: water
+        geometry: polygon
+        min_zoom: 8
+        tags:
+          class: reservoir
+          druh: landuse
+          name: Zemplínska šírava
+
+  - name: Pobrežie ide ako ČIARA – plocha mora sa z výrezu zložiť nedá
+    input:
+      source: osm
+      geometry: line
+      tags:
+        natural: coastline
+    output:
+      - layer: water
+        geometry: line
+        min_zoom: 4
+        tags:
+          class: coastline
+          druh: natural
+
+  - name: Prameň je bod a je aj vo vodstve, nielen v bodoch záujmu
+    input:
+      source: osm
+      geometry: point
+      tags:
+        natural: spring
+        name: Zbojnícka studňa
+    output:
+      - layer: water_point
+        geometry: point
+        min_zoom: 12
+        tags:
+          class: spring
+          druh: natural
+          name: Zbojnícka studňa
+
+  - name: Plavecký bazén nie je vodstvo
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        leisure: swimming_pool
+    output: []
+
+  - name: Cesta pri rieke do vodstva nepatrí
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: track
+        name: Pri Váhu
+    output: []

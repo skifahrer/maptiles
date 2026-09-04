@@ -1,9 +1,13 @@
 # Predfilter PBF pre workers/transport/transport.yml (`osmium tags-filter --expressions`).
 #
-# JEDEN PRIECHOD, nie dva ako pri obmedzeniach na ceste. `tags-filter` vie len
-# ALEBO – a tu je to presne to, čo treba: dopravná sieť je „cesta ALEBO
-# železnica ALEBO trajekt ALEBO lanovka". Pri obmedzeniach sa filtruje dvakrát,
-# lebo tam je otázka „cesta A má obmedzenie" (rozpis vo `workers/roads/build.sh`).
+# JEDEN PRIECHOD. `tags-filter` vie len ALEBO – a tu je to presne to, čo
+# treba: dopravná sieť je „cesta ALEBO železnica ALEBO trajekt ALEBO lanovka".
+#
+# OBMEDZENIA (`maxheight`, `maxspeed`, …) SA SEM NEPÍŠU a nie je to opomenutie:
+# `tags-filter` berie objekt CELÝ aj so všetkými tagmi, takže `w/highway`
+# prinesie aj výšku podjazdu toho istého úseku. Kým mali obmedzenia vlastnú
+# vrstvu, filtrovalo sa kvôli nim dvakrát („cesta A má obmedzenie" je A, nie
+# ALEBO); odkedy sú atribútom siete, je otázka zase len „je to cesta".
 #
 # Zoznam je zámerne ŠIRŠÍ než schéma: filter je hrubé sito (`w/railway` pustí
 # aj zrušené trate a nástupištia), presné rozhodnutie robí schéma. Opačne to ale

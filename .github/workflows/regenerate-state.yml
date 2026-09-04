@@ -14,13 +14,11 @@ name: Mapa · Regenerate state
 # robí „Mapa · Pregeneruj vrstvu kraja" – tá postaví len tú jednu vec
 # a prepíše len jej balík na Drive. Ceny sa ale líšia rádovo:
 #
-#   body, linie, navigacia        MINÚTY na kraj – počítajú sa z toho istého
-#                                 OSM PBF ako mapa a nič iné nepotrebujú.
-#                                 `linie` je pritom trojica dopravná sieť +
-#                                 značené trasy + obmedzenia na ceste: je to
-#                                 jeden balík, tak je to jedna voľba.
-#                                 `navigacia` je vlastná voľba, lebo je vlastný
-#                                 balík – graf váži rádovo viac než tie tri
+#   body, cesty, hranice,         MINÚTY na kraj – počítajú sa z toho istého
+#   vodstvo, navigacia             OSM PBF ako mapa a nič iné nepotrebujú.
+#                                 Každá z nich je jeden balík, tak je to jedna
+#                                 voľba. `navigacia` je vlastná voľba, lebo je
+#                                 vlastný balík – graf váži rádovo viac než
 #                                 kreslené vrstvy dokopy.
 #   vrstevnice, skaly, tienovanie DESIATKY MINÚT AŽ HODINY – treba sklad
 #                                 výškového modelu, prípadne ho doplniť,
@@ -77,7 +75,9 @@ on:
         type: choice
         options:
           - body
-          - linie
+          - cesty
+          - hranice
+          - vodstvo
           - navigacia
           - vrstevnice
           - skaly
@@ -85,7 +85,7 @@ on:
       # Zdroje výšok a prah sklonu platia LEN pre vrstvy z výškového modelu
       # (`vrstevnice`, `skaly`, `tienovanie`) – tie idú celým buildom kraja
       # a bez nich by sa postavil s predvolenými hodnotami, teda inou mapou.
-      # Pri `body`, `linie` a `navigacia` sa nepodávajú vôbec: tá pipeline
+      # Pri vrstvách z PBF sa nepodávajú vôbec: tá pipeline
       # výškový model nečíta (`workers/state/jobs.py`, `CIELE`).
       #
       # Hodnoty aj predvoľby sú TIE ISTÉ ako vo formulári kraja – iná

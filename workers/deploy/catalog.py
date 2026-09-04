@@ -41,6 +41,9 @@ def _load(name, path):
 
 
 folder = _load("drive_folder", os.path.join(_DRIVE, "folder.py"))
+# Číselník balíkov – z neho ide do katalógu meno a značka každého balíka.
+_HERE_DIR = os.path.dirname(os.path.abspath(__file__))
+katalog_balikov = _load("deploy_baliky", os.path.join(_HERE_DIR, "baliky.py"))
 
 
 def env(name, default=""):
@@ -129,7 +132,7 @@ def region_entry(man):
 # isté ako v `manifest.json`, lebo odtiaľ to ide – dva slovníky pre tú istú vec
 # by sa raz rozišli.
 VRSTVY_TILES = ("pmtiles", "contours", "rocks", "trails", "features", "points",
-                "roads", "transport")
+                "transport", "boundaries", "water")
 
 
 def tiles_paths(man, reg):
@@ -254,6 +257,21 @@ def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None):
     polozka.setdefault("formats", {})[fmt] = zaznam
     if fmt == "zip":
         polozka.update(zaznam)
+    # AKO SA TEN BALÍK VOLÁ A ČÍM SA KRESLÍ. Ide to z číselníka
+    # (`workers/data/packages.json`) sem, aby aplikácia nemusela mať vlastnú
+    # tabuľku ako JEDINÝ zdroj: balík, o ktorom ešte nevie, by sa v nej inak
+    # zobrazil ako holý kľúč (`vrstevnice-skaly`) bez ikony. Jej vlastná
+    # tabuľka ostáva ako záloha pre staršie katalógy.
+    #
+    # Kľúč, ktorý v číselníku nie je (starý balík z minulého behu), sa
+    # nedopĺňa: vymyslené meno by bolo horšie než žiadne.
+    try:
+        meta = katalog_balikov.balik(kind or "mapa")
+    except SystemExit:
+        return
+    polozka["app"] = meta["app"]
+    polozka["symbol"] = meta["symbol"]
+    polozka["popis"] = meta["popis"]
 
 
 # ---------- odkaz, za ktorým už súbor nie je ----------
@@ -626,7 +644,7 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
     for k in ("bbox", "maxzoom", "contours_maxzoom", "contour_interval",
               "rocks_maxzoom", "rock_slope", "dem_source", "rock_source",
               "trails_maxzoom", "features_maxzoom", "points_maxzoom",
-              "roads_maxzoom", "transport_maxzoom"):
+              "transport_maxzoom", "boundaries_maxzoom", "water_maxzoom"):
         if reg.get(k) is not None:
             polozka[k] = reg[k]
     # Cesty k dlaždiciam v balíku – NEODVODZUJÚ sa z kľúča uzla (rozpis pri

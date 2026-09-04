@@ -1,0 +1,43 @@
+# Predfilter PBF pre workers/water/water.yml (`osmium tags-filter --expressions`).
+#
+# JEDEN PRIECHOD: vodstvo je „tok ALEBO vodná plocha ALEBO pobrežie", teda
+# ALEBO – presne to, čo `tags-filter` vie.
+#
+# `r/` JE TU NUTNÉ. Veľké jazero, priehrada aj rieka so šírkou sú v OSM
+# MULTIPOLYGÓNY (`type=multipolygon`), ktorých členmi sú cesty bez vlastného
+# `natural=water`. Filter len na `w/` by z PBF pustil relácie bez geometrie
+# a v dlaždiciach by po Domaši ticho neostalo nič. `-r` v `build.sh` k tomu
+# doťahuje ich členov.
+#
+# Zoznam je zámerne ŠIRŠÍ než schéma (`w/waterway` pustí aj `weir` a `lock`):
+# filter je hrubé sito, presné rozhodnutie robí schéma. Opačne to neplatí –
+# keď do schémy pribudne trieda a sem nie, Planetiler dostane PBF, v ktorom
+# ten tag už nie je, a v dlaždiciach sa TICHO neobjaví. Stráži to
+# `workers/lint/water.py`.
+
+# --- toky: rieky, potoky, kanály, jarky ---
+w/waterway
+r/waterway
+
+# --- vodné plochy: jazerá, priehrady, rybníky, zálivy, prielivy ---
+n/natural=water
+w/natural=water
+r/natural=water
+w/natural=bay
+r/natural=bay
+w/natural=strait
+r/natural=strait
+w/natural=spring
+n/natural=spring
+
+# --- more: pobrežná čiara ---
+# Plocha oceánu z OSM nevzniká (skladá sa z pobrežných čiar celej planéty);
+# tú kreslí základná mapa z `water_polygons` Planetileru. Tu je čiara, po
+# ktorej more končí, a mená morí a zálivov.
+w/natural=coastline
+
+# --- vodné nádrže mapované ako využitie plochy ---
+w/landuse=reservoir
+r/landuse=reservoir
+w/landuse=basin
+r/landuse=basin

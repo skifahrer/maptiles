@@ -3,9 +3,11 @@
 Čo sa dá pregenerovať v celej krajine – a čím sa to nad jedným krajom spustí.
 
 „Mapa · Regenerate state" je tá istá štafeta ako „Build map state", len nad
-krajom nespúšťa CELÝ build, ale JEDNU vec: body, línie, navigáciu, vrstevnice,
-skaly alebo tieňovanie. Tento súbor je číselník tých vecí – jedno miesto, ktoré
-vie, čo sa dá vybrať, ktorý workflow to nad krajom spraví a s akými poľami.
+krajom nespúšťa CELÝ build, ale JEDEN BALÍK: body záujmu, cesty a chodníky,
+hranice, vodstvo, navigáciu, vrstevnice, skaly alebo tieňovanie. Ktoré balíky
+sú, drží číselník `workers/data/packages.json`; tento súbor k nim dopĺňa to,
+čo je vec dávky – poradie vo formulári, vetu do súhrnu a ktorý workflow to nad
+krajom spraví.
 
 PREČO ČÍSELNÍK A NIE `case` V SKRIPTE. Tú istú otázku si kladú tri miesta:
 formulár dávky (`co` je `type: choice`, teda zoznam v YAMLe), štafeta
@@ -22,8 +24,9 @@ prepíše). Mapy, dlaždíc ani Pages sa to nedotkne.
 
 Ceny sú ale rôzne a je dobré to vedieť dopredu:
 
-  Z PBF (`body`, `linie`, `navigacia`) sú to MINÚTY na kraj – tie vrstvy sa
-  počítajú z toho istého OSM PBF ako mapa a nič iné nepotrebujú.
+  Z PBF (`body`, `cesty`, `hranice`, `vodstvo`, `navigacia`) sú to MINÚTY na
+  kraj – tie vrstvy sa počítajú z toho istého OSM PBF ako mapa a nič iné
+  nepotrebujú.
 
   Z VÝŠKOVÉHO MODELU (`vrstevnice`, `skaly`, `tienovanie`) sú to desiatky
   minút až hodiny: treba sklad DEM, prípadne ho doplniť, prečítať ho a nad
@@ -31,6 +34,12 @@ Ceny sú ale rôzne a je dobré to vedieť dopredu:
   mapy, takže sa vrstva z pregenerovania nemá ako rozísť s tou z buildu.
   Ušetrí sa proti celému buildu všetko ostatné: dlaždice, ikonky, štýl,
   kontrola webu, Pages a prepísanie ostatných balíkov na Drive.
+
+ZÁKLADNÁ MAPA A ČLÁNKY Z WIKIPÉDIE TU NIE SÚ. Mapa je celý build (dlaždice
+Planetilerom nad celým PBF, štýl, ikonky) – pregenerovať „len ju" znamená
+spustiť „Mapa · Build map region"; a značené trasy, ktoré v nej cestujú, sú
+preto tiež jej vec. Články majú vlastnú pipeline („Mapa · Build wiki") s inou
+sieťou a inou životnosťou.
 
 VRSTEVNICE A SKALY SÚ JEDEN BALÍK (`-vrstevnice-skaly.zip`), takže sa pri
 oboch voľbách počítajú OBE – len tá druhá sa vezme z cache. Balík sa
@@ -45,8 +54,24 @@ Použitie:
     python3 workers/state/jobs.py --polia=body        # `-f` polia, po riadkoch
 """
 import argparse
+import importlib.util
 import os
 import sys
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_WORKERS = os.path.dirname(_HERE)
+
+
+def _load(name, cesta):
+    """workers/*.py sa kvôli pomlčke v mene nedajú `import`-núť normálne."""
+    spec = importlib.util.spec_from_file_location(name, cesta)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_baliky = _load("deploy_baliky", os.path.join(_WORKERS, "deploy", "baliky.py"))
 
 # ---------- kam sa to nad krajom posiela ----------
 # `podava` sú polia, ktoré cieľový workflow prevezme z FORMULÁRA DÁVKY:
@@ -59,7 +84,7 @@ CIELE = {
         "meno": "Mapa · Pregeneruj vrstvu kraja",
         "podava": {
             # Zdroje výšok a prah sklonu majú význam len pre vrstvy
-            # z výškového modelu; pri `body`, `linie` a `navigacia` ich ten
+            # z výškového modelu; pri vrstvách z PBF ich ten
             # workflow prijme a nepoužije. Podávajú sa aj tak VŽDY a všetky:
             # zoznam podľa `co` by bol štvrté miesto, kde sa rozhoduje, čo tá
             # voľba znamená – a to je presne to, čo sa raz rozíde.
@@ -81,70 +106,74 @@ CIELE = {
 # `balik` je meno balíka na Drive, ktorý sa tým prepíše (`` = základná mapa) –
 # je to to isté meno, aké pozná `workers/deploy/publish-map.py`, a práve preto
 # sa tu píše: podľa neho sa dá v súhrne aj v katalógu povedať, čo sa zmenilo.
-JOBS = {
-    "body": {
-        "meno": "Body z OSM",
-        "popis": "pramene, jaskyne, rozhľadne, parkoviská a ďalšie bodové "
-                 "prvky – balík `-body.zip`",
-        "balik": "body",
-        "workflow": "regenerate-region.yml",
-        "inputs": {"co": "body"},
-    },
-    # LÍNIE SÚ TRI VRSTVY V JEDNOM BALÍKU: celá dopravná sieť (cesty od
-    # diaľnice po schody, železnice, trajekty, lanovky), značené trasy
-    # a obmedzenia na ceste. Pregenerujú sa VŠETKY TRI naraz, lebo `--only`
-    # prepisuje balík CELÝ – jedna nová vrstva a dve chýbajúce by z neho
-    # spravili balík, ktorý sľubuje, čo nenesie.
-    "linie": {
-        "meno": "Dopravná sieť a línie z OSM",
-        "popis": "cesty, železnice, trajekty a lanovky, značené trasy "
-                 "a obmedzenia na ceste – balík `-linie.zip`",
-        "balik": "linie",
-        "workflow": "regenerate-region.yml",
-        "inputs": {"co": "linie"},
-    },
-    # NAVIGÁCIA JE VLASTNÁ VOĽBA, lebo je VLASTNÝ BALÍK. Chvíľu bola časťou
-    # `linie` (tá istá sieť, raz nakreslená a raz zjazdná), ale graf kraja
-    # váži 170 až 190 MB proti desiatkam za tie tri kreslené vrstvy – v jednom
-    # balíku by z neho bolo deväť desatín. Rozpis je v hlavičke
-    # `workers/deploy/subory.py`. Je to zároveň jediná vec, ktorá sa mení pri
-    # zdvihnutí verzie Valhally, a prestavovať kvôli nej dopravnú sieť by bolo
-    # zbytočné.
-    "navigacia": {
-        "meno": "Navigačný graf (Valhalla)",
-        "popis": "graf pre trasovanie v tomto kraji – balík `-navigacia.zip`",
-        "balik": "navigacia",
-        "workflow": "regenerate-region.yml",
-        "inputs": {"co": "navigacia"},
-    },
-    # Ďalej vrstvy z výškového modelu. Sú drahšie (sklad DEM, čítanie
-    # a trasovanie), ale cesta je tá istá – `dem-layers.yml`, čiže ten istý
-    # workflow, aký nad nimi púšťa build mapy.
-    "vrstevnice": {
-        "meno": "Vrstevnice",
-        "popis": "izolínie z výškového modelu – balík "
-                 "`-vrstevnice-skaly.zip` (skaly v ňom prídu z cache)",
-        "balik": "vrstevnice-skaly",
-        "workflow": "regenerate-region.yml",
-        "inputs": {"co": "vrstevnice"},
-    },
-    "skaly": {
-        "meno": "Skaly",
-        "popis": "skalné plochy zo sklonu modelu – balík "
-                 "`-vrstevnice-skaly.zip` (vrstevnice v ňom prídu z cache)",
-        "balik": "vrstevnice-skaly",
-        "workflow": "regenerate-region.yml",
-        "inputs": {"co": "skaly"},
-    },
-    "tienovanie": {
-        "meno": "Tieňovanie a 3D terén",
-        "popis": "výškové dlaždice pre tieňovanie a 3D – balík "
-                 "`-tienovanie.zip`",
-        "balik": "tienovanie",
-        "workflow": "regenerate-region.yml",
-        "inputs": {"co": "tienovanie"},
-    },
+# ODVODENÉ Z ČÍSELNÍKA BALÍKOV, nie napísané druhýkrát. Ktoré balíky sú, drží
+# `workers/data/packages.json` (kľúč `regeneruj` hovorí, čo sa dá postaviť bez
+# celého buildu mapy) – tento súbor k tomu dopĺňa len to, čo je vec DÁVKY:
+# poradie vo formulári, vetu do súhrnu a to, ktorý workflow sa nad krajom
+# spustí.
+#
+# Kým bol zoznam napísaný aj tu, znamenal nový balík dve úpravy a zabudnutá
+# druhá bola tichá jedným smerom (voľba vo formulári, ktorú packer nepozná,
+# spadne až v behu) a hlučná druhým. Teraz je tu jediná vec, ktorú číselník
+# nevie: ako drahé to je a čo o tom povedať človeku.
+#
+# PORADIE JE PORADIE FORMULÁRA a ide od najlacnejšieho k najdrahšiemu: body
+# a cesty sú minúty, vrstevnice a tieňovanie hodiny. Kto formulár otvorí, má
+# hore to, čo si pustí najčastejšie.
+CENA = {
+    # kľúč: (meno, čo to je, veta o cene)
+    "body": ("Body záujmu",
+             "pramene, jaskyne, rozhľadne, pamiatky a ďalšie bodové prvky"),
+    "cesty": ("Cesty a chodníky",
+              "celá dopravná sieť z OSM aj s obmedzeniami na ceste (výška "
+              "podjazdu, hmotnosť, rýchlosť)"),
+    "hranice": ("Hranice a názvy území",
+                "hranice štátu, kraja, okresu a obce aj s ich menami"),
+    "vodstvo": ("Vodstvo",
+                "rieky, potoky, jazerá, priehrady a more aj s ich menami"),
+    "navigacia": ("Navigačný graf (Valhalla)",
+                  "graf pre trasovanie v tomto kraji"),
+    "vrstevnice": ("Vrstevnice",
+                   "izolínie z výškového modelu (skaly v balíku prídu "
+                   "z cache)"),
+    "skaly": ("Skaly",
+              "skalné plochy zo sklonu modelu (vrstevnice v balíku prídu "
+              "z cache)"),
+    "tienovanie": ("Tieňovanie a 3D terén",
+                   "výškové dlaždice pre tieňovanie a 3D"),
 }
+
+# `skaly` nie je vlastný balík – je to druhá polovica `vrstevnice-skaly`
+# a v číselníku preto vlastný `regeneruj` nemá. Vo formulári vlastnú voľbu MÁ:
+# obe vrstvy sa počítajú z toho istého DEM a pregenerovať sa dá každá zvlášť
+# (tá druhá príde z cache za sekundy), len balík sa prepisuje CELÝ.
+ALIAS = {"skaly": "vrstevnice-skaly"}
+
+
+def _postav():
+    """`{kľúč: {meno, popis, balík, workflow, inputs}}` z číselníka a `CENA`."""
+    z_ciselnika = _baliky.regenerovatelne()
+    out = {}
+    for kluc, (meno, co) in CENA.items():
+        b = z_ciselnika.get(kluc)
+        balik = b["kluc"] if b else ALIAS.get(kluc)
+        if not balik:
+            raise SystemExit(
+                f"::error::`{kluc}` je v CENA, ale v číselníku balíkov "
+                f"({_baliky.CISELNIK}) preň nie je `regeneruj` ani alias – "
+                f"formulár by ponúkal voľbu, ktorú packer nepozná a beh by "
+                f"spadol na `--only`.")
+        out[kluc] = {
+            "meno": meno,
+            "popis": f"{co} – balík `-{balik}.zip`",
+            "balik": balik,
+            "workflow": "regenerate-region.yml",
+            "inputs": {"co": kluc},
+        }
+    return out
+
+
+JOBS = _postav()
 
 
 def job(kluc):

@@ -234,7 +234,7 @@ def main():
                 values[key] = True
             elif o.get("default") is not None:
                 values[key] = o["default"]
-            elif o["type"] in ("speed", "factor", "int"):
+            elif o["type"] in ("speed", "factor", "int", "size"):
                 values[key] = o.get("range", [1])[0]
         for engine in engines:
             if not spec.get("costing", {}).get(engine):

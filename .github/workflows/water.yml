@@ -1,0 +1,182 @@
+name: Mapa · vodstvo
+
+# VODSTVO z OSM do vlastného `.pmtiles`: rieky, potoky, kanály, jazerá,
+# priehrady, rybníky, zálivy a pobrežná čiara – každý prvok AJ S MENOM.
+# Rozpis, čo to je a prečo to nestačí brať zo základnej mapy, je v hlavičke
+# `workers/water/water.yml`; krátko – voda je v OpenMapTiles rozdelená do
+# troch vrstiev (`water`, `waterway`, `water_name`), meno leží v inej vrstve
+# než geometria a potoky vypadávajú podľa zoomu. Táto vrstva je balík
+# `vodstvo`.
+#
+# Ten istý vzor ako značené trasy, krajinné prvky a dopravná sieť: to isté PBF
+# sa číta druhýkrát vlastnou schémou.
+#
+# PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map-region.yml`. Ten súbor je pri
+# strope 128 KiB a nad ním GitHub workflow TICHO NEPRIJME: vznikne beh bez
+# jobov, s červeným krížikom a prázdnym logom (pravidlo 3 v CLAUDE.md).
+#
+# Cena za to je, že vstupy sa píšu dvakrát (v `inputs:` tu a vo `with:` tam)
+# a že `workflow_call` NEDEDÍ ani `env`, ani `secrets` volajúceho – oboje sa
+# musí podať.
+on:
+  workflow_call:
+    inputs:
+      region_key:
+        description: "Kľúč regiónu – z neho je meno `{region}-water.pmtiles`"
+        required: true
+        type: string
+      region_bbox:
+        description: "Bbox regiónu pre orez dlaždíc (workers/lib/region-clip.sh)"
+        required: true
+        type: string
+      maxzoom:
+        description: "Najvyšší zoom dlaždíc s vodstvom"
+        required: false
+        default: "14"
+        type: string
+      region_clip:
+        description: "Orezať dlaždice na hranicu regiónu"
+        required: false
+        default: "false"
+        type: string
+      size_limit_mb:
+        description: "Rozpočet celej stránky v MB"
+        required: false
+        default: "900"
+        type: string
+      budget_pct:
+        description: "Podiel vodstva na rozpočte stránky v percentách"
+        required: false
+        default: "5"
+        type: string
+      day:
+        description: "Dátum pre kľúč cache Planetileru"
+        required: false
+        default: ""
+        type: string
+    outputs:
+      enabled:
+        description: "Vznikla vrstva? (vo výreze nemusí byť ani jeden tok)"
+        value: ${{ jobs.water.outputs.enabled }}
+      maxzoom:
+        description: "Zoom, po ktorý dlaždice naozaj sú"
+        value: ${{ jobs.water.outputs.maxzoom }}
+      size_mb:
+        description: "Veľkosť vrstvy v MB"
+        value: ${{ jobs.water.outputs.size_mb }}
+    # `workflow_call` nededí secrets sám, takže ich volajúci musí podať
+    # (`secrets: inherit`) a tento workflow prijať. Bez nich sa cache na Drive
+    # nemá ako otvoriť a Planetiler (93 MB) sa ťahá pri každom behu. Dva tvary
+    # toho istého: všetko v jednom secrete, alebo po dvoch – rozpis vo
+    # `workers/drive/auth.py`. `DRIVE_CLIENT` medzi nimi nie je: je to
+    # repository variable, nie tajný údaj, a `vars.*` sa v tom istom
+    # repozitári čítajú priamo.
+    secrets:
+      GDRIVE_CREDENTIALS:
+        required: false
+      DRIVE_SECRET:
+        required: false
+      DRIVE_REFRESH:
+        required: false
+
+# Prihlásenie na Drive pre celý workflow, nie po kroku: cache-restore
+# a cache-save sú dva kroky a keby token stál pri jednom z nich, druhý by sa
+# ticho vrátil k sťahovaniu všetkého odznova. Stráži to „Kontrola · lint
+# workflowov".
+env:
+  GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+  DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
+  DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
+  DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
+
+jobs:
+  water:
+    name: Vodstvo
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.water.outputs.enabled }}
+      maxzoom: ${{ steps.water.outputs.maxzoom }}
+      size_mb: ${{ steps.water.outputs.size_mb }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Priprav priečinok na meranie
+        run: mkdir -p steps-out
+
+      - name: Stiahni PBF z prípravy
+        uses: actions/download-artifact@v8
+        with:
+          name: pbf
+          path: data
+
+      # Polygón regiónu z prípravy – z neho je `--polygon` pre Planetiler.
+      # `continue-on-error` preto, že aj bez neho sa beh dokončiť dá: skript
+      # to povie nahlas a dlaždice budú na obdĺžniku bboxu.
+      - name: Stiahni polygón regiónu
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: region-poly
+          path: data
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Cache Planetileru (restore)
+        id: planetiler-cache
+        uses: ./.github/actions/cache-restore
+        with:
+          path: planetiler.jar
+          key: planetiler-latest-${{ inputs.day }}
+
+      - name: Stiahni Planetiler
+        run: workers/lib/planetiler.sh
+      - name: Cache Planetileru (save)
+        if: ${{ always() && steps.planetiler-cache.outputs.cache-hit != 'true' && hashFiles('planetiler.jar') != '' }}
+        continue-on-error: true
+        uses: ./.github/actions/cache-save
+        with:
+          path: planetiler.jar
+          key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
+
+      # TESTY SCHÉMY PRED STAVBOU. Sú v nej ako `examples` a je to jediná vec,
+      # ktorá o schéme povie pravdu bez celého behu – vrátane toho, že bazén
+      # ani cesta pri rieke vo vodstve nie sú a že pobrežie ide ako ČIARA.
+      # Beží ako prvé, nech to spadne za sekundy a nie po predfiltri.
+      - name: Testy schémy vodstva
+        run: java -jar planetiler.jar verify workers/water/water.yml
+
+      # Rozpis je vo `workers/water/build.sh` (pravidlo 3: veľký `run:`
+      # blok patrí do `workers/`, nie do YAMLu).
+      - name: Vodstvo z OSM → PMTiles
+        id: water
+        env:
+          OPT_WATER_MAXZOOM: ${{ inputs.maxzoom }}
+          OPT_REGION_CLIP: ${{ inputs.region_clip }}
+          REGION_BBOX: ${{ inputs.region_bbox }}
+          REGION_KEY: ${{ inputs.region_key }}
+          SIZE_LIMIT_MB: ${{ inputs.size_limit_mb }}
+          BUDGET_WATER_PCT: ${{ inputs.budget_pct }}
+        run: workers/water/build.sh
+
+      - name: Odlož časť stránky
+        if: ${{ always() && hashFiles('_site/**') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-water
+          path: _site
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+
+      - name: Odlož meranie krokov
+        if: ${{ always() && hashFiles('steps-out/*') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: steps-water
+          path: steps-out
+          retention-days: 1
+          if-no-files-found: ignore
