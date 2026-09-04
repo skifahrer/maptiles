@@ -276,6 +276,7 @@ jobs:
       opt_rock_img_zoom: ${{ steps.opts.outputs.opt_rock_img_zoom }}
       opt_rock_img_options: ${{ steps.opts.outputs.opt_rock_img_options }}
       opt_terrain_maxzoom: ${{ steps.opts.outputs.opt_terrain_maxzoom }}
+      opt_reuse_layers: ${{ steps.opts.outputs.opt_reuse_layers }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -641,6 +642,10 @@ jobs:
       # PREGENERUJE SA LEN TÁ VYBRANÁ. Príznak zahodí cache tej vrstvy
       # a spočíta ju nanovo; druhá polovica balíka sa vráti z cache – to je
       # celý rozdiel medzi „pregenerovať vrstevnice" a „pregenerovať skaly".
+      # Vybraná vrstva sa počíta nanovo TAK ČI TAK (`rebuild` nižšie); toto
+      # je o tej DRUHEJ polovici balíka – skaly pri pregenerovaní vrstevníc
+      # a naopak. Tá sa má vziať hotová, nie prepočítať, keď si to beh pýta.
+      opt_reuse_layers: ${{ needs.plan.outputs.opt_reuse_layers }}
       opt_contours_rebuild: ${{ inputs.co == 'vrstevnice' && 'true' || 'false' }}
       opt_rocks_rebuild: ${{ inputs.co == 'skaly' && 'true' || 'false' }}
       opt_terrain_rebuild: ${{ inputs.co == 'tienovanie' && 'true' || 'false' }}

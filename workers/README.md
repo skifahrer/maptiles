@@ -1912,6 +1912,40 @@ Dve veci, ktoré z toho plynú:
   a preriedi sklad `vysledky`. Kým to boli dva workflowy, mali dva plány
   posunuté o pol hodiny, aby si nelezli do cesty.
 
+#### Tri vrstvy, tri nezávislé kľúče
+
+Vrstevnice, skaly a tieňovanie mali jeden spoločný kľúč (skaly ten istý
+s príponou `-rocks`) a v ňom nastavenia všetkých troch naraz. Posunutý prah
+skál teda zahodil aj hodinu vrstevníc a doplnený sklad modelu pre tieňovanie
+zahodil oboje — hoci sa tie vrstvy tým nemenia. Odteraz má každá vlastný kľúč
+a v ňom **len svoje** nastavenia; aj otlačok skriptov je rozdelený na dva
+(`SCHEMA_CONTOURS`, `SCHEMA_ROCKS`), takže oprava v `rocks.sh` už nezahadzuje
+vrstevnice.
+
+Každý kľúč má pritom tvar **nastavenia + otlačky**, v tomto poradí:
+
+```
+contours-v11-cdmr5-<bbox>-i5-z14-s0h0t-1x2-acely_region-  d<sklad>-<otlačok skriptov>
+└────────────── nastavenia (predpona) ─────────────────┘  └──── čo sa mení samo ────┘
+```
+
+Prvá časť ide von aj samostatne a je to **predpona** celého kľúča: kto ju podá
+ako `restore-keys` (dávka nad krajinou cez `reuse_layers=true`), dostane
+najnovšiu vrstvu s tými istými nastaveniami — aj keď sa medzitým doplnil sklad
+modelu alebo zmenil skript. Jeden kraj beží bez toho, teda prísne: keď zmeníš
+skript, ktorý kreslí skaly, a spustíš kraj, chceš nové skaly.
+
+**Uloží sa len to, čo sa naozaj spočítalo.** Vrstva vzatá po predpone sa pod
+dnešný kľúč neuloží — tvrdila by o sebe dnešný otlačok skriptov a najbližší
+prísny beh by ju vzal ako presnú zhodu. Tichá stará vrstva pod novým menom je
+presne to, čomu sa celé toto vyhýba.
+
+**Hotové vrstvy sa prerieďujú pomalšie** (180 dní proti 30) a pri strope
+priečinka odchádzajú posledné: stiahnuté DEM dlaždice sa dajú stiahnuť znova
+a časti sklonu sú aj v sklade `dem-slope`, kým prepočítané vrstevnice celého
+kraja nevráti nič. Kým platilo tridsať dní na všetko, dávka spustená o mesiac
+počítala celé Slovensko odznova.
+
 ### Hotová mapa ide aj na Drive – deväť balíkov so stálym menom
 
 Okrem GitHub Pages sa každý build publikuje do priečinka na Google Drive.
@@ -3556,12 +3590,26 @@ skladať z ôsmich behov.
 
 ### V čom sa dávka líši od jedného kraja
 
-V dvoch veciach a obe sú dôsledok toho, že ide o celú krajinu:
+V troch veciach a všetky sú dôsledok toho, že ide o celú krajinu:
 
 | | |
 |---|---|
 | `area` | natvrdo **`cely_region`** — výrez je pohorie a vyberať jedno pohorie pre osem krajov nedáva zmysel |
 | `publish_pages` | natvrdo **vypnuté** — na Pages je JEDNA mapa, takže osem behov za sebou by stránku osemkrát prepísalo a nechalo na nej posledný kraj |
+| `reuse_layers` | dopĺňa sa do `options` ako **`true`** — vrstevnice, skaly a tieňovanie, ktoré s tými istými nastaveniami už raz vznikli, sa neprepočítavajú (viď nižšie) |
+
+**Dávka nepočíta vrstvy, ktoré už raz vznikli.** Vrstevnice, skaly
+a tieňovanie sú hodiny na kraj, čiže väčšina toho dňa, ktorý dávka trvá —
+a medzi dvomi dávkami sa málokedy zmení niečo, čo by ich zmenilo. Doplnený
+sklad výškového modelu alebo opravený skript inde v pipeline pritom cache
+zahodili (oba sú v kľúči ako otlačok), takže druhá dávka počítala to isté
+odznova. Preto každý kraj dostáva `reuse_layers=true`: vrstva, ktorá vznikla
+s **tými istými nastaveniami**, sa vezme hotová a job, ktorý to spravil, to
+hlási `::notice::`-om — v mape je vtedy vrstva, ktorú dnešný kód nevyrobil,
+a to nesmie byť ticho. Kto chce prepočet, povie to: `rebuild` (jedna vrstva
+nanovo) alebo `options: reuse_layers=false` (celá dávka prísne, ako jeden
+kraj). Ako sa hotová vrstva hľadá, je v [`workers/plan/cache-keys.sh`](plan/cache-keys.sh);
+rozhodnutie „počítať, alebo nie" je v [`workers/plan/hotova-vrstva.sh`](plan/hotova-vrstva.sh).
 
 Všetko ostatné je ten istý formulár s tými istými predvolenými hodnotami
 a podáva sa ďalej nezmenené: zdroje výšok, prah skál, `rebuild`, rýchly test
@@ -3573,8 +3621,24 @@ hodnotami, a beh by bol pritom zelený.
 **Spadnutý kraj dávku nezastaví.** Zmysel dávky je „postav Slovensko a nechaj
 ma tak", takže sa pokračuje ďalším krajom; posledný úsek na tom **spadne**,
 aby dávka neskončila zelená s dierou v mape, a v súhrne je vidieť ktoré kraje
-a s akým výsledkom. Kto chce zastaviť všetko, zruší posledný beh reťaze —
-ďalší článok už nevznikne.
+a s akým výsledkom.
+
+**Zrušenie naopak zastaví všetko — z ktorejkoľvek strany.** Spadnutý
+a zrušený kraj vyzerajú v API skoro rovnako, ale znamenajú opak: prvé je
+porucha, druhé je „dosť". Kým sa to nerozlišovalo, dávka sa nedala zastaviť —
+kto zrušil beh kraja, dostal o minútu ďalší kraj aj ďalší článok štafety.
+Odteraz:
+
+- **zrušíš beh kraja** → článok, ktorý naň čaká, nespustí ďalší kraj ani
+  ďalší svoj beh; napíše súhrn, v ňom aj kolík na pokračovanie, a skončí
+  (zeleno — je to rozhodnutie, nie porucha);
+- **zrušíš beh dávky** → článok pri odchode zruší aj beh kraja, na ktorý
+  čakal, takže nedobieha ešte hodiny „nezastaviteľne" ďalej.
+
+Zrušiť beh kraja môže aj GitHub sám (tri behy v skupine `concurrency: pages`)
+a od ručného zrušenia sa to nedá odlíšiť — preto sa dávka nezastaví ticho
+a kolík v súhrne umožní pokračovať tam, kde prestala. Rozpis je vo
+[`workers/state/estafeta.sh`](state/estafeta.sh).
 
 **Skúška dávky:** zapni `test`. Každý kraj sa potom postaví len na 4 km² zo
 stredu, takže celá reťaz prebehne za minúty namiesto dňa a je vidieť, či

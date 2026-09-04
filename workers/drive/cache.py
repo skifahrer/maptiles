@@ -39,6 +39,10 @@ build medzitým beží ďalej, len si nič neuloží.
 
 NIČ SA NEMAŽE SAMO. GitHub si staré záznamy vyhadzoval sám, Drive nie – preto
 je `--prune` a preto ho raz za týždeň spúšťa workflow „Údržba · týždenné upratovanie".
+Prerieďuje sa DVOMA rýchlosťami: hotové vrstvy z výškového modelu (vrstevnice,
+skaly, tieňovanie) sú hodiny výpočtu na kraj a build sa na ne vie spýtať aj
+o mesiace, tak sa držia dlhšie a pri strope priečinka odchádzajú posledné;
+všetko ostatné (stiahnuté DEM dlaždice, Planetiler, PBF) sa dá zohnať znova.
 
 Použitie:
     python3 workers/drive/cache.py --check
@@ -47,7 +51,8 @@ Použitie:
         --restore-keys=$'slope-v1-tatry-\\n'
     python3 workers/drive/cache.py --save --key=abc --path=dem --path=terrain-out
     python3 workers/drive/cache.py --delete --key=abc
-    python3 workers/drive/cache.py --prune --keep-days=30 --keep-gb=100
+    python3 workers/drive/cache.py --prune --keep-days=30 --keep-gb=100 \\
+        --keep-days-layers=180
 """
 import argparse
 import calendar
@@ -84,6 +89,21 @@ folder = load("drive_folder", "folder.py")
 # Priečinok s cache na Drive. Ako pri DMR 5.0 platí, že tajomstvo to nie je –
 # id chodí v zdieľanom odkaze; tajomstvom je token vlastníka v secrete.
 FOLDER_ID = "15-Z37buVADUk9_-RMWAQp6arqqjPdRaV"
+
+# HOTOVÉ VRSTVY Z VÝŠKOVÉHO MODELU – vrstevnice, skaly a tieňovanie. Sú to
+# HODINY výpočtu na jeden kraj a jediné záznamy, na ktoré sa build vie spýtať
+# aj o mesiace neskôr („toto som už raz spočítal, nepočítaj to znova" –
+# predpony kľúčov vo `workers/plan/cache-keys.sh`). Preto majú v prerieďovaní
+# vlastný, dlhší vek a pri strope priečinka odchádzajú POSLEDNÉ: stiahnuté DEM
+# dlaždice sa dajú stiahnuť znova a časti sklonu sú aj v sklade `dem-slope`,
+# kým prepočítané vrstevnice celého kraja nevráti nič.
+VRSTVY = ("contours-", "rocks-", "terrain-")
+
+
+def vrstva(key):
+    """Je to hotová vrstva (a teda to drahé, čo sa oplatí držať dlhšie)?"""
+    return key.startswith(VRSTVY)
+
 
 # Prípony, pod ktorými záznam leží. Dve preto, že `zstd` na runneri je, ale
 # nemusí byť všade – rozbaľuje sa podľa toho, čo v mene naozaj je.
@@ -254,8 +274,17 @@ def do_restore(args):
         out("cache-hit", "false")
         out("cache-matched-key", "")
         return 0
-    log(f"Cache na Drive: {'presná zhoda' if exact else 'zhoda po predpone'} "
-        f"– {hit['name']} ({human(hit['size'])}, {hit['created'][:19]})")
+    # Zhoda po PREDPONE znamená, že sa berie niečo, čo nevzniklo s dnešným
+    # kľúčom – pri vrstvách z výškového modelu je to hotová vrstva
+    # z predošlého behu. Preto nie do logu, ale `::notice::`: v behu má byť
+    # vidieť, že sa niečo nepočítalo, aj bez rozklikávania kroku.
+    if exact:
+        log(f"Cache na Drive: presná zhoda – {hit['name']} "
+            f"({human(hit['size'])}, {hit['created'][:19]})")
+    else:
+        log(f"::notice::Cache na Drive: zhoda po predpone – berie sa "
+            f"`{hit['plny_kluc']}` ({human(hit['size'])}, "
+            f"{hit['created'][:19]}) namiesto `{args.key}`.")
     tmp = os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"),
                        "drive-cache-" + os.path.basename(hit["name"]))
     # NEPOUŽITEĽNÝ ZÁZNAM NESMIE ZABLOKOVAŤ BUILD. Keď sa nedá stiahnuť alebo
@@ -393,16 +422,27 @@ def do_prune(args):
             mark(e, "duplikát (novší záznam s tým istým kľúčom už je)")
         videne.add(e["key"])
 
-    if args.keep_days > 0:
-        hranica = time.time() - args.keep_days * 86400
-        for e in items:
-            if e["created"] and _epoch(e["created"]) < hranica:
-                mark(e, f"starší než {args.keep_days} dní")
+    # VEK: hotové vrstvy majú vlastnú, dlhšiu hranicu. Tridsať dní bolo
+    # zdedené po GitHube (ten mazal po 7 dňoch bez použitia) a znamenalo, že
+    # dávka nad krajinou spustená o mesiac počítala celé Slovensko odznova –
+    # hoci výsledok v priečinku ležal a nič sa na ňom nezmenilo.
+    for e in items:
+        dni = args.keep_days_layers if vrstva(e["plny_kluc"]) else args.keep_days
+        if dni <= 0 or not e["created"]:
+            continue
+        if _epoch(e["created"]) < time.time() - dni * 86400:
+            mark(e, f"starší než {dni:g} dní"
+                    + (" (hotová vrstva)" if vrstva(e["plny_kluc"]) else ""))
 
     if args.keep_gb > 0:
         strop = args.keep_gb * 1e9
         drzim = 0
-        for e in items:                  # od najnovšieho
+        # Poradie držania, nie poradie mazania: najprv hotové vrstvy (od
+        # najnovšej), potom zvyšok. Čo sa do stropu nezmestí, ide preč – takže
+        # priečinok si udrží to drahé a obetuje to, čo sa dá stiahnuť znova.
+        podla_ceny = ([e for e in items if vrstva(e["plny_kluc"])]
+                      + [e for e in items if not vrstva(e["plny_kluc"])])
+        for e in podla_ceny:
             if e["id"] in dovod:
                 continue
             drzim += e["size"]
@@ -424,6 +464,9 @@ def do_prune(args):
     if args.summary:
         with open(args.summary, "a") as f:
             f.write("### Cache na Drive\n\n")
+            f.write(f"Hotové vrstvy (vrstevnice, skaly, tieňovanie) sa držia "
+                    f"{args.keep_days_layers:g} dní, zvyšok "
+                    f"{args.keep_days:g}.\n\n")
             f.write("| vec | hodnota |\n|---|--:|\n")
             f.write(f"| záznamov pred | {len(items)} |\n")
             f.write(f"| veľkosť pred | {human(total)} |\n")
@@ -512,6 +555,10 @@ def main():
                     help="predpony, po ktorých sa hľadá, keď kľúč nesedí")
     ap.add_argument("--keep-days", type=float, default=30,
                     help="pri --prune: čo je staršie, ide preč (0 = nemazať)")
+    ap.add_argument("--keep-days-layers", type=float, default=180,
+                    help="pri --prune: to isté pre hotové vrstvy (vrstevnice, "
+                         "skaly, tieňovanie) – sú to hodiny výpočtu a build "
+                         "sa na ne vie spýtať aj o mesiace")
     ap.add_argument("--keep-gb", type=float, default=100,
                     help="pri --prune: strop na celý priečinok (0 = bez stropu)")
     ap.add_argument("--dry-run", action="store_true",

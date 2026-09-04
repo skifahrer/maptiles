@@ -370,6 +370,7 @@ jobs:
       opt_contours_rebuild: ${{ needs.plan.outputs.opt_contours_rebuild }}
       opt_rocks_rebuild: ${{ needs.plan.outputs.opt_rocks_rebuild }}
       opt_terrain_rebuild: ${{ needs.plan.outputs.opt_terrain_rebuild }}
+      opt_reuse_layers: ${{ needs.plan.outputs.opt_reuse_layers }}
       opt_size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
       budget_contours_pct: ${{ needs.plan.outputs.budget_contours_pct }}
       budget_rocks_pct: ${{ needs.plan.outputs.budget_rocks_pct }}
@@ -486,6 +487,10 @@ jobs:
       opt_contours_rebuild: ${{ steps.opts.outputs.opt_contours_rebuild }}
       opt_rocks_rebuild: ${{ steps.opts.outputs.opt_rocks_rebuild }}
       opt_terrain_rebuild: ${{ steps.opts.outputs.opt_terrain_rebuild }}
+      # Voľba `reuse_layers`: nepočítať vrstvu, ktorá s týmito
+      # nastaveniami už raz vznikla. Zapína si ju dávka nad krajinou,
+      # jeden kraj beží bez nej – rozpis v `workers/plan/options.py`.
+      opt_reuse_layers: ${{ steps.opts.outputs.opt_reuse_layers }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7

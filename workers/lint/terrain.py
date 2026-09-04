@@ -184,7 +184,9 @@ def main():
     kod = "\n".join(r for r in build.splitlines()
                     if not r.lstrip().startswith("#"))
     napisane = set(re.findall(r"-v(\d+)\\?\.pmtiles", kod))
-    v_cache = set(re.findall(r'echo "terrain=terrain-v(\d+)-', keys))
+    # Kľúč tieňovania sa skladá v `T_NASTAVENIA` (nastavenia dopredu, otlačok
+    # skladu dozadu – rozpis v hlavičke `cache-keys.sh`); verzia je v ňom.
+    v_cache = set(re.findall(r'^T_NASTAVENIA="terrain-v(\d+)-', keys, re.M))
     if len(v_asset) != 1:
         bad.append(f"Vo `workers/terrain/build.sh` sa nedá prečítať `ENC_VER=v<číslo>` "
                    f"(našlo sa {sorted(v_asset)}). Podoba kódovania musí byť "
@@ -200,7 +202,8 @@ def main():
                    f"`${{ENC_VER}}`.")
     elif not v_cache:
         bad.append("V `workers/plan/cache-keys.sh` nie je verzia v kľúči "
-                   "`terrain=` – bez nej vráti cache staré dlaždice.")
+                   "tieňovania (`T_NASTAVENIA=\"terrain-v<číslo>-…\"`) – bez "
+                   "nej vráti cache staré dlaždice.")
     elif v_asset != v_cache:
         bad.append(f"Podoba kódovania sa rozišla: sklad hovorí v{v_asset.pop()}, "
                    f"cache v{v_cache.pop()}. Jedno z tých dvoch miest vráti "

@@ -32,7 +32,10 @@ name: Údržba · týždenné upratovanie
 #
 # ČO PRERIEĎUJE NA DRIVE. GitHub si staré záznamy vyhadzoval sám (7 dní bez
 # použitia, 10 GB na repozitár), Drive nie – bez toho by priečinok rástol
-# donekonečna a raz by zaplnil účet, ktorý drží aj DMR 5.0. To isté platí pre
+# donekonečna a raz by zaplnil účet, ktorý drží aj DMR 5.0. Cache sa
+# prerieďuje DVOMA rýchlosťami: hotové vrstvy z výškového modelu (vrstevnice,
+# skaly, tieňovanie) sú hodiny výpočtu na kraj a držia sa 180 dní, zvyšok 30 –
+# rozpis je vo `workers/drive/cache.py`. To isté platí pre
 # sklad `vysledky`: odkedy sa nepublikuje do artefaktov, padá doňho jeden
 # archív medzivýsledkov na beh, teda niečo, čo len rastie. Prerieďuje sa na
 # 90 dní, presne tá retencia, ktorú mal artefakt. Sklady s výškovým modelom sa
@@ -67,6 +70,11 @@ on:
         description: "Na Drive nechať záznamy mladšie než toľkoto dní (0 = nemazať podľa veku)"
         required: false
         default: "30"
+        type: string
+      keep_days_layers:
+        description: "Hotové vrstvy (vrstevnice, skaly, tieňovanie) nechať toľkoto dní"
+        required: false
+        default: "180"
         type: string
       keep_gb:
         description: "Strop priečinka cache na Drive v GB (0 = bez stropu)"
@@ -154,9 +162,17 @@ jobs:
         continue-on-error: true
         run: python3 workers/drive/cache.py --check
 
+      # DVE RÝCHLOSTI, JEDNO PRERIEĎOVANIE. Hotové vrstvy z výškového modelu
+      # (vrstevnice, skaly, tieňovanie) sú hodiny výpočtu na kraj a build sa
+      # na ne vie spýtať aj o mesiace – dávka nad krajinou ich berie hotové,
+      # keď sedia nastavenia. Tridsať dní na ne teda znamenalo, že dávka
+      # spustená o mesiac počíta celé Slovensko odznova, hoci výsledok
+      # v priečinku ležal. Zvyšok (stiahnuté DEM dlaždice, Planetiler, PBF) sa
+      # dá zohnať znova, tak mu tridsať dní stačí.
       - name: Prerieď cache na Drive
         env:
           KEEP_DAYS: ${{ inputs.keep_days }}
+          KEEP_DAYS_LAYERS: ${{ inputs.keep_days_layers }}
           KEEP_GB: ${{ inputs.keep_gb }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
@@ -165,6 +181,7 @@ jobs:
           if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); fi
           python3 workers/drive/cache.py --prune \
             --keep-days="${KEEP_DAYS:-30}" \
+            --keep-days-layers="${KEEP_DAYS_LAYERS:-180}" \
             --keep-gb="${KEEP_GB:-100}" \
             "${ARGS[@]}" \
             --summary="$GITHUB_STEP_SUMMARY"

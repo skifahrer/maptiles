@@ -36,6 +36,7 @@ REGION = ".github/workflows/build-map-region.yml"
 RELAY = "workers/state/relay.sh"
 QUEUE = "workers/state/queue.py"
 REGIONS = "workers/data/regions.json"
+OPTIONS_PY = "workers/plan/options.py"
 # Vstupy dávky, ktoré NIE SÚ nastavením mapy: krajina je to, čo sa stavia,
 # `pokracovanie` je štafetový kolík. Zvyšok musí sedieť s formulárom kraja.
 VLASTNE = {"country", "pokracovanie"}
@@ -130,6 +131,24 @@ if ponuka != maju_kraje:
                  f"{maju_kraje} (krajiny, ktoré nejaký kraj naozaj majú). "
                  f"Krajina bez krajov je voľba, po ktorej dávka nemá čo "
                  f"spustiť.")
+
+# ---------- 3b. dávka nepočíta to, čo už raz vzniklo ----------
+# Osem krajov krát tri vrstvy z výškového modelu je väčšina toho dňa, ktorý
+# dávka trvá – a druhýkrát za sebou je to deň za nič. `relay.sh` preto dopĺňa
+# behu kraja `reuse_layers=true`, keď si o tom človek v `options` nepovedal
+# nič. Kontroluje sa OBOJE: že to tam je (bez toho by sa vrstvy počítali
+# odznova a nikde by to nebolo vidieť) aj že to `options.py` pozná (inak by
+# každý kraj dávky spadol na „neznáma voľba", a to hneď v prípravnom jobe).
+VOLBA = "reuse_layers"
+if f"{VOLBA}=true" not in relay:
+    chyba(RELAY, f"`relay.sh` nedopĺňa behu kraja `{VOLBA}=true`. Dávka by "
+                 f"potom v každom kraji počítala vrstevnice, skaly aj "
+                 f"tieňovanie odznova, hoci s tými istými nastaveniami už "
+                 f"raz vznikli – a je to väčšina dňa, ktorý dávka trvá.")
+if f'"{VOLBA}"' not in open(OPTIONS_PY).read():
+    chyba(OPTIONS_PY, f"`{VOLBA}` nie je medzi známymi voľbami, ale `relay.sh` "
+                      f"ho podáva – každý kraj dávky by spadol na „neznáma "
+                      f"voľba“ hneď v prípravnom jobe.")
 
 # ---------- 4. štafeta si spúšťa samu seba ----------
 # Bez toho reťaz skončí prvým krajom – a skončí ZELENÁ.

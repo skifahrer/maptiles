@@ -19,7 +19,7 @@ name: Mapa · Build map state
 # ktorým GitHub workflow ticho neprijme).
 #
 # ── V ČOM SA LÍŠI OD JEDNÉHO KRAJA ────────────────────────────────────────
-# V dvoch veciach, obe sú dôsledok toho, že ide o celú krajinu:
+# V troch veciach a všetky sú dôsledok toho, že ide o celú krajinu:
 #
 #   area          natvrdo `cely_region`. Výrez je pohorie a vyberať jedno
 #                 pohorie pre osem krajov nedáva zmysel.
@@ -27,6 +27,12 @@ name: Mapa · Build map state
 #                 za sebou by stránku osemkrát prepísalo a nechalo na nej
 #                 posledný kraj. Kraje idú na Drive a do `maps.json`; koho
 #                 zaujíma stránka, pustí si ten kraj zvlášť.
+#   reuse_layers  dopĺňa sa do `options` ako `true`. Vrstevnice, skaly
+#                 a tieňovanie, ktoré s TÝMITO nastaveniami už raz vznikli, sa
+#                 neprepočítavajú – a to je väčšina toho dňa, ktorý dávka
+#                 trvá. Kto chce prepočet, povie to: `rebuild` (jedna vrstva
+#                 nanovo) alebo `options: reuse_layers=false` (celá dávka
+#                 prísne, ako jeden kraj). Rozpis vo `workers/state/relay.sh`.
 #
 # Všetko ostatné je to isté a podáva sa to ďalej nezmenené – zdroje výšok,
 # prah skál, `rebuild`, rýchly test aj `options`.
@@ -40,13 +46,20 @@ name: Mapa · Build map state
 # Beh kraja má `concurrency: pages`, takže naraz beží JEDEN – to sem sadá,
 # lebo dávka aj tak spúšťa kraje po jednom. Kto medzitým spustí kraj ručne,
 # nech to spraví najviac raz: pri TROCH behoch v jednej skupine GitHub ten
-# prostredný zruší a dávka to zapíše ako spadnutý kraj.
+# prostredný ZRUŠÍ – a zrušený kraj dávku zastaví (viď nižšie), lebo zrušenie
+# ručné a zrušenie GitHubom sa v API nedajú rozoznať. Dávka to napíše do
+# súhrnu aj s kolíkom, ktorým sa dá pokračovať tam, kde skončila.
 #
-# ── SPADNUTÝ KRAJ DÁVKU NEZASTAVÍ ─────────────────────────────────────────
-# Zmysel dávky je „postav Slovensko a nechaj ma tak", takže sa pokračuje
-# ďalším krajom. POSLEDNÝ úsek na tom spadne – dávka nesmie skončiť zelená
-# s dierou v mape. Kto chce zastaviť všetko, zruší posledný beh reťaze:
-# ďalší článok už nevznikne.
+# ── SPADNUTÝ KRAJ DÁVKU NEZASTAVÍ, ZRUŠENÝ ÁNO ────────────────────────────
+# Zmysel dávky je „postav Slovensko a nechaj ma tak", takže sa po SPADNUTOM
+# kraji pokračuje ďalším. POSLEDNÝ úsek na tom spadne – dávka nesmie skončiť
+# zelená s dierou v mape.
+#
+# ZRUŠENIE je ale opak poruchy: je to jediný spôsob, ako bežiacej dávke
+# povedať „dosť". Zrušený beh kraja preto reťaz ZASTAVÍ (ďalší kraj sa
+# nespustí a ďalší článok nevznikne) a zrušený beh dávky zruší aj kraj, na
+# ktorý čakal. Zastaviť sa to teda dá z ktorejkoľvek strany a jedným
+# kliknutím; rozpis je vo `workers/state/estafeta.sh`.
 
 on:
   workflow_dispatch:

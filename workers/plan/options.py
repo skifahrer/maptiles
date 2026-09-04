@@ -68,6 +68,24 @@ DEFAULTS = {
     # správne. Stojí to dvojnásobok DEM: sklon aj vektorizácia rastú s plochou.
     "test_km2": ("4", "veľkosť štvorca pri zapnutom switchi `test` (km²)"),
     "test_at": ("", "stred testovacieho štvorca `lon,lat` (prázdne = stred výrezu)"),
+    # NEPOČÍTAŤ TO, ČO UŽ RAZ VZNIKLO. Vrstevnice, skaly a tieňovanie sú
+    # hodiny na kraj a osem krajov je deň – a druhýkrát za sebou je to deň za
+    # nič. Zapnuté sa vrstva vezme hotová z predošlého behu vždy, keď sedia
+    # NASTAVENIA, aj keď sa medzitým doplnil sklad výškového modelu alebo
+    # zmenil skript, ktorý ju počíta (hľadá sa predponou kľúča cache, viď
+    # `workers/plan/cache-keys.sh`).
+    #
+    # PREČO NIE PREDVOLENE. Keď zmeníš skript, ktorý kreslí skaly, a spustíš
+    # kraj, čakáš NOVÉ skaly – nie tie, čo vyšli minule. Prísny beh je preto
+    # predvolený a hotové vrstvy si pýta ten, kto vie, že o ne stojí: dávka
+    # nad krajinou (`workers/state/relay.sh` to podáva sama). Keď sa vrstva
+    # takto vezme, hlási to job `::notice::`-om – v mape je vtedy vrstva,
+    # ktorú dnešný kód nevyrobil, a to nesmie byť ticho.
+    #
+    # Jedna vrstva sa dá prepočítať aj v takom behu – `rebuild` je silnejší
+    # (zmaže jej záznam a spočíta ju nanovo).
+    "reuse_layers": ("false", "nepočítať vrstvu z výškového modelu, ktorá "
+                              "s týmito nastaveniami už raz vznikla"),
     "size_limit_mb": ("900", "rozpočet celej stránky v MB"),
     "auto_shrink": ("true", "znížiť zoom dlaždíc, keď sa nezmestia"),
     "ugkk_fallback": ("true", "keď DMR 5.0 pre výrez nie je, počítať zo Sonnyho"),
@@ -581,6 +599,22 @@ def main():
         for flag in ("contours_rebuild", "rocks_rebuild", "terrain_rebuild"):
             values[flag] = "true"
 
+    # ---------- hotové vrstvy z predošlých behov ----------
+    if values["reuse_layers"] not in ("true", "false"):
+        print(f"::error::Voľba „reuse_layers“ musí byť true alebo false, "
+              f"nie „{values['reuse_layers']}“.", file=sys.stderr)
+        return 1
+    # RÝCHLY TEST NEBERIE NIČ HOTOVÉ, z toho istého dôvodu, pre ktorý
+    # pregenerúva všetko: je to beh na ladenie a starý výsledok by znamenal,
+    # že ladíš ducha. Tichý by ten spor byť nesmel – „zapol som reuse_layers
+    # a aj tak sa to počítalo" je presne tá otázka, na ktorú sa odpoveď hľadá
+    # pol hodiny v logu.
+    if test_on and values["reuse_layers"] == "true":
+        print("::notice::`reuse_layers=true` sa pri zapnutom switchi „test“ "
+              "neuplatní – rýchly test počíta vrstvy vždy nanovo, nech "
+              "neladíš na starom výsledku.")
+        values["reuse_layers"] = "false"
+
     lines = [f"opt_{k}={v}" for k, v in values.items()]
     if args.out:
         with open(args.out, "a") as f:
@@ -618,6 +652,10 @@ def main():
               "sa tým prebíja)")
     elif rebuild != "nic":
         print(f"Pregenerovať: {rebuild}")
+    if values["reuse_layers"] == "true":
+        print("Hotové vrstvy: BERÚ SA – vrstevnice, skaly aj tieňovanie, "
+              "ktoré s týmito nastaveniami už raz vznikli, sa neprepočítajú "
+              "(prepočíta ich `rebuild`)")
     if test_on or rebuild != "nic":
         # Rule 4: s čím beh ide, musí byť vidieť – vrátane toho, čo sa
         # NEPREPOČÍTA. Bez tohto riadku „vsetko" sľubuje viac, než robí.
