@@ -10,23 +10,24 @@ name: Mapa · Regenerate state
 #
 # ── ČO SA DÁ VYBRAŤ A ČO TO STOJÍ ─────────────────────────────────────────
 # Zoznam drží `workers/state/jobs.py` (jedno miesto, ktoré vie, čo sa dá
-# pregenerovať a čím sa to nad krajom spustí). Sú v ňom dve skupiny a líšia
-# sa cenou, nie tvarom formulára:
+# pregenerovať a s akými poľami sa to nad krajom spustí). Nad krajom to VŽDY
+# robí „Mapa · Pregeneruj vrstvu kraja" – tá postaví len tú jednu vec
+# a prepíše len jej balík na Drive. Ceny sa ale líšia rádovo:
 #
-#   body, linie                   MINÚTY na kraj. Počítajú sa z toho istého
-#                                 OSM PBF ako mapa a majú VLASTNÝ balík na
-#                                 Drive, takže sa dá postaviť len tá vrstva
-#                                 a prepísať len jej balík. Robí to „Mapa ·
-#                                 Pregeneruj vrstvu kraja". `linie` je pritom
-#                                 trojica trasy + obmedzenia + navigačný graf:
-#                                 je to jeden balík, tak je to jedna voľba.
-#   vrstevnice, skaly, tienovanie HODINY na kraj. Potrebujú sklad výškového
-#                                 modelu, jeho doplnenie aj kľúče cache –
-#                                 idú preto celým buildom kraja s `rebuild`,
-#                                 ktorý zahodí cache tej jednej vrstvy.
+#   body, linie                   MINÚTY na kraj – počítajú sa z toho istého
+#                                 OSM PBF ako mapa a nič iné nepotrebujú.
+#                                 `linie` je pritom trojica trasy + obmedzenia
+#                                 + navigačný graf: je to jeden balík, tak je
+#                                 to jedna voľba.
+#   vrstevnice, skaly, tienovanie DESIATKY MINÚT AŽ HODINY – treba sklad
+#                                 výškového modelu, prípadne ho doplniť,
+#                                 prečítať a nad ním trasovať. Robí to
+#                                 `dem-layers.yml`, teda TEN ISTÝ workflow,
+#                                 aký nad nimi púšťa build mapy.
 #
-# Prečo to tak je (a prečo tá druhá skupina nemá vlastnú lacnú cestu), je
-# rozpísané v hlavičke `workers/state/jobs.py`.
+# Proti celému buildu kraja sa aj tak ušetrí všetko ostatné: mapové dlaždice,
+# ikonky, štýl, kontrola webu, Pages a prepísanie OSTATNÝCH balíkov na Drive.
+# Rozpis je v hlavičke `workers/state/jobs.py`.
 #
 # ── PREČO TO NIE JE JEDEN DLHÝ JOB ────────────────────────────────────────
 # Tá istá odpoveď ako pri „Build map state": job na GitHube má strop ŠESŤ
@@ -37,11 +38,14 @@ name: Mapa · Regenerate state
 # `workers/state/regenerate.sh`.
 #
 # ── ČO SA NA DRIVE STANE (a čo nie) ───────────────────────────────────────
-# Pri `body`, `linie` a `navigacia` sa prepíše LEN ten jeden balík a položka
-# v `maps.json` sa DOPLNÍ, nie prepíše – ostatné balíky kraja sa nedotknú
-# (`publish-map.py --only=…`). Pri vrstvách z výškového modelu ide celý build
-# kraja, takže sa prepíšu všetky balíky toho kraja; je to celý build a to je
-# na ňom to drahé.
+# Prepíše sa LEN ten jeden balík a položka v `maps.json` sa DOPLNÍ, nie
+# prepíše – ostatné balíky kraja sa nedotknú (`publish-map.py --only=…`).
+# Platí to pre všetkých šesť volieb rovnako.
+#
+# Vrstevnice a skaly sú JEDEN balík (`-vrstevnice-skaly.zip`), takže sa pri
+# oboch voľbách počítajú obe – len tá druhá príde z cache. Balík sa prepisuje
+# celý a polovica nová s polovicou chýbajúcou by bola balík, ktorý sľubuje
+# vrstvu, ktorú nenesie.
 #
 # ── SPADNUTÝ KRAJ DÁVKU NEZASTAVÍ ─────────────────────────────────────────
 # To isté ako pri „Build map state": pokračuje sa ďalším krajom a POSLEDNÝ

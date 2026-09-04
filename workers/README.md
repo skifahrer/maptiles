@@ -27,8 +27,9 @@ docs/          návrhy (iOS / multiplatform), podrobný popis pipeline
 Mapa · Build map region      deväť jobov, tie dlhé bežia súbežne:
 (manuálne, výber regiónu)      plan     región + PBF z osm.fr exportov
                                tiles    Planetiler ─► {región}.pmtiles
-                               contours vrstevnice + skaly z DEM
-                               terrain  tieňovanie a 3D ako raster .pmtiles
+                               dem      vrstevnice, skaly a tieňovanie
+                                        (`dem-layers.yml` – vlastný workflow,
+                                        volá ho aj pregenerovanie vrstvy)
                                trails   značené trasy z OSM relácií
                                assets   SDF sprity a glyfy
                                deploy   zloží _site ─► GitHub Pages
@@ -49,21 +50,24 @@ Mapa · Build map state       CELÁ KRAJINA na jedno kliknutie: spustí
 Mapa · Regenerate state      JEDNA VRSTVA v celej krajine: body, línie,
 (manuálne, výber vrstvy)     navigačné dáta, vrstevnice, skaly, tieňovanie
                              ─► tá istá štafeta, kraj po kraji
-                             ▲ body a línie sú MINÚTY na kraj:
-                               majú vlastný balík, takže sa dá prepísať len
-                               on („Mapa · Pregeneruj vrstvu kraja")
-                             ▲ vrstvy z výškového modelu idú celým buildom
-                               kraja s `rebuild` – bez skladu DEM sa počítať
-                               nedajú (rozpis workers/state/jobs.py)
+                             ▲ nad krajom to vždy robí „Mapa · Pregeneruj
+                               vrstvu kraja" – prepíše sa len ten jeden balík
+                             ▲ z PBF (body, línie) sú to minúty,
+                               z výškového modelu desiatky minút až hodiny
 
 Mapa · Pregeneruj vrstvu     JEDNA VRSTVA JEDNÉHO KRAJA nanovo, bez toho,
 kraja (manuálne, jeden kraj) aby sa prestavala mapa:
-                               body   ─► {kraj}-body.zip
-                               línie  ─► {kraj}-linie.zip
-                                          (trasy, obmedzenia AJ graf)
+                               body       ─► {kraj}-body.zip
+                               línie      ─► {kraj}-linie.zip
+                                             (trasy, obmedzenia AJ graf)
+                               vrstevnice ┐ {kraj}-vrstevnice-skaly.zip
+                               skaly      ┘ (druhá polovica ide z cache)
+                               tieňovanie ─► {kraj}-tienovanie.zip
                              ▲ na Drive sa prepíše LEN ten balík a v
                                `maps.json` sa položka DOPLNÍ, nie prepíše
                              ▲ na Pages NEJDE – je to jedna vrstva, nie mapa
+                             ▲ vrstvy z DEM stavia `dem-layers.yml` – TEN ISTÝ
+                               workflow, aký nad nimi púšťa build mapy
 
 Mapa · Build wiki            objekty regiónu s `wikipedia`/`wikidata`
 (manuálne, ten istý región)  ─► články (NDJSON, dávky po 50)
@@ -3466,13 +3470,16 @@ nič nezmenilo.
 **Mapa · Regenerate state** je ten istý dispečer ako `Build map state`, len
 nad krajom nespúšťa celý build, ale to jedno, čo si vyberieš (`co`):
 
-| voľba | čo sa prepíše | ako a čo to stojí |
+| voľba | čo sa prepíše | čo to stojí |
 |---|---|---|
-| `body` | `{kraj}-body.zip` | vlastná pipeline, **minúty** na kraj |
-| `linie` | `{kraj}-linie.zip` (trasy, obmedzenia **aj graf**) | vlastná pipeline, **minúty** na kraj |
-| `vrstevnice` | `{kraj}-vrstevnice-skaly.zip` | celý build kraja, `rebuild: vrstevnice` |
-| `skaly` | `{kraj}-vrstevnice-skaly.zip` | celý build kraja, `rebuild: skaly` |
-| `tienovanie` | `{kraj}-tienovanie.zip` | celý build kraja, `rebuild: tienovanie` |
+| `body` | `{kraj}-body.zip` | **minúty** – z toho istého PBF ako mapa |
+| `linie` | `{kraj}-linie.zip` (trasy, obmedzenia **aj graf**) | **minúty** – z toho istého PBF ako mapa |
+| `vrstevnice` | `{kraj}-vrstevnice-skaly.zip` | desiatky minút až hodiny – z výškového modelu |
+| `skaly` | `{kraj}-vrstevnice-skaly.zip` | desiatky minút až hodiny – z výškového modelu |
+| `tienovanie` | `{kraj}-tienovanie.zip` | desiatky minút až hodiny – z výškového modelu |
+
+Nad krajom to **vždy** robí „Mapa · Pregeneruj vrstvu kraja" – aj pri vrstvách
+z výškového modelu. Prepíše sa preto vždy len ten jeden balík.
 
 **Zoznam je číselník, nie `case` v skripte** (`workers/state/jobs.py`): jedno
 miesto vie, čo sa dá pregenerovať, ktorý workflow to nad krajom spraví a s
@@ -3482,34 +3489,57 @@ by vo formulári bola a štafeta by na nej spadla. Alebo horšie: spustila by
 niečo iné, než si vybral, a beh by bol zelený. Stráži to
 `workers/lint/regenerate.py`.
 
-### Dve cesty, dve ceny — a prečo
+### Dve ceny, jedna cesta
 
 Body a línie sa počítajú z **toho istého OSM PBF** ako mapa a nič iné
-z buildu nepotrebujú. A hlavne: obe majú **vlastný balík** na Drive, takže sa
-dá postaviť len tá vrstva a prepísať len jej súbor. Robí to **Mapa ·
-Pregeneruj vrstvu kraja** (`regenerate-region.yml`) — príprava PBF, joby tej
-vrstvy a `publish-map.py --only=<balík>`.
+nepotrebujú — príprava PBF, joby tej vrstvy a `publish-map.py
+--only=<balík>`. Minúty.
 
 `linie` je pritom **trojica** (značené trasy, obmedzenia na ceste a navigačný
 graf), lebo je to jeden balík. Samostatná voľba „navigácia" by znamenala
 `--only=linie` s balíkom, v ktorom je len graf — trasy a obmedzenia by z neho
 ticho vypadli, lebo `--only` prepisuje balík **celý**.
 
-Vrstevnice, skaly a tieňovanie takú cestu nemajú a je to zámer. Potrebujú
-sklad výškového modelu, jeho doplnenie (`check-dem` a päť jobov `mirror-*`),
-kľúče cache aj orez na výrez — to je polovica `build-map-region.yml`. Druhá
-kópia toho všetkého by bola presne ten druh dvoch právd, ktorý sa raz rozíde
-a vrstevnice by z „pregenerovania" vyšli inak než z buildu. `rebuild` je páka,
-ktorá na presne toto existuje: zahodí cache tej jednej vrstvy a zvyšok behu si
-ju z cache vezme. Stojí to celý build kraja — to je cena za jednu pravdu o
-tom, ako vrstevnice vznikajú.
+Vrstevnice, skaly a tieňovanie potrebujú sklad výškového modelu, prípadne ho
+doplniť, prečítať a nad ním trasovať. Robí to **`dem-layers.yml`** — jedenásť
+jobov od kontroly skladu (`check-dem`, päť jobov `mirror-*`, skaly
+z tieňovania, kľúče cache) po hotové `.pmtiles`, a je to **ten istý workflow,
+aký nad nimi púšťa build mapy**. Druhá kópia by bola druhá pravda o tom, ako
+vrstevnica vzniká, a rozišla by sa presne tam, kde to nikto nevidí: v kľúči
+cache alebo v tom, ktorý model sa doplní, keď v sklade nie je.
+
+Proti celému buildu kraja sa aj tak ušetrí všetko ostatné: mapové dlaždice
+(Planetiler nad celým PBF), ikonky a fonty, štýl, kontrola webu, Pages —
+a hlavne prepísanie **ostatných balíkov** na Drive.
+
+**Vrstevnice a skaly sú jeden balík** (`-vrstevnice-skaly.zip`), takže sa pri
+oboch voľbách počítajú obe; pregeneruje sa ale len tá vybraná a druhá príde
+z cache za sekundy. Balík sa prepisuje celý a polovica nová s polovicou
+chýbajúcou by bola balík, ktorý sľubuje vrstvu, ktorú nenesie.
+
+Vrstevnice, skaly a tieňovanie potrebujú sklad výškového modelu, prípadne ho
+doplniť, prečítať a nad ním trasovať. Robí to **`dem-layers.yml`** — jedenásť
+jobov od kontroly skladu (`check-dem`, päť jobov `mirror-*`, skaly
+z tieňovania, kľúče cache) po hotové `.pmtiles`, a je to **ten istý workflow,
+aký nad nimi púšťa build mapy**. Druhá kópia by bola druhá pravda o tom, ako
+vrstevnica vzniká, a rozišla by sa presne tam, kde to nikto nevidí: v kľúči
+cache alebo v tom, ktorý model sa doplní, keď v sklade nie je.
+
+Proti celému buildu kraja sa aj tak ušetrí všetko ostatné: mapové dlaždice
+(Planetiler nad celým PBF), ikonky a fonty, štýl, kontrola webu, Pages —
+a hlavne prepísanie **ostatných balíkov** na Drive.
+
+**Vrstevnice a skaly sú jeden balík** (`-vrstevnice-skaly.zip`), takže sa pri
+oboch voľbách počítajú obe; pregeneruje sa ale len tá vybraná a druhá príde
+z cache za sekundy. Balík sa prepisuje celý a polovica nová s polovicou
+chýbajúcou by bola balík, ktorý sľubuje vrstvu, ktorú nenesie.
 
 ### Čo sa na Drive stane a čo nie
 
-Pri `body` a `linie` sa nahrá **jeden** balík (ZIP aj `.aar`),
-starý súbor toho mena sa prepíše a položka v `maps.json` sa **doplní, nie
-prepíše**. Ostatné balíky kraja sa nedotknú — a to je celý rozdiel oproti
-buildu mapy: tam „vrstva v builde nie je" znamená „nemá tam čo robiť", tu len
+Nahrá sa **jeden** balík (ZIP aj `.aar`), starý súbor toho mena sa prepíše
+a položka v `maps.json` sa **doplní, nie prepíše**. Ostatné balíky kraja sa
+nedotknú — a to je celý rozdiel oproti buildu mapy: tam „vrstva v builde nie
+je" znamená „nemá tam čo robiť", tu len
 „o tejto vrstve tento beh nič nevie" (`--only` v
 `workers/deploy/publish-map.py`, tá istá cesta, akou publikuje `Build wiki`).
 

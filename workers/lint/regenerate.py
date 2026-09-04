@@ -21,7 +21,10 @@ ticho a beh pri tom ostane zelený:
     na `--only`, opäť až po spustení;
   * podiel na rozpočte stránky sa v `regenerate-region.yml` rozíde s tým
     v `build-map-region.yml` – tá istá vrstva by z pregenerovania varovala
-    inak než z buildu.
+    inak než z buildu;
+  * vo formulári nad jedným krajom pribudne voľba, ktorú ani jeden job
+    nespomína – beh dobehne ZELENÝ a nespraví nič, lebo každý job sa
+    preskočí.
 
 Ani jedno by sa nedalo zistiť inak než spustením dávky, a práve preto to má
 strážiť lint.
@@ -51,7 +54,8 @@ WF_DIR = ".github/workflows"
 VLASTNE = {"country", "co", "pokracovanie"}
 # Podiely na rozpočte stránky, ktoré `regenerate-region.yml` musí mať rovnaké
 # ako build mapy – `env:` workflowu sa nededí, takže sú napísané dvakrát.
-PODIELY = ("BUDGET_TRAILS_PCT", "BUDGET_FEATURES_PCT", "BUDGET_ROADS_PCT")
+PODIELY = ("BUDGET_TRAILS_PCT", "BUDGET_FEATURES_PCT", "BUDGET_ROADS_PCT",
+           "BUDGET_CONTOURS_PCT", "BUDGET_ROCKS_PCT", "BUDGET_TERRAIN_PCT")
 KRAJ_LEVEL = 4
 
 bad = 0
@@ -143,6 +147,18 @@ for kluc, j in jobs.JOBS.items():
     if f'("{j["balik"]}", "' not in open(PUBLISH, encoding="utf-8").read():
         chyba(JOBS, f"`{kluc}` sľubuje balík `{j['balik']}`, ktorý "
                     f"{PUBLISH} nepozná – beh by spadol na `--only`.")
+
+# ---------- 3b. každú voľbu niekto naozaj robí ----------
+# Voľba, ktorú ani jeden job nespomína vo svojej podmienke, je najtichšia
+# možná chyba: beh sa spustí, všetky joby sa preskočia, publikovanie nemá čo
+# nahrať – a keby aj malo, beh je zelený a na Drive sa nič nezmenilo.
+region_text = open(REGION, encoding="utf-8").read()
+for kluc in ponuka_kraj:
+    if f"inputs.co == '{kluc}'" not in region_text:
+        chyba(REGION, f"Voľbu `{kluc}` nespomína ani jedna podmienka jobu "
+                      f"(`inputs.co == '{kluc}'`) – beh by ju prijal, "
+                      f"preskočil všetky joby a skončil zelený bez toho, aby "
+                      f"čokoľvek pregeneroval.")
 
 # ---------- 4. čo sa pýta, to sa aj podáva ----------
 # Vstup, ktorý `regenerate.sh` nepodá ďalšiemu článku, je tichá lož: formulár

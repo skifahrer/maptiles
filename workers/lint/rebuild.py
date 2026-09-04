@@ -32,6 +32,11 @@ import sys
 import yaml
 
 WORKFLOW = ".github/workflows/build-map-region.yml"
+# Vrstvy z výškového modelu (a s nimi podpipeline skál z tieňovania) sa
+# z buildu presťahovali do vlastného workflowu – volá ho aj pregenerovanie
+# jednej vrstvy, takže by druhá kópia bola druhá pravda o tom, či sa cache
+# naozaj zahodí.
+VRSTVY = ".github/workflows/dem-layers.yml"
 OPTIONS = "workers/plan/options.py"
 
 bad = []
@@ -53,9 +58,13 @@ except Exception as exc:                      # noqa: BLE001 – čokoľvek je c
 
 try:
     wf = yaml.safe_load(open(WORKFLOW, encoding="utf-8"))
-    text = open(WORKFLOW, encoding="utf-8").read()
+    vrstvy = yaml.safe_load(open(VRSTVY, encoding="utf-8"))
+    # Príznak musí byť ČÍTANÝ, a číta ho ktorýkoľvek z tých dvoch súborov:
+    # build ho podáva ďalej, vrstvy ho používajú.
+    text = (open(WORKFLOW, encoding="utf-8").read()
+            + open(VRSTVY, encoding="utf-8").read())
 except (OSError, ValueError) as exc:
-    print(f"::error::{WORKFLOW} sa nedá prečítať: {exc}")
+    print(f"::error::{WORKFLOW} alebo {VRSTVY} sa nedá prečítať: {exc}")
     sys.exit(1)
 
 # `on` je v YAMLe pravdivostná hodnota `True` – preto sa hľadá oboje.
@@ -99,18 +108,18 @@ for flag in opts.REBUILD_FLAGS:
                    f"sľúbil prepočet, ktorý sa nekoná.")
 
 # ---- skaly z tieňovania: `rebuild: skaly` musí zahodiť aj rozrobené obrysy ----
-sr = ((wf.get("jobs") or {}).get("shading-rocks") or {}).get("with") or {}
+sr = ((vrstvy.get("jobs") or {}).get("shading-rocks") or {}).get("with") or {}
 sr_options = str(sr.get("options", ""))
 if not sr_options:
-    bad.append(f"{WORKFLOW}: job `shading-rocks` nedostáva `options`, takže mu "
+    bad.append(f"{VRSTVY}: job `shading-rocks` nedostáva `options`, takže mu "
                f"nemá ako povedať `fresh=1`.")
 else:
     if "fresh=1" not in sr_options:
-        bad.append(f"{WORKFLOW}: `shading-rocks` nedostáva `fresh=1` nikdy – "
+        bad.append(f"{VRSTVY}: `shading-rocks` nedostáva `fresh=1` nikdy – "
                    f"nadviaže na rozrobené obrysy z predošlého behu aj vtedy, "
                    f"keď si vyberieš pregenerovanie.")
     if "opt_rocks_rebuild" not in sr_options:
-        bad.append(f"{WORKFLOW}: `rebuild: skaly` sa do `shading-rocks` "
+        bad.append(f"{VRSTVY}: `rebuild: skaly` sa do `shading-rocks` "
                    f"nedostane (`options` nespomína `opt_rocks_rebuild`). Pri "
                    f"`rock_source: tienovanie` sa sklon nepočíta vôbec – obrysy "
                    f"robí táto podpipeline a bez `fresh=1` vráti tie staré. "
