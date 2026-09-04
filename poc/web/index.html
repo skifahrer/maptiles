@@ -66,9 +66,15 @@
     #error code { background: #f2f2f2; padding: 2px 5px; border-radius: 4px; }
 
     /* ===================== developer mode ===================== */
+    /* ŠÍRKA PANELA. 420 px bolo málo: v riadku pásma stoja vedľa seba dva
+       zoomy, hodnota, jednotka a kôš – pri 420 px sa to lámalo do dvoch
+       riadkov a zoznam pásiem sa prestal čítať ako tabuľka. `resize` necháva
+       poslednú desatinu na človeku (mapa pod panelom je tiež pracovná plocha),
+       `max-width` drží panel v okne aj na úzkom displeji. */
     #dev {
       position: absolute; top: 10px; right: 10px; bottom: 10px; z-index: 13;
-      width: min(420px, calc(100% - 20px));
+      width: min(560px, calc(100% - 20px));
+      max-width: calc(100% - 20px); min-width: 320px; resize: horizontal;
       display: flex; flex-direction: column;
       background: rgba(252, 252, 253, 0.97); color: #222;
       border-radius: 10px; box-shadow: 0 2px 14px rgba(0,0,0,.3);
@@ -292,12 +298,6 @@
     .dev-field { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #888; }
     .dev-field > span { white-space: nowrap; }
     .dev-field .dev-num { width: 46px; }
-    /* „× 1,4" a „+ 0,5" – úprava NAD krivkou zo štýlu (rozpis pri
-       `relativeInputs` v devmode.js). Sú užšie než pevná hodnota zámerne:
-       stoja vedľa nej v jednom riadku a hlavná odpoveď je tá prvá. */
-    .dev-relpair { display: flex; align-items: center; gap: 2px; }
-    .dev-relpair > span { opacity: .7; }
-    .dev-field .dev-num.dev-rel { width: 34px; }
     /* V podsekciách má farba zaberať len toľko, koľko potrebuje – inak by
        roztlačila popisky vedľajších polí. */
     .dev-sub .dev-colorrow { flex: 0 0 auto; }
@@ -308,31 +308,67 @@
     }
     .dev-prop { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
     .dev-propname { font-size: 10px; color: #888; width: 96px; flex: none; }
-    /* Tmavý variant farby (🌙) – vlastný odtieň mena, nech sa v zozname farieb
-       dá od svetlého variantu rozoznať aj bez čítania textu. */
-    .dev-prop-dark .dev-propname { color: #6a7aa5; }
-    .dev-prop-dark.changed .dev-propname { color: #4a5a90; font-weight: 600; }
     /* Hlavička nad farbami, ktoré vrstva berie z palety (nie zo svojho paint) */
     .dev-prophead { margin-top: 7px; border-top: 1px solid #eee; padding-top: 5px; }
     .dev-prophead .dev-propname { width: auto; font-style: italic; }
     .dev-colorrow { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
     .dev-colorrow.changed .dev-hex { border-color: #d09030; background: #fffaf0; }
-    /* Hodnota podľa zoomu: „na z11 takto, na z16 inak". Riadky sú pod sebou,
-       každý so svojím zoomom, aby sa dali čítať ako krivka zhora dolu –
-       a v režime pásiem ako rozsahy („od z9 do z11 takto"). */
-    .dev-stops { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
-    .dev-stop { display: flex; align-items: center; gap: 4px; }
+    /* JEDEN EDITOR HODNOTY (rozpis pri `zoomValueEditor` v devmode.js).
+       Hlavička nesie meno vlastnosti, hodnotu (kým je pásmo jedno) a prepínač
+       „% zo štýlu / pevná hodnota"; pod ňou sú riadky pásiem – jeden riadok
+       jeden rozsah zoomov, aby sa dali čítať ako tabuľka zhora nadol. */
+    .dev-zv { margin-top: 4px; }
+    .dev-zvhead { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+    .dev-zvhead.changed .dev-propname { color: #b06000; font-weight: 600; }
+    .dev-zvextras {
+      display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+      margin: 2px 0 4px 96px;
+    }
+    .dev-zvfoot {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      margin: 3px 0 2px 96px;
+    }
+    .dev-zrow {
+      display: flex; align-items: center; gap: 4px; margin: 2px 0 2px 96px;
+    }
+    /* Pásmo, v ktorom mapa práve stojí – nech je vidieť, ktorý riadok sa
+       práve ladí (to isté, čo oranžový rámik v pásiku zoomov). */
+    .dev-zrow.now { outline: 1px solid #e0b070; outline-offset: 1px; border-radius: 4px; }
     .dev-stopz { font-size: 10px; color: #888; }
-    /* Prepínač tvaru: krivka (plynulo) ⇄ pásma (skok na hranici) */
-    .dev-shape { display: flex; gap: 3px; }
-    .dev-shapebtn { font-size: 10px; opacity: 0.55; }
-    .dev-shapebtn.on { opacity: 1; border-color: #d09030; background: #fffaf0; font-weight: 600; }
-    .dev-bandto { min-width: 26px; }
     .dev-num-z { width: 40px; }
-    .dev-stop .dev-field { margin: 0; }
-    .dev-addstop { align-self: flex-start; font-size: 10px; }
+    .dev-valcell { display: flex; align-items: center; gap: 3px; }
+    .dev-unit { font-size: 10px; color: #888; }
+    .dev-num.dev-pct { width: 52px; }
+    /* Prepínač jednotky: % zo štýlu ⇄ pevná hodnota */
+    .dev-modes { display: flex; gap: 2px; }
+    .dev-modebtn { font-size: 10px; opacity: 0.55; }
+    .dev-modebtn.on { opacity: 1; border-color: #d09030; background: #fffaf0; font-weight: 600; }
+    .dev-addstop { font-size: 10px; }
     .dev-addstop[disabled] { opacity: 0.45; cursor: default; }
-    /* Zaškrtávatko s textom v jednom riadku (napr. „bez výplne") */
+    /* „Táto vrstva je obrys tamtej" – banner na začiatku detailu. */
+    .dev-border {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      margin: 4px 0; padding: 5px 7px; border-radius: 6px;
+      background: #f2f0ea; border: 1px solid #e0dccf;
+    }
+    .dev-border .dev-note { flex: 1; min-width: 0; white-space: normal; line-height: 1.35; }
+    /* „Táto vrstva má N rozlíšení podľa kľúč = hodnota" – v riadku zoznamu,
+       nech sa o nich dá vedieť aj bez rozbalenia detailu. */
+    .dev-varbadge {
+      font-size: 10px; padding: 1px 5px; border-radius: 8px; flex: none;
+      background: #f3e6c8; color: #6a5320; border: 1px solid #e6c68c;
+    }
+    .dev-borderbadge {
+      font-size: 10px; padding: 1px 6px; border-radius: 8px;
+      background: #6a5f45; color: #fff; flex: none;
+    }
+    /* Jedno rozlíšenie podľa `kľúč = hodnota` – vlastný rámik, lebo je to
+       samostatná vrstva, nie ďalšie políčko tejto. */
+    .dev-variant {
+      margin: 4px 0; padding: 4px 6px; border-radius: 6px;
+      border: 1px solid #e6c68c; background: #fffdf7;
+    }
+    /* Zaškrtávatko s textom v jednom riadku (napr. „plynulý prechod") */
     .dev-inline { display: flex; align-items: center; gap: 5px; font-size: 11px; }
     .dev-inline.changed { color: #b06000; font-weight: 600; }
     .dev-color {
@@ -444,8 +480,14 @@
     body.dark .dev-head, body.dark .dev-tabs, body.dark .dev-status { border-color: #33334a; }
     body.dark .dev-status, body.dark .dev-hint, body.dark .dev-note,
     body.dark .dev-bulklabel, body.dark .dev-propname { color: #999; }
-    body.dark .dev-prop-dark .dev-propname { color: #8a9ad0; }
-    body.dark .dev-prop-dark.changed .dev-propname { color: #aab8f0; }
+    body.dark .dev-zvhead.changed .dev-propname { color: #e0a860; }
+    body.dark .dev-border { background: #262232; border-color: #3a3550; }
+    body.dark .dev-borderbadge { background: #8a7c58; color: #16161f; }
+    body.dark .dev-variant { background: #24202c; border-color: #6a5a34; }
+    body.dark .dev-varbadge { background: #342c1c; color: #e0c890; border-color: #6a5a34; }
+    body.dark .dev-zrow.now { outline-color: #8a6a3a; }
+    body.dark .dev-modebtn.on { background: #342c1c; border-color: #7a5a2a; }
+    body.dark .dev-unit, body.dark .dev-stopz { color: #888; }
     body.dark .dev-tab { color: #aaa; }
     body.dark .dev-tab.on { background: #2b2b40; color: #fff; }
     body.dark .dev-bulk { background: #26263a; }

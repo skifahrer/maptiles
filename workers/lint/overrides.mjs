@@ -69,6 +69,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const TARGET = join(ROOT, "poc", "web", "style-overrides.json");
 import { snapshotStyle, pasteStyle, valueAtZoom } from "../../poc/web/layer-style.js";
 import { vahyUprav } from "./overrides-kontrast.mjs";
+import { percentaVPasmach } from "./overrides-pasma.mjs";
 
 /** Najmenšie platné PNG (1 × 1 px) – na skúšanie vlastných ikon. */
 const PNG_1PX = "data:image/png;base64,"
@@ -757,10 +758,18 @@ let variantov = 0;
 // normalizáciou celá", tam „nie je tmavá podoba o rád nápadnejšia než svetlá".
 const dvojic = vahyUprav(JSON.parse(readFileSync(TARGET, "utf8")), chyba);
 
+// ---------- 5. percento v zoomovom pásme ----------
+// Tiež vo vlastnom súbore, a z toho istého dôvodu (rozpis v
+// `overrides-pasma.mjs`): „na z15–z20 o desatinu hrubšie" sa nedá zapísať
+// výrazom nad krivkou zo štýlu, takže sa vyčísluje – a keby sa to pomýlilo,
+// štýl ostane platný a čiara bude len o kúsok inde, než človek naklikal.
+const zoomov = percentaVPasmach(chyba);
+
 console.log(
   `úpravy: ${bad} chýb (${odfotenych} odfotených vrstiev, ${skusok} vložení, ` +
   `7 tvarov zoomových pásiem, 8 tvarov relatívnej hodnoty, ` +
   `6 tvarov variantu, ${variantov} vrstiev z variantu, ` +
+  `${zoomov} zoomov s percentom v pásme, ` +
   `${dvojic} dvojíc svetlá/tmavá farba, ` +
   `${Object.keys(THEMES).length} tém × ${MAP_TYPE_IDS.length} typov mapy)`
 );
