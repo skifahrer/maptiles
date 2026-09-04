@@ -1,41 +1,24 @@
 #!/usr/bin/env python3
-"""
-Pokrýva stiahnutá mozaika DEM to územie, na ktorom sa má počítať?
+"""Pokrýva stiahnutá mozaika DEM to územie, na ktorom sa má počítať?
 
-PREČO EXISTUJE. Dlaždica je sľub o celom stupni (pravidlo 2 v CLAUDE.md) a
-`workers/dem/check.sh` vie o sklade len MENÁ – čiže sa spolieha na to, že sľub
-platí. Keď neplatil, build to nepovedal: v sklade `dem-dmr5` ležali
-`N48E021.tif`, `N48E022.tif` a `N49E020.tif` s pár set metrami dát (5 MB vedľa
-253 MB), lebo ich do skladu poslal presah prevodu do WGS84. Kontrola videla
-šesť dlaždíc z ôsmich, doplnenie sa nespustilo, `gdal_contour` prešiel po
-mozaike, v ktorej boli naozaj dva stupne – a vrstevnice Prešovského kraja
-skončili v jednom štvorci. Beh bol zelený (31484544154).
+Dlaždica je sľub o celom stupni a `workers/dem/check.sh` vie o sklade len mená.
+Keď sľub neplatil (dlaždice s pár set metrami dát od presahu prevodu do WGS84),
+kontrola videla šesť z ôsmich, doplnenie sa nespustilo a vrstevnice kraja
+skončili v jednom štvorci – pri zelenom behu.
 
-ROZHODUJE ROZSAH DLAŽDICE, NIE POČET PLATNÝCH BUNIEK. Poctivá dlaždica má
-rozsah presne celého stupňa aj vtedy, keď je v nej terén len na pätine plochy
-(pohraničný stupeň, alebo prázdna dlaždica = „pozerali sme sa a nič tu nie
-je"). Lož má rozsah pár pixelov. Rozsah teda tie dva prípady oddelí presne,
-kým „koľko je v nej nodaty" ich zlieva.
+Rozhoduje rozsah dlaždice, nie počet platných buniek: poctivá dlaždica má
+rozsah celého stupňa aj vtedy, keď je terén len na pätine plochy.
 
-DRUHÝ DRUH LŽI: PRÁZDNA DLAŽDICA OD KONTROLY, KTOREJ UŽ NEVERÍME. Rozsah má
-poctivý (celý stupeň), a predsa je to nepravda – `N48E016.tif` z behu
-31526268289 tvrdila, že v stupni s Devínom a Záhorím nie je terén, lebo ho
-vzorkovaná štatistika prehliadla. Vrstevnice, skaly aj tieňovanie Bratislavského
-kraja preto skončili rovnou líniou na 17. poludníku a pokrytie tu vyšlo 100 %.
-Prázdna dlaždica sa odvtedy podpisuje verziou kontroly (`EMPTY_CHECK`
-v `workers/dem/tiles.py`); nepodpísaná – alebo podpísaná verziou, ktorú sme
-zahodili – je LOŽ ako každá iná a zo skladu ide preč.
+Druhý druh lži je prázdna dlaždica od kontroly, ktorej už neveríme – rozsah má
+poctivý, a predsa je to nepravda. Prázdna dlaždica sa preto podpisuje verziou
+kontroly (`EMPTY_CHECK`); nepodpísaná ide zo skladu preč.
 
 Použitie:
     python3 workers/dem/coverage.py --bbox=19.865,48.745,22.585,49.48 \\
         --dir=dem/dmr5/tiles [--min-pct=95] [--out=cov.txt]
 
-Vypisuje `key=value` (aj do `--out`):
-    covered_pct=97.5          koľko z bboxu pokrývajú rozsahy dlaždíc
-    liars=N48E021.tif …       dlaždice, ktoré nesplnili, čo sľubuje ich meno
-    empty=N47E016 …           stupne, kde sa pozeralo a terén v nich nie je
-    missing=N48E019 …         stupne bboxu, na ktoré nie je ani jedna dlaždica
-Návratový kód 1 = pokrytie je pod `--min-pct` (volajúci sa rozhodne, čo s tým).
+Vypisuje `covered_pct`, `liars`, `empty` a `missing`; návratový kód 1 =
+pokrytie je pod `--min-pct`.
 """
 import argparse
 import json
@@ -44,23 +27,20 @@ import os
 import subprocess
 import sys
 
-# Ako vyzerá prázdna dlaždica a ktorá kontrola ju smela vyhlásiť za prázdnu,
-# vie JEDNO miesto – ten, kto ju píše. Druhá predstava o tom istom by sa raz
-# rozišla a tu by z toho bolo „mažem zo skladu všetko" alebo „neverím ničomu".
+# ako vyzerá prázdna dlaždica a ktorá kontrola ju smela vyhlásiť za prázdnu,
+# vie jedno miesto – ten, kto ju píše
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tiles  # noqa: E402
 
-# Koľko zo svojho stupňa musí dlaždica pokrývať, aby jej meno nebolo lož.
-# Poctivá dlaždica má 100 % (píše ju `workers/dem/tiles.py` s `-te` na celý
-# stupeň); tolerancia je na polpixel a na zaokrúhlenie v hlavičke.
+# koľko zo svojho stupňa musí dlaždica pokrývať, aby jej meno nebolo lož;
+# tolerancia je na polpixel a na zaokrúhlenie v hlavičke
 HONEST_PCT = 99.0
 
 
 def tile_info(path):
     """`gdalinfo -json` dlaždice, alebo None keď sa nedá prečítať.
 
-    Jedno volanie na dlaždicu: rozsah aj podpis prázdnoty sú v tej istej
-    odpovedi a druhý `gdalinfo` by za ne len znova zaplatil.
+    Jedno volanie: rozsah aj podpis prázdnoty sú v tej istej odpovedi.
     """
     try:
         return json.loads(subprocess.run(
@@ -127,8 +107,8 @@ def covers_own_degree(extent, degree):
 def covered_pct(bbox, extents, cells=400):
     """Koľko z bboxu pokrýva únia rozsahov – meraná na pravidelnej mriežke.
 
-    Mriežka, nie geometria: 400×400 buniek je na túto otázku („chýba pol kraja,
-    alebo pol pixela?") presnosť 0,25 ‰ plochy a nepotrebuje na to shapely.
+    Mriežka, nie geometria: 400×400 buniek je presnosť 0,25 ‰ plochy
+    a nepotrebuje na to shapely.
     """
     w, s, e, n = bbox
     if e <= w or n <= s or not extents:
@@ -148,20 +128,12 @@ def covered_pct(bbox, extents, cells=400):
 
 
 def data_pct(path, region=None):
-    """Koľko percent dlaždice má NAOZAJ výšky (nie nodata).
+    """Koľko percent dlaždice má naozaj výšky (nie nodata).
 
-    PREČO TO NESTAČÍ MERAŤ ROZSAHOM. Doteraz sa pokrytie počítalo z rozsahov
-    dlaždíc – „mozaika sa dotýka celého bboxu" – a to prejde aj vtedy, keď je
-    dlaždica takmer prázdna. Presne to sa stalo v behu 31635772047: v sklade
-    `dem-dmr5` mala `N49E020.tif` (Vysoké Tatry, čiže STRED Prešovského kraja)
-    5 MB, kým susedná `N49E021.tif` 265 MB. Kontrola vypísala „Pokrytie územia
-    100.0 % z 8 dlaždíc" a beh pokračoval – tieňovanie potom skončilo rovnou
-    hranou na 21° a skalám z hrany dát vyšlo 13 403 km² falošných stien.
-    Veľkosť súboru pritom stačila na to, aby to bolo vidieť; nikto sa nepozeral.
-
-    `STATISTICS_VALID_PERCENT` počíta GDAL sám pri `-stats`. Je to PRESNÝ
-    priechod, nie vzorkovanie (`-approx_stats` už raz odrezalo pol kraja, viď
-    `tiles.py`), ale beží nad hotovým súborom na disku a je ich osem.
+    Rozsah na to nestačí: dlaždica v strede kraja mala 5 MB proti 265 MB
+    susednej, kontrola vypísala „pokrytie 100 %" a tieňovanie skončilo rovnou
+    hranou. `STATISTICS_VALID_PERCENT` počíta GDAL sám pri `-stats` – je to
+    presný priechod, nie vzorkovanie.
     """
     r = subprocess.run(["gdalinfo", "-json", "-stats", path],
                        capture_output=True, text=True, check=False)
@@ -215,9 +187,8 @@ def main():
         deg = degree_of(name)
         stamp = empty_stamp(info) if info else None
         if stamp is not None and stamp != tiles.EMPTY_CHECK:
-            # Prázdna dlaždica od kontroly, ktorej už neveríme. Rozsah má
-            # v poriadku, takže inak by prešla – a stupeň, ktorý v skutočnosti
-            # terén má, by sa už nikdy neprečítal (beh 31526268289).
+            # prázdna dlaždica od kontroly, ktorej už neveríme: rozsah má
+            # v poriadku, takže inak by prešla
             liars.append(name)
             print(f"  ✗ {name} je prázdna dlaždica z kontroly "
                   f"„{stamp or 'v1 (nepodpísaná)'}“, dnes platí "
@@ -226,10 +197,8 @@ def main():
         if stamp is not None:
             empty.append(name)
         if ext is None:
-            # Rozsah sa nedá zistiť (gdalinfo zlyhal, chýba projekcia). Beriem
-            # ju ako platnú – a to znamená aj započítať ju do pokrytia podľa
-            # MENA, nie ju len preskočiť: inak by z „nedá sa overiť" vyšlo
-            # „chýba" a beh by padol na dlaždici, ktorá je možno v poriadku.
+            # rozsah sa nedá zistiť – beriem ju ako platnú a započítam podľa
+            # mena, inak by z „nedá sa overiť" vyšlo „chýba"
             print(f"  ? {name} – rozsah sa nedá zistiť, beriem ju ako platnú")
             if deg is not None:
                 good.append((float(deg[0]), float(deg[1]),
@@ -248,12 +217,9 @@ def main():
             good.append((float(deg[0]), float(deg[1]),
                          float(deg[0] + 1), float(deg[1] + 1)))
 
-    # ---------- majú dlaždice aj DÁTA, nie len rozsah? ----------
-    # Toto je tá kontrola, ktorá v behu 31635772047 chýbala. Rozsahy sedeli,
-    # pokrytie vyšlo 100 % – a pol kraja bolo bez terénu, lebo jedna dlaždica
-    # v jeho STREDE bola takmer prázdna. Nie je to chyba behu (dlaždica môže
-    # byť prázdna právom – stupeň, ktorý je celý za hranicou Slovenska), preto
-    # varovanie a nie pád; hlavné je, že to už nie je ticho.
+    # ---------- majú dlaždice aj dáta, nie len rozsah? ----------
+    # Nie je to chyba behu (dlaždica môže byť prázdna právom), preto varovanie
+    # a nie pád; hlavné je, že to už nie je ticho.
     chudobne = []
     if args.data_pct > 0:
         print(f"  dáta v dlaždiciach (podiel skutočných výšok, prah "
@@ -282,7 +248,7 @@ def main():
                   f"doplniť znova (`store.py --rm`); keď je celý za hranicou "
                   f"Slovenska, je to v poriadku.")
 
-    # Ktoré stupne bboxu neprikrýva ani jedna poctivá dlaždica.
+    # ktoré stupne bboxu neprikrýva ani jedna poctivá dlaždica
     missing = []
     for lat in range(math.floor(bbox[1]), math.floor(bbox[3]) + 1):
         for lon in range(math.floor(bbox[0]), math.floor(bbox[2]) + 1):
@@ -301,9 +267,8 @@ def main():
     if missing:
         print(f"  bez dlaždice: {' '.join(missing)}")
     if empty:
-        # Prázdna dlaždica sa do pokrytia počíta (stupeň JE prečítaný), takže
-        # inak by o nej v logu nebolo ani slovo – a „prečo tam nie sú
-        # vrstevnice" by sa hľadalo v mape, nie v behu. Preto sa vypisuje vždy.
+        # prázdna dlaždica sa do pokrytia počíta (stupeň je prečítaný), takže
+        # inak by o nej v logu nebolo ani slovo
         print(f"  prečítané a bez terénu: {' '.join(empty)}")
     text = "\n".join(lines) + "\n"
     if args.out:

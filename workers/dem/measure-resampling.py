@@ -51,20 +51,15 @@ _WORKERS = os.path.dirname(_HERE)
 sys.path.insert(0, os.path.join(_WORKERS, "lib"))
 from cell import AVERAGE_RATIO, resampling  # noqa: E402
 
-# Pyramídy DMR 5.0 sú 2, 4, 8 … m (viď `data/dem-sources.json`), takže pri
-# cieli 5 m sa číta zo 4 m. Tento pomer je celý dôvod, prečo tento súbor
-# existuje.
+# pyramídy DMR 5.0 sú 2, 4, 8 … m, takže pri cieli 5 m sa číta zo 4 m –
+# tento pomer je celý dôvod, prečo tento súbor existuje
 NATIVE_M = 1.0
 OVR_M = 4.0
 GRID_M = 5.0
-# Prevod EPSG:3046 → EPSG:4326 mierku prakticky nemení, ale ani ju nenechá
-# presne rovnakú – fáza cieľovej mriežky voči zdrojovej sa naprieč výrezom
-# plynule posúva. Model toho je nepatrne iný krok; 0,2 % dá periódu ~500
-# pixelov, teda pár kilometrov.
+# prevod EPSG:3046 → EPSG:4326 mierku prakticky nemení, ale fáza cieľovej
+# mriežky voči zdrojovej sa naprieč výrezom plynule posúva
 DRIFT = 1.002
 
-
-# ---------- kernely tak, ako ich aplikuje GDAL ----------
 
 def _b3(x):
     """Kubický B-splajn – kernel, ktorý GDAL volá `cubicspline`."""
@@ -80,11 +75,9 @@ def weights(n_src, src_res, n_dst, dst_res, kernel):
     """Matica prevzorkovania pozdĺž jednej osi (n_dst × n_src)."""
     W = np.zeros((n_dst, n_src))
     if kernel == "average":
-        # TAK, AKO TO ROBÍ GDAL. `GDALResampleChunk_Average` priemeruje CELÉ
-        # zdrojové pixely v okne [floor(a), ceil(b)) – nie plošným podielom.
-        # Pri pomere 1,25 z toho vyjde okno stále 2 px široké, ale posúvané
-        # nepravidelne: okná sú 0-1, 1-2, 2-3, 3-4, 5-6 … a pixel 4 sa
-        # PRESKOČÍ. Práve tento preskok je tá mriežka.
+        # tak, ako to robí GDAL: `GDALResampleChunk_Average` priemeruje celé
+        # zdrojové pixely v okne, nie plošným podielom – pri pomere 1,25 sa
+        # okná posúvajú nepravidelne a každý štvrtý pixel sa preskočí
         for j in range(n_dst):
             a, b = j * dst_res / src_res, (j + 1) * dst_res / src_res
             i0 = max(0, int(math.floor(a + 1e-9)))
@@ -92,8 +85,7 @@ def weights(n_src, src_res, n_dst, dst_res, kernel):
             W[j, i0:i1] = 1.0 / (i1 - i0)
         return W
     if kernel == "average-exact":
-        # Poctivý plošný priemer – nie to, čo GDAL robí, ale to, čo by robil
-        # ideálny box filter. Slúži ako referencia „nič sa nepokazilo".
+        # poctivý plošný priemer – referencia „nič sa nepokazilo"
         for j in range(n_dst):
             a, b = j * dst_res, (j + 1) * dst_res
             for i in range(max(0, int(a // src_res)),
@@ -103,10 +95,8 @@ def weights(n_src, src_res, n_dst, dst_res, kernel):
             if s:
                 W[j] /= s
         return W
-    # Interpolačné kernely. `cubicspline` sa pri zmenšovaní roztiahne v pomere
-    # mierok (tak to robí GDAL a preto vôbec filtruje); `bilinear` nie – je to
-    # vždy tá istá dvojbodová interpolácia, a práve preto jej sila závisí od
-    # toho, kam medzi zdrojové bunky cieľová padne.
+    # `cubicspline` sa pri zmenšovaní roztiahne v pomere mierok (preto vôbec
+    # filtruje); `bilinear` nie, a preto jeho sila závisí od fázy
     scale = min(1.0, src_res / dst_res) if kernel == "cubicspline" else 1.0
     rad = {"bilinear": 1.0, "cubicspline": 2.0, "near": 0.5}[kernel] / scale
     for j in range(n_dst):
@@ -134,14 +124,11 @@ def resample(a, src_res, dst_res, kernel, n_dst=None):
             @ weights(nx, src_res, n_dst[1], dst_res, kernel).T)
 
 
-# ---------- terén, tieňovanie, miery ----------
-
 def terrain(n, res, seed=3, min_lam=0.0):
     """fBm terén. `min_lam` = najkratšia vlnová dĺžka v metroch.
 
-    S `min_lam` nad dvojnásobkom cieľovej bunky je terén HLADKÝ voči cieľovej
-    mriežke: nemá čo aliasovať, takže čo v tieňovaní ostane zvlnené, je
-    artefakt prevzorkovania a nie terén.
+    Nad dvojnásobkom cieľovej bunky je terén hladký voči cieľovej mriežke,
+    takže čo v tieňovaní ostane zvlnené, je artefakt prevzorkovania.
     """
     rng = np.random.default_rng(seed)
     y, x = np.mgrid[0:n, 0:n] * res
@@ -186,8 +173,6 @@ def kolisanie(z, res, blok=32):
     b = b.reshape(ny // blok, blok, nx // blok, blok).mean((1, 3))
     return 100.0 * float(b.std() / b.mean())
 
-
-# ---------- samotné meranie ----------
 
 def retazce(z, fine):
     """Kandidátske reťazce prevzorkovania, pomenované tak, ako sú v kóde."""

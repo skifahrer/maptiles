@@ -1,25 +1,16 @@
 #!/usr/bin/env python3
-"""
-Vyrieši input `area` na bbox, kľúč a meno – na jednom mieste.
+"""Vyrieši input `area` na bbox, kľúč a meno – na jednom mieste.
 
-Potrebuje to `plan` (aby vedel, čo sa má zrkadliť), `check-dem` (aby vedel,
-čo hľadať v releasi), `contours` (aby vedel, čo počítať) aj mirror ÚGKK.
-Kým to bolo napísané v shelli vnútri jedného kroku, nedalo sa to zdieľať.
+Potrebuje to `plan`, `check-dem`, `contours` aj mirror ÚGKK. Vstup je názov
+pohoria z `workers/data/areas.json`, bbox `W,S,E,N`, alebo prázdno (celý
+región); vždy sa pretne s bboxom regiónu.
 
-Vstup je buď názov pohoria z workers/data/areas.json, alebo bbox `W,S,E,N`,
-alebo prázdno (= celý región). Vždy sa pretne s bboxom regiónu: mimo neho
-nie sú ani dáta, ani mapa.
-
-TESTOVACÍ REŽIM (`--test-km2`): z výrezu sa vyreže malý štvorec okolo jeho
-stredu. Zmysel je jediný – rýchlosť ladenia. Skaly, vrstevnice aj tieňovanie
-na celom pohorí sú desiatky minút, na 4 km² sú to jednotky minút,
-takže sa dá prah alebo interval otestovať za jeden beh a nie za jeden obed.
-Kľúč dostane príponu `_test4`, aby si testovací výsledok nikdy nesadol do
-tej istej cache ani na ten istý asset ako ostrý.
+`--test-km2` vyreže malý štvorec okolo stredu výrezu – kvôli rýchlosti ladenia.
+Kľúč dostane príponu `_test4`, aby si testovací výsledok nesadol do cache ani
+na asset ostrého behu.
 
 Použitie:
     python3 workers/plan/area.py --region-bbox=W,S,E,N --area=vysoke_tatry
-    → key=…, name=…, bbox=…, km2=… na stdout vo formáte key=value
 """
 import argparse
 import hashlib
@@ -29,32 +20,19 @@ import os
 import re
 import sys
 
-# Koľko metrov je jeden stupeň. Zemepisná dĺžka sa krát kosínus šírky –
-# na 49° je stupeň dĺžky len asi dve tretiny stupňa šírky.
+# stupeň dĺžky sa krát kosínus šírky – na 49° je to asi dve tretiny
 M_PER_DEG_LAT = 110540.0
 M_PER_DEG_LON = 111320.0
 
-# KOĽKO TERÉNU SA POČÍTA EŠTE ZA HRANICOU REGIÓNU – dnes 0.
+# koľko terénu sa počíta ešte za hranicou regiónu – dnes 0.
 #
-# PREČO 0. Kým sa hranica kraja brala z `.poly` osm.fr, bola zaokrúhlená na
-# ~550 m a okolo hranice rozšírená, takže dve susedné mapy na seba nemuseli
-# nadväzovať; riešilo sa to tým, že sa polygón NAFÚKOL o 2 500 m von a mapy sa
-# v tom páse prekrývali. Odkedy sa hranica číta presne z OSM relácie
-# (`workers/plan/boundary.py`), je prekryv zbytočný: susedné kraje zdieľajú tie
-# isté cesty hranice, takže na seba nadväzujú samy od seba – a nafúknutie by
-# už len robilo presne to, čomu sa vyhýbame, teda mapu, vrstevnice, skaly aj
-# tieňovanie kilometre vnútri susedného kraja a za štátnou hranicou.
+# Kým sa hranica brala z `.poly` osm.fr, bola zaokrúhlená a rozšírená, tak sa
+# polygón nafukoval a mapy sa v tom páse prekrývali. Odkedy sa číta presne
+# z OSM relácie, susedné kraje na seba nadväzujú samy od seba.
 #
-# PREČO TU TÁ KONŠTANTA VÔBEC OSTÁVA. Sú to dve veci naraz:
-#   * `pad_bbox` ňou nafukuje OKNO, z ktorého sa čítajú vrstvy z výškového
-#     modelu (`dem_bbox`). Pri `area: cely_region` je to bbox z
-#     `workers/data/regions.json`, teda tesný obdĺžnik okolo polygónu – a
-#     `-cutline` v ňom nesmie vytŕčať von z okna. S 0 je okno presne ten
-#     obdĺžnik a to je správne; keby sa raz presah zase zapol, musí sa okno
-#     zväčšiť s ním, inak by presah na DEM vrstvách nebolo vidieť.
-#   * číslo sa nesie v MENÁCH uložených vrstiev (tieňovanie, skaly), aby po
-#     jeho zmene nevrátil sklad tú starú, orezanú po inom – stráži to
-#     `workers/lint/border-overlap.py`.
+# Konštanta ostáva z dvoch dôvodov: `pad_bbox` ňou nafukuje okno pre vrstvy
+# z DEM (`-cutline` v ňom nesmie vytŕčať von), a číslo sa nesie v menách
+# uložených vrstiev, nech sklad nevráti tú starú, orezanú po inom.
 BORDER_BUFFER_M = 0
 
 
@@ -74,9 +52,8 @@ def pad_bbox(bbox, meters):
 def test_square(bbox, km2, at=""):
     """Malý štvorec s plochou ~`km2` vnútri `bbox`.
 
-    Stred je stred výrezu, ak `at` nehovorí inak (`lon,lat`). Keď by štvorec
-    vyliezol von, posunie sa dovnútra – nie oreže: polovičný testovací výrez
-    by mal inú plochu než akú si pýtal a čísla z behu by neplatili.
+    Keď by vyliezol von, posunie sa dovnútra – nie oreže: polovičný výrez by
+    mal inú plochu, než akú si pýtal.
     """
     w, s, e, n = bbox
     clon = (w + e) / 2.0
@@ -91,8 +68,7 @@ def test_square(bbox, km2, at=""):
     dlat = strana_m / M_PER_DEG_LAT / 2.0
     dlon = strana_m / (M_PER_DEG_LON * math.cos(math.radians(clat))) / 2.0
 
-    # Väčší štvorec než samotný výrez nemá zmysel dorábať – vtedy je testovací
-    # výrez celý výrez a je to v poriadku.
+    # väčší štvorec než samotný výrez nemá zmysel dorábať
     if 2 * dlon >= (e - w) or 2 * dlat >= (n - s):
         return [w, s, e, n]
 
@@ -115,25 +91,21 @@ def main():
     ap.add_argument("--out", default="", help="kam zapísať (default stdout)")
     args = ap.parse_args()
 
-    # OKNO PRE VRSTVY Z DEM. `BORDER_BUFFER_M` je dnes 0, takže je to presne
-    # bbox regiónu a hranicu z neho vyreže až `-cutline` (rozpis pri tej
-    # konštante). Volanie tu ostáva preto, že keby sa presah za hranicu raz
-    # zase zapol, musí sa okno zväčšiť SPOLU s ním – inak by `-cutline`
-    # siahal ďalej, než kam okno vôbec siaha, a na DEM vrstvách by presah
-    # nebolo vidieť.
+    # okno pre vrstvy z DEM. `BORDER_BUFFER_M` je 0, takže je to presne bbox
+    # regiónu a hranicu z neho vyreže `-cutline`. Volanie ostáva preto, že keby
+    # sa presah zase zapol, okno sa musí zväčšiť spolu s ním.
     region = pad_bbox([float(v) for v in args.region_bbox.split(",")],
                       BORDER_BUFFER_M)
     raw = (args.area or "").strip()
-    # Vo formulári sa „celý región" nedá vyjadriť prázdnou položkou výberu,
-    # tak má vlastný názov. Tu je to to isté ako prázdno.
+    # vo formulári sa „celý región" nedá vyjadriť prázdnou položkou výberu
     if raw == "cely_region":
         raw = ""
 
     if not raw:
         key, name, bbox = "cely", "celý región", region
     elif "," in raw:
-        # Hash v kľúči, lebo kľúč ide do mien cache aj assetov: dva rôzne
-        # vlastné výrezy sa pod spoločným „vyrez" prepisovali navzájom.
+        # hash v kľúči, lebo kľúč ide do mien cache aj assetov: dva rôzne
+        # vlastné výrezy sa pod spoločným „vyrez" prepisovali navzájom
         h = hashlib.sha1(raw.encode()).hexdigest()[:6]
         key, name = f"vyrez_{h}", f"vlastný výrez {raw}"
         bbox = [float(v) for v in raw.split(",")]
@@ -149,7 +121,7 @@ def main():
         name = areas[raw]["name"]
         bbox = areas[raw]["bbox"]
 
-    # Prienik s regiónom – mimo neho nie sú ani dáta, ani mapa.
+    # prienik s regiónom – mimo neho nie sú ani dáta, ani mapa
     w, s = max(region[0], bbox[0]), max(region[1], bbox[1])
     e, n = min(region[2], bbox[2]), min(region[3], bbox[3])
     if e <= w or n <= s:
@@ -160,8 +132,7 @@ def main():
 
     out = []
     if args.test_km2 > 0:
-        # Celý výrez ide von tiež: obrázok „kde to je" potrebuje okolie,
-        # inak je to štvorec bez kontextu.
+        # celý výrez ide von tiež: obrázok „kde to je" potrebuje okolie
         out.append(f"full_bbox={w},{s},{e},{n}")
         out.append(f"full_km2={bbox_km2(w, s, e, n):.0f}")
         try:
@@ -169,17 +140,9 @@ def main():
         except ValueError as exc:
             print(f"::error::{exc}", file=sys.stderr)
             return 1
-        # Do kľúča, nie len do mena: kľúč je v menách cache aj assetov
-        # a testovací výsledok sa nesmie tváriť ako ostrý.
-        #
-        # `cely` je ale SENTINEL („žiadny výrez, ber celý región"), nie meno
-        # územia. Prípona by z neho spravila meno – a tým by sa prepla podoba
-        # výškového modelu: `dem-target.py` dáva na kľúč `cely` dlaždice, na
-        # čokoľvek iné výrez v plnom rozlíšení. Testovací beh by tak počítal
-        # z 1 m modelu to, čo ostrý počíta z 5 m dlaždíc, a nepreveril by
-        # presne tú cestu, kvôli ktorej sa spúšťa. Kolízia tu nehrozí:
-        # dlaždice sú pomenované podľa stupňov a kľúč regiónu (z ktorého sa
-        # robia mená cache a assetov) príponu `_test4` nesie tak či tak.
+        # do kľúča, nie len do mena: testovací výsledok sa nesmie tváriť ako
+        # ostrý. `cely` je ale sentinel („žiadny výrez"), nie meno územia –
+        # prípona by z neho spravila meno a prepla podobu výškového modelu.
         if key != "cely":
             key = f"{key}_test{args.test_km2:g}"
             if args.test_at.strip():

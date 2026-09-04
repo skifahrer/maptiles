@@ -1,20 +1,10 @@
 #!/usr/bin/env python3
-"""
-Zistí, či a odkiaľ sa dá stiahnuť 1 m LiDAR od ÚGKK (DMR 5.0).
+"""Zistí, či a odkiaľ sa dá stiahnuť 1 m LiDAR od ÚGKK (DMR 5.0).
 
-PREČO SAMOSTATNÝ SKRIPT: hostiteľov `*.skgeodesy.sk` nevidno z každej siete
-a názvy služieb v ArcGIS adresári nie sú nikde zdokumentované. Namiesto
-hádania sa teda spustí sonda z GitHub runnera, ktorá:
-
-  1. stiahne adresár služieb (`/rest/services?f=json`) a vypíše VŠETKY,
-     nech je vidieť, čo tam vlastne je,
-  2. pre každého kandidáta z workers/data/dem-sources.json zistí metadáta
-     (rozlíšenie pixela, rozsah, typ dát),
-  3. z toho, čo odpovedalo, si vypýta malý výrez cez `exportImage` a overí,
-     že prišiel naozaj GeoTIFF s očakávanou mriežkou.
-
-Výsledok je tabuľka „funguje / nefunguje a prečo". Až podľa nej sa dá
-`dem_source: ugkk` zapnúť s istotou, nie s nádejou.
+Hostiteľov `*.skgeodesy.sk` nevidno z každej siete a názvy služieb v ArcGIS
+adresári nie sú zdokumentované, tak sa namiesto hádania spustí sonda: stiahne
+adresár služieb, pre každého kandidáta z `dem-sources.json` zistí metadáta
+a z toho, čo odpovedalo, si vypýta malý výrez a overí, že prišiel GeoTIFF.
 
 Použitie:
     python3 workers/dem/probe.py [--bbox=W,S,E,N] [--summary=SÚBOR]
@@ -28,13 +18,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-# Geoportály za WAF-om (Imperva, F5, Cloudflare) bežne zahadzujú požiadavky,
-# ktoré nevyzerajú ako prehliadač – a nezahadzujú ich chybou, ale tichom, čo
-# vyzerá presne ako výpadok siete. V behu 30997189220 to bol práve timeout,
-# takže sa oplatí vyskúšať aj toto, než to odpíšeme.
-#
-# Skúša sa viac profilov, lebo blokovanie býva podľa celej sady hlavičiek,
-# nie len podľa User-Agenta.
+# geoportály za WAF-om bežne zahadzujú požiadavky, ktoré nevyzerajú ako
+# prehliadač – a nie chybou, ale tichom, čo vyzerá ako výpadok siete.
+# Skúša sa viac profilov: blokuje sa podľa celej sady hlavičiek.
 BROWSERS = [
     ("Safari 17 / macOS", {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -57,7 +43,7 @@ BROWSERS = [
         "Upgrade-Insecure-Requests": "1",
     }),
     ("ArcGIS klient", {
-        # Niektoré ArcGIS servery naopak púšťajú len „svojich" klientov.
+        # niektoré ArcGIS servery naopak púšťajú len „svojich" klientov
         "User-Agent": "ArcGIS Pro 3.2 (Esri)",
         "Accept": "*/*",
         "Referer": "https://zbgis.skgeodesy.sk/mkzbgis/",
@@ -68,30 +54,22 @@ BROWSERS = [
     }),
 ]
 
-# Predvolené hlavičky sú prvý profil – tvárime sa ako prehliadač, nie ako
-# script. Ktorý profil naozaj prešiel, hlási `smart_get`.
+# predvolené hlavičky sú prvý profil; ktorý prešiel, hlási `smart_get`
 UA = dict(BROWSERS[0][1])
-# Malý výrez vo Vysokých Tatrách – Gerlachovský štít a okolie. Musí byť
-# niekde, kde LiDAR určite je, inak by prázdna odpoveď vyzerala ako chyba.
+# malý výrez tam, kde LiDAR určite je – inak by prázdna odpoveď vyzerala
+# ako chyba
 TEST_BBOX = (20.12, 49.15, 20.16, 49.18)
 
 
-# Krátke timeouty zámerne: keď server neodpovie, chceme to vedieť za sekundy,
-# nie za sedem minút. V behu 30997189220 zabralo šesť kandidátov + tri WCS
-# 6 min 50 s čistého čakania a výsledok bol rovnaký ako po 20 sekundách.
+# krátke timeouty zámerne: keď server neodpovie, chceme to vedieť za sekundy
 DEFAULT_TIMEOUT = 12
 
 
 def host_reachable(url, timeout=8):
     """Odpovie vôbec ten stroj? Rozlišuje „server nie je" od „cesta nie je".
 
-    Bez toho log povie len „URLError" pri každom kandidátovi a nie je z neho
-    poznať, či sme hádali zlé názvy služieb, alebo je celý hostiteľ z runnera
-    nedostupný. To sú dve úplne rôzne veci s úplne rôznym riešením.
-
-    Testuje sa skutočným HTTPS požiadavkom na koreň, nie len TCP spojením:
-    za HTTP proxy sa TCP otvorí vždy (na proxy) a až CONNECT sa odmietne,
-    takže samotný socket by tvrdil „dostupné" aj tam, kde nie je.
+    Testuje sa skutočným HTTPS požiadavkom na koreň, nie TCP spojením: za
+    proxy sa TCP otvorí vždy (na proxy) a až CONNECT sa odmietne.
     """
     p = urllib.parse.urlparse(url)
     root = f"{p.scheme}://{p.netloc}/"
@@ -101,11 +79,11 @@ def host_reachable(url, timeout=8):
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return True, f"HTTP {r.status} ({name})"
         except urllib.error.HTTPError as exc:
-            # 403/404 na koreni je v poriadku – server existuje a odpovedá.
+            # 403/404 na koreni je v poriadku – server existuje a odpovedá
             return True, f"HTTP {exc.code} ({name})"
         except Exception as exc:
             last = f"{type(exc).__name__}: {exc}"
-    # Ešte curl – iný TLS stack prejde cez niektoré WAF-y tam, kde python nie.
+    # ešte curl – iný TLS stack prejde cez niektoré WAF-y tam, kde python nie
     try:
         r = subprocess.run(["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}",
                             "--http2", "--max-time", str(timeout), "-A",
@@ -123,10 +101,8 @@ def host_reachable(url, timeout=8):
 def smart_get(url, timeout=DEFAULT_TIMEOUT, want_binary=True):
     """Stiahne URL a skúša pritom vyzerať ako prehliadač.
 
-    Vracia (dáta, čím sa to podarilo) alebo (None, zoznam pokusov). Skúša:
-      1. každý profil hlavičiek cez urllib,
-      2. `curl` s tými istými hlavičkami – iný TLS stack a HTTP/2, čo prejde
-         cez WAF-y, ktoré blokujú podľa TLS odtlačku (JA3), nie podľa hlavičiek.
+    Vracia (dáta, čím sa to podarilo) alebo (None, zoznam pokusov): najprv
+    profily hlavičiek cez urllib, potom `curl` (iný TLS stack a HTTP/2).
     """
     tried = []
     for name, headers in BROWSERS:
@@ -137,8 +113,8 @@ def smart_get(url, timeout=DEFAULT_TIMEOUT, want_binary=True):
         except Exception as exc:
             tried.append(f"urllib/{name}: {type(exc).__name__}")
 
-    # curl má vlastný TLS stack a vie HTTP/2 – tam, kde blokujú podľa
-    # odtlačku spojenia, python neprejde a curl áno (alebo naopak).
+    # curl má vlastný TLS stack a vie HTTP/2 – tam, kde blokujú podľa odtlačku
+    # spojenia, python neprejde a curl áno (alebo naopak)
     name, headers = BROWSERS[0]
     cmd = ["curl", "-sS", "--fail", "--http2", "--compressed",
            "--max-time", str(int(timeout * 2)), "-L"]
@@ -167,10 +143,8 @@ def fetch(url, params=None, timeout=DEFAULT_TIMEOUT, binary=False):
 def discover_from_catalog(urls, timeout=DEFAULT_TIMEOUT):
     """Vytiahne URL služieb z metadátového katalógu (RPI / geoportal.gov.sk).
 
-    Hádať názvy služieb je slabé. Slovenský Register priestorových informácií
-    má pre DMR 5.0 metadátové záznamy a v nich `distributionInfo` s URL na
-    služby – to je to isté, čo by človek našiel klikaním, len bez klikania.
-    Navyše je to iný hostiteľ, takže to môže prejsť aj tam, kde skgeodesy nie.
+    Hádať názvy služieb je slabé; katalóg ich má v `distributionInfo`. Navyše
+    je to iný hostiteľ, takže to môže prejsť aj tam, kde skgeodesy nie.
     """
     import re
     found = []
@@ -271,8 +245,7 @@ def probe_export(url, bbox):
 def diagnose(sources):
     """Matica hostiteľ × profil prehliadača – odkiaľ sa kam dá dostať.
 
-    Toto je jediný spôsob, ako na otázku „pomôže tváriť sa ako Safari?"
-    odpovedať dátami. Beží to na runneri, kde je sieť, ktorá o to ide.
+    Jediný spôsob, ako na otázku „pomôže tváriť sa ako Safari?" odpovedať dátami.
     """
     src = json.load(open(sources))["ugkk"]
     hosts = []
@@ -281,8 +254,7 @@ def diagnose(sources):
         h = urllib.parse.urlparse(u).netloc
         if h and h not in hosts:
             hosts.append(h)
-    # Kontrolný hostiteľ: keď neprejde ani ten, problém je v sieti runnera,
-    # nie na strane ÚGKK.
+    # kontrolný hostiteľ: keď neprejde ani ten, problém je v sieti runnera
     hosts.append("pypi.org")
 
     print("── Dostupnosť hostiteľov (GET na koreň, každý profil zvlášť)")

@@ -1,23 +1,17 @@
 #!/usr/bin/env python3
-"""
-Obrázok „kde presne ten testovací výrez je" + súradnice + odkaz do mapy.
+"""Obrázok „kde presne ten testovací výrez je" + súradnice a odkaz do mapy.
 
-PREČO: testovací režim vyreže z pohoria štvorec s pár km². Z čísel
-`20.100285,49.163603,20.119715,49.176397` sa ale nedá povedať, či to padlo
-na hrebeň so stenami, alebo na lúku pod lesom – a keď padne na lúku, výsledok
-„nenašlo ani jednu skalu" nehovorí nič o prahoch, len o mieste. Preto beh
-vypíše obrázok s okolím a odkaz, ktorý otvorí hotovú mapu presne tam.
+Z čísel sa nedá povedať, či štvorec padol na hrebeň so stenami, alebo na lúku –
+a keď na lúku, „nenašlo ani jednu skalu" nehovorí nič o prahoch.
 
-Podklad je to isté tieňovanie z freemap.sk, aké používajú skaly z obrázka –
-na prehľadový zoom je to zopár dlaždíc a je z neho vidieť terén, teda presne
-to, čo pri výbere testovacieho miesta zaujíma. Keď sa nestiahne (bez siete,
-zmenená služba), obrázok sa aj tak nakreslí – len na prázdnom podklade.
-Diagnostika testovacieho výrezu nesmie zhodiť beh, ktorý ide o niečom inom.
+Podklad je to isté tieňovanie z freemap.sk ako pri skalách z obrázka. Keď sa
+nestiahne, obrázok sa nakreslí na prázdnom podklade – diagnostika nesmie zhodiť
+beh, ktorý ide o niečom inom.
 
 Použitie:
     python3 workers/plan/test-map.py \\
         --bbox=20.10,49.163,20.12,49.176 --full-bbox=19.9,49.09,20.32,49.25 \\
-        --name="Vysoké Tatry – test 4 km²" --png=out/kde-to-je.png \\
+        --name=\"Vysoké Tatry – test 4 km²\" --png=out/kde-to-je.png \\
         --md=out/kde-to-je.md --pages-url=https://user.github.io/fricomaps/
 """
 import argparse
@@ -33,9 +27,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 TILE = 256
 R = 6378137.0
-# Ten istý podklad ako v shading-rocks.py. Prehľadový zoom = jednotky dlaždíc,
-# takže je to zanedbateľná záťaž pre dobrovoľnícku službu – a preto sa tu
-# ani nerotujú hlavičky: pri takomto objeme je slušnejšie priznať sa menom.
+# ten istý podklad ako v shading-rocks; prehľadový zoom = jednotky dlaždíc,
+# tak sa tu ani nerotujú hlavičky – pri takom objeme je slušnejšie priznať sa
 SHADING_URL = "https://sk-hires-shading.tiles.freemap.sk/{z}/{x}/{y}.jpg"
 UA = ("fricomaps/1.0 (+https://github.com/skifahrer/fricomaps) "
       "testovaci-vyrez-nahlad")

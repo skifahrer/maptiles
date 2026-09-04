@@ -1,58 +1,27 @@
 #!/usr/bin/env python3
-"""
-PRESNÁ hranica kraja a štátu – z OSM dát, nie z rozšíreného `.poly` osm.fr.
+"""PRESNÁ hranica kraja a štátu – z OSM dát, nie z rozšíreného `.poly` osm.fr.
 
-PREČO TENTO SÚBOR VZNIKOL. Hranicu regiónu sme brali z `.poly`, ktorý osm.fr
-zverejňuje vedľa svojich extraktov (`workers/plan/region-poly.py`). Je to
-pohodlné – je to tá istá čiara, ktorou je orezaný ich PBF –, ale NIE JE TO
-HRANICA KRAJA:
+`.poly` z osm.fr má body zaokrúhlené na mriežku 0,005° (≈ 550 m) a osm.fr si
+polygón okolo hranice sám rozširuje – susedné kraje sa v ňom prekrývajú o 2–4 km.
 
-  * body sú zaokrúhlené na mriežku 0,005° (≈ 550 m), takže čiara po hranici
-    len kľučkuje;
-  * a osm.fr si polygón okolo hranice ešte SÁM ROZŠIRUJE – namerané na ôsmich
-    krajoch SR: susedné kraje sa v `.poly` prekrývajú o 2 až 4 km.
+Tu sa hranica berie priamo z OSM relácie (`boundary=administrative` +
+`admin_level`), teda z tých istých dát, z akých je mapa. Kraj (4) sa ešte
+pretne so štátom (2) – čo v OSM vytŕča za štátnu hranicu, nemá byť v mape kraja.
 
-Nad tým sme prekryv ešte zväčšovali (`BORDER_BUFFER_M` = 2 500 m na každú
-stranu), aby medzi dvoma stiahnutými mapami neostala medzera. Výsledok: mapa
-Prešovského kraja siahala kilometre do Košického kraja, do Poľska aj na
-Ukrajinu, a to isté robili vrstevnice, skaly aj tieňovanie – počítali sa na
-okne, ktoré bolo o ten prekryv nafúknuté.
+Číta sa z PBF, ktoré si beh aj tak sťahuje: ďalší server by bol druhá pravda
+o hranici. `osmium extract -s smart -S types=multipolygon,boundary` dopĺňa
+členov hraničných relácií, takže v rezanom PBF sú hranice celé.
 
-TENTO SÚBOR TO OTÁČA: hranica sa berie PRIAMO Z OSM RELÁCIE
-(`boundary=administrative` + `admin_level`), teda z tých istých dát, z akých
-je mapa. Kraj sa reže na `admin_level=4`, štát na `admin_level=2`, a kraj sa
-so štátom ešte PRETNE – čo v OSM vytŕča za štátnu hranicu, nemá byť ani
-v mape kraja (rozpis pri `uprav`).
-
-Prekryv so susedom sa tým nestráca, len prestáva byť potrebný: dva susedné
-kraje zdieľajú v OSM TIE ISTÉ cesty hranice, takže na seba ich mapy nadväzujú
-presne – bez medzery a bez prekryvu. Že to naozaj tak je, meria
-`workers/plan/seam.py` v každom behu.
-
-ODKIAĽ SA HRANICA ČÍTA: z PBF, ktoré si beh aj tak sťahuje. Nie z Overpassu
-ani z Nominatimu – ďalší server je ďalšia vec, ktorá vie byť dole, a hlavne by
-to bola DRUHÁ PRAVDA o hranici: mapa by bola rezaná podľa relácie z jedného
-dňa a hranica nakreslená podľa relácie z iného. `osmium extract -s smart -S
-types=multipolygon,boundary` (ktorým sa kraj reže z rodiča) DOPĹŇA členov
-hraničných relácií, takže v rezanom PBF je hranica kraja, hranica štátu aj
-hranice susedných krajov CELÉ – aj keď z nich väčšina leží von.
-
-AKO SA Z RELÁCIE STANE POLYGÓN. Nie vlastným zlepovaním ciest do prstencov:
-`osmium export` to vie sám (skladá plochy z relácií `type=multipolygon`
-a `type=boundary`) a je to jeho práca, nie naša. Filtruje sa pred ním
-(`osmium tags-filter r/admin_level=…`), aby sa neskladali tisíce hraníc obcí,
-ktoré nikto nechce.
+Z relácie robí polygón `osmium export` sám (skladá plochy z `type=multipolygon`
+aj `type=boundary`); filtruje sa pred ním, nech sa neskladajú hranice obcí.
 
 Použitie ako modul (volá ho `region-poly.py`):
-    import boundary
     hranice = boundary.hranice_z_pbf("data/region.osm.pbf")
-    kraj = boundary.vyber(hranice, "Prešovský kraj", 4)
-    stat = boundary.vyber(hranice, "Slovensko", 2)
-    rings, stav = boundary.uprav(kraj, stat)
+    rings, stav = boundary.uprav(boundary.vyber(hranice, "Prešovský kraj", 4),
+                                 boundary.vyber(hranice, "Slovensko", 2))
 
-Alebo z príkazového riadka (kontrola a debug):
+Alebo z príkazového riadka:
     python3 workers/plan/boundary.py --pbf=data/region.osm.pbf
-    python3 workers/plan/boundary.py --pbf=… --name='Prešovský kraj' --level=4
 """
 import json
 import os
@@ -60,22 +29,17 @@ import subprocess
 import sys
 import tempfile
 
-# Ktoré úrovne sa z PBF vôbec skladajú. Štát (2) a kraj (4) – nič iné táto
-# pipeline nereže a hranice obcí (8) sú tisíce plôch, ktorých zloženie by
-# trvalo minúty a nikto by ich nepoužil.
+# štát (2) a kraj (4) – nič iné táto pipeline nereže a hranice obcí sú tisíce
+# plôch, ktoré by nikto nepoužil
 ADMIN_LEVELS = (2, 4)
 
-# O KOĽKO METROV SA HRANICA SMIE ODCHÝLIŤ pri zjednodušení pred rezom.
-# Rozpis aj namerané čísla sú pri `uprav` – krátko: `osmium extract --polygon`
-# testuje každý uzol proti každej úsečke hranice, takže presná hranica z OSM
-# (22 284 bodov na Prešovskom kraji) by rez z rodiča predĺžila rádovo
-# osemnásobne. Pri 10 m z nej ostane 7 189 bodov a je stále o dva rády
-# presnejšia než mriežka 0,005° (≈ 550 m), na ktorú ju zaokrúhľuje osm.fr.
+# o koľko metrov sa hranica smie odchýliť pri zjednodušení pred rezom.
+# `osmium extract --polygon` testuje každý uzol proti každej úsečke, takže
+# presná hranica by rez z rodiča predĺžila rádovo osemnásobne. Pri 10 m je
+# stále o dva rády presnejšia než mriežka osm.fr.
 OREZ_TOLERANCIA_M = 10
 
-# Koľko sekúnd sa čaká na `osmium`. Rez rodiča (373 MB) je desiatky sekúnd,
-# skladanie hraníc je z toho zlomok – ale keď sa niečo zasekne, má to spadnúť
-# a nie držať job až do stropu 360 minút.
+# keď sa `osmium` zasekne, má to spadnúť a nie držať job do stropu 360 minút
 TIMEOUT_S = 1800
 
 
@@ -84,10 +48,8 @@ def log(msg):
 
 
 # ---------- geometria: GeoJSON ↔ prstence ----------
-# JEDNA odpoveď pre celý priečinok `plan/`: `region-poly.py` aj `seam.py`
-# pracujú s prstencami `[(body, je_diera)]` a obe podoby sa musia vedieť
-# preložiť na jednom mieste. (`workers/lib/region-mask.py` má vlastnú kópiu –
-# je v inom priečinku a má v mene pomlčku, takže sa `import`-núť nedá.)
+# Jedna odpoveď pre celý priečinok `plan/`. (`workers/lib/region-mask.py` má
+# vlastnú kópiu – je v inom priečinku a má v mene pomlčku.)
 
 def rings_from_geojson(data):
     """GeoJSON dict (Polygon/MultiPolygon) → `[(prstenec, je_diera)]`."""
@@ -107,10 +69,9 @@ def rings_from_geojson(data):
 def geojson_from_rings(rings):
     """Prstence → GeoJSON. Diery idú k poslednému vonkajšiemu prstencu.
 
-    Je to zjednodušenie: `.poly` neurčuje, ku ktorému obrysu diera patrí, a pri
-    kraji je vonkajší prstenec jeden veľký. Keby ich bolo viac (ostrov), diera
-    v nesprávnom polygóne by pri `-cutline` nič nepokazila – gdalwarp berie
-    úniu, takže by len nebola dierou.
+    Je to zjednodušenie: `.poly` neurčuje, ku ktorému obrysu diera patrí.
+    Pri `-cutline` by diera v nesprávnom polygóne nič nepokazila – gdalwarp
+    berie úniu, takže by len nebola dierou.
     """
     polys, holes = [], []
     for ring, hole in rings:
@@ -128,14 +89,11 @@ def geojson_from_rings(rings):
             "features": [{"type": "Feature", "properties": {}, "geometry": geom}]}
 
 
-# ---------- ogr2ogr ----------
-
 def ogr2ogr(args, popis, dopad):
-    """`ogr2ogr` s daným zoznamom argumentov. `True` = prešiel.
+    """`ogr2ogr` s danými argumentmi. `True` = prešiel.
 
-    `dopad` je veta o tom, ČO SA NESTANE, keď to nevyjde – volajúci ju vie
-    povedať presnejšie než tento súbor a bez nej by bolo varovanie len
-    „nepodarilo sa" (pravidlo 4).
+    `dopad` je veta o tom, čo sa nestane, keď to nevyjde – volajúci ju vie
+    povedať presnejšie než tento súbor.
     """
     try:
         subprocess.run(["ogr2ogr", *args], check=True,
@@ -153,8 +111,6 @@ def ogr2ogr(args, popis, dopad):
             f"{dopad}")
         return False
 
-
-# ---------- hranice z PBF ----------
 
 def _osmium(args, popis):
     """`osmium` s danými argumentmi. `True` = prešiel."""
@@ -174,22 +130,14 @@ def _osmium(args, popis):
 
 
 def hranice_z_pbf(pbf, levels=ADMIN_LEVELS):
-    """PBF → `[{"name", "names", "admin_level", "rings"}]` administratívnych hraníc.
+    """PBF → `[{"name", "names", "admin_level", "rings"}]` hraníc.
 
-    Dva kroky, oba `osmium`:
+    Dva kroky `osmium`: `tags-filter r/admin_level=…` nechá len hraničné
+    relácie (bez neho by sa skladali aj hranice obcí) a `export
+    --geometry-types=polygon` z nich poskladá plochy.
 
-      1. `tags-filter r/admin_level=…` nechá z PBF len hraničné relácie a to,
-         na čo sa odkazujú. Bez neho by druhý krok skladal aj hranice obcí –
-         tisíce plôch, ktoré tu nikto nechce.
-      2. `export --geometry-types=polygon` z relácií POSKLADÁ plochy. Vie to
-         aj pre `type=boundary`, nie len pre `type=multipolygon`, a je to jeho
-         práca: vlastné zlepovanie ciest do prstencov by bola druhá pravda
-         o tom, ako z relácie vzniká polygón.
-
-    Prázdny zoznam znamená „nedá sa" (chýba `osmium`, alebo v PBF hranice nie
-    sú) – NIE „hranica neexistuje". Volajúci na to má náhradné riešenie a musí
-    ho ohlásiť; ticho by to bol presne ten omyl, po ktorom mapa vyzerá hotová
-    a je orezaná inak, než hovorí.
+    Prázdny zoznam znamená „nedá sa", nie „hranica neexistuje" – volajúci má
+    náhradné riešenie a musí ho ohlásiť.
     """
     if not pbf or not os.path.exists(pbf):
         log(f"::warning::Hranice sa nedajú prečítať – {pbf} nie je.")
@@ -202,7 +150,7 @@ def hranice_z_pbf(pbf, levels=ADMIN_LEVELS):
                         *vyrazy], "Výber hraničných relácií z PBF"):
             return []
         # `--geometry-types=polygon`: relácie sa majú poskladať na plochy,
-        # nie vypadnúť ako zväzok čiar.
+        # nie vypadnúť ako zväzok čiar
         if not _osmium(["export", "--overwrite", "-f", "geojsonseq",
                         "--geometry-types=polygon", "-o", geo, admin],
                        "Skladanie hraníc z relácií (`osmium export`)"):
@@ -213,10 +161,8 @@ def hranice_z_pbf(pbf, levels=ADMIN_LEVELS):
 def _citaj_geojsonseq(cesta):
     """GeoJSON Text Sequence → zoznam hraníc.
 
-    Oddeľovač záznamov (RS, 0x1E) sa ODSTREĽUJE, nie predpokladá, že tam nie
-    je: `osmium export` ho pred každý riadok píše a jeho prepínač sa medzi
-    verziami volal rôzne. Riadok s ním by sa nedal prečítať ako JSON a hranica
-    by ticho zmizla.
+    Oddeľovač záznamov (RS, 0x1E) sa odstreľuje, nie predpokladá: `osmium
+    export` ho pred každý riadok píše a riadok s ním by sa nedal prečítať.
     """
     hranice = []
     try:
@@ -241,9 +187,8 @@ def _citaj_geojsonseq(cesta):
                     lvl = int(str(props.get("admin_level") or "").strip())
                 except ValueError:
                     continue
-                # Meno sa hľadá vo VIACERÝCH kľúčoch: `regions.json` má
-                # `osm_name` po slovensky a v OSM je slovenské meno raz v
-                # `name`, raz v `name:sk` (pri štátoch aj `int_name`).
+                # meno sa hľadá vo viacerých kľúčoch: v OSM je slovenské meno
+                # raz v `name`, raz v `name:sk` (pri štátoch aj `int_name`)
                 names = {str(props.get(k)) for k in
                          ("name", "name:sk", "int_name", "official_name")
                          if props.get(k)}
@@ -260,9 +205,8 @@ def _citaj_geojsonseq(cesta):
 def vyber(hranice, name, admin_level):
     """Hranica daného mena a úrovne → prstence, alebo `None`.
 
-    Keď je zhôd viac (v rezanom PBF sa vie objaviť aj kus cudzej hranice
-    s rovnakým menom), berie sa TÁ NAJVÄČŠIA: relácia, po ktorej sa volá kraj,
-    je z nich vždy tá s celou plochou.
+    Pri viacerých zhodách sa berie tá najväčšia: relácia, po ktorej sa volá
+    kraj, je z nich vždy tá s celou plochou.
     """
     hladane = (name or "").strip()
     if not hladane:
@@ -291,47 +235,25 @@ def _plocha(rings):
 def uprav(rings, orez=None, tolerancia_m=OREZ_TOLERANCIA_M, popis="štátom"):
     """Hranica na orez: prienik so `orez` a zjednodušenie. `(rings, stav)`.
 
-    DVE VECI V JEDNOM `ogr2ogr`, lebo je to jedna otázka („čím sa reže") a dve
-    volania by znamenali dva medzivýsledky na disku a dve miesta, kde sa dá
-    stratiť.
+    Oboje v jednom `ogr2ogr`, lebo je to jedna otázka („čím sa reže").
 
-    ═══ 1. PRIENIK SO ŠTÁTOM ═══
+    Prienik so štátom: hranica kraja a štátu je v OSM tá istá čiara všade, kde
+    kraj leží na okraji republiky – ale relácia sa dá pokaziť a chýbajúca cesta
+    v prstenci hranicu roztiahne na susedný štát. Prienik z toho robí nemožnosť.
 
-    Hranica kraja a hranica štátu sú v OSM tá istá čiara všade, kde kraj leží
-    na okraji republiky – prienik je teda väčšinou to isté, čo kraj sám.
-    „Väčšinou" ale nie je „vždy": relácia sa dá pokaziť (chýbajúca cesta
-    v prstenci hranicu roztiahne na susedný štát) a práve to je ten tichý
-    omyl, po ktorom by mapa kraja siahala do Poľska a nikto by sa to z behu
-    nedozvedel. Prienik je jeden `ogr2ogr` a robí z toho nemožnosť.
-
-    ═══ 2. ZJEDNODUŠENIE, A PREČO SA MU NEDÁ VYHNÚŤ ═══
-
-    `osmium extract --polygon` testuje KAŽDÝ uzol PBF proti KAŽDEJ úsečke
-    polygónu (boost::geometry `covered_by` za bboxovým predfiltrom), takže čas
-    rezu rastie s počtom bodov hranice priamo úmerne. Namerané na relácii
-    Prešovského kraja (388271, plná geometria z api.openstreetmap.org):
-
-        presná hranica z OSM        22 284 bodov
-        Douglas–Peucker 10 m         7 189 bodov     ← toto sa reže
-        `.poly` z osm.fr (0,005°)     2 753 bodov     (a je 2 – 4 km vedľa)
-
-    Bez zjednodušenia by sa rez z rodiča predĺžil rádovo osemnásobne (dnes
-    ~30 s). S 10 m je hranica stále o dva rády presnejšia než mriežka, ktorou
-    ju zaokrúhľuje osm.fr, a hlboko pod tým, čo v mape vidno: dlaždica na z14
-    má 1,5 km, pixel tieňovania na z14 asi 6 m.
+    Zjednodušenie: `osmium extract --polygon` testuje každý uzol proti každej
+    úsečke, takže by sa rez predĺžil rádovo osemnásobne (22 284 bodov proti
+    7 189 po Douglas–Peuckerovi na 10 m). Pri 10 m je hranica stále o dva rády
+    presnejšia než mriežka osm.fr a hlboko pod tým, čo v mape vidno.
 
     `ST_SimplifyPreserveTopology`, a nie vlastný Douglas–Peucker: prstenec sa
-    zjednodušením dá pretnúť sám so sebou a taký polygón `osmium` ani
-    `gdalwarp` neprijmú. Toto je presne tá funkcia, ktorá to nedovolí.
+    zjednodušením dá pretnúť sám so sebou a taký polygón `osmium` neprijme.
 
-    ČO TO ROBÍ SO ŠVÍKOM. Dvaja susedia zjednodušujú tú istú spoločnú čiaru
-    každý vo svojom prstenci, takže sa výsledky môžu líšiť – najviac o dve
-    tolerancie, teda o 20 m. To nie je prekryv ani medzera „na papieri":
-    meria to `workers/plan/seam.py` v každom behu a hovorí, koľko z toho
-    naozaj vyšlo.
+    Dvaja susedia zjednodušujú spoločnú čiaru každý vo svojom prstenci, takže
+    sa výsledky môžu líšiť najviac o dve tolerancie – meria to `seam.py`.
 
-    Zlyhanie NIE JE chyba behu: vráti sa pôvodná (presná, nezjednodušená)
-    hranica a `stav` povie, čo sa nestalo – rez potom bude len pomalší.
+    Zlyhanie nie je chyba behu: vráti sa pôvodná hranica a `stav` povie, čo sa
+    nestalo – rez bude len pomalší.
     """
     stav = {"orezane": False, "zjednodusene": False}
     if not rings:
@@ -340,10 +262,8 @@ def uprav(rings, orez=None, tolerancia_m=OREZ_TOLERANCIA_M, popis="štátom"):
     if not a:
         return rings, stav
     b = geojson_from_rings(orez) if orez else None
-    # Tolerancia je v stupňoch, lebo geometria je v stupňoch (EPSG:4326).
-    # Prepočet cez zemepisnú šírku stredu – na 49° je stupeň dĺžky o tretinu
-    # kratší než stupeň šírky, ale pre TOLERANCIU stačí jedno číslo: rozdiel
-    # je pár metrov na desiatich.
+    # tolerancia je v stupňoch, lebo geometria je v stupňoch; pre toleranciu
+    # stačí jedno číslo – rozdiel je pár metrov na desiatich
     tol = (tolerancia_m or 0) / 111320.0
     geom_sql = "a.geom"
     zdroje = "a"
