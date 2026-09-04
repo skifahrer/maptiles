@@ -121,8 +121,7 @@ export const DEM_SOURCES = {
   dmr35: {
     label: "ÚGKK DMR 3.5 (10 m)",
     note: "otvorené dáta ÚGKK, mriežka presne 10 × 10 m",
-    // Licencia ÚGKK je voľná vrátane komerčného použitia, ale PODMIENENÁ
-    // uvedením zdroja – preto to tu je natvrdo, nie voliteľne.
+    // licencia ÚGKK vyžaduje uvedenie zdroja
     attribution: '<a href="https://www.geoportal.sk/">ÚGKK SR</a> – DMR 3.5'
   },
   dmr5: {
@@ -133,8 +132,7 @@ export const DEM_SOURCES = {
   ugkk: {
     label: "ÚGKK DMR 5.0 (1 m LiDAR)",
     note: "slovenský 1 m LiDAR – najpodrobnejší dostupný model terénu",
-    // Licencia ÚGKK je voľná vrátane komerčného použitia, ale PODMIENENÁ
-    // uvedením zdroja – preto to tu je natvrdo, nie voliteľne.
+    // licencia ÚGKK vyžaduje uvedenie zdroja
     attribution:
       '<a href="https://www.geoportal.sk/">ÚGKK SR</a> – DMR 5.0'
   },
@@ -231,12 +229,7 @@ export const THEMES = {
     pier: "#e8e4dc",
     boundary: "#9e7bb5",
     boundaryLocal: "#b8a0c8",
-    // Za hranicou stiahnutého regiónu mapa KONČÍ. `regionOutside` je farba
-    // toho, čo je za ňou – zámerne tá istá ako `background`, takže tam nie je
-    // „iné územie", ale prázdno; mapa sa nemá tváriť, že pokračuje. Odtieň je
-    // napísaný a nie prevzatý z `background` preto, aby sa dal v developer
-    // móde stlmiť zvlášť (napr. na jemne tmavší tón), keď má byť vidieť,
-    // pokiaľ mapa siaha.
+    // za hranicou regiónu mapa končí – zámerne tá istá farba ako `background`
     regionOutside: "#f0efeb",
     regionBorder: "#9e7bb5",
     placeText: "#333333",
@@ -253,8 +246,7 @@ export const THEMES = {
     onewayIcon: "#8a7a6a",
     roadLimit: "#b02a1a",
     houseText: "#a09488",
-    // Tematické body – každý typ mapy má svoju „hlavnú" skupinu bodov
-    // (hrady, bane, vleky, pumpy), nech sa dá zvýrazniť zvlášť.
+    // hlavná skupina bodov typu mapy, nech sa dá zvýrazniť zvlášť
     historicPoi: "#8a4a2a",
     miningPoi: "#5a5a6a",
     skiPoi: "#0f7ea0",
@@ -265,9 +257,7 @@ export const THEMES = {
     contourText: "#6a6555",
     rockArea: "#9c9286",
     rockPattern: "#6b6154",
-    // Prvky, ktoré schéma OpenMapTiles vôbec neprenáša (vlastný .pmtiles,
-    // workers/features/features.yml) plus tie, ktoré v dlaždiciach sú, ale štýl ich
-    // dlho nekreslil – bralná hrana, kosodrevina, cesta vo výstavbe.
+    // prvky mimo schémy OpenMapTiles (workers/features/features.yml)
     cliffLine: "#7a6a58",
     ridgeLine: "#a89880",
     scrub: "#d3d8b8",
@@ -295,17 +285,11 @@ export const THEMES = {
     pisteLine: "#4a90c8",
     featurePoi: "#3f7a6a",
     trailFerrata: "#c04a1a",
-    // Tri farby tieňovania reliéfu majú ALFU a je to to podstatné na nich:
-    // MapLibre nimi svah PREKRÝVA (krytie rastie so sklonom), takže bez alfy
-    // je nad 20° pod tieňovaním vidieť už len tú farbu a nie mapu. Rozpis
-    // aj namerané čísla sú pri vrstve `hillshade` nižšie.
+    // alfa je podstatná: MapLibre svah prekrýva, bez nej nad 20° mapu nevidno
     hillShadow: "#5a4a3ab3",
     hillHighlight: "#ffffff5c",
     hillAccent: "#8a7a6a38",
-    // Značené trasy. Prvá desiatka sú farby značiek, ako ich pozná OSM
-    // (`osmc:symbol`, `colour`): dáta nesú meno farby, mapa až tento odtieň –
-    // takže sa dá každá značka doladiť zvlášť a v každej téme inak. Zvyšok sú
-    // farby podľa druhu trasy, ktoré sa použijú, keď značka farbu nemá.
+    // prvá desiatka sú farby značiek z OSM, zvyšok podľa druhu trasy
     trailRed: "#d42a2a",
     trailBlue: "#2a54c8",
     trailGreen: "#1f8a3c",
@@ -367,12 +351,7 @@ export const THEMES = {
     steps: "#7a4030",
     track: "#5a4a35",
     rail: "#26263a",
-    // Priečky na železnici sú v svetlej téme BIELE – čiže presne tak svetlé
-    // ako podklad, a vidieť ich je len proti tmavej čiare koľajnice. Prepis
-    // toho na „skoro bielu" tu robil opak: proti tmavému podkladu z nich bol
-    // najsvetlejší prvok mapy hneď po popiskoch (kontrast 9,8 : 1) a v meste,
-    // kde je koľajísk najviac, svietili. Tmavý variant sa preto počíta OD
-    // TMAVÉHO PODKLADU: proti koľajnici drží (2,6 : 1), proti pozadiu už nie.
+    // v svetlej téme sú priečky biele; tmavý variant sa počíta od podkladu
     railHatch: "#65656f",
     ferry: "#3a4a66",
     aerialway: "#55556a",
@@ -405,9 +384,7 @@ export const THEMES = {
     contourText: "#8e8a7c",
     rockArea: "#403c33",
     rockPattern: "#6a6152",
-    // Prvky, ktoré schéma OpenMapTiles vôbec neprenáša (vlastný .pmtiles,
-    // workers/features/features.yml) plus tie, ktoré v dlaždiciach sú, ale štýl ich
-    // dlho nekreslil – bralná hrana, kosodrevina, cesta vo výstavbe.
+    // prvky mimo schémy OpenMapTiles (workers/features/features.yml)
     cliffLine: "#8a7a64",
     ridgeLine: "#6a6050",
     scrub: "#272a1e",
@@ -438,9 +415,7 @@ export const THEMES = {
     hillShadow: "#000000b3",
     hillHighlight: "#4a4a605c",
     hillAccent: "#2a2a3a38",
-    // V tmavej téme sa značky nekreslia doslova: čierna značka by na tmavom
-    // podklade zmizla, preto je svetlosivá. Podstatné je, aby sa dala od
-    // ostatných rozoznať – nie aby mala presne tú farbu, čo v teréne.
+    // v tmavej téme sú značky svetlejšie – čierna by na podklade zmizla
     trailRed: "#ff6a6a",
     trailBlue: "#7aa4ff",
     trailGreen: "#5ecb6a",
@@ -534,9 +509,7 @@ export const THEMES = {
     contourText: "#676152",
     rockArea: "#988e82",
     rockPattern: "#675e51",
-    // Prvky, ktoré schéma OpenMapTiles vôbec neprenáša (vlastný .pmtiles,
-    // workers/features/features.yml) plus tie, ktoré v dlaždiciach sú, ale štýl ich
-    // dlho nekreslil – bralná hrana, kosodrevina, cesta vo výstavbe.
+    // prvky mimo schémy OpenMapTiles (workers/features/features.yml)
     cliffLine: "#6f5a44",
     ridgeLine: "#9a8468",
     scrub: "#c9cfa6",
@@ -567,8 +540,7 @@ export const THEMES = {
     hillShadow: "#6a5030b3",
     hillHighlight: "#fffaf05c",
     hillAccent: "#9a806038",
-    // Outdoor téma je na turistiku – značky sú tu najsýtejšie, aby sa dali
-    // rozoznať aj cez vrstevnice a tieňovanie.
+    // outdoor: najsýtejšie značky, nech sa dajú rozoznať cez vrstevnice
     trailRed: "#cc2222",
     trailBlue: "#1f4fc0",
     trailGreen: "#18862e",
@@ -662,9 +634,7 @@ export const THEMES = {
     contourText: "#6e6959",
     rockArea: "#a0968a",
     rockPattern: "#70665a",
-    // Prvky, ktoré schéma OpenMapTiles vôbec neprenáša (vlastný .pmtiles,
-    // workers/features/features.yml) plus tie, ktoré v dlaždiciach sú, ale štýl ich
-    // dlho nekreslil – bralná hrana, kosodrevina, cesta vo výstavbe.
+    // prvky mimo schémy OpenMapTiles (workers/features/features.yml)
     cliffLine: "#96745c",
     ridgeLine: "#c0a488",
     scrub: "#dedcc0",
@@ -753,9 +723,8 @@ export const PALETTE_GROUPS = [
       ["wetland", "Mokraď"],
       ["rock", "Skaly / suť"],
       ["rockPattern", "Kamienky v suti (vzor)"],
-      // Kosodrevina a kroviny sú v dlaždiciach ako `landcover subclass`, ale
-      // `class` majú `grass` – bez vlastnej farby by lúka a kosodrevina
-      // vyzerali rovnako, čo je v Tatrách dosť podstatný rozdiel.
+      // kosodrevina má v dlaždiciach `class: grass` – bez vlastnej farby by
+      // vyzerala ako lúka
       ["scrub", "Kroviny a kosodrevina"]
     ]
   },
@@ -805,14 +774,8 @@ export const PALETTE_GROUPS = [
       ["roadText", "Popisok cesty"],
       ["roadConstruction", "Cesta vo výstavbe"],
       ["roadProposed", "Plánovaná cesta"],
-      // Štítky s číslom cesty podľa ČESKOSLOVENSKÉHO ZNAČENIA – červená D/R,
-      // modrá I. trieda, biela II./III. Farba čiary sa na to nedá použiť:
-      // výplne ciest sú vo všetkých témach svetlé (žltkasté, béžové)
-      // a biele číslo na nich nie je čitateľné.
-      //
-      // Kedysi tu bola zelená a bolo to zámenou tabule za štítok: na diaľnici
-      // je zelená SMEROVÁ TABUĽA, ale ČÍSLO cesty sa píše do červeného štítka.
-      // Na mape je vidieť štítok.
+      // číslo cesty sa píše do červeného štítka (zelená je smerová tabuľa);
+      // výplne ciest sú svetlé, takže farba čiary sa použiť nedá
       ["shieldMotorway", "Štítok D a R"],
       ["shieldEuro", "Štítok E-cesty (E75)"],
       ["shieldPrimary", "Štítok cesty I. triedy"],
@@ -878,8 +841,7 @@ export const PALETTE_GROUPS = [
       ["contourMajor", "Hlavná vrstevnica"],
       ["contourText", "Popisok výšky"],
       ["rockArea", "Skalné plochy (plná výplň)"],
-      // Bralná hrana a hrebeň sú `natural=cliff/ridge/arete` – v dlaždiciach
-      // sú ako LÍNIE vo vrstve `mountain_peak`, nie ako skalná plocha z DEM.
+      // v dlaždiciach sú to línie vo vrstve `mountain_peak`, nie plocha z DEM
       ["cliffLine", "Bralná hrana (z OSM)"],
       ["ridgeLine", "Hrebeň (z OSM)"]
     ]
@@ -975,8 +937,7 @@ export const LAYER_GROUPS = [
   { id: "cesty", label: "Cesty" },
   { id: "chodniky", label: "Chodníky a cestičky" },
   { id: "trasy", label: "Značené trasy" },
-  // Vlastné dlaždice s tým, čo schéma OpenMapTiles nemá – násypy, múry,
-  // ploty, vedenia, pramene, zjazdovky (workers/features/features.yml).
+  // vlastné dlaždice mimo schémy OpenMapTiles (workers/features/features.yml)
   { id: "prvky", label: "Krajinné prvky (mimo schémy)" },
   { id: "doprava", label: "Železnica a ostatná doprava" },
   { id: "hranice", label: "Hranice" },
@@ -1202,11 +1163,8 @@ export const TRAIL_MARK_COLOURS = [
   ["gray", "trailGray"]
 ];
 
-// ------------------------------------------------- odstup pásikov od cesty
-// Zoomy, na ktorých sú zlomy všetkých troch kriviek nižšie. Musia byť tie
-// isté: `line-offset` sa skladá z odstupu aj rozostupu v JEDNOM `interpolate`
-// (`["zoom"]` smie byť len vstupom toho najvrchnejšieho), takže sa hodnoty
-// berú po indexoch.
+// zlomy všetkých troch kriviek nižšie; hodnoty sa berú po indexoch, lebo
+// `["zoom"]` smie byť len vstupom najvrchnejšieho `interpolate`
 export const TRAIL_OFFSET_ZOOMS = [9, 11, 13, 14, 16, 20];
 
 /**
@@ -1229,34 +1187,10 @@ export const TRAIL_STRIPE = [
 /** Rozostup dvoch trás = šírka pásika. Tá istá krivka, nie kópia. */
 export const TRAIL_PITCH = TRAIL_STRIPE;
 
-// Odstup osi prvého pásika od osi cesty, v pixeloch. Nie je to odhad – je to
-// spočítané z toho, aké široké sú v štýle čiary pod ním: polovica čiary +
-// polovica pásika (a pri ceste ešte obrys, ktorý `widen` pridáva k CELEJ
-// šírke, takže z osi trčí polovicou).
-//
-//   miestna cesta    9 px + 1,6 obrys = 10,6 → okraj 5,3 od osi; pásik je
-//   (z16)            2,6 široký, takže 5,3 + 1,3 = 6,6 a práve sa jej dotýka
-//   lesná cesta      3,5 px → okraj 1,75; 1,75 + 1,3 = 3,05 by bol dotyk,
-//   a chodník        3,6 necháva jemnú medzeru, nech je pod pásikom vidieť
-//                    aj samotný chodník (a to, že je prerušovaný)
-//
-// Cesta je jedna hodnota pre všetky triedy ciest, hoci diaľnica je širšia než
-// účelová – pásik sa presne dotýka MIESTNEJ cesty, po ktorej trasy chodia
-// najčastejšie. Rozlišovať triedu cesty by znamenalo dotiahnuť ju do dlaždíc
-// trás a to za tie dve desatiny pixela nestojí.
-//
-// POD z16 UŽ NEROZHODUJE ŠÍRKA ČIARY, ALE METRE. Pixel je pri z13 dvanásť
-// metrov, takže odstup 2,6 px odsunul pásik od chodníka o 33 m – viac, než je
-// v horách rozostup ramien serpentíny. `line-offset` posúva každý vrchol po
-// osi zlomu, takže taký pásik obieha vlásenku oblúkom širším než je samotná
-// zákruta, ramená sa navzájom prekryjú a v mape je z toho farebná PLOCHA,
-// nie čiara. Odstup je preto zhora ohraničený tým, koľko je pri ceste miesta
-// V TERÉNE: 8 m pri chodníku, 12 m pri ceste (chodník má serpentíny tesnejšie
-// než cesta). Nad z16 je ohraničenie voľnejšie než výpočet zo šírky čiary,
-// takže tam neplatí nič nové – kde bol pásik pri z16 a vyššie, tam ostal.
-// Stráži to `workers/lint/trails.mjs`, aby sa veľké čísla nevrátili.
-//
-//   metrov na pixel (48,7° s. š.):  z13 12,6   z14 6,31   z16 1,58   z20 0,10
+// odstup osi pásika od osi cesty v px: polovica čiary + polovica pásika.
+// Pod z16 rozhodujú metre, nie šírka čiary – pásik by inak obiehal vlásenku
+// oblúkom širším než zákruta a v mape by z neho bola plocha.
+// Stráži to `workers/lint/trails.mjs`.
 export const TRAIL_OFFSET_ROAD = [
   [9, 0.06], [11, 0.24], [13, 0.95], [14, 1.9], [16, 6.6], [20, 19.8]
 ];
@@ -1319,19 +1253,13 @@ export function trailGapPx(overrides) {
   const out = { ...TRAIL_GAP_DEFAULTS };
   for (const key of Object.keys(TRAIL_GAP_DEFAULTS)) {
     const n = Number(raw[key]);
-    // Nula je platná odpoveď („nalep to priamo na čiaru"), záporná nie –
-    // z tej by bol pásik na opačnej strane, než hovorí `side`.
+    // nula je platná odpoveď („nalep to na čiaru"), záporná nie
     if (Number.isFinite(n) && n >= 0 && n <= 60) out[key] = n;
   }
   return out;
 }
 
-// -------------------------------------------- značky trás v pravidelných
-// TURISTICKÁ A CYKLISTICKÁ ZNAČKA sa kreslí pozdĺž trasy ako obrázok zo
-// spritu (`poc/web/marks.js`, pečie `workers/assets/marks.mjs`), nie ako
-// ikonka druhu trasy. Rozdiel je v tom, čo hovorí: ikonka povie „tadiaľ ide
-// nejaká turistická trasa", značka povie „sleduj červený pás na bielom" –
-// a to je presne to, podľa čoho sa človek v teréne orientuje.
+// značka trasy sa kreslí zo spritu (`poc/web/marks.js`), nie ako ikonka druhu
 
 /**
  * ROZOSTUP ZNAČIEK po trase v pixeloch obrazovky. Značenie v teréne je
@@ -1474,9 +1402,7 @@ export const TRAIL_TYPES = [
     side: 1
   },
   {
-    // Ferrata je `route=via_ferrata` relácia ako každá iná značená trasa, len
-    // vedie po skale. Vlastný druh preto, že sa má na prvý pohľad odlíšiť od
-    // turistickej značky – po ferrate sa nedá ísť bez výstroja.
+    // vlastný druh: po ferrate sa nedá ísť bez výstroja
     id: "ferrata",
     label: "Ferraty",
     short: "ferrata",
@@ -1486,10 +1412,7 @@ export const TRAIL_TYPES = [
     side: 1
   },
   {
-    // Cyklotrasy sú bodkované a ružovo-fialové: značka v teréne farbu nemá
-    // (na rozdiel od turistickej), takže farba je naša voľba – a musí sa
-    // odlíšiť od turistických značiek, ktoré zaberajú červenú, modrú, zelenú
-    // aj žltú. Kolesové trasy idú navyše na opačnú stranu cesty než pešie.
+    // značka v teréne farbu nemá, tak je naša; kolesové idú na opačnú stranu
     id: "bicycle",
     label: "Cyklotrasy",
     short: "cyklotrasa",
@@ -1543,17 +1466,13 @@ const TRAIL_BY_ID = Object.fromEntries(TRAIL_TYPES.map((t) => [t.id, t]));
 export function trailTypeDef(type, overrides) {
   const own = overrides?.trails?.types?.[type.id] || {};
   const icon = typeof own.icon === "string" ? own.icon.trim() : "";
-  // TVAR ZNAČKY má tri odpovede, nie dve: `undefined` je „ako je v OSM"
-  // (`osmc:symbol` – pásová, vrcholová, bicykel…), prázdny reťazec „žiadna"
-  // a meno tvaru „vždy tento". Prostredná sa nedá vyjadriť menom tvaru, tak
-  // ako sa „žiadna ikona" nedá vyjadriť menom ikony.
+  // tvar značky má tri odpovede: `undefined` = ako v OSM, "" = žiadna,
+  // meno tvaru = vždy tento
   const mark = typeof own.mark === "string" ? own.mark.trim() : null;
   return {
     ...type,
     dash: DASH_IDS.includes(own.dash) ? own.dash : type.dash,
-    // Ikonu treba vedieť aj VYPNÚŤ – prázdny reťazec je „žiadna", nie „vezmi
-    // predvolenú"; trasa hustá na ikonky sa inak nedá zbaviť inak než skrytím
-    // celej vrstvy.
+    // prázdny reťazec je „žiadna", nie „vezmi predvolenú"
     iconPick: "icon" in own ? (icon ? [icon] : []) : type.icons,
     markPick: mark === null ? null : (MARK_SHAPE_IDS.includes(mark) ? mark : "")
   };
@@ -1579,7 +1498,6 @@ const isTunnel = ["==", ["get", "brunnel"], "tunnel"];
 const isBridge = ["==", ["get", "brunnel"], "bridge"];
 const isSurface = ["all", ["!=", ["get", "brunnel"], "tunnel"], ["!=", ["get", "brunnel"], "bridge"]];
 
-// ===================== developer overrides =====================
 
 /**
  * Prázdna sada úprav z developer módu.
@@ -1595,22 +1513,14 @@ export function emptyOverrides() {
     hillshade: false,
     palette: {},
     layers: {},
-    // PORADIE KRESLENIA. Nie je to vlastnosť vrstvy (tá o svojich susedoch
-    // nevie), ale zoznam presunov „túto kresli tesne pod tamtú" – rozpis pri
-    // `applyLayerOrder`.
+    // zoznam presunov „kresli tesne pod tamtú" – viď `applyLayerOrder`
     order: [],
-    // Značené trasy majú vlastnú položku, lebo to nie sú nastavenia JEDNEJ
-    // vrstvy: jeden druh trasy má v štýle tri vrstvy (pásik, ikona, názov)
-    // a odstup od cesty je vlastnosť všetkých naraz.
+    // trasy majú vlastnú položku: jeden druh má v štýle tri vrstvy a odstup
+    // od cesty je vlastnosť všetkých naraz
     trails: { gap: {}, types: {}, marks: {} },
-    // Štítok s číslom cesty má vlastnú položku z toho istého dôvodu ako
-    // trasy: nie je to nastavenie jednej vrstvy, ale tvar OBRÁZKA, ktorý si
-    // vrstva pýta zo spritu – a ten sa nedá vyjadriť `paint` vlastnosťou.
+    // štítok je tvar obrázka zo spritu, nie `paint` vlastnosť jednej vrstvy
     shields: {},
-    // Vlastné sady ikoniek (sprite z cudzieho servera) a vlastné ikony
-    // (obrázok, ktorý si človek nahrá). Sú to dve rôzne veci: sada je
-    // odpoveď na „chcem INÉ ikony na všetko", vlastná ikona na „chcem TÚTO
-    // jednu vec inak" – a preto sa nedajú stlačiť do jednej položky.
+    // sada je „iné ikony na všetko", vlastná ikona „túto jednu vec inak"
     iconSets: [],
     customIcons: [],
     poi: { hidden: [], icons: {} },
@@ -1810,8 +1720,7 @@ export function valueAtZoom(value, zoom) {
   if (isScalarValue(value)) return value;
   if (!Array.isArray(value)) return null;
 
-  // Zoomové PÁSMA z úprav: `[[od, do, hodnota], …]` – hodnota pásma, v ktorom
-  // ten zoom leží; pod prvým a nad posledným krajné pásmo.
+  // zoomové pásma `[[od, do, hodnota], …]`; pod prvým a nad posledným krajné
   if (isBandList(value)) return bandAt(sortBands(value), zoom);
 
   // Zoomové zlomy z úprav: `[[zoom, hodnota], …]`.
@@ -1829,8 +1738,7 @@ export function valueAtZoom(value, zoom) {
 
   if (value[0] !== "interpolate") return null;
   const [, curve, input, ...rest] = value;
-  // Interpolácia podľa niečoho iného než zoomu (napr. podľa atribútu) sa
-  // jedným zoomom nezodpovie.
+  // interpolácia podľa niečoho iného než zoomu sa jedným zoomom nezodpovie
   if (!Array.isArray(input) || input[0] !== "zoom") return null;
   const stops = [];
   for (let i = 0; i + 1 < rest.length; i += 2) {
@@ -1888,8 +1796,7 @@ function stopsAt(stops, zoom, base = 1) {
     const [z1, v1] = stops[i + 1];
     if (zoom < z0 || zoom > z1) continue;
     if (typeof v0 !== "number" || typeof v1 !== "number") return v0;
-    // Rovnaký vzorec, aký používa MapLibre pre `exponential` (a pre base 1
-    // z neho vyjde lineárna interpolácia).
+    // rovnaký vzorec ako MapLibre pre `exponential` (base 1 = lineárna)
     const t =
       base === 1
         ? (zoom - z0) / (z1 - z0)
@@ -1916,14 +1823,11 @@ function stopsAt(stops, zoom, base = 1) {
 export function paintValue(value) {
   if (value === NO_FILL) return "rgba(0,0,0,0)";
   if (!Array.isArray(value)) return value;
-  // ZOOMOVÉ PÁSMA `[[od, do, hodnota], …]` → `step`: v pásme konštanta,
-  // na hranici skok. Jediné pásmo nie je schodisko, takže z neho vyjde
-  // obyčajná hodnota (`step` s jediným výstupom by nemal na čom skočiť).
+  // zoomové pásma → `step`: v pásme konštanta, na hranici skok. Jediné pásmo
+  // nie je schodisko, tak z neho vyjde obyčajná hodnota.
   if (isBandList(value)) {
-    // Percento v pásme potrebuje ZÁKLAD (čo štýl na tom zoome počíta) a ten
-    // pozná až `overrideValue`. Sem sa taká hodnota dostať nemá; keby sa
-    // dostala, `undefined` je jediná bezpečná odpoveď – objekt v `paint`
-    // by MapLibre odmietol aj s celým štýlom.
+    // percento v pásme potrebuje základ, ktorý pozná až `overrideValue`;
+    // objekt v `paint` by MapLibre odmietol aj s celým štýlom
     if (hasRelativeBand(value)) return undefined;
     const bands = sortBands(value);
     if (bands.length === 1) return paintValue(bands[0][2]);
@@ -2040,12 +1944,8 @@ function cleanPaintScalar(prop, value, id, problems, where, atZoom = "") {
     }
     return String(value).toLowerCase();
   }
-  // Sila tieňovania reliéfu. Je to jediná vlastnosť mimo trojice
-  // farba/krytie/hrúbka, ktorú úpravy poznajú – a je tu preto, že „silnejšie
-  // tieňovanie" je nastavenie, ktoré človek ladí okom a po jednom zoome, nie
-  // zmenou zdrojáku. Menuje sa CELÁ, nie príponou `-exaggeration`: `hillshade`
-  // je jediný druh vrstvy, ktorý ju má, a `line-exaggeration` z preklepu by
-  // MapLibre odmietol aj s celým štýlom.
+  // sila tieňovania je jediná vlastnosť mimo trojice farba/krytie/hrúbka;
+  // menuje sa celá, `line-exaggeration` z preklepu by zhodilo celý štýl
   if (prop === "hillshade-exaggeration") {
     const n = Number(value);
     if (!Number.isFinite(n) || n < 0 || n > 1) {
@@ -2060,12 +1960,9 @@ function cleanPaintScalar(prop, value, id, problems, where, atZoom = "") {
       problems.push(`${kde} musí byť nezáporné číslo.`);
       return undefined;
     }
-    // NULOVÁ HRÚBKA ČIARY JE TICHO ZMIZNUTÁ VRSTVA. Číselné políčko v developer
-    // móde má šípky a prázdne políčko („auto") sa nimi skočí rovno na spodnú
-    // medzu – jedno ťuknutie dole teda vrstvu zhaslo a v paneli po ňom ostala
-    // len nula, na ktorej sa už nedalo poznať, čo sa stalo. Vypnúť vrstvu sa má
-    // cez `visible`, kde je to vidieť aj v zozname. (Halo a obrys sa nerátajú –
-    // tam nula znamená „žiadny lem", čo je normálna hodnota zo štýlu.)
+    // nulová hrúbka čiary je ticho zmiznutá vrstva – šípky číselného políčka
+    // ju zhasnú jedným ťuknutím. Vypína sa cez `visible`. Halo a obrys nie:
+    // tam nula znamená „žiadny lem".
     if (n === 0 && prop.endsWith("-width")
         && !prop.includes("halo") && !prop.includes("stroke")) {
       problems.push(`${kde} nesmie byť 0 – čiara s nulovou hrúbkou sa nekreslí `
@@ -2169,14 +2066,9 @@ function cleanRelative(prop, value, id, problems, where, popis = prop, allowNoop
     }
     out[kluc] = Math.round(n * 100) / 100;
   }
-  // `{scale: 1}` ani `{add: 0}` nie sú úprava – uložené by boli len šumom
-  // v súbore a v paneli by svietilo „zmenené" nad vrstvou, ktorá sa nezmenila.
-  //
-  // V PÁSME TO PLATÍ NAOPAK (`allowNoop`). Pásma pokrývajú celý rozsah zoomov,
-  // takže „na z0–z14 ako v štýle, na z15–z20 o desatinu viac" sa inak povedať
-  // nedá – prvé pásmo JE tá stovka percent. Bez nej by sa dolná polovica
-  // rozsahu musela prepísať pevnými číslami, čo je presne to, čomu sa
-  // relatívna hodnota vyhýba.
+  // `{scale: 1}` ani `{add: 0}` nie sú úprava. V pásme to platí naopak
+  // (`allowNoop`): prvé pásmo JE tá stovka percent, inak sa dolná polovica
+  // rozsahu musí prepísať pevnými číslami.
   if ((out.scale ?? 1) === 1 && (out.add ?? 0) === 0) {
     if (allowNoop) return { scale: 1 };
     problems.push(`${kde}: "scale" 1 a "add" 0 nič nemenia – vynechávam.`);
@@ -2261,10 +2153,8 @@ function cleanPaintBands(prop, list, id, problems, where, scalar = cleanPaintSca
       problems.push(`${kde}: pásmo od z${od} do z${doZ} je naopak – "do" nesmie byť menšie než "od".`);
       return undefined;
     }
-    // PERCENTO V PÁSME. `{scale, add}` tu neznamená to, čo skalár („hodnota JE
-    // takáto"), ale „to, čo počíta štýl, krát toľkoto" – a práve to je
-    // odpoveď na „na z19 nech je prvok o desatinu väčší" (rozpis pri
-    // `hasRelativeBand`).
+    // percento v pásme: nie „hodnota JE takáto", ale „to, čo počíta štýl,
+    // krát toľkoto" (viď `hasRelativeBand`)
     const v = isRelative(hodnota)
       ? cleanRelative(prop, hodnota, id, problems, where,
                       `${prop} v pásme z${od}–z${doZ}`, true)
@@ -2347,14 +2237,11 @@ export function normalizeOverrides(raw) {
     return { overrides: out, problems };
   }
 
-  // ---- tieňovanie reliéfu ----
-  // Defaultne vypnuté: na mape kaziť farby plôch a pri malých mierkach z nej
-  // spraví hnedý šum. Kto ho chce, zapne si ho.
+  // tieňovanie je defaultne vypnuté: kazí farby plôch a pri malých mierkach šumí
   out.hillshade = raw.hillshade === true;
 
-  // ---- vlastné sady ikoniek ----
-  // Musia byť skôr než výber sady: vybrať sa dá aj vlastná a bez zoznamu by
-  // sa práve pridaná sada tvárila ako neznáma.
+  // vlastné sady musia byť skôr než výber sady – inak by sa práve pridaná
+  // sada tvárila ako neznáma
   for (const def of Array.isArray(raw.iconSets) ? raw.iconSets : []) {
     if (!def || typeof def !== "object") {
       problems.push("Vlastná sada ikoniek nie je objekt – preskakujem.");
@@ -2370,8 +2257,7 @@ export function normalizeOverrides(raw) {
       problems.push(`Vlastná sada "${id}" už existuje – preskakujem.`);
       continue;
     }
-    // Sprite je dvojica súborov `<url>.json` + `<url>.png`, takže sa URL
-    // zadáva BEZ prípony – to je aj tvar, v akom ju čaká MapLibre.
+    // sprite je dvojica `<url>.json` + `<url>.png`, tak sa URL zadáva bez prípony
     const sprite = String(def.sprite || "").trim();
     if (!/^https:\/\/[^\s"']+$/.test(sprite) || /\.(json|png)$/i.test(sprite)) {
       problems.push(`Vlastná sada "${id}": adresa musí byť https a BEZ prípony `
@@ -2392,10 +2278,8 @@ export function normalizeOverrides(raw) {
     });
   }
 
-  // ---- vlastné ikony ----
-  // Obrázok sa nesie PRIAMO v úpravách ako PNG v `data:` adrese. Odkaz na
-  // cudzí server by v mape bez internetu (a v balíku pre mobil) nebol ničím –
-  // a sprite sa skladá pri builde, takže tam musí byť samotný obrázok.
+  // obrázok sa nesie priamo v úpravách ako `data:` PNG – odkaz na cudzí server
+  // by v mape bez internetu nebol ničím a sprite sa skladá pri builde
   for (const def of Array.isArray(raw.customIcons) ? raw.customIcons : []) {
     if (!def || typeof def !== "object") {
       problems.push("Vlastná ikona nie je objekt – preskakujem.");
@@ -2430,7 +2314,6 @@ export function normalizeOverrides(raw) {
     out.customIcons.push({ name, png, pixelRatio });
   }
 
-  // ---- sada ikoniek ----
   if (raw.icons != null) {
     const znama = ICON_SOURCE_IDS.includes(raw.icons)
       || out.iconSets.some((s2) => s2.id === raw.icons);
@@ -2438,7 +2321,6 @@ export function normalizeOverrides(raw) {
     else problems.push(`Neznáma sada ikoniek "${raw.icons}" – použije sa predvolená.`);
   }
 
-  // ---- paleta ----
   for (const [themeKey, colors] of Object.entries(raw.palette || {})) {
     if (!THEMES[themeKey]) {
       problems.push(`Neznáma téma "${themeKey}" – preskakujem.`);
@@ -2454,16 +2336,14 @@ export function normalizeOverrides(raw) {
         problems.push(`"${themeKey}.${key}" nie je hex farba (${value}).`);
         continue;
       }
-      // Rovnakú farbu ako má téma netreba do overrides zapisovať.
+      // rovnakú farbu ako má téma netreba zapisovať
       if (value.toLowerCase() === String(THEMES[themeKey][key]).toLowerCase()) continue;
       clean[key] = value.toLowerCase();
     }
     if (Object.keys(clean).length) out.palette[themeKey] = clean;
   }
 
-  // ---- značené trasy ----
-  // Odstupy sú v pixeloch pri z16 (TRAIL_GAP_ZOOM) a zapisuje sa len to, čo
-  // sa od predvolenej hodnoty naozaj líši – rovnako ako pri palete.
+  // odstupy sú v px pri z16 (TRAIL_GAP_ZOOM); zapisuje sa len odchýlka
   const rawTrails = raw.trails && typeof raw.trails === "object" ? raw.trails : {};
   for (const [key, def] of Object.entries(TRAIL_GAP_DEFAULTS)) {
     const value = (rawTrails.gap || {})[key];
@@ -2495,7 +2375,7 @@ export function normalizeOverrides(raw) {
     }
     if (def.icon != null) {
       const icon = String(def.icon).trim();
-      // Prázdny reťazec je platná odpoveď: „na tejto trase žiadnu ikonu".
+      // prázdny reťazec je platná odpoveď: „na tejto trase žiadnu ikonu"
       if (icon && !/^[A-Za-z0-9_.:-]{1,64}$/.test(icon)) {
         problems.push(`Trasa "${id}": neplatné meno ikony "${def.icon}".`);
       } else {
@@ -2504,9 +2384,7 @@ export function normalizeOverrides(raw) {
     }
     if (def.mark != null) {
       const mark = String(def.mark).trim();
-      // Prázdny reťazec je „žiadna značka"; meno tvaru je „vždy tento tvar".
-      // Chýbajúci kľúč znamená „taká, aká je v OSM" – to je iná odpoveď než
-      // ktorákoľvek z týchto dvoch, preto sa nezapisuje.
+      // "" = žiadna značka, meno tvaru = vždy tento; chýbajúci kľúč = ako v OSM
       if (mark && !MARK_SHAPE_IDS.includes(mark)) {
         problems.push(
           `Trasa "${id}": neznámy tvar značky "${def.mark}" ` +
@@ -2519,9 +2397,7 @@ export function normalizeOverrides(raw) {
     if (Object.keys(clean).length) out.trails.types[id] = clean;
   }
 
-  // ---- rozostup a veľkosť značiek ----
-  // Zapisuje sa len to, čo sa od predvoleného naozaj líši – ako pri palete
-  // aj pri odstupoch pásikov.
+  // zapisuje sa len odchýlka od predvoleného
   for (const [key, def] of Object.entries(TRAIL_MARK_DEFAULTS)) {
     const value = (rawTrails.marks || {})[key];
     if (value == null) continue;
@@ -2537,11 +2413,8 @@ export function normalizeOverrides(raw) {
     if (round !== def) out.trails.marks[key] = round;
   }
 
-  // ---- poradie kreslenia ----
-  // JEDEN PRESUN NA VRSTVU a vyhráva ten POSLEDNÝ: presuny sa vyhodnocujú
-  // v rade za sebou, takže by ich pri opakovanom klikaní pribúdali stovky
-  // a nedalo by sa z nich prečítať, kde vrstva vlastne skončí. Posledný
-  // presun tej istej vrstvy je zároveň to, čo si človek naposledy vybral.
+  // jeden presun na vrstvu a vyhráva posledný: inak by ich pri opakovanom
+  // klikaní pribúdali stovky a nedalo by sa prečítať, kde vrstva skončí
   const presuny = new Map();
   for (const item of Array.isArray(raw.order) ? raw.order : []) {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
@@ -2563,7 +2436,6 @@ export function normalizeOverrides(raw) {
   }
   out.order = [...presuny.values()];
 
-  // ---- tvar štítka s číslom cesty ----
   for (const [id, def] of Object.entries(raw.shields || {})) {
     const trieda = SHIELD_DEFS.find(([sid]) => sid === id);
     if (!trieda) {
@@ -2583,20 +2455,15 @@ export function normalizeOverrides(raw) {
       );
       continue;
     }
-    // Predvolený tvar netreba do úprav zapisovať – rovnako ako farbu, ktorú
-    // téma už má.
+    // predvolený tvar netreba zapisovať
     if (shape !== trieda[5]) out.shields[id] = { shape };
   }
 
-  // ---- vrstvy ----
-  // Vlastné ikony sú prečistené vyššie, takže je už známe, ktoré obrázky sa
-  // smú použiť ako vzor (a ktoré by v sprite nikdy neskončili).
+  // vlastné ikony sú prečistené vyššie, takže je známe, ktoré vzory sa smú použiť
   const vlastneObrazky = out.customIcons.map((i) => i.name);
   cleanLayers(raw.layers, out.layers, problems, "", vlastneObrazky);
 
-  // ---- vrstvy pre jednotlivé typy máp ----
-  // Tu je nadstavba nad tým, čo je vyššie: to isté id vrstvy môže mať iné
-  // nastavenie na turistickej a iné na cestnej mape.
+  // to isté id vrstvy môže mať iné nastavenie na turistickej a iné na cestnej mape
   for (const [typeId, def] of Object.entries(raw.maps || {})) {
     if (!MAP_TYPE_IDS.includes(typeId)) {
       problems.push(`Neznámy typ mapy "${typeId}" – preskakujem.`);
@@ -2617,22 +2484,14 @@ export function normalizeOverrides(raw) {
     }
   }
 
-  // ---- skryté POI triedy ----
   const hidden = Array.isArray(raw.poi?.hidden) ? raw.poi.hidden : [];
   out.poi.hidden = [
     ...new Set(hidden.filter((v) => typeof v === "string" && v && v.length < 64))
   ].sort();
 
-  // ---- ikona POI kategórie ----
-  // PRÁZDNY REŤAZEC JE PLATNÁ HODNOTA („táto kategória bez ikony"), takže sa
-  // rozhoduje podľa toho, či kľúč existuje – nie podľa toho, či je hodnota
-  // pravdivá. Chýbajúci kľúč znamená „ikona podľa sady", a to je iná odpoveď
-  // než „žiadna".
-  //
-  // Ikony sú SPOLOČNÉ pre všetky typy máp (na rozdiel od skrytých tried):
-  // akou značkou sa kreslí studnička, je vlastnosť tej kategórie, nie tej
-  // mapy – a keby si ju každá mapa niesla vlastnú, ten istý výber by sa
-  // musel naklikať štyrikrát.
+  // prázdny reťazec je platná hodnota, tak sa rozhoduje podľa existencie kľúča.
+  // Ikony sú spoločné pre všetky typy máp – akou značkou sa kreslí studnička,
+  // je vlastnosť kategórie, nie mapy.
   out.poi.icons = {};
   for (const [cls, name] of Object.entries(raw.poi?.icons || {})) {
     if (!LAYER_ID.test(cls)) {
@@ -2661,8 +2520,7 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
       continue;
     }
     const clean = {};
-    // `visible: true` nie je to isté ako „nič": vrstvu, ktorú vypol profil
-    // typu mapy alebo spoločná úprava, treba vedieť výslovne vrátiť späť.
+    // `visible: true` nie je „nič": vrstvu vypnutú profilom treba vedieť vrátiť
     if (typeof def.visible === "boolean") clean.visible = def.visible;
     const mn = def.minzoom == null ? null : clampZoom(def.minzoom);
     const mx = def.maxzoom == null ? null : clampZoom(def.maxzoom);
@@ -2672,13 +2530,9 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
       problems.push(`${where}Vrstva "${id}": maxzoom (${mx}) musí byť väčší ako minzoom (${mn}).`);
       delete clean.maxzoom;
     }
-    // Hodnota smie byť SKALÁR, ZOZNAM PODĽA ZOOMU alebo RELATÍVNA ÚPRAVA.
-    // Zoznam má dva tvary: KRIVKA `[[zoom, hodnota], …]` (plynulý prechod
-    // medzi zlomami) alebo PÁSMA `[[od, do, hodnota], …]` (v pásme konštanta,
-    // na hranici skok). Skalár aj zoznam NAHRADIA to, čo štýl počíta podľa
-    // zoomu; relatívna úprava `{scale, add}` ho naopak nechá a len preškáluje
-    // (rozpis pri `isRelative`). Farba plochy môže byť navyše `none` – bez
-    // výplne (viď `NO_FILL`).
+    // hodnota smie byť skalár, zoznam podľa zoomu (krivka `[[zoom, h], …]`
+    // alebo pásma `[[od, do, h], …]`) alebo relatívna úprava `{scale, add}`,
+    // ktorá to, čo počíta štýl, len preškáluje. Farba plochy aj `none`.
     const paint = {};
     for (const [prop, value] of Object.entries(def.paint || {})) {
       const clean = cleanValue(prop, value, id, problems, where);
@@ -2686,21 +2540,10 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
     }
     if (Object.keys(paint).length) clean.paint = paint;
 
-    // ---- tmavý variant farieb (dark mode) ----
-    // Kým `paint` je „farba je odteraz TAKÁTO", `paintDark` je „a v tmavej
-    // téme takáto" – druhá, nezávislá vrstva nad tou istou vlastnosťou, lebo
-    // svetlá a tmavá téma nepotrebujú tú istú hodnotu (biela cesta na svetlom
-    // podklade je na tmavom oslnivá). Platí len pre tému `tmava`
-    // (`applyLayerOverrides`) – ostatné tri témy zostanú pri `paint`.
-    //
-    // POČÍTA SA OD TMAVÉHO PODKLADU, NIE STLMENÍM SVETLEJ FARBY. Biela ulica
-    // je vo svetlej téme čitateľná práve preto, že je skoro ako podklad
-    // (kontrast 1,15 : 1) – nesie ju tmavý obrys. Keď sa z nej spraví tmavý
-    // variant tak, že sa o kúsok stlmí (`#ffffff` → `#d0c8c8`), proti tmavému
-    // podkladu je z toho 10,5 : 1. Na jednej ceste to nevidno; ulice v dedine
-    // a v meste sú ale sieť a celé sídlo z nej svieti ako škvrna – miestna
-    // ulica bola v tmavej téme nápadnejšia než diaľnica. Váhu dvojice stráži
-    // `workers/lint/overrides.mjs` (bod 4).
+    // tmavý variant farieb: druhá, nezávislá vrstva nad tou istou vlastnosťou,
+    // platná len v téme `tmava`. Počíta sa od tmavého podkladu, nie stlmením
+    // svetlej farby – stlmená biela ulica proti tmavému podkladu svieti.
+    // Váhu dvojice stráži `workers/lint/overrides.mjs` (bod 4).
     const paintDark = {};
     for (const [prop, value] of Object.entries(def.paintDark || {})) {
       const c = cleanDarkColor(prop, value, id, problems, where);
@@ -2708,11 +2551,7 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
     }
     if (Object.keys(paintDark).length) clean.paintDark = paintDark;
 
-    // ---- rozloženie (veľkosť ikony, rozostup po čiare, veľkosť písma) ----
-    // Ten istý tvar hodnoty ako pri `paint`: skalár, krivka `[[zoom, v], …]`
-    // alebo pásma `[[od, do, v], …]`. Preto sa aj kontroluje tou istou bránou,
-    // len s iným čističom skalárov – inak by sa „rozostup" musel opísať
-    // druhýkrát a raz by sa tie dva popisy rozišli.
+    // rozloženie: ten istý tvar hodnoty ako `paint`, len iný čistič skalárov
     const layout = {};
     for (const [prop, value] of Object.entries(def.layout || {})) {
       const c = cleanValue(prop, value, id, problems, where, cleanLayoutScalar);
@@ -2720,9 +2559,7 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
     }
     if (Object.keys(layout).length) clean.layout = layout;
 
-    // ---- ikona symbolovej vrstvy ----
-    // Zoznam ikon závisí od nasadenej sady, tu sa preto kontroluje len tvar
-    // mena; či taká ikona v sprite naozaj je, rieši `applyLayerOverrides`.
+    // tu len tvar mena; či ikona v sprite je, rieši `applyLayerOverrides`
     if (def.icon != null) {
       const icon = String(def.icon).trim();
       if (!/^[A-Za-z0-9_.:-]{1,64}$/.test(icon)) {
@@ -2732,13 +2569,8 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
       }
     }
 
-    // ---- prerušovanie čiary ----
-    // AJ „solid" JE ÚPRAVA. Kým sa zahadzovala ako „veď to je predvolené",
-    // nedalo sa vypnúť prerušovanie tam, kde ho vrstva má zo štýlu
-    // (`rail-hatch`, `road-ford`, `road-construction`): panel voľbu prijal,
-    // uložil z nej prázdno a v mape ostala pôvodná čiarkovaná čiara. Tichý
-    // omyl – nespadlo nič, len sa nič nestalo. Developer mode ju zapíše len
-    // vtedy, keď vrstva zabudované prerušovanie naozaj má (`frico:dash`).
+    // aj „solid" je úprava: prerušovanie zabudované v štýle sa musí dať vypnúť.
+    // Zapisuje sa len vtedy, keď ho vrstva naozaj má (`frico:dash`).
     if (def.dash != null) {
       if (!DASH_IDS.includes(def.dash)) {
         problems.push(`${where}Vrstva "${id}": neznámy vzor čiary "${def.dash}".`);
@@ -2747,18 +2579,13 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
       }
     }
 
-    // ---- opakujúci sa vzor ----
-    // `null` NIE JE to isté ako „nič": vzor, ktorý má vrstva zabudovaný
-    // v štýle (`frico:pattern`, napr. kamienky v skalnej ploche), sa musí dať
-    // výslovne vypnúť. Chýbajúci kľúč znamená „nechaj, čo je v štýle".
+    // `null` nie je „nič": zabudovaný vzor (`frico:pattern`) sa musí dať vypnúť.
+    // Chýbajúci kľúč = „nechaj, čo je v štýle".
     if (def.pattern === null) {
       clean.pattern = null;
     } else if (def.pattern?.image) {
-      // VLASTNÝ OBRÁZOK AKO VZOR. Musí to byť vlastná ikona z týchto úprav –
-      // teda obrázok, ktorý sa nesie SPOLU s nimi a ktorý pipeline dopečie do
-      // spritu (`workers/assets/custom-icons.mjs`). Hocijaké iné meno by sa
-      // do štýlu dostalo, ale do spritu nie: MapLibre neznámy `fill-pattern`
-      // ticho preskočí a plocha ostane bez vzoru.
+      // vlastný obrázok ako vzor musí byť vlastná ikona z týchto úprav – inú
+      // by pipeline nedopiekla do spritu a MapLibre ju ticho preskočí
       const image = String(def.pattern.image).trim();
       if (!images.includes(image)) {
         problems.push(
@@ -2778,14 +2605,9 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
       }
     }
 
-    // ---- okraj (plocha) / obrys pod čiarou ----
     if (def.outline) {
-      // Šírka okraja pozná TIE ISTÉ TVARY ako hrúbka čiary – skalár, krivku,
-      // pásma aj relatívnu úpravu. Kým to bolo len jedno číslo, okraj plochy
-      // bol na každom zoome rovnako hrubý (teda na prehľade hrubší než plocha
-      // sama) a okraj čiary sa nedal spraviť pomerný, len o konštantu širší.
-      // Čo z ktorého tvaru vyjde, rozhoduje `outlineWidth` – tam je totiž
-      // vidieť DRUH VRSTVY, ktorý tu ešte nepoznáme.
+      // šírka okraja pozná tie isté tvary ako hrúbka čiary; čo z ktorého vyjde,
+      // rozhoduje `outlineWidth` – tam je vidieť druh vrstvy
       const width = cleanValue(
         "line-width", def.outline.width, id, problems, where,
         outlineWidthScalar, "šírka okraja"
@@ -2793,7 +2615,7 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
       if (!isColor(def.outline.color)) {
         problems.push(`${where}Vrstva "${id}": farba okraja nie je hex (${def.outline.color}).`);
       } else if (width === undefined) {
-        // Dôvod už povedal `cleanValue`.
+        // dôvod už povedal `cleanValue`
       } else if (def.outline.dash != null && !DASH_IDS.includes(def.outline.dash)) {
         problems.push(`${where}Vrstva "${id}": neznámy vzor okraja "${def.outline.dash}".`);
       } else {
@@ -2805,8 +2627,7 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
           opacity: Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 1
         };
         if (!clean.outline.dash) delete clean.outline.dash;
-        // Tmavý variant okraja – tá istá otázka ako pri `paintDark`, len na
-        // jednej farbe, ktorá nie je v `paint` (okraj je odvodená vrstva).
+        // tmavý variant okraja – to isté ako `paintDark`, len na odvodenej vrstve
         if (def.outline.colorDark != null) {
           if (!isColor(def.outline.colorDark)) {
             problems.push(`${where}Vrstva "${id}": tmavá farba okraja nie je hex `
@@ -2818,7 +2639,6 @@ function cleanLayers(rawLayers, target, problems, where, images = []) {
       }
     }
 
-    // ---- rozlíšenie podľa atribútu OSM ----
     const variants = cleanVariants(def.variants, id, problems, where);
     if (variants.length) clean.variants = variants;
 
@@ -2883,8 +2703,7 @@ function cleanVariants(raw, id, problems, where) {
       problems.push(`${kde}: ${values.length} hodnôt, strop je ${MAX_VARIANT_VALUES}.`);
       continue;
     }
-    // DVA VARIANTY NAD TOU ISTOU HODNOTOU sú tichá chyba: `variantTest` ich
-    // z predlohy odoberie oba, ale nakreslia sa tiež oba – cez seba.
+    // dva varianty nad tou istou hodnotou sa nakreslia oba, cez seba
     const zrazka = values.find((x) => uz.has(`${attr}=${x}`));
     if (zrazka) {
       problems.push(`${kde}: hodnotu "${attr}=${zrazka}" už berie skorší variant `
@@ -2996,16 +2815,11 @@ export function resolveOverrides(overrides, mapType) {
           ...(base.paint || def.paint
             ? { paint: { ...(base.paint || {}), ...(def.paint || {}) } }
             : {}),
-          // Tá istá otázka, čo `paint`, len pre jeho tmavý variant – bez
-          // toho by mapová výnimka prepísala aj tmavé farby, ktoré nastavuje
-          // len spoločná úprava.
+          // bez toho by mapová výnimka prepísala aj tmavé farby zo spoločnej úpravy
           ...(base.paintDark || def.paintDark
             ? { paintDark: { ...(base.paintDark || {}), ...(def.paintDark || {}) } }
             : {}),
-          // To isté, čo `paint`, aj pre `layout`: mieša sa po vlastnostiach,
-          // aby sa dal na jednej mape prepísať len rozostup a veľkosť ikony
-          // ostala spoločná. Bez toho by celý `layout` z konkrétnej mapy
-          // prebil ten spoločný a ticho zahodil, čo v ňom nie je.
+          // `layout` sa mieša po vlastnostiach, inak by mapa zahodila, čo v ňom nie je
           ...(base.layout || def.layout
             ? { layout: { ...(base.layout || {}), ...(def.layout || {}) } }
             : {})
@@ -3017,8 +2831,7 @@ export function resolveOverrides(overrides, mapType) {
     layers,
     poi: {
       hidden: [...new Set([...(overrides.poi?.hidden || []), ...(own.poi?.hidden || [])])].sort(),
-      // Ikony kategórií sú spoločné pre všetky mapy (rozpis v normalizácii),
-      // takže sa nezlievajú – len sa nesmú stratiť.
+      // ikony kategórií sú spoločné pre všetky mapy, len sa nesmú stratiť
       icons: { ...(overrides.poi?.icons || {}) }
     }
   };
@@ -3029,8 +2842,7 @@ export { ICON_SOURCES, ICON_SOURCE_IDS, DEFAULT_ICON_SOURCE } from "./icon-sourc
 /** Vybraná sada ikoniek (z úprav, inak predvolená). */
 export function selectedIconSource(overrides) {
   const id = overrides?.icons;
-  // Aj vlastná sada z úprav je platná odpoveď – inak by sa dala pridať, ale
-  // nie zapnúť, a panel by ticho ukazoval predvolenú.
+  // aj vlastná sada je platná odpoveď – inak by sa dala pridať, ale nie zapnúť
   return allIconSources(overrides).some((s) => s.id === id) ? id : DEFAULT_ICON_SOURCE;
 }
 
@@ -3089,8 +2901,7 @@ export function mergedPalette(themeKey, overrides) {
  */
 export function scaleExpr(expr, rel) {
   const { scale = 1, add = 0 } = rel || {};
-  // Zaokrúhlenie: `0.5 * 1.4` je v plávajúcej čiarke `0.7000000000000001`
-  // a to by šlo do štýlu aj do súboru úprav.
+  // `0.5 * 1.4` je v plávajúcej čiarke `0.7000000000000001`
   const t = (v) =>
     typeof v === "number" ? Math.round((v * scale + add) * 1000) / 1000 : v;
   if (typeof expr === "number") return t(expr);
@@ -3101,8 +2912,7 @@ export function scaleExpr(expr, rel) {
     for (let i = 3; i < expr.length; i += 2) out.push(expr[i], t(expr[i + 1]));
     return out;
   }
-  // `["step", <vstup>, <hodnota pod prvým zlomom>, z1, v1, z2, v2, …]` –
-  // teda prvý výstup je na inom mieste než pri krivke.
+  // `["step", <vstup>, <hodnota pod prvým zlomom>, z1, v1, …]` – prvý výstup inde
   if (expr[0] === "step") {
     const out = [expr[0], expr[1], t(expr[2])];
     for (let i = 3; i < expr.length; i += 2) out.push(expr[i], t(expr[i + 1]));
@@ -3126,8 +2936,7 @@ function derived(layer, suffix, label) {
       "frico:derived": layer.id
     }
   };
-  // Prerušovanie si odvodená vrstva nesie vlastné (okraj má svoje, vzor
-  // žiadne), takže zdedené `frico:dash` predlohy by o nej klamalo.
+  // odvodená vrstva má prerušovanie vlastné, zdedené `frico:dash` by klamalo
   delete out.metadata["frico:dash"];
   for (const key of ["source-layer", "filter", "minzoom", "maxzoom"]) {
     if (layer[key] !== undefined) out[key] = layer[key];
@@ -3209,10 +3018,8 @@ function outlineWidth(layer, width) {
   // Pri ploche nie je čo škálovať, takže základ relatívnej úpravy je 1 px.
   const base = layer.type === "line" ? layer.paint["line-width"] : null;
   if (isRelative(width)) return scaleExpr(base ?? 1, width);
-  // PÁSMA S PERCENTOM. Vyčíslia sa nad hrúbkou čiary rovnako ako v `paint`
-  // (rozpis pri `bandsOverBase`), len s tým istým čítaním skalára, aké platí
-  // v celom okraji: percento je „toľkokrát hrubší než čiara", číslo je
-  // „toľko px na každej strane", teda dvojnásobok na šírku.
+  // pásma s percentom sa vyčíslia nad hrúbkou čiary (viď `bandsOverBase`);
+  // percento je „toľkokrát hrubší než čiara", číslo „toľko px na každej strane"
   if (hasRelativeBand(width)) {
     return bandsOverBase(base ?? 1, width, 1, (raw, v) =>
       isRelative(v)
@@ -3272,7 +3079,7 @@ function variantLayers(layer, variants, hasIcon) {
         if (nv !== undefined) vrstva.layout[prop] = nv;
       }
     }
-    // „Plná" nie je „nič" – rovnaká úvaha ako pri úprave vrstvy.
+    // „plná" nie je „nič" – rovnaká úvaha ako pri úprave vrstvy
     if (v.dash && layer.type === "line") {
       const arr = dashArray(v.dash);
       if (arr) vrstva.paint["line-dasharray"] = arr;
@@ -3281,8 +3088,7 @@ function variantLayers(layer, variants, hasIcon) {
     if (v.icon && layer.type === "symbol" && hasIcon(v.icon)) {
       vrstva.layout = { ...(vrstva.layout || {}), "icon-image": v.icon };
     }
-    // Obrys variantu ide pod čiaru rovnako ako obrys vrstvy, a hlási sa ku
-    // KOREŇU – inak by ho presun poradia nechal stáť tam, kde predloha už nie je.
+    // obrys variantu sa hlási ku koreňu, inak by ho presun poradia nechal stáť
     const obrys = v.outline ? outlineLayer(vrstva, v.outline) : null;
     if (obrys) {
       obrys.metadata = { ...obrys.metadata, "frico:derived": koren };
@@ -3357,10 +3163,8 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true, theme)
   const out = [];
 
   for (const layer of style.layers) {
-    // Vzor zabudovaný v štýle už jednu vrstvu má (pridal ju `add`). Zahodí sa
-    // a poskladá znova z ÚČINNÉHO predpisu – inak by úprava vzoru vyrobila
-    // druhú vrstvu s tým istým id a poistka proti duplicite by nechala tú
-    // pôvodnú, čiže by sa v mape ticho nezmenilo nič.
+    // zabudovaný vzor už jednu vrstvu má; poskladá sa znova z účinného predpisu,
+    // inak by poistka proti duplicite nechala tú pôvodnú
     if (patternLayerFor(layer) || variantLayerFor(layer)) continue;
 
     const o = layerOverrides[layer.id];
@@ -3368,9 +3172,7 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true, theme)
     const builtin = (layer.metadata || {})["frico:pattern"] || null;
     const pat = o && "pattern" in o ? o.pattern : builtin;
 
-    // Vzor z vlastného obrázka sa nasadí len vtedy, keď ten obrázok naozaj
-    // je (v sprite alebo aspoň v úpravách) – neznámy `fill-pattern` MapLibre
-    // ticho preskočí a plocha ostane bez vzoru.
+    // neznámy `fill-pattern` MapLibre ticho preskočí a plocha ostane bez vzoru
     const patOk = (p) => !p || !p.image || hasIcon(p.image);
 
     if (!o) {
@@ -3392,51 +3194,37 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true, theme)
     }
     if (o.minzoom != null) layer.minzoom = o.minzoom;
     if (o.maxzoom != null) layer.maxzoom = o.maxzoom;
-    // `background` nemá minzoom/maxzoom obmedzenia iné než štýl dovolí,
-    // ostatné vrstvy áno – MapLibre by neplatný rozsah odmietol.
+    // MapLibre by neplatný rozsah zoomov odmietol
     if (layer.minzoom != null && layer.maxzoom != null && layer.maxzoom <= layer.minzoom) {
       delete layer.maxzoom;
     }
-    // `paintValue` rozbalí to, čo úprava nesie: `none` na priehľadnú farbu
-    // a pole zlomov na `interpolate` podľa zoomu.
+    // `paintValue` rozbalí `none` na priehľadnú a pole zlomov na `interpolate`
     if (o.paint) {
       layer.paint = { ...(layer.paint || {}) };
       for (const [prop, value] of Object.entries(o.paint)) {
-        // Vlastnosť, ktorú štýl nenastavil, má predvoľbu MapLibre
-        // (`PAINT_DEFAULTS`) – bez nej by percento nad ňou ticho nespravilo
-        // nič. `undefined` v `paint` by MapLibre odmietol aj s celým štýlom,
-        // takže sa nezapisuje.
+        // vlastnosť, ktorú štýl nenastavil, má predvoľbu MapLibre; `undefined`
+        // v `paint` by MapLibre odmietol aj s celým štýlom
         const v = overrideValue(layer.paint[prop], value, PAINT_DEFAULTS[prop]);
         if (v !== undefined) layer.paint[prop] = v;
       }
     }
-    // Tmavý variant je vždy JEDNA farba (nikdy krivka, pásma ani percento –
-    // rozpis pri `cleanLayers`), takže ide rovno na vrstvu, nie cez
-    // `overrideValue`. Platí len v téme `tmava` a len navrch toho, čo už
-    // nastavil `paint` (alebo štýl sám) – ostatné tri témy ho nevidia.
+    // tmavý variant je vždy jedna farba, tak ide rovno na vrstvu
     if (theme === "tmava" && o.paintDark) {
       layer.paint = { ...(layer.paint || {}) };
       for (const [prop, value] of Object.entries(o.paintDark)) {
         layer.paint[prop] = paintValue(value);
       }
     }
-    // `layout` len na SYMBOLOVEJ vrstve: `icon-size` na čiare je pre MapLibre
-    // neznáma vlastnosť a taký štýl odmietne CELÝ (na rozdiel od `paint`,
-    // kde neznáme len ignoruje). Developer mode ich inde než na symbole
-    // neponúka, toto je poistka pre ručne upravený súbor.
+    // `layout` len na symbolovej vrstve: `icon-size` na čiare zhodí celý štýl
     if (o.layout && layer.type === "symbol") {
       layer.layout = { ...(layer.layout || {}) };
       for (const [prop, value] of Object.entries(o.layout)) {
-        // Rozostup ani veľkosť ikony vrstva nemusí mať nastavené – vtedy je
-        // základom predvoľba MapLibre, nie nič (rozpis pri `overrideValue`).
+        // základom je predvoľba MapLibre, nie nič (viď `overrideValue`)
         const v = overrideValue(layer.layout[prop], value, LAYOUT_PROPS[prop]?.def);
         if (v !== undefined) layer.layout[prop] = v;
       }
     }
-    // „Plná" NIE JE „nič": vrstva, ktorá má prerušovanie zabudované v štýle
-    // (železnica, brod, cesta vo výstavbe), sa musí dať vrátiť na plnú čiaru
-    // – a to znamená vlastnosť ZMAZAŤ. `line-dasharray: null` by MapLibre
-    // neprijal a `dashArray("solid")` je práve `null`.
+    // „plná" znamená vlastnosť zmazať: `line-dasharray: null` by MapLibre neprijal
     if (o.dash && layer.type === "line") {
       layer.paint = { ...(layer.paint || {}) };
       const arr = dashArray(o.dash);
@@ -3444,9 +3232,8 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true, theme)
       else delete layer.paint["line-dasharray"];
     }
 
-    // ROZLÍŠENIE PODĽA ATRIBÚTU. Vzniká z vrstvy, na ktorej UŽ SEDÍ jej vlastná
-    // úprava, takže variant dedí doladený vzhľad a mení oproti nemu len to, čím
-    // sa líši. Predloha si k filtru pridá negáciu – rozpis pri `variantLayers`.
+    // variant vzniká z vrstvy, na ktorej už sedí jej úprava; predloha si
+    // k filtru pridá negáciu – viď `variantLayers`
     const varianty = (o.variants || []).length
       ? variantLayers(layer, o.variants, hasIcon)
       : [];
@@ -3455,10 +3242,8 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true, theme)
       layer.filter = layer.filter ? ["all", layer.filter, nie] : nie;
     }
 
-    // Okraj čiary ide pod ňu, okraj plochy a vzor nad ňu. Tmavý variant jeho
-    // farby je tá istá otázka ako pri `paintDark` vyššie, len na vlastnosti,
-    // ktorá nesedí v `paint` (okraj je odvodená vrstva) – preto sa rieši tu,
-    // pred `outlineLayer`, a nie v ňom.
+    // okraj čiary ide pod ňu, okraj plochy a vzor nad ňu; tmavá farba okraja
+    // sa rieši tu, pred `outlineLayer`
     const outline = o.outline
       ? outlineLayer(layer, theme === "tmava" && o.outline.colorDark
           ? { ...o.outline, color: o.outline.colorDark }
@@ -3472,7 +3257,7 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true, theme)
     if (pattern) out.push(pattern);
   }
 
-  // Poistka proti duplicitnému id – MapLibre by taký štýl odmietol.
+  // MapLibre by štýl s duplicitným id odmietol
   const seen = new Set();
   style.layers = out.filter((l) => {
     if (seen.has(l.id)) return false;
@@ -3520,8 +3305,7 @@ export function applyLayerOrder(style, order) {
 
   for (const { id, before } of order) {
     const blok = layers.filter(rodina(id));
-    // Vrstva, ktorú tento štýl nemá (iná téma, iný typ mapy, vypnuté trasy),
-    // nie je chyba – presun sa jednoducho netýka ničoho.
+    // vrstva, ktorú tento štýl nemá, nie je chyba – presun sa netýka ničoho
     if (!blok.length) continue;
     const zvysok = layers.filter((l) => !blok.includes(l));
     if (before == null) {
@@ -3533,7 +3317,6 @@ export function applyLayerOrder(style, order) {
     layers = [...zvysok.slice(0, kam), ...blok, ...zvysok.slice(kam)];
   }
 
-  // Maska regiónu späť navrch – rozpis vyššie.
   const maska = layers.filter((l) => REGION_MASK_LAYERS.includes(l.id));
   if (maska.length) {
     layers = [...layers.filter((l) => !maska.includes(l)), ...maska];
@@ -3618,19 +3401,9 @@ export const ROAD_PASSES = ["-tunnel", "", "-bridge"];
  */
 // `[id, popis, triedy, farba podkladu, minzoom, tvar, farba čísla, orámovanie]`
 //
-// FARBY SÚ PODĽA ŠTÍTKA S ČÍSLOM CESTY, nie podľa smerovej tabule. Je to
-// rozdiel, na ktorom to predtým stálo zle: na diaľnici je ZELENÁ TABUĽA
-// (a podľa nej boli štítky zelené), ale ČÍSLO cesty sa v československom
-// značení píše do červeného štítka. Tabuľa a štítok sú dve rôzne veci a na
-// mape je vidieť ten druhý.
-//
-//   D, R   červená, biele číslo      (motorway + trunk – R je v OSM `trunk`)
-//   I.     modrá, biele číslo
-//   II/III biela, TMAVÉ číslo a tmavý rámik
-//
-// Práve kvôli tomu poslednému má každý riadok vlastnú farbu čísla aj rámika:
-// jedno spoločné biele číslo by na bielom štítku zmizlo a biely rámik okolo
-// bieleho štítka by ho na svetlej mape nechal splynúť s podkladom.
+// Farby sú podľa štítka s číslom cesty, nie podľa smerovej tabule: D/R červená,
+// I. trieda modrá, II./III. biela s tmavým číslom. Preto má každý riadok
+// vlastnú farbu čísla aj rámika.
 /**
  * Sieť európskych ciest v dlaždiciach – hodnota `route_*_network`.
  *
@@ -3657,14 +3430,8 @@ export const SHIELD_DEFS = [
     "shieldPrimary", 8, "shield", "shieldText", "shieldBorder"],
   ["secondary", "Štítky ciest II. a III. triedy", ["secondary", "tertiary"],
     "shieldSecondary", 10, "shield", "shieldTextDark", "shieldBorderDark"],
-  // EURÓPSKA CESTA (E75, E65, E575) – zelený štítok s bielym číslom, tak ako
-  // úradná značka (`E75-SVK-2020.svg`, odmerané #008c27).
-  //
-  // Je to INÉ ČÍSLO NEŽ NÁRODNÉ, nie jeho náhrada: cez ten istý úsek D2 vedie
-  // E65, takže sa kreslia OBE – E-štítok pod národným. Preto tento riadok
-  // nefiltruje podľa `class` (E-cesta ide po diaľnici aj po ceste I. triedy),
-  // ale podľa siete v `route_*`, a číslo si berie odtiaľ. Rozpis pri
-  // `EURO_NETWORK`.
+  // európska cesta je iné číslo než národné, nie jeho náhrada – kreslia sa
+  // obe. Preto sa nefiltruje podľa `class`, ale podľa siete v `route_*`.
   ["euro", "Štítky európskych ciest (E75)", null,
     "shieldEuro", 8, "shield", "shieldText", "shieldBorder", EURO_NETWORK]
 ];
@@ -3761,17 +3528,15 @@ export function buildStyle({
   mapType = DEFAULT_MAP_TYPE,
   overrides: rawOverrides = null
 }) {
-  // Typ mapy určuje profil (čo sa kreslí) aj to, ktoré úpravy platia:
-  // spoločné plus tie, čo si používateľ nastavil práve pre túto mapu.
+  // typ mapy určuje profil aj to, ktoré úpravy platia
   const mapTypeId = normalizeMapType(mapType);
   const overrides = resolveOverrides(rawOverrides, mapTypeId);
   // Tieňovanie reliéfu je vypnuté, kým ho niekto výslovne nezapne.
   const showHillshade = hillshade === null ? overrides?.hillshade === true : hillshade === true;
-  // 3D sa dá zapnúť len tam, kde sú výškové dlaždice – bez zdroja `dem`
-  // by `terrain` v štýle ukazoval na nič a MapLibre by ho odmietol.
+  // bez zdroja `dem` by `terrain` ukazoval na nič a MapLibre by ho odmietol
   const show3d = terrain3d === true && Boolean(demTiles);
   const c = mergedPalette(theme, overrides);
-  // Sada ikoniek určuje, ako sa mená skladajú (osm-liberty používa `_11`).
+  // sada ikoniek určuje, ako sa mená skladajú (osm-liberty používa `_11`)
   const iconSetId = iconSet || selectedIconSource(overrides);
   const { suffix } = iconSourceIn(iconSetId, overrides);
   const SPECIAL = specialIcons(iconSetId, overrides);
@@ -3782,11 +3547,8 @@ export function buildStyle({
   const ITAL = [f.italic];
 
   const iconClasses = iconClassesOf(icons, suffix);
-  // VLASTNÁ IKONA JE „V SPRITE" AJ VTEDY, KEĎ V ŇOM EŠTE NIE JE. Zoznam mien
-  // sa berie z hotového spritu, takže práve pridaná ikona by v ňom nebola
-  // a štýl by ju ticho vynechal – hoci v prehliadači ju mapa má hneď
-  // (`map.addImage` v poc/web/app.js) a do spritu ju pri builde dopečie
-  // `workers/assets/custom-icons.mjs`.
+  // vlastná ikona je „v sprite" aj vtedy, keď v ňom ešte nie je: mapa ju má
+  // hneď (`map.addImage`) a do spritu ju pri builde dopečie pipeline
   const vlastne = new Set(customIconNames(overrides));
   const hasIcon = (n) =>
     vlastne.has(n) || (icons && icons.length ? icons.includes(n) : true);
@@ -3814,8 +3576,7 @@ export function buildStyle({
       omt: {
         type: "vector",
         url: tilesUrl,
-        // Dlaždice končia na `maxzoom`; vyššie zoomy MapLibre dopočíta
-        // overzoomom, takže mapa je použiteľná až po MAX_DISPLAY_Z.
+        // vyššie zoomy MapLibre dopočíta overzoomom až po MAX_DISPLAY_Z
         maxzoom,
         attribution:
           '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
@@ -3826,8 +3587,7 @@ export function buildStyle({
     layers: []
   };
 
-  // Vrstevnice sú samostatný .pmtiles – nezávislý od OSM buildu, lebo
-  // závisia len od územia, nie od toho, čo sa v OSM zmenilo.
+  // vrstevnice sú samostatný .pmtiles – závisia len od územia, nie od OSM
   if (contoursUrl) {
     style.sources.contours = {
       type: "vector",
@@ -3837,12 +3597,8 @@ export function buildStyle({
         .attribution
     };
   }
-  // Skaly majú od vrstevníc ODDELENÝ .pmtiles, a to kvôli maxzoomu: každý
-  // súbor má jeden a tie dve vrstvy ho chcú úplne iný. Vrstevnice sú čiary
-  // cez celý kraj a rozpočet stránky minú okolo z14; skaly sú plochy len
-  // tam, kde je terén strmý, takže sa do z16 zmestia – a práve pri priblížení
-  // je vidieť, či obrys sedí na terén. Nad `maxzoom` sa dlaždice naťahujú
-  // overzoomom, takže sú skaly vidieť až do maximálneho zoomu mapy.
+  // skaly majú oddelený .pmtiles kvôli maxzoomu: vrstevnice minú rozpočet
+  // okolo z14, skaly sa do z16 zmestia. Nad `maxzoom` sa naťahujú overzoomom.
   if (rocksUrl) {
     style.sources.rocks = {
       type: "vector",
@@ -3852,9 +3608,7 @@ export function buildStyle({
         .attribution
     };
   }
-  // Značené trasy sú tiež samostatný .pmtiles: sú to `type=route` relácie,
-  // ktoré schéma OpenMapTiles nepozná – v hlavných dlaždiciach je len cesta,
-  // bez značenia. Robia sa z toho istého PBF, ale vlastným krokom pipeline.
+  // značené trasy sú `type=route` relácie, ktoré schéma OpenMapTiles nepozná
   if (trailsUrl) {
     style.sources.trails = {
       type: "vector",
@@ -3864,11 +3618,8 @@ export function buildStyle({
         '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
     };
   }
-  // Krajinné prvky (línie a plochy), ktoré schéma OpenMapTiles nepozná
-  // vôbec: násypy, zárezy, múry, ploty, vedenia, prieseky, parkoviská
-  // a zjazdovky. V celom `planetiler-openmaptiles` sa `embankment` ani raz
-  // nevyskytuje, takže sa tieto veci ťahajú z toho istého PBF druhýkrát
-  // vlastnou schémou (workers/features/features.yml) do vlastného .pmtiles.
+  // krajinné prvky mimo schémy: násypy, zárezy, múry, ploty, vedenia,
+  // prieseky, parkoviská, zjazdovky (workers/features/features.yml)
   if (featuresUrl) {
     style.sources.features = {
       type: "vector",
@@ -3878,10 +3629,8 @@ export function buildStyle({
         '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
     };
   }
-  // Body v krajine: pramene, jaskyne, rozhľadne, pamiatky, banské dedičstvo,
-  // geodetické body. DRUHÝ výstup toho istého jobu ako krajinné prvky
-  // vyššie – vlastná schéma (workers/features/points.yml), vlastný
-  // .pmtiles, presne kvôli balíku „body“ na stiahnutie zvlášť od línií.
+  // body v krajine – druhý výstup toho istého jobu, vlastný .pmtiles kvôli
+  // balíku „body" na stiahnutie zvlášť
   if (pointsUrl) {
     style.sources.points = {
       type: "vector",
@@ -3891,13 +3640,8 @@ export function buildStyle({
         '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
     };
   }
-  // DOPRAVNÁ SIEŤ (workers/transport/transport.yml) – balík `cesty`. Štýl
-  // z nej kreslí LEN OBMEDZENIA NA CESTE: výšku podjazdov a tunelov, šírku,
-  // hmotnosť a maximálnu rýchlosť. Vrstva `transportation` OpenMapTiles z toho
-  // nenesie ANI JEDNU hodnotu, takže je to – rovnako ako krajinné prvky –
-  // druhé čítanie toho istého PBF do vlastného .pmtiles. Samotné čiary ciest
-  // sa odtiaľto NEKRESLIA: tie sú v základnej mape a druhýkrát by len ležali
-  // na tých istých miestach.
+  // dopravná sieť (balík `cesty`): štýl z nej kreslí len obmedzenia na ceste
+  // (výška, šírka, hmotnosť, rýchlosť). Čiary ciest sú v základnej mape.
   if (transportUrl) {
     style.sources.transport = {
       type: "vector",
@@ -3907,18 +3651,13 @@ export function buildStyle({
         '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
     };
   }
-  // Raster DEM pre tieňovanie reliéfu a 3D terén (funguje na webe aj iOS).
-  // Vlastné dlaždice (workers/terrain/tiles.py) majú vo formulári vlastný
-  // výber modelu, takže atribúcia ide podľa `demTilesSource` – a nie podľa
-  // vrstevníc, ktoré môžu byť z iného. Keď ich pipeline nevyrobila, padá sa
-  // na verejné AWS Terrain Tiles.
+  // raster DEM pre tieňovanie a 3D. Atribúcia ide podľa `demTilesSource` –
+  // vrstevnice môžu byť z iného modelu. Bez vlastných sa padá na AWS.
   if (demTiles) {
     const ownDem = demTiles !== DEFAULT_DEM_TILES;
     const tilesSource = demTilesSource || demSource;
-    // Vlastné dlaždice chodia ako JEDEN `.pmtiles` (workers/terrain/pack.py),
-    // verejné AWS ako šablóna `{z}/{x}/{y}.png`. Rozlišuje sa to podľa
-    // protokolu, nie podľa druhého prepínača – dve polia o tej istej veci sa
-    // vždy raz rozídu.
+    // vlastné dlaždice chodia ako jeden `.pmtiles`, verejné AWS ako šablóna;
+    // rozlišuje to protokol, nie druhý prepínač
     const demIsArchive = demTiles.startsWith("pmtiles://");
     style.sources.dem = {
       type: "raster-dem",
@@ -3930,24 +3669,15 @@ export function buildStyle({
         ? (DEM_SOURCES[tilesSource] || DEM_SOURCES[DEFAULT_DEM_SOURCE]).attribution
         : '<a href="https://registry.opendata.aws/terrain-tiles/">AWS Terrain Tiles</a>'
     };
-    // Vlastné dlaždice nemusia pokrývať celú mapu: rýchly test (switch `test`)
-    // ich počíta len na štvorci s pár km², kým mapa je celý kraj. `bounds`
-    // hovorí MapLibre, kde ich má vôbec pýtať – bez neho by z každého posunu
-    // mapy padali stovky 404 a v konzole by sa stratilo všetko ostatné.
-    //
-    // PRI `.pmtiles` SA NEDOPISUJE: rozsah aj zoomy si archív nesie v hlavičke
-    // a klient ich prečíta skôr, než si vypýta prvú dlaždicu. Dopísať ich sem
-    // druhýkrát by znamenalo dve pravdy o jednej veci – a tá z formulára by
-    // sa časom rozišla s tým, čo v archíve naozaj je.
+    // vlastné dlaždice nemusia pokrývať celú mapu (rýchly test), `bounds`
+    // hovorí MapLibre, kde ich má pýtať. Pri `.pmtiles` sa nedopisuje –
+    // rozsah aj zoomy si archív nesie v hlavičke.
     if (ownDem && !demIsArchive
         && Array.isArray(demBounds) && demBounds.length === 4) {
       style.sources.dem.bounds = demBounds.map(Number);
     }
-    // 3D TERÉN PRIAMO V ŠTÝLE. Doteraz si ho zapínal len web za behu
-    // (`map.setTerrain` v poc/web/app.js), takže všetko ostatné, čo tento
-    // štýl číta – iOS cez MapLibre Native – dostávalo plochú mapu, hoci
-    // výškové dlaždice v štýle boli. `terrain` je súčasť štýlu podľa
-    // špecifikácie, takže ho každý klient zapne sám.
+    // 3D terén patrí do štýlu podľa špecifikácie, nech si ho každý klient
+    // zapne sám – nielen web cez `map.setTerrain`
     if (show3d) {
       style.terrain = {
         source: "dem",
@@ -3956,16 +3686,9 @@ export function buildStyle({
     }
   }
 
-  // HRANICA STIAHNUTÉHO REGIÓNU. Mapa sa stavia z PBF kraja, ale dlaždice
-  // vznikajú po celých dlaždiciach a Planetiler do nich kreslí vodstvo aj
-  // Natural Earth, ktoré sú celosvetové – bez tejto vrstvy teda mapa
-  // pokračuje aj tam, kde z nášho regiónu nie je nič, len podfarbené prázdno
-  // bez ciest a sídel. V aplikácii, kde si používateľ región STIAHNE, to
-  // vyzerá ako mapa, ktorá sa nedonačítala.
-  //
-  // Súbor vyrába `workers/deploy/region-mask.py` z toho istého `.poly`, ktorým
-  // je orezaný PBF (a ktorý dostáva `-cutline` vrstevníc aj maska tieňovania),
-  // takže hranica je jedna – nekreslí sa tu druhá (pravidlo 1).
+  // hranica stiahnutého regiónu: dlaždice vznikajú celé a Planetiler do nich
+  // kreslí celosvetové vodstvo, takže mapa inak pokračuje do prázdna.
+  // Súbor robí `workers/deploy/region-mask.py` z toho istého `.poly` ako PBF.
   if (regionOutline) {
     style.sources.region = {
       type: "geojson",
@@ -4008,15 +3731,9 @@ export function buildStyle({
     const l = { ...layer };
     if (l.type !== "background" && !l.source) l.source = "omt";
     const pat = pattern ? patternDef(pattern) : null;
-    // ZABUDOVANÉ PRERUŠOVANIE do metadát – inak sa v developer móde nedá
-    // ukázať ani vrátiť. Panel dostáva štýl, na ktorom už úpravy sedia,
-    // takže z `paint` sa „aké to bolo pôvodne" prečítať nedá: kým tu tento
-    // riadok nebol, ukazoval výber pri KAŽDEJ čiare „Plná" – aj pri
-    // železnici, ktorá má `rail` – a voľba „Plná" sa navyše zahodila ako
-    // „veď to je predvolené", takže čiarkovanie železnice sa nedalo ani
-    // zmeniť, ani vypnúť. Ukladá sa PREDVOĽBA, a keď žiadna nesedí, rovno
-    // to pole čísel – aby aj vlastné prerušovanie zo štýlu vedel panel
-    // pomenovať a vrátiť.
+    // zabudované prerušovanie do metadát: panel dostáva štýl, na ktorom už
+    // úpravy sedia, takže „aké to bolo pôvodne" sa z `paint` prečítať nedá.
+    // Ukladá sa predvoľba, a keď žiadna nesedí, rovno to pole čísel.
     const dashBuiltin = (l.paint || {})["line-dasharray"];
     l.metadata = {
       "frico:group": group,
@@ -4063,40 +3780,23 @@ export function buildStyle({
     ["zaklad", "Pozadie mapy", "area", { "background-color": "background" }]
   );
 
-  // ================= krajinná pokrývka =================
-  // Trieda aj `subclass` naraz: schéma zlieva do `class=grass` úplne všetko
-  // od lúky po kosodrevinu a od záhradky po golfové ihrisko. Rozlíšiť sa to
-  // dá len cez `subclass`, ktorý pôvodnú hodnotu tagu nesie – preto tu sú
-  // aj vrstvy, ktoré `class` vôbec nepoužívajú. Poradie je poradím kreslenia:
-  // jemnejšie rozlíšenie ide navrch nad všeobecnejšiu triedu pod ním.
+  // krajinná pokrývka: schéma zlieva do `class=grass` všetko od lúky po
+  // kosodrevinu, rozlíši to len `subclass`. Poradie je poradím kreslenia.
   const landcover = [
     ["wood", "Les", ["wood", "forest"], "forest", 0.9],
     ["grass", "Tráva a lúky", ["grass", "grassland", "meadow"], "grass", 0.7],
-    // Kosodrevina, kroviny, vresovisko a holina. V dlaždiciach majú
-    // `class=grass`, takže sa dovtedy kreslili ako lúka – v Tatrách je to
-    // rozdiel medzi „dá sa prejsť" a „nedá".
+    // v dlaždiciach majú `class=grass`; v Tatrách je to rozdiel medzi
+    // „dá sa prejsť" a „nedá"
     ["scrub", "Kroviny a kosodrevina", ["scrub", "shrubbery", "heath", "fell", "tundra"], "scrub", 0.85],
     ["farmland", "Polia", ["farmland"], "grass", 0.45],
-    // Záhrady, sady a vinice. Boli vo vrstve `landuse`, kde ich schéma nikdy
-    // nemá – `landuse` pozná len 26 tried a ani jedna z týchto medzi ne
-    // nepatrí. Odtiaľto sa trafia.
+    // boli vo vrstve `landuse`, kde ich schéma nikdy nemá
     ["garden", "Záhrady a sady", ["garden", "allotments", "orchard", "vineyard", "plant_nursery"], "garden", 0.8],
     ["golf", "Golfové ihriská", ["golf_course", "recreation_ground", "village_green"], "pitch", 0.6],
     ["wetland", "Mokrade", ["wetland", "swamp", "marsh", "bog"], "wetland", 0.8],
-    // SUŤ MÁ VZOR DROBNÝCH KAMEŇOV. `natural=scree` a `bare_rock` z OSM je
-    // presne to, čo vzor kreslí: popadané kamene pod stenou, kamenné more,
-    // holá skala. Papierová horská mapa ich takto značí odjakživa a plná
-    // farba to nepovie – suť a lúka sú v nej rovnaká škvrna, len inak sfarbená.
-    //
-    // Vzor je JEMNÝ, nie ozdobný. Dlaždica sa zadáva v PIXELOCH OBRAZOVKY,
-    // nie v metroch – vzor sa so zoomom nezväčšuje, takže 9 px je jeden
-    // kamienok veľký dva-tri pixely na každom zoome. Vyskúšané aj 26 px
-    // (pôvodná veľkosť na skalných plochách): v ploche z toho bola dlažba,
-    // nie suť.
-    //
-    // Počítané skalné plochy (`rock-area` z DEM) vzor ZÁMERNE NEMAJÚ: to je
-    // stena a strmý sklon, nie sypké kamene, a kresba drobných kameňov by
-    // o tvare terénu klamala.
+    // suť má vzor drobných kameňov – plná farba nepovie rozdiel medzi suťou
+    // a lúkou. Dlaždica sa zadáva v pixeloch obrazovky, takže sa vzor so
+    // zoomom nezväčšuje; 26 px vyzeralo ako dlažba. Počítané skalné plochy
+    // z DEM vzor zámerne nemajú: to je stena, nie sypké kamene.
     ["rock", "Skaly a suť", ["rock", "scree", "bare_rock"], "rock", 0.8,
      { id: "rocks", color: "rockPattern", size: 9, weight: 0.6, opacity: 0.75 }],
     ["sand", "Piesok", ["sand", "beach"], "sand", 1],
@@ -4115,21 +3815,14 @@ export function buildStyle({
         ],
         paint: { "fill-color": c[paletteKey], "fill-opacity": opacity }
       },
-      // Farba vzoru je v zozname ako KĽÚČ PALETY, nie hex – aby ju mala každá
-      // téma svoju, rovnako ako výplň pod ňou.
+      // farba vzoru je kľúč palety, nie hex – nech ju má každá téma svoju
       ["krajina", label, "area", { "fill-color": paletteKey }, null,
         pattern ? { ...pattern, color: c[pattern.color] } : null]
     );
   }
 
-  // ================= využitie územia =================
-  // Zoznam tried je presne ten, ktorý schéma naozaj vydáva (26 hodnôt,
-  // Tables.java: osm_landuse_polygon). Triedy, ktoré tu boli navyše
-  // (`warehouse`, `danger_area`, `sports_centre`, `landfill`, `grave_yard`,
-  // celá vrstva `garden`), sa nemali ako trafiť – schéma ich do `landuse`
-  // nedáva. Záhrady a golf sa presunuli do `landcover`, skládka do vlastných
-  // dlaždíc s krajinnými prvkami; `grave_yard` schéma sama premapuje na
-  // `cemetery`.
+  // využitie územia: presne tie triedy, ktoré schéma naozaj vydáva (26 hodnôt,
+  // Tables.java: osm_landuse_polygon)
   const landuse = [
     ["residential", "Obytná zóna", ["residential", "suburb", "neighbourhood", "quarter"], "residential"],
     ["industrial", "Priemysel a obchod", ["industrial", "commercial", "retail", "garages"], "industrial"],
@@ -4141,8 +3834,7 @@ export function buildStyle({
     ["quarry", "Lom", ["quarry"], "quarry"],
     ["playground", "Ihriská a zoo", ["playground", "theme_park", "zoo"], "playground"],
     ["pitch", "Športoviská", ["pitch", "stadium", "track"], "pitch"],
-    // `waterway=dam` ako plocha – teleso priehrady. V dlaždiciach je od
-    // začiatku, štýl ho nekreslil.
+    // `waterway=dam` ako plocha; v dlaždiciach je od začiatku, štýl ho nekreslil
     ["dam", "Priehrada (plocha)", ["dam"], "dam"]
   ];
   for (const [id, label, classes, paletteKey] of landuse) {
@@ -4158,11 +3850,8 @@ export function buildStyle({
     );
   }
 
-  // ---- plochy z vlastných dlaždíc ----
-  // Parkovisko, skládka, halda, hospodársky dvor. Schéma OpenMapTiles ich
-  // ako plochu nemá vôbec – `amenity=parking` je v nej len bod, `landfill`
-  // ani `farmyard` nie sú ani to. Kreslia sa hneď za `landuse`, lebo patria
-  // k tomu istému: čo sa s územím robí.
+  // plochy z vlastných dlaždíc: schéma ich ako plochu nemá vôbec. Kreslia sa
+  // hneď za `landuse` – patria k tomu istému, čo sa s územím robí.
   if (featuresUrl) {
     const featureAreas = [
       ["parking", "Parkoviská", ["parking"], "parking", 0.9],
@@ -4185,16 +3874,9 @@ export function buildStyle({
       );
     }
 
-    // ---- zjazdovky ----
-    // Vleky v dlaždiciach sú (`transportation class=aerialway`), trate nie:
-    // `piste:type` schéma nepozná. Na lyžiarskej mape tak boli vleky bez
-    // toho, k čomu vedú. Plocha aj os sú tá istá vrstva – uzavretá cesta
-    // vyjde ako plocha aj ako čiara, takže dostane výplň s obrysom.
-    //
-    // A práve preto tu MUSÍ byť `polygonOnly`: `workers/features/features.yml` púšťa do
-    // vrstvy `piste` zámerne oba tvary, takže by táto výplň dostala aj os
-    // zjazdovky – otvorenú čiaru, z ktorej MapLibre earcutom vyrobí nezmysel
-    // (rozpis pri `POLYGON_ONLY`). Os kreslí `piste-line` o kus nižšie.
+    // zjazdovky: vleky v dlaždiciach sú, trate nie (`piste:type` schéma nepozná).
+    // Plocha aj os sú tá istá vrstva, preto `polygonOnly` – inak by výplň
+    // dostala aj os a MapLibre z nej earcutom vyrobí nezmysel.
     add(
       {
         id: "piste-area",
@@ -4213,8 +3895,7 @@ export function buildStyle({
       id: "park",
       type: "fill",
       "source-layer": "park",
-      // Vrstva `park` nesie aj bod pre popisok (Planetiler ho dáva ako
-      // `pointOnSurface`), nie len obrys chráneného územia.
+      // vrstva `park` nesie aj bod pre popisok, nie len obrys
       filter: polygonOnly(),
       paint: { "fill-color": c.park, "fill-opacity": 0.55 }
     },
@@ -4235,22 +3916,10 @@ export function buildStyle({
     ["uzemie", "Park (obrys)", "line", { "line-color": "parkOutline" }]
   );
 
-  // ================= skalné plochy =================
-  // SÚ TU, TESNE POD TIEŇOVANÍM, A NIE PRI VRSTEVNICIACH. Skala je tvar
-  // terénu, nie kresba nad ním – a tieňovanie je to isté, len rastrom.
-  // Keď ležala sivá plocha NAD tieňovaním, prekryla ho a stena bola v mape
-  // plochá škvrna bez reliéfu presne tam, kde je terén najzaujímavejší.
-  // Teraz cez ňu tieňovanie prejde a stena má tvar. Voda ostáva nad oboma:
-  // tieňovaná vodná hladina vyzerá nesprávne a jazero na skalnej ploche je
-  // jazero.
-  //
-  // JEDNA VRSTVA, JEDNA SIVOHNEDÁ, BEZ PRIEHĽADNOSTI. Predtým to boli dve
-  // polopriehľadné vrstvy (`steep` a `cliff`) a tenký obrys. Priehľadnosť
-  // ale znamená, že KAŽDÝ prekryv je vidieť – dve plochy cez seba vyjdú
-  // tmavšie než jedna, a stačí na to plocha rozseknutá hranicou bloku
-  // alebo `cliff` ležiaci vo vyplnenej diere `steep`u. Plná farba to rieši
-  // na úrovni kreslenia: prekryv je neviditeľný, takže sa plochy nemusia
-  // ani zlepovať, ani strážiť proti sebe.
+  // skalné plochy sú tesne pod tieňovaním, nie pri vrstevniciach: skala je tvar
+  // terénu. Nad tieňovaním by z nej bola plochá škvrna bez reliéfu.
+  // Jedna vrstva, jedna sivohnedá, bez priehľadnosti – priehľadnosťou je vidieť
+  // každý prekryv, takže by sa plochy museli zlepovať a strážiť proti sebe.
   if (rocksUrl) {
     add(
       {
@@ -4258,34 +3927,24 @@ export function buildStyle({
         type: "fill",
         source: "rocks",
         "source-layer": "rock",
-        // Od z11 (`TERRAIN_MIN_Z`), nie od z1. Na prehľadovej mierke je zo skál
-        // sivá škvrna, ktorá nič nepovie, a dlaždice s ňou sa aj tak sťahujú –
-        // mapové podklady tým rástli za niečo, čo netreba. Pod tým zoomom teda
-        // skaly v mape nie sú vôbec, presne ako vrstevnice; rozpis je pri tej
-        // konštante.
+        // od z11: na prehľadovej mierke je zo skál len sivá škvrna a dlaždice
+        // s ňou sa aj tak sťahujú
         minzoom: TERRAIN_MIN_Z,
         paint: {
           "fill-color": c.rockArea,
           "fill-opacity": 1,
-          // `fill-antialias` ostáva: hrana plochy má byť hladká. S plnou
-          // farbou to nerobí ani prekryv navyše – vyhladzuje sa okraj,
-          // nie výplň.
+          // hrana plochy má byť hladká; s plnou farbou to nerobí prekryv navyše
           "fill-antialias": true
         }
       },
-      // BEZ VZORU, a je to rozdiel oproti suti v krajinnej pokrývke. Táto
-      // plocha je počítaná zo SKLONU: hovorí „tu je terén strmý", teda stena
-      // a bralo. Kresba drobných popadaných kameňov by tvrdila opak – že je
-      // to sypká suť – a to je práve tá informácia, kvôli ktorej sa na skaly
-      // v mape pozerá. Kamienky preto kreslí `landcover-rock` (scree z OSM).
+      // bez vzoru, na rozdiel od suti: táto plocha je počítaná zo sklonu, teda
+      // stena a bralo. Kamienky kreslí `landcover-rock` (scree z OSM).
       ["vrstevnice", "Skalné plochy", "area", { "fill-color": "rockArea" }]
     );
   }
 
-  // ================= tieňovanie reliéfu =================
-  // Ide nad krajinnú pokrývku a nad skaly, ale pod vodu – tieňovaná vodná
-  // hladina vyzerá nesprávne. Zdroj `dem` zostáva v štýle aj keď je
-  // tieňovanie vypnuté, lebo z neho žije 3D terén.
+  // tieňovanie ide nad krajinnú pokrývku a skaly, ale pod vodu. Zdroj `dem`
+  // ostáva v štýle aj pri vypnutom tieňovaní – žije z neho 3D terén.
   if (demTiles && showHillshade) {
     add(
       {
@@ -4293,77 +3952,20 @@ export function buildStyle({
         type: "hillshade",
         source: "dem",
         paint: {
-          // SVETLO IDE OD SEVEROZÁPADU A DRŽÍ SA TERÉNU, NIE OBRAZOVKY.
-          //
-          // MapLibre má predvolene 335° – to je 25° od severu, takže SEVERNÉ
-          // svahy dostávali skoro plné svetlo a boli v mape tou najsvetlejšou
-          // plochou. 315° je kartografická konvencia (svetlo od severozápadu)
-          // a severný svah je pri nej 45° od svetla, teda len spolu-osvetlený.
-          //
-          // `map` znamená, že svetlo je priviazané k TERÉNU. Predvolený
-          // `viewport` ho drží pri hornom okraji obrazovky, takže sa
-          // otočením mapy – a tá sa v teréne otáča s kompasom – prelieva
-          // z jednej strany hrebeňa na druhú a to isté údolie raz vyzerá ako
-          // údolie a raz ako chrbát. Na severne orientovanej mape sú obe
-          // hodnoty to isté, rozdiel je vidieť až pri otáčaní.
+          // 315° je kartografická konvencia; predvolených 335° osvetľovalo
+          // severné svahy skoro kolmo. `map` priväzuje svetlo k terénu – pri
+          // `viewport` sa otočením mapy prelieva z jednej strany hrebeňa na druhú.
           "hillshade-illumination-direction": 315,
           "hillshade-illumination-anchor": "map",
-          // SILA TIEŇOVANIA RASTIE SO ZOOMOM, nie naopak.
+          // sila rastie so zoomom, nie naopak: krivka tu roky klesala, takže
+          // práve tam, kde má model najviac detailu, bolo tieňovanie najslabšie.
           //
-          // Krivka tu roky klesala (`[[6, 0.5], [12, 0.4], [16, 0.25]]`),
-          // takže presne tam, kde má výškový model NAJVIAC detailu – DMR 5.0
-          // má mriežku 5 m a dlaždice idú do z15 –, bolo tieňovanie
-          // NAJSLABŠIE. Terénne nerovnosti, kvôli ktorým sa človek na mape
-          // približuje (žľaby, terasy, rebrá, cestné zárezy), tým pri
-          // priblížení miznú: na prehľade je vidieť hrubý tvar pohoria
-          // a v detaile skoro plochá mapa. Odteraz je to obrátene – na
-          // prehľadovom zoome stačí naznačiť tvar, v detaile má reliéf niesť
-          // to hlavné.
-          //
-          // Nie je to celá jednotka: aj so stropom, ktorý drží alfa farieb
-          // (nižšie), je 1,0 už len o tom, ako rýchlo krytie so sklonom
-          // nabehne – a v detaile nabehne aj tak celé. 0,95 nechá miernym
-          // svahom ešte odstupňovanie.
-          //
-          // A STROP DRŽÍ ALFA FARIEB, NIE TÁTO KRIVKA. Tieňovanie je
-          // PREKRYVNÁ vrstva: krytie, ktorým prekrýva mapu pod sebou, je
-          // `sin` zo sklonu (a ten sa prevýšením ešte natiahne), takže
-          // s nepriehľadnou farbou je nad ~20° sklonu krytie 0,97–1,0 –
-          // pod tieňovaním potom nie je vidieť mapu, ale samotnú farbu
-          // tieňovania. Namerané na svetlej téme (z15, 49° s. š.,
-          // prevýšenie 0,95, `workers/lint/hillshade.mjs` počíta ten istý
-          // shader):
-          //
-          //   svah 30° privrátený k svetlu   les #b7d69f → #fcfcfb (biela)
-          //   svah 30° odvrátený od svetla   les #b7d69f → #5c4c3c (hnedá)
-          //
-          // Teda: na privrátenej strane bola z lesa BIELA PLOCHA a na
-          // odvrátenej tá istá hnedá ako z lúky – nad 20° sklonu mapa pod
-          // tieňovaním zmizla a ostala z nej vytieňovaná reliéfna maketa.
-          // Najviac to bilo do očí na severných svahoch, ktoré predvolené
-          // svetlo (335°) osvetľovalo skoro kolmo.
-          //
-          // Preto majú všetky tri farby v témach ALFU (`#rrggbbaa`):
-          //
-          //   tieň      0,70   svah ostane zreteľne tmavý, ale je pod ním
-          //                    vidieť les, cestu aj vrstevnicu
-          //   svetlo    0,36   privrátený svah sa len jemne rozjasní
-          //   akcent    0,22   akcent kreslí sklon bez ohľadu na svetlo;
-          //                    kým bolo krytie vysoké, nebolo ho vidieť
-          //                    vôbec, teraz ho vidieť je – a nesmie
-          //                    prekričať zvyšok
-          //
-          // Po nej je z toho istého lesa na 30° svahu #cbdabb (privrátený)
-          // a #757257 (odvrátený) – v oboch prípadoch stále les. Reliéf sa
-          // tým NEstratí: rozdiel medzi privrátenou a odvrátenou stranou je
-          // 41 jednotiek L*, čo je viac, než potrebuje oko na tvar. Ubudlo
-          // len to, čo tvar nenieslo – vypálená biela a nasýtená hnedá,
-          // pod ktorou nebolo nič. Že sa nepriehľadná farba nevráti, stráži
-          // `workers/lint/hillshade.mjs`.
-          //
-          // Dá sa to doladiť: `hillshade-exaggeration` je bežná vlastnosť
-          // úprav (developer mode → vrstva „Tieňovanie reliéfu"), takže na
-          // zmenu sily netreba meniť tento súbor.
+          // Strop drží alfa farieb, nie táto krivka. Tieňovanie mapu prekrýva
+          // krytím podľa sklonu, takže s nepriehľadnou farbou nad ~20° zmizne
+          // mapa a ostane samotná farba tieňovania (les → biela alebo hnedá).
+          // Preto majú tri farby v témach alfu; reliéf sa tým nestratí (rozdiel
+          // 41 L*). Stráži to `workers/lint/hillshade.mjs`.
+          // Doladiť sa dá cez `hillshade-exaggeration` v úpravách.
           "hillshade-exaggeration": zl([[6, 0.55], [10, 0.7], [12, 0.85], [16, 0.95]]),
           "hillshade-shadow-color": c.hillShadow,
           "hillshade-highlight-color": c.hillHighlight,
@@ -4426,7 +4028,7 @@ export function buildStyle({
   );
   add(
     {
-      // Potoky, priekopy, odvodňovacie kanály – detail, ktorý sa objaví od z12.
+      // potoky, priekopy, kanály – detail od z12
       id: "waterway-minor",
       type: "line",
       "source-layer": "waterway",
@@ -4441,11 +4043,8 @@ export function buildStyle({
     ["voda", "Potoky a priekopy", "line", { "line-color": "river" }]
   );
 
-  // ================= vrstevnice =================
-  // Kreslia sa nad vodou (pod hladinou nemajú čo robiť) a pod budovami
-  // a cestami, aby neprekrývali dôležitejšie prvky. Nad tieňovaním aj nad
-  // skalami: čiara vrstevnice musí ostať čitateľná aj cez sivú stenu,
-  // inak je práve tam, kde je terén najstrmší, mapa bez výšok.
+  // vrstevnice sú nad vodou a pod budovami a cestami, ale nad tieňovaním
+  // aj skalami: čiara musí ostať čitateľná aj cez sivú stenu
   if (contoursUrl) {
     const contourLine = (id, label, level, minzoom, width, paletteKey) =>
       add(
@@ -4465,22 +4064,14 @@ export function buildStyle({
         ["vrstevnice", label, "line", { "line-color": paletteKey }]
       );
 
-    // Tri triedy sa NEZAPÍNAJÚ naraz, a to je celé to „zjednodušene na
-    // malých mierkach": od z11 je v mape LEN hlavná vrstevnica (po 100 m pri
-    // štandardnom intervale), od z12 pribudne polovičná a od z13 základná.
-    // Čiara sa navyše na svojom prvom zoome vynára z nuly (`line-opacity`),
-    // takže žiadna trieda „nenaskočí" naraz ako mreža.
-    //
-    // POD `TERRAIN_MIN_Z` NIE JE V MAPE ANI JEDNA. Na tej mierke sa nedá
-    // prečítať žiadna, takže z nich je len sivý závoj – a dlaždice s nimi si
-    // prehliadač aj tak stiahne, čiže sa za ten závoj platí. Rovnaké dno má aj
-    // `rock-area`; rozpis je pri tej konštante.
+    // triedy sa nezapínajú naraz: od z11 hlavná, od z12 polovičná, od z13
+    // základná, a každá sa vynára z nuly (`line-opacity`).
+    // Pod `TERRAIN_MIN_Z` nie je ani jedna – na tej mierke je z nich sivý závoj.
     contourLine("minor", "Vrstevnice po 10 m", "minor", 13, [[13, 0.4], [16, 0.7], [20, 1.4]], "contour");
     contourLine("mid", "Vrstevnice po 50 m", "mid", 12, [[12, 0.5], [16, 0.9], [20, 1.8]], "contour");
     contourLine("major", "Vrstevnice po 100 m", "major", TERRAIN_MIN_Z,
                 [[TERRAIN_MIN_Z, 0.5], [16, 1.4], [20, 2.6]], "contourMajor");
 
-    // Popisky nadmorskej výšky pozdĺž hlavných vrstevníc.
     add(
       {
         id: "contour-label",
@@ -4491,8 +4082,7 @@ export function buildStyle({
         filter: ["in", str("level"), ["literal", ["major", "mid"]]],
         layout: {
           "symbol-placement": "line",
-          // `ele` môže z GDALu prísť ako desatinné číslo – zaokrúhlime v štýle,
-          // aby popisok nikdy nebol "810.0 m".
+          // `ele` môže z GDALu prísť ako desatinné číslo
           "text-field": ["concat", ["to-string", ["round", num("ele", 0)]], " m"],
           "text-font": REG,
           "text-size": zl([[13, 9], [16, 11], [20, 13]]),
@@ -4553,8 +4143,7 @@ export function buildStyle({
         paint: {
           "line-color": c[paletteKey],
           "line-width": zl(teeth),
-          // Polovica šírky zúbka: čiara sa odsunie presne tak, aby sa
-          // dotýkala hrany a trčala z nej von.
+          // polovica šírky zúbka: čiara sa dotýka hrany a trčí z nej von
           "line-offset": zl(teeth.map(([z, w]) => [z, w / 2])),
           "line-dasharray": [0.35, 2.2],
           "line-opacity": opacity
@@ -4565,13 +4154,8 @@ export function buildStyle({
     spolu(id);
   };
 
-  // ================= bralné hrany a hrebene z OSM =================
-  // Toto NIE SÚ skaly z výškového modelu (tie sú vyššie, vlastný .pmtiles).
-  // `natural=cliff`, `ridge` a `arete` sú v základných dlaždiciach od
-  // začiatku – Planetiler ich dáva ako línie do vrstvy `mountain_peak`
-  // (MountainPeak.java, od z13). Štýl ich dovtedy nekreslil vôbec, a čo
-  // horšie, symbolová vrstva „Vrcholy hôr" im dávala doprostred
-  // trojuholníček vrcholu, lebo `cliff` nebol medzi vylúčenými triedami.
+  // bralné hrany a hrebene z OSM – nie skaly z DEM. `natural=cliff/ridge/arete`
+  // sú v dlaždiciach ako línie vo vrstve `mountain_peak` (od z13).
   hachure({
     id: "cliff-line",
     label: "Bralné hrany (OSM)",
@@ -4606,8 +4190,7 @@ export function buildStyle({
       id: "aeroway-area",
       type: "fill",
       "source-layer": "aeroway",
-      // Vrstva `aeroway` má dráhy ako čiary a odbavovacie plochy ako polygóny;
-      // `class` ich síce rozlíši, ale letisko býva na nízkom zoome bodom.
+      // `aeroway` má dráhy ako čiary a odbavovacie plochy ako polygóny
       filter: polygonOnly(
         ["in", str("class"), ["literal", ["apron", "aerodrome", "heliport"]]]),
       paint: { "fill-color": c.aeroway }
@@ -4643,18 +4226,9 @@ export function buildStyle({
     ["letiska", "Rolovacie dráhy", "line", { "line-color": "aeroway" }]
   );
 
-  // ================= dopravné plochy =================
-  // Vrstva `transportation` nesie aj POLYGÓNY – pešiu zónu a námestie
-  // (`highway=pedestrian` + `area=yes`), mólo ako plochu a teleso mosta
-  // (`man_made=bridge`). Štýl mal nad ňou len líniové vrstvy, takže sa
-  // námestie nevyplnilo a plošné mólo zmizlo úplne.
-  //
-  // POZOR: „`fill` vrstva kreslí len plochy, takže `class` stačí na
-  // rozlíšenie" NEPLATÍ – bol to práve ten omyl, z ktorého boli čudné
-  // polygóny od zoomu 13. Vo `transportation` sú chodníky, mólo aj most
-  // BEŽNE čiary, MapLibre ich do výplne pustí a earcutom z nich vyrobí
-  // nezmysel. Rozpis je pri `POLYGON_ONLY`; každá výplň tu preto ide cez
-  // `polygonOnly`.
+  // vrstva `transportation` nesie aj polygóny – pešiu zónu, mólo, teleso mosta.
+  // Pozor: `class` na rozlíšenie nestačí, chodníky a mólo sú bežne čiary
+  // a MapLibre z nich earcutom vyrobí nezmysel. Preto všade `polygonOnly`.
   add(
     {
       id: "bridge-area",
@@ -4673,8 +4247,6 @@ export function buildStyle({
       "source-layer": "transportation",
       minzoom: 13,
       // `path` sú takmer výhradne čiary a od z13 ich je v dlaždiciach plno
-      // (`--transportation_z13_paths=true`) – bez tejto stráže z nich bola tá
-      // „prerezaná" plocha vo farbe podkladu. Viď `POLYGON_ONLY`.
       filter: polygonOnly(
         ["in", str("class"), ["literal", ["pedestrian", "path"]]]),
       paint: {
@@ -4695,15 +4267,14 @@ export function buildStyle({
       type: "fill",
       "source-layer": "transportation",
       minzoom: 13,
-      // `man_made=pier` býva mapované čiarou aspoň tak často ako plochou.
+      // `man_made=pier` býva mapované čiarou aspoň tak často ako plochou
       filter: polygonOnly(["==", str("class"), "pier"]),
       paint: { "fill-color": c.pier }
     },
     ["doprava", "Móla (plocha)", "area", { "fill-color": "pier" }]
   );
 
-  // ================= budovy =================
-  // Do z16 ploché výplne, nad tým 3D bloky (render_height z OSM).
+  // do z16 ploché výplne, nad tým 3D bloky (render_height z OSM)
   add(
     {
       id: "building",
@@ -4769,7 +4340,7 @@ export function buildStyle({
       extraFilter
     ];
     const odNajmenejDolezitej = [...ROAD_DEFS].reverse();
-    // obrysy (casing) idú celé pod výplne, inak by ich prekrývali križovatky
+    // obrysy idú celé pod výplne, inak by ich prekrývali križovatky
     for (const [id, label, classes, , casingKey, stops, extra, mz] of odNajmenejDolezitej) {
       add(
         {
@@ -4813,9 +4384,7 @@ export function buildStyle({
     ["track", "Poľné a lesné cesty", ["==", str("class"), "track"], "track", [[11, 0.4], [13, 0.9], [14, 1.6], [16, 3.5], [20, 12]], [4, 2], 11],
     ["steps", "Schody", ["==", str("subclass"), "steps"], "steps", [[14, 1.2], [16, 3], [20, 10]], [1, 0.6], 14],
     ["cycleway", "Cyklotrasy", ["==", str("subclass"), "cycleway"], "cycleway", [[12, 0.4], [14, 1], [16, 2.2], [20, 8]], [3, 1.5], 12],
-    // `platform` a `corridor` majú tiež `class=path`. Bez nich sa nástupište
-    // ani chodba v podchode nenakreslili – filter ich prepúšťal len do
-    // vrstvy „turistické chodníky", ktorá ich vylučovala.
+    // `platform` a `corridor` majú tiež `class=path`
     ["footway", "Chodníky, priechody a nástupištia", ["in", str("subclass"), ["literal", ["footway", "sidewalk", "crossing", "platform", "corridor"]]], "footway", [[13, 0.6], [16, 2], [20, 7]], [2, 1.5], 13],
     // `path` bez subclass (alebo path/bridleway) – ale nie `track`, ten má vlastnú vrstvu
     ["path", "Turistické chodníky", ["all", ["==", str("class"), "path"],
@@ -4845,12 +4414,8 @@ export function buildStyle({
   // --- povrchové cesty ---
   roadPass("", "", isSurface);
 
-  // --- cesty vo výstavbe ---
-  // Schéma pre ne má vlastné triedy (`motorway_construction` až
-  // `track_construction`) a v dlaždiciach sú od začiatku. Štýl ich nemal
-  // v žiadnom zozname, takže rozostavaná diaľnica bola v mape biele miesto.
-  // Jedna vrstva pre všetky: šírka podľa dôležitosti, ale kresba rovnaká –
-  // po tejto ceste sa zatiaľ ísť nedá a to je to podstatné.
+  // cesty vo výstavbe: schéma pre ne má vlastné triedy a v dlaždiciach sú od
+  // začiatku. Jedna vrstva pre všetky – po tejto ceste sa zatiaľ ísť nedá.
   add(
     {
       id: "road-construction",
@@ -4873,10 +4438,7 @@ export function buildStyle({
     ["cesty", "Cesty vo výstavbe", "line", { "line-color": "roadConstruction" }]
   );
 
-  // --- brody ---
-  // `brunnel=ford` je v dlaždiciach na ceste aj na chodníku. Bez tohto
-  // vyzerá brod ako obyčajný úsek cesty – a pritom je to práve to miesto,
-  // kde sa dá neprejsť.
+  // brody: bez tohto vyzerá brod ako obyčajný úsek cesty
   add(
     {
       id: "road-ford",
@@ -4894,13 +4456,8 @@ export function buildStyle({
     ["cesty", "Brody", "line", { "line-color": "water" }]
   );
 
-  // --- železnica ---
-  // Dve vrstvy nad sebou: plná tmavá čiara a na nej čiarkovaná svetlá. Svetlé
-  // diely majú byť ROVNAKO DLHÉ ako tmavé, čo drží vzor `rail` ([1, 1]
-  // v násobkoch šírky) – a preto musí byť horná čiara ROVNAKO ŠIROKÁ ako
-  // spodná: keby bola tenšia (bola, na tretinu), tmavá by po stranách
-  // presvitala a z čiarkovanej čiary by boli priečky na tmavom páse.
-  // Šírka je preto jedna a tá istá pre obe vrstvy.
+  // železnica: plná tmavá čiara a na nej čiarkovaná svetlá. Obe musia byť
+  // rovnako široké, inak tmavá po stranách presvitá.
   const railWidth = [[7, 0.4], [10, 0.8], [14, 2.4], [16, 4], [20, 12]];
   add(
     {
@@ -4921,17 +4478,14 @@ export function buildStyle({
       id: "rail-hatch",
       type: "line",
       "source-layer": "transportation",
-      // Až od z13: pod ním je čiara užšia než pixel a čiarkovanie by z nej
-      // urobilo len prerušovanú šmuhu.
+      // až od z13: pod ním je čiara užšia než pixel
       minzoom: 13,
       filter: ["in", str("class"), ["literal", ["rail", "transit"]]],
       layout: { "line-cap": "butt" },
       paint: {
         "line-color": c.railHatch,
         "line-width": zw(railWidth),
-        // Vzor z `patterns.js`, nie číslo tu: to isté prerušovanie ponúka
-        // developer mode a ukladá sa do `style-overrides.json`, takže dve
-        // kópie by sa raz rozišli.
+        // vzor z `patterns.js`, nie číslo tu – to isté ponúka developer mode
         "line-dasharray": dashArray("rail")
       }
     },
@@ -5020,13 +4574,10 @@ export function buildStyle({
     );
   }
 
-  // ================= krajinné prvky (línie) =================
-  // Vlastný .pmtiles (workers/features/features.yml). Kreslia sa nad cestami, lebo
-  // násyp aj zárez sú hrany PRI ceste – pod ňou by ich cesta prekryla.
+  // krajinné prvky (línie) z vlastného .pmtiles; nad cestami, lebo násyp
+  // aj zárez sú hrany pri ceste
   if (featuresUrl) {
-    // Násyp a zárez majú zúbky ako bralo, len opačne: násyp klesá od hrany
-    // von (zúbky vpravo v smere čiary, tak to OSM konvencia mapuje), zárez
-    // stúpa – kreslí sa preto svetlejšie a s jemnejšími zúbkami.
+    // násyp klesá od hrany von, zárez stúpa – kreslí sa svetlejšie a jemnejšie
     hachure({
       id: "feature-embankment",
       label: "Násypy",
@@ -5075,16 +4626,8 @@ export function buildStyle({
         [[14, 0.9], [16, 1.8], [20, 4]], [1, 1.5], 14],
       ["gully", "Výmole a zrázy", ["gully", "earth_bank"], "embankment",
         [[14, 0.6], [16, 1.2], [20, 3]], [3, 2], 14],
-      // PLÁNOVANÁ CESTA (`highway=proposed`) – trasa, na ktorej sa ešte ani
-      // nekope. Kreslí sa TU, medzi prvkami, a nie vedľa `road-construction`
-      // v sekcii ciest, hoci by tam logicky patrila: ide z vlastných dlaždíc
-      // (`features`), ktoré štýl pridáva len keď ten archív existuje.
-      //
-      // Bodkovaná a šedšia než rozostavaná cesta, ktorá je čiarkovaná
-      // (`[3, 2]`) a farebná: rozdiel „stavia sa" proti „je to zatiaľ na
-      // papieri" musí byť vidieť na prvý pohľad, nie až z popupu. Šírka je
-      // schválne o dosť menšia než pri rozostavanej ceste – plánovanú
-      // diaľnicu netreba kresliť ako diaľnicu.
+      // plánovaná cesta je tu, medzi prvkami, lebo ide z vlastných dlaždíc.
+      // Bodkovaná a šedšia než rozostavaná: „stavia sa" proti „je to na papieri".
       ["road-proposed", "Plánované cesty", ["road_proposed"], "roadProposed",
         [[11, 0.8], [14, 1.6], [16, 2.6], [20, 6]], [1, 2.5], 11]
     ];
@@ -5108,10 +4651,7 @@ export function buildStyle({
       );
     }
 
-    // ---- zjazdovky a bežky ----
-    // Farba podľa obťažnosti, ako na tabuli pri vleku. Odtiene sú tie isté
-    // kľúče palety ako pri značkách trás – modrá zjazdovka má byť tá istá
-    // modrá ako modrá značka, inak sa mapa rozpadne na dve sady farieb.
+    // farba podľa obťažnosti, tie isté kľúče palety ako pri značkách trás
     const pisteColour = [
       "match",
       str("difficulty"),
@@ -5185,23 +4725,12 @@ export function buildStyle({
     );
   }
 
-  // ================= značené trasy =================
-  // Trasa nie je cesta. Je to `type=route` relácia, ktorá zbiera cudzie
-  // cesty a nesie značenie (farbu pásika, sieť, názov) – v dlaždiciach
-  // OpenMapTiles po nej nezostane ani stopa. Preto má vlastný zdroj a
-  // kreslí sa ako farebný pásik **vedľa** cesty:
-  //
-  //     ── cesta ────────────    zostane vidieť, aká to je cesta
-  //     ━━ červená (off 0,5) ━
-  //     ━━ modrá   (off 1,5) ━   druhá trasa po tej istej ceste
-  //
-  // Pruh (`side` + `off`) prichádza z dát, `line-offset` ho prepočíta na
-  // pixely – preto sa pásiky neprekrývajú ani vtedy, keď po ceste vedie päť
-  // trás. Pešie trasy idú na jednu stranu, kolesové na druhú.
+  // trasa nie je cesta: `type=route` relácia so značením, v dlaždiciach
+  // OpenMapTiles po nej nezostane stopa. Kreslí sa ako farebný pásik vedľa
+  // cesty; pruh (`side` + `off`) prichádza z dát, `line-offset` ho prepočíta
+  // na pixely. Pešie trasy idú na jednu stranu, kolesové na druhú.
   if (trailsUrl) {
-    // Farby značiek idú cez paletu, nie natvrdo z dát: „červená" značka má
-    // v každej téme vyzerať ako červená značka, nie ako presne to `#ff0000`,
-    // ktoré do OSM napísal ten, kto trasu zadával.
+    // farby značiek idú cez paletu, nie natvrdo z dát
     const MARK_KEYS = TRAIL_MARK_COLOURS.map(([, key]) => key);
 
     /**
@@ -5215,27 +4744,12 @@ export function buildStyle({
       ["coalesce", ["get", "hex"], c[fallbackKey]]
     ];
 
-    // ---- posun pásika od osi cesty ----
-    //
     //     line-offset = side × (odstup(po čom vedie) + poradie × rozostup)
     //
-    // ODSTUP NIE JE JEDNO ČÍSLO. Asfaltka je v mape pri z16 široká deväť
-    // pixelov plus obrys, chodník dva – odstup, pri ktorom sa pásik lepí na
-    // chodník, leží uprostred cesty. Preto sú dva: pri ceste ide pásik tesne
-    // ZA jej okraj (žiadna medzera, ale ani prekryv), pri chodníku a lesnej
-    // ceste ostáva jemná medzera, nech je pod pásikom vidieť aj samotný
-    // chodník aj s tým, že je prerušovaný. Po čom trasa vedie, hovoria dáta
-    // (`way`) – tu je len to, koľko to v pixeloch znamená.
-    //
-    // ROZOSTUP DVOCH TRÁS je šírka pásika, teda druhá trasa je nalepená na
-    // prvú bez medzery. Tri značky na jednom chodníku majú vyzerať ako jeden
-    // trojfarebný pás, nie ako tri čiary rozhádzané do polovice obrazovky.
-    // Preto je to tá istá krivka (`TRAIL_STRIPE`), ktorou sa o kus nižšie
-    // kreslí `line-width` pásika, a interpoluje sa tak isto – inak by sa medzi
-    // zlomami rozišli a medzi trasami by presvital ich podklad.
-    //
-    // Čísla sú pixely pri z16 (referenčný zoom, v ktorom sa to ladí) a celá
-    // krivka sa škáluje pomerom voči nim, keď ich developer mode prepíše.
+    // Odstupy sú dva: pri ceste ide pásik tesne za jej okraj, pri chodníku
+    // ostáva jemná medzera. Rozostup dvoch trás je šírka pásika, teda tá istá
+    // krivka (`TRAIL_STRIPE`) a tá istá interpolácia – inak by medzi trasami
+    // presvital podklad. Čísla sú pixely pri z16.
     const trailGaps = trailGapPx(overrides);
     const scaled = (stops, ref, want) =>
       stops.map(([z, v]) => [z, Math.round(((v * want) / ref) * 100) / 100]);
@@ -5243,14 +4757,9 @@ export function buildStyle({
     const PATH_STOPS = scaled(TRAIL_OFFSET_PATH, TRAIL_GAP_DEFAULTS.path, trailGaps.path);
     const PITCH_STOPS = scaled(TRAIL_PITCH, TRAIL_GAP_DEFAULTS.pitch, trailGaps.pitch);
 
-    // `["zoom"]` smie byť len vstupom najvrchnejšieho `interpolate`, preto sa
-    // celý výpočet skladá až vo výstupoch stopov – `["*", ["interpolate", …]]`
-    // by MapLibre odmietol. Stopy majú preto všetky tri krivky rovnaké.
-    //
-    // `exponential 1.5` je to isté, čím sa interpoluje `line-width` (`zw`):
-    // rozostup JE šírka pásika, takže musí rásť rovnako. S lineárnou
-    // interpoláciou sa medzi zlomami rozchádzali – pri z18 bola medzi
-    // susednými pásikmi medzera 0,65 px a presvital cez ňu ich podklad.
+    // `["zoom"]` smie byť len vstupom najvrchnejšieho `interpolate`, tak sa
+    // výpočet skladá až vo výstupoch stopov. `exponential 1.5` je to isté, čím
+    // sa interpoluje `line-width` – rozostup JE šírka pásika.
     const trailOffset = [
       "interpolate",
       ["exponential", 1.5],
@@ -5289,7 +4798,6 @@ export function buildStyle({
     /** Druhy trás už aj s tým, čo na nich prepísal developer mode. */
     const trailTypes = TRAIL_TYPES.map((t) => trailTypeDef(t, overrides));
 
-    // Popisok: „0801 Chodník hrdinov SNP", inak čo z toho je.
     const trailLabel = [
       "case",
       ["all", ["has", "ref"], ["has", "name"]],
@@ -5300,8 +4808,7 @@ export function buildStyle({
       ["get", "ref"],
       ""
     ];
-    // Diaľkové trasy sa popisujú prednostne – keď sa nezmestia všetky,
-    // nech ostane na mape tá dôležitejšia.
+    // diaľkové trasy sa popisujú prednostne
     const trailSort = [
       "match",
       str("tier"),
@@ -5311,8 +4818,7 @@ export function buildStyle({
       3
     ];
 
-    // Podklad pod všetkými pásikmi naraz: farebná čiara sama o sebe sa cez
-    // les, vrstevnice a tieňovanie stráca.
+    // podklad pod všetkými pásikmi: farebná čiara sa cez les a tieňovanie stráca
     add(
       {
         id: "trail-halo",
@@ -5320,8 +4826,7 @@ export function buildStyle({
         source: "trails",
         "source-layer": "trail",
         minzoom: 11,
-        // Ten istý spoj ako pásiky nad ním (rozpis pri `TRAIL_JOIN`) – inak
-        // by sa podklad v zákrute rozišiel s tým, čo podkladá.
+        // ten istý spoj ako pásiky nad ním, inak by sa v zákrute rozišli
         layout: { "line-cap": "butt", ...TRAIL_JOIN },
         paint: {
           "line-color": c.trailHalo,
@@ -5346,8 +4851,7 @@ export function buildStyle({
           layout: { "line-cap": "butt", ...TRAIL_JOIN },
           paint: {
             "line-color": trailColour(paletteKey),
-            // Tá istá krivka, ktorá je aj rozostupom dvoch trás – pásiky sa
-            // tak dotýkajú na každom zoome, nie len na zlomoch.
+            // tá istá krivka, ktorá je aj rozostupom – pásiky sa dotýkajú vždy
             "line-width": zw(TRAIL_STRIPE),
             "line-offset": trailOffset,
             "line-opacity": zl([[9, 0.75], [13, 0.95]]),
@@ -5358,19 +4862,10 @@ export function buildStyle({
       );
     }
 
-    // ---- ZNAČKA, AKO JE NA STROME ----
-    //
-    // Kreslí sa pozdĺž trasy v pravidelných intervaloch a je to obrázok
-    // upečený do spritu (`poc/web/marks.js`): biely alebo žltý štvorec
-    // s farebným pásom, trojuholník na vrchol, bicykel na cyklotrase. Ktorá
-    // trasa akú značku má, je v dlaždiciach (`mark`, `mark_bg`, `mark_fg`
-    // z `osmc:symbol` – rozpis vo `workers/trails/tags.py`), takže meno
-    // obrázka sa skladá z DÁT, nie zo zoznamu tu.
-    //
-    // KEĎ ZNAČKY V SPRITE NIE SÚ (stará sada z cache, nepodarené dopečenie),
-    // vrstva sa nepridá a pozdĺž trasy ostane ikonka druhu trasy – tak, ako
-    // to bolo predtým. Je to horšie, ale je to vidieť; „značky zmizli" by
-    // nikto nespozoroval.
+    // značka, ako je na strome: obrázok zo spritu (`poc/web/marks.js`).
+    // Meno obrázka sa skladá z dát (`mark`, `mark_bg`, `mark_fg`), nie zo
+    // zoznamu tu. Keď značky v sprite nie sú, vrstva sa nepridá a ostane
+    // ikonka druhu trasy – horšie, ale vidieť.
     const marksBaked = hasIcon(markImage("white", "red", DEFAULT_MARK_SHAPE));
     const markPx = trailMarkPx(overrides);
     const markScale = (stops, ref, want) =>
@@ -5381,17 +4876,9 @@ export function buildStyle({
     /** Kreslí sa tomuto druhu značka? („žiadna" z developer módu ju vypne.) */
     const drawsMark = (t) => marksBaked && t.markPick !== "";
 
-    // Stĺpik značiek nad čiarou: koľká je trasa v rade (`off`) a na ktorej
-    // strane cesty má pásik (`side`) – rozpis pri `TRAIL_MARK_STACK`. Záporné
-    // `y` je nahor, takže pešie trasy (`side` +1) idú nad čiaru a kolesové
-    // (−1) pod ňu.
-    //
-    // JE TO VYMENOVANÉ, A NIE JE TO Z LENIVOSTI: `icon-offset` je pole dvoch
-    // čísel a výrazy MapLibre pole POČÍTAŤ nevedia – vyrobiť sa dá len
-    // `["literal", …]`, teda konštanta. Preto je z toho `case` cez tie
-    // dvojice `(side, off)`, ktoré sa v dátach reálne vyskytujú; nad
-    // `TRAIL_MARK_STACK_MAX` je v rade toľko trás, že by stĺpik aj tak
-    // prerástol obrazovku, a ďalšie sa preto kreslia na poslednú priečku.
+    // stĺpik značiek nad čiarou podľa `off` a `side`; záporné `y` je nahor.
+    // Vymenované preto, že `icon-offset` je pole a výrazy MapLibre pole
+    // počítať nevedia – nad `TRAIL_MARK_STACK_MAX` sa kreslí posledná priečka.
     const stackOffset = (base, step) => {
       const expr = ["case"];
       for (const side of [1, -1]) {
@@ -5405,8 +4892,7 @@ export function buildStyle({
       expr.push(["literal", [0, -base]]);
       return expr;
     };
-    // Krok stĺpika je z developer módu (`overrides.trails.marks.step`), takže
-    // sa dá doladiť tak isto ako rozostup po trase a veľkosť značky.
+    // krok stĺpika je z developer módu, tak ako rozostup a veľkosť značky
     const markOffset = stackOffset(TRAIL_MARK_STACK.base, markPx.step);
     for (const t of trailTypes) {
       if (!drawsMark(t)) continue;
@@ -5424,12 +4910,9 @@ export function buildStyle({
             "symbol-spacing": zl(
               markScale(TRAIL_MARK_SPACING, TRAIL_MARK_DEFAULTS.spacing, markPx.spacing)
             ),
-            // Značky dvoch trás na jednej ceste sa stavajú NAD SEBA – bez
-            // toho by padli na to isté miesto a kolízia by všetky okrem
-            // jednej zahodila (rozpis pri `TRAIL_MARK_STACK`).
+            // značky dvoch trás sa stavajú nad seba, inak ich kolízia zahodí
             "icon-offset": markOffset,
-            // Meno obrázka je zložené z dát; `markPick` je „vždy tento tvar"
-            // z developer módu, inak platí tvar, ktorý je v `osmc:symbol`.
+            // meno obrázka je z dát; `markPick` je „vždy tento tvar"
             "icon-image": [
               "concat",
               "mark-",
@@ -5440,19 +4923,16 @@ export function buildStyle({
               markPick || ["get", "mark"]
             ],
             "icon-size": markSize,
-            // Značka STOJÍ NAROVNO. Natočená podľa cesty už nie je tabuľka,
-            // ale škvrna – a na serpentíne by stála na hlave.
+            // značka stojí narovno – natočená podľa cesty by na serpentíne
+            // stála na hlave
             "icon-rotation-alignment": "viewport",
             "icon-pitch-alignment": "viewport",
             "icon-padding": TRAIL_MARK_PADDING,
-            // STĹPIK SA KRESLÍ CELÝ. Značky v ňom stoja tesne na sebe, takže
-            // sa im kolízne obdĺžniky o priehľadný okraj prekrývajú – bez
-            // tohto by MapLibre všetky okrem prvej zahodila a z troch trás na
-            // chodníku by bola v mape jedna (rozpis pri `TRAIL_MARK_STACK`).
+            // stĺpik sa kreslí celý: značky v ňom majú prekryté kolízne
+            // obdĺžniky a MapLibre by nechala jedinú
             "icon-allow-overlap": true,
-            // Poradie v rade rozhodujú dáta (`off`), nie to, kto sa zmestí
-            // prvý; sort-key ostáva pre značky dvoch RÔZNYCH ciest, ktoré si
-            // sadnú na to isté miesto.
+            // poradie v rade rozhodujú dáta (`off`); sort-key je pre značky
+            // dvoch rôznych ciest na jednom mieste
             "symbol-sort-key": trailSort
           }
         },
@@ -5460,8 +4940,7 @@ export function buildStyle({
       );
     }
 
-    // Ikony a popisky idú až za všetky pásiky, aby sa čiara jednej trasy
-    // nekreslila cez popisok druhej.
+    // ikony a popisky až za pásikmi, nech sa čiara nekreslí cez popisok
     for (const t of trailTypes) {
       const { id, label, palette: paletteKey, iconPick } = t;
       const icon = pickIcon(iconPick);
@@ -5473,10 +4952,7 @@ export function buildStyle({
           source: "trails",
           "source-layer": "trail",
           minzoom: 13,
-          // IKONKA JE NÁHRADA, NIE DRUHÝ SYMBOL. Kde je značka (a kreslí sa),
-          // ikonka druhu trasy nemá čo pridať – dve ikony na jednej čiare si
-          // len berú miesto navzájom. Ostáva tam, kde značka nie je: trasa
-          // s neznámou farbou, ktorej by sme tabuľku vymysleli.
+          // ikonka je náhrada, nie druhý symbol: ostáva tam, kde značka nie je
           filter: drawsMark(t)
             ? ["all", ["==", str("route"), id], ["!", ["has", "mark"]]]
             : ["==", str("route"), id],
@@ -5486,12 +4962,8 @@ export function buildStyle({
             "icon-image": icon,
             "icon-size": zl([[13, 0.5], [16, 0.75], [20, 1]]),
             "icon-rotation-alignment": "viewport",
-            // TEN ISTÝ STĹPIK AKO PRI ZNAČKÁCH, a z toho istého dôvodu: trasy
-            // majú v dlaždiciach tú istú geometriu, takže bez posunu padnú
-            // ikonky všetkých trás na jedno miesto a kolízia nechá jednu.
-            // `off` a `side` sú pri tom spoločné pre značky aj ikonky (číslujú
-            // sa raz na cestu, `workers/trails/routes.py`), takže trasa so
-            // značkou a trasa bez nej si navzájom priečku neberú.
+            // ten istý stĺpik ako pri značkách; `off` a `side` sú spoločné,
+            // takže si trasa so značkou a bez nej priečku neberú
             "icon-offset": markOffset,
             "icon-allow-overlap": true,
             "icon-padding": 0
@@ -5538,12 +5010,12 @@ export function buildStyle({
             "symbol-spacing": 420,
             "text-max-angle": 30,
             "text-padding": 6,
-            // Popisok sa odsunie z čiary nabok, nech neleží na pásikoch.
+            // popisok sa odsunie nabok, nech neleží na pásikoch
             "text-offset": [0, 0.8],
             "symbol-sort-key": trailSort
           },
           paint: {
-            // Názov trasy je vo farbe trasy – červená značka má červený nápis.
+            // názov trasy je vo farbe trasy
             "text-color": trailColour(paletteKey),
             "text-halo-color": c.textHalo,
             "text-halo-width": 1.6
@@ -5699,29 +5171,14 @@ export function buildStyle({
     ]
   );
 
-  // ================= štítky s číslom cesty =================
-  // „D1", „R1", „I/18" – to, čo človek na mape hľadá, keď hľadá cestu.
+  // štítky s číslom cesty („D1", „R1", „I/18").
   //
-  // IDÚ PRED `road-name` A JE TO ROZHODNUTIE, NIE PORADIE V SÚBORE. MapLibre
-  // umiestňuje popisky v poradí vrstiev a ten, kto je skôr, si miesto berie
-  // prvý; keď sa na úsek nezmestí meno aj číslo, má ostať ČÍSLO. Meno ulice
-  // sa dá zistiť ťuknutím, „ktorá je toto cesta" sa z mapy bez čísla nedozvie
-  // nikto.
-  //
-  // PODKLAD JE ROZŤAHOVATEĽNÝ SDF OBRÁZOK zo spritu (`poc/web/shields.js`,
-  // dopeká ho `workers/assets/shields.mjs`): `icon-text-fit` ho natiahne
-  // podľa dĺžky čísla, `icon-color` mu dá farbu podľa triedy cesty
-  // a `icon-halo-*` orámovanie. Keď ten obrázok v sprite NIE JE – stará
-  // sada z cache, nepodarené dopečenie –, vrstva sa nevynechá: číslo sa
-  // nakreslí s hrubým halom vo farbe štítka. Je to horšie, ale je to vidieť,
-  // kým „štítky zmizli" by nikto nespozoroval.
-  //
-  // POPISKY STOJA NAROVNO (`text-rotation-alignment: viewport`). Značka
-  // natočená podľa cesty už nie je značka, ale text – a na serpentíne by
-  // stála na hlave.
-  // `route_1_ref` … `route_6_ref` toho slotu, ktorého sieť je hľadaná – číslo
-  // európskej cesty nie je v `ref`, ten nesie národné. Poradie slotov nie je
-  // zaručené, tak sa prejdú všetky.
+  // Idú pred `road-name` zámerne: MapLibre umiestňuje popisky v poradí vrstiev
+  // a keď sa nezmestí meno aj číslo, má ostať číslo.
+  // Podklad je rozťahovateľný SDF obrázok zo spritu (`poc/web/shields.js`);
+  // keď v sprite nie je, číslo sa nakreslí s hrubým halom vo farbe štítka.
+  // Popisky stoja narovno – natočené by na serpentíne stáli na hlave.
+  // Číslo E-cesty nie je v `ref`, tak sa prejdú všetky sloty `route_*_ref`.
   const routeRef = (network) => {
     const vetvy = [];
     for (let i = 1; i <= ROUTE_SLOTS; i += 1) {
@@ -5742,10 +5199,8 @@ export function buildStyle({
 
   for (const [id, label, classes, colorKey, mz, shapeId, textKey, borderKey, network]
        of SHIELD_DEFS) {
-    // Obrázok je upečený na TVAR × TRIEDU × TÉMU – farba je v ňom, nie
-    // v `paint`. Tvar sa dá prepnúť v developer móde (`overrides.shields`):
-    // v sprite sú všetky tvary naraz, takže je to zmena mena obrázka, nie
-    // prebuildovanie spritu.
+    // obrázok je upečený na tvar × triedu × tému, farba je v ňom. V sprite sú
+    // všetky tvary naraz, takže prepnutie je zmena mena, nie nový sprite.
     const shieldName = `${shieldShapeFor(id, shapeId, overrides)}-${id}-${theme}`;
     const shieldIcon = hasIcon(shieldName) ? shieldName : null;
     add(
@@ -5760,21 +5215,13 @@ export function buildStyle({
               "all",
               ["has", "ref"],
               ["in", str("class"), ["literal", classes]],
-              // ZJAZDY VON. `subclass: junction` je mimoúrovňová križovatka
-              // a jej `ref` je ČÍSLO VÝJAZDU („10", „6"), nie číslo cesty –
-              // na diaľnici ich je viac než samotných štítkov. Kým tu tá
-              // podmienka nebola, kreslili sa výjazdy ako diaľničné štítky:
-              // po D1 sedeli červené značky „8" a „13" a vyzerali ako čísla
-              // ciest, ktoré neexistujú.
+              // `subclass: junction` je mimoúrovňová križovatka a jej `ref` je
+              // číslo výjazdu, nie cesty
               ["!=", ["get", "subclass"], "junction"]
             ],
         layout: {
           "symbol-placement": "line",
-          // Ako často sa značka po ceste opakuje, v pixeloch obrazovky.
-          // Číslo cesty je ZNAČKA – má sa dať prečítať kdekoľvek na nej, nie
-          // len tam, kam padne jedna jediná. Preto hustejšie než predtým
-          // (220/260/340): na dlhom úseku bez zjazdu bola medzi štítkami
-          // obrazovka a pol.
+          // číslo cesty je značka – má sa dať prečítať kdekoľvek na nej
           "symbol-spacing": zl([[7, 170], [12, 190], [16, 230]]),
           "text-field": network ? routeRef(network) : ["get", "ref"],
           "text-font": BOLD,
@@ -5782,19 +5229,13 @@ export function buildStyle({
           "text-rotation-alignment": "viewport",
           "text-pitch-alignment": "viewport",
           "text-padding": 2,
-          // E-štítok sedí POD národným: na tom istom úseku sú obe čísla
-          // (D2 aj E 65) a bez posunu by si jedno druhé odhryzlo cez
-          // kolízie – zmizlo by nepredvídateľne raz jedno, raz druhé.
+          // E-štítok sedí pod národným: na tom istom úseku sú obe čísla
           ...(network ? { "text-offset": [0, 1.5] } : {}),
           ...(shieldIcon
             ? {
                 "icon-image": shieldIcon,
                 "icon-text-fit": "both",
-                // Hore/dole menej, po stranách viac – číslo má mať okolo seba
-                // rovnako veľa miesta na oko, nie v pixeloch. Odkedy sa
-                // obrázok škáluje CELÝ (bez rozťahovacích pásem, viď
-                // `poc/web/shields.js`), je odsadenie jediné, čo drží číslo
-                // od hrany – tak je o pixel väčšie než predtým.
+                // hore/dole menej, po stranách viac – rovnako miesta na oko
                 "icon-text-fit-padding": [3, 7, 3, 7],
                 "icon-rotation-alignment": "viewport",
                 "icon-pitch-alignment": "viewport"
@@ -5803,13 +5244,11 @@ export function buildStyle({
         },
         paint: shieldIcon
           ? {
-              // Žiadne `icon-color`/`icon-halo-*`: obrázok nie je SDF, farbu
-              // aj oba prstence má v sebe. Zafarbiť sa dá len číslo.
+              // obrázok nie je SDF, farbu má v sebe; zafarbiť sa dá len číslo
               "text-color": c[textKey]
             }
           : {
-              // Bez obrázka aspoň hrubé halo vo farbe štítka – je to kapsula
-              // okolo písmen, nie značka, ale číslo ostane čitateľné.
+              // bez obrázka aspoň hrubé halo vo farbe štítka
               "text-color": c[textKey],
               "text-halo-color": c[colorKey],
               "text-halo-width": 2.5
@@ -5826,25 +5265,12 @@ export function buildStyle({
     );
   }
 
-  // ================= obmedzenia na ceste =================
-  // Vlastný .pmtiles (workers/roads/roads.yml). Kreslia sa ZA štítkami
-  // s číslom cesty a PRED názvom ulice, a to poradie je rozhodnutie: MapLibre
-  // umiestňuje popisky v poradí vrstiev a kto je skôr, berie si miesto prvý.
-  // „Pod týmto mostom je 3,8 m" je pri hustej sieti dôležitejšie než meno
-  // ulice, ale číslo cesty (`D1`, `I/18`) je to, čím vodič naviguje.
-  //
-  // TEXT JE HODNOTA Z OSM, BEZ DOPISOVANEJ JEDNOTKY, a je to zámer. Tag môže
-  // mať jednotku už v sebe (`3.8 m`) aj byť v stopách (`12'6"`), takže
-  // dopísanie „ m" by z časti hodnôt spravilo `3.8 m m` a z časti nezmysel.
-  // Rozoznať to v štýle by chcelo `index-of`/`slice`, teda výrazy, na ktoré sa
-  // v statických štýloch pre MapLibre Native spoliehať nechceme – a mapa
-  // s číslom bez jednotky je presne to, čo je aj na tabuli. Číslo z tej
-  // hodnoty potrebuje len smerovanie („zmestí sa vozidlo?"), a to si ju
-  // parsuje samo (`docs/navigation.md`).
+  // obmedzenia na ceste z vlastného .pmtiles. Kreslia sa za štítkami s číslom
+  // a pred názvom ulice – poradie vrstiev rozhoduje, kto si vezme miesto.
+  // Text je hodnota z OSM bez dopisovanej jednotky: tag ju môže mať v sebe
+  // (`3.8 m`) aj byť v stopách. Číslo si parsuje smerovanie samo.
   if (transportUrl) {
-    // --- výška: to, kvôli čomu je obmedzenie v archíve siete ---
-    // Od z12, lebo obmedzenie výšky rozhoduje o tom, či tam vozidlo vôbec
-    // prejde – to sa má dať vidieť skôr, než človek dojde na križovatku.
+    // od z12: obmedzenie výšky rozhoduje, či tam vozidlo prejde
     add(
       {
         id: "road-limit-height",
@@ -5875,9 +5301,7 @@ export function buildStyle({
       ]
     );
 
-    // --- hmotnosť a šírka ---
-    // Od z14: je to tá istá trieda údaja, ale pýta sa na ňu menej ľudí a na
-    // prehľadovom zoome by len brala miesto obmedzeniu výšky.
+    // od z14: tá istá trieda údaja, ale pýta sa na ňu menej ľudí
     add(
       {
         id: "road-limit-mass",
@@ -5910,10 +5334,7 @@ export function buildStyle({
       ]
     );
 
-    // --- maximálna rýchlosť ---
-    // Až od z15 a menším písmom: `maxspeed` je takmer na každej ceste, takže
-    // na nižšom zoome by z nej bola šeď čísel cez celú mapu. Nie je to
-    // obmedzenie prejazdu, je to informácia – preto je posledná z troch.
+    // až od z15 a menším písmom: `maxspeed` je takmer na každej ceste
     add(
       {
         id: "road-maxspeed",
@@ -5971,7 +5392,7 @@ export function buildStyle({
     ]
   );
 
-  // Súpisné/orientačné čísla – iba na najväčšom detaile.
+  // súpisné a orientačné čísla – iba na najväčšom detaile
   add(
     {
       id: "housenumber",
@@ -5998,18 +5419,9 @@ export function buildStyle({
     ]
   );
 
-  // ---- POI ----
-  // Ikona sa vyberá podľa `subclass`, potom `class`. Ak pre ne sprite ikonu
-  // nemá, nekreslí sa nič (prázdny reťazec) – žiadne náhradné kolieska.
-  // IKONA VYBRANÁ V DEVELOPER MÓDE IDE PRVÁ. Je to jediná odpoveď na „tejto
-  // kategórii chcem inú značku": `class`/`subclass` z dlaždíc sú stovky
-  // hodnôt a sada ikoniek ich pokrýva menami, ktoré si nikto nevyberá –
-  // dostane sa `restaurant_11`, aj keď by tam patrila vlastná ikona chaty.
-  // Prázdny reťazec je platná voľba („tu žiadnu ikonu"), preto sa rozhoduje
-  // podľa TOHO, ČI KĽÚČ EXISTUJE, nie podľa toho, či je hodnota pravdivá.
-  //
-  // Ikona, ktorú sprite nemá, sa nenasadí (`hasIcon`) – MapLibre by symbol
-  // ticho nevykreslil a v mape by kategória zmizla aj s popiskom.
+  // ikona sa vyberá podľa `subclass`, potom `class`; keď ju sprite nemá,
+  // nekreslí sa nič. Ikona z developer módu ide prvá a prázdny reťazec je
+  // platná voľba, tak sa rozhoduje podľa existencie kľúča.
   const poiIconPicks = Object.entries(overrides?.poi?.icons || {})
     .filter(([, name]) => name === "" || hasIcon(name));
   const withPoiIcons = (base) => [
@@ -6030,8 +5442,7 @@ export function buildStyle({
     ""
   ]);
 
-  // SDF sprite obsahuje samotný symbol bez kolieska, ktoré predtým vypĺňalo
-  // celý štvorec ikony – aby ikony opticky nezmenšeli, sú o kúsok väčšie.
+  // SDF sprite nesie symbol bez kolieska, tak sú ikony o kúsok väčšie
   const iconScale = sdfIcons ? 1.35 : 1;
   const scaled = (stops) => zl(stops.map(([z, s]) => [z, s * iconScale]));
 
@@ -6048,7 +5459,7 @@ export function buildStyle({
     "text-max-width": 9,
     "symbol-sort-key": num("rank", 100)
   };
-  // Farba ikon funguje len pri SDF sprite (pipeline ho vyrobí z osm-liberty).
+  // farba ikon funguje len pri SDF sprite
   const poiPaint = {
     "text-color": c.poiText,
     "text-halo-color": c.textHalo,
@@ -6067,8 +5478,7 @@ export function buildStyle({
     ...(sdfIcons ? { "icon-color": "poiIcon", "icon-halo-color": "poiIconHalo" } : {})
   };
 
-  // Skryté POI triedy z developer módu – vypnú sa ako filter, nie zmazaním
-  // vrstvy, takže sa dajú kedykoľvek vrátiť späť.
+  // skryté POI sa vypnú filtrom, nie zmazaním vrstvy – nech sa dajú vrátiť
   const poiHidden = overrides?.poi?.hidden || [];
   const notHidden = poiHidden.length
     ? [
@@ -6080,7 +5490,7 @@ export function buildStyle({
   const poiFilter = (base) =>
     notHidden ? (base ? ["all", base, notHidden] : notHidden) : base;
 
-  // z14–16: len dôležitejšie POI, aby mapa nebola zahltená.
+  // z14–16: len dôležitejšie POI
   add(
     {
       id: "poi-major",
@@ -6094,7 +5504,7 @@ export function buildStyle({
     },
     ["poi", "POI – dôležité (z14–16)", "point", poiPalette]
   );
-  // z16+: úplne všetko, bez filtra na rank.
+  // z16+: všetko, bez filtra na rank
   add(
     {
       id: "poi-all",
@@ -6108,25 +5518,11 @@ export function buildStyle({
     ["poi", "POI – všetky (z16+)", "point", poiPalette]
   );
 
-  // ---- body z vlastných dlaždíc ----
-  // Prameň, jaskyňa, vodopád, rozhľadňa, útulňa, kríž pri ceste, štôlňa.
-  // Schéma OpenMapTiles ich nemá: `natural=spring` prejde LEN ako plocha,
-  // takže studnička mapovaná uzlom – teda prakticky každá – v mape chýbala;
-  // `man_made=tower` schéma nepozná vôbec, takže rozhľadňa sa do dlaždíc
-  // dostala jedine vtedy, keď mala navyše `tourism=viewpoint`.
-  //
-  // Ikona sa hľadá rovnako ako pri POI: podľa `class`, a keď ju sada nemá,
-  // ostane len popisok – žiadne náhradné kolieska.
-  //
-  // VLASTNÝ ZDROJ (`points`, nie `features`): body sú vo vlastnom
-  // `.pmtiles` (workers/features/points.yml) presne kvôli balíku „body“ na
-  // stiahnutie zvlášť od línií a plôch – rozpis prečo je v hlavičke toho
-  // súboru. Na to, čo je na mape VIDIEŤ, to nemá vplyv, len na to, z ktorého
-  // súboru sa to číta.
+  // body z vlastných dlaždíc (prameň, jaskyňa, rozhľadňa, štôlňa): schéma
+  // OpenMapTiles ich nemá – `natural=spring` prejde len ako plocha a
+  // `man_made=tower` nepozná vôbec. Vlastný zdroj `points` kvôli balíku „body".
   if (pointsUrl) {
-    // Tá istá voľba ikony ako pri POI (`withPoiIcons`): triedy sú iné
-    // (prameň, jaskyňa, rozhľadňa), ale otázka je jedna – „akú značku má
-    // táto kategória" – a dve odpovede by sa raz rozišli.
+    // tá istá voľba ikony ako pri POI: otázka je jedna, dve odpovede by sa rozišli
     const featureIcon = withPoiIcons([
       "case",
       ["in", str("class"), ["literal", iconClasses]],
@@ -6142,15 +5538,12 @@ export function buildStyle({
         source: "points",
         "source-layer": "feature_point",
         minzoom: 12,
-        // Skryté kategórie platia aj tu. Zoznam v paneli je jeden pre POI aj
-        // pre vlastné body, takže by odškrtnutie prameňa neurobilo nič –
-        // a nikto by nepovedal prečo.
+        // skryté kategórie platia aj tu – zoznam v paneli je jeden
         ...(poiFilter(null) ? { filter: poiFilter(null) } : {}),
         layout: {
           ...poiLayout,
           "icon-image": featureIcon,
-          // Výška patrí k prameňu aj k rozhľadni – je to prvé, čo človek
-          // pri plánovaní túry hľadá.
+          // výška patrí k prameňu aj k rozhľadni
           "text-field": [
             "case",
             ["has", "ele"],
@@ -6177,13 +5570,9 @@ export function buildStyle({
     );
   }
 
-  // ---- tematické body ----
-  // Každý typ mapy má skupinu bodov, ktorá je preň tá hlavná: hrady na
-  // historickej, vleky na lyžiarskej, pumpy na cestnej. Sú to samostatné
-  // vrstvy – väčšie, farebne odlíšené a s prednosťou pri umiestňovaní
-  // popiskov (`symbol-sort-key`) – aby sa dali zapnúť skôr než ostatné POI
-  // a v developer móde ladiť zvlášť. Profil typu mapy ich zapína; na mapách,
-  // kam nepatria, sú vypnuté, inak by kreslili tie isté ikony druhýkrát.
+  // tematické body: hrady na historickej mape, vleky na lyžiarskej, pumpy na
+  // cestnej. Samostatné vrstvy, nech sa dajú zapnúť skôr než ostatné POI;
+  // profil typu mapy ich zapína, inde sú vypnuté.
   const topicPoi = (id, label, classes, paletteKey, minzoom) =>
     add(
       {
@@ -6200,8 +5589,7 @@ export function buildStyle({
           ...poiLayout,
           "icon-size": scaled([[10, 0.9], [14, 1.1], [18, 1.3], [20, 1.5]]),
           "text-size": zl([[10, 10], [14, 11.5], [18, 13], [20, 15]]),
-          // Nižší kľúč = umiestňuje sa skôr, takže tematický bod prežije aj
-          // tam, kde sa bežné POI už nezmestia.
+          // nižší kľúč = umiestňuje sa skôr
           "symbol-sort-key": ["-", num("rank", 100), 100]
         },
         paint: {
@@ -6234,11 +5622,8 @@ export function buildStyle({
       type: "symbol",
       "source-layer": "mountain_peak",
       minzoom: 9,
-      // Vylúčené sú všetky triedy, ktoré prídu ako línia – hrebeň, areta
-      // aj bralo. Pohoria a hrebene majú vlastnú popiskovú vrstvu (kurzíva,
-      // verzálky), bralo vlastnú kresbu so zúbkami. `cliff` tu predtým
-      // chýbal, takže každá bralná hrana dostala od z13 doprostred
-      // trojuholníček vrcholu aj s popiskom.
+      // von idú všetky triedy, čo prídu ako línia – hrebeň, areta aj bralo;
+      // `cliff` tu chýbal, takže každá hrana dostala trojuholníček vrcholu
       filter: ["!", ["in", str("class"), ["literal", PEAK_LINE_CLASSES]]],
       layout: {
         "icon-image": [
@@ -6332,10 +5717,8 @@ export function buildStyle({
     ]
   );
 
-  // ---- pohoria a geografické oblasti ----
-  // Kreslia sa od malých mierok a inak než sídla: kurzíva, verzálky a väčšie
-  // rozpálenie písmen, aby čitateľ hneď videl, že ide o územie, nie o obec.
-  // Nemajú ikonu ani bod – popisujú plochu, nie miesto.
+  // pohoria a oblasti: kurzíva, verzálky a väčšie rozpálenie písmen, nech je
+  // vidieť, že ide o územie, nie o obec. Nemajú ikonu ani bod.
   const geoLayout = (sizes) => ({
     "text-field": nameExpr,
     "text-font": ITAL,
@@ -6414,10 +5797,8 @@ export function buildStyle({
     );
   }
 
-  // ---- hranica stiahnutého regiónu ----
-  // ÚPLNE NAVRCHU, a je to podstatné: prekrýva sa VŠETKO vrátane popiskov,
-  // tieňovania a vrstiev z vlastných .pmtiles. Vrstva pridaná za ňu by mimo
-  // regiónu opäť kreslila – stráži to `workers/lint/style.mjs`.
+  // hranica regiónu úplne navrchu: vrstva pridaná za ňu by mimo regiónu opäť
+  // kreslila – stráži to `workers/lint/style.mjs`
   if (regionOutline) {
     add(
       {
@@ -6448,11 +5829,9 @@ export function buildStyle({
     );
   }
 
-  // Najprv profil typu mapy (čo táto mapa vôbec ukazuje), až potom úpravy
-  // z developer módu – tie musia vedieť profil prebiť.
+  // najprv profil typu mapy, až potom úpravy – tie musia vedieť profil prebiť
   applyMapType(style, mapTypeId);
-  // Poradie kreslenia sa mení až NAD hotovým štýlom: presúva sa aj vzor
-  // a okraj, ktoré vznikli práve v `applyLayerOverrides`.
+  // poradie sa mení nad hotovým štýlom: presúva sa aj vzor a okraj
   return applyLayerOrder(
     applyLayerOverrides(style, overrides?.layers, hasIcon, theme),
     overrides?.order
@@ -6480,10 +5859,7 @@ export const CLICKABLE_LAYERS = [
   "aerodrome-label",
   // Krajinné prvky z vlastných dlaždíc – popup povie, čo to je a v akej výške.
   "feature-point",
-  // Plánovaná cesta: z čiary sa nedozvieš, či pôjde o diaľnicu alebo o lesnú
-  // cestu, a to je pri nej to hlavné – popup povie meno, `ref` (napr. `D3`)
-  // aj čo sa plánuje. Zbierať `subclass` do dlaždíc a nikde ho neukázať by
-  // bolo to isté, čo sa stalo napätiu pri elektrickom vedení.
+  // plánovaná cesta: z čiary sa nedozvieš, či pôjde o diaľnicu alebo o lesnú
   "feature-road-proposed",
   "piste-line",
   // Značené trasy – po ceste ich vedie viac, popup povie, ktorá je ktorá.
