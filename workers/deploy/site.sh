@@ -65,6 +65,30 @@ ICON_SOURCES=$(node -e "
   });
 ")
 
+# JE V TEJTO MAPE 3D TERÉN? Neodpovedá sa z prepínača, ale z HOTOVÉHO ŠTÝLU:
+# `--terrain-3d=auto` znamená „zapni, ak máme vlastné výškové dlaždice", takže
+# prepínač sám o výsledku nehovorí. Štýly sú v tomto kroku už vygenerované
+# (`workers/styles/build.mjs` beží pred ním), takže sa dá pozrieť, čo v nich
+# naozaj je – jedna pravda namiesto dvoch, ktoré sa raz rozídu (pravidlo 1).
+#
+# PREČO TO V MANIFESTE VÔBEC JE: appka podľa toho vie ponúknuť vrstvu „3D
+# terén" práve pre región, ktorý ju má. Bez toho by ju musela hádať zo `dem`
+# (dlaždice sú, ale 3D mohlo byť vypnuté) alebo si rozoberať štýl skôr, než ho
+# vôbec vykreslí.
+TERRAIN_3D=false
+TERRAIN_EXAG=0
+if [ -d _site/styles ]; then
+  # `-s` a `map`: štýlov je viac (typ mapy × téma) a stačí, keď 3D nesie
+  # ktorýkoľvek – vypnuté ho nemá ani jeden.
+  read -r TERRAIN_3D TERRAIN_EXAG <<<"$(jq -rs '
+    [.[] | .terrain // empty]
+    | if length > 0
+      then "true \((.[0].exaggeration) // 1)"
+      else "false 0" end' _site/styles/*.json 2>/dev/null || echo "false 0")"
+  case "$TERRAIN_3D" in true|false) ;; *) TERRAIN_3D=false; TERRAIN_EXAG=0 ;; esac
+fi
+echo "3D terén v štýle: $TERRAIN_3D (prevýšenie $TERRAIN_EXAG×)"
+
 jq -n \
   --arg region "$REGION_KEY" \
   --arg outline "$OUTLINE" \
@@ -100,6 +124,8 @@ jq -n \
   --arg dem "$DEM_URL" \
   --argjson demmaxzoom "$DEM_MAXZOOM" \
   --arg demtilessource "$DEM_TILES_SOURCE" \
+  --argjson terrain3d "$TERRAIN_3D" \
+  --argjson terrainexag "$TERRAIN_EXAG" \
   --arg rockslope "$ROCK_SLOPE" \
   --arg rocksource "$ROCK_SOURCE" \
   '{
@@ -117,6 +143,12 @@ jq -n \
     # to byť ten istý model ako pri vrstevniciach (`dem_source`
     # v regióne), odkedy má tieňovanie vlastný výber.
     dem_source: $demtilessource,
+    # Kreslí sa z tých dlaždíc 3D terén? Je to hore pri `dem` z toho istého
+    # dôvodu ako on: dlaždice aj štýly sú spoločné pre všetky regióny v tomto
+    # builde. `terrain_exaggeration` je prevýšenie zo štýlu, aby si ho klient,
+    # ktorý si 3D zapína sám, nemusel vymyslieť inak než pipeline.
+    terrain_3d: $terrain3d,
+    terrain_exaggeration: $terrainexag,
     regions: {
       ($region): ({
         name: $name,

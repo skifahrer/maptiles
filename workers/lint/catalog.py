@@ -64,6 +64,7 @@ WIKI_WORKFLOW = ".github/workflows/wiki.yml"
 WORLD_WORKFLOW = ".github/workflows/world-map.yml"
 PIPELINE = (WIKI_WORKFLOW, WORLD_WORKFLOW)
 PUBLISH_MAP = "workers/deploy/publish-map.py"
+MENA = "workers/deploy/mena.py"
 # Čo sa do katalógu zapíše, skladá vedľajší modul – `publish-map.py` prerástol
 # strop 800 riadkov a rezalo sa tam, kde sa mení otázka.
 CATALOG_PY = "workers/deploy/catalog.py"
@@ -278,6 +279,11 @@ for wf_path in PIPELINE:
 
 # `--only` musí katalóg DOPĹŇAŤ, nie prepisovať: samostatná pipeline vie len
 # o svojom balíku a prepis by zmazal odkazy na mapu, o ktorej nič nevie.
+try:
+    MENA_PY = open(MENA, encoding="utf-8").read()
+except OSError:
+    MENA_PY = ""
+
 pmap = pmap_text
 try:
     kmap = open(CATALOG_PY, encoding="utf-8").read()
@@ -335,11 +341,17 @@ if kmap and "def zapis_katalog(path, parts, regions, baliky, man, iba=" not in k
 # a kto si ho stiahne podľa katalógu, dostane mapu s dierou. Preto sa
 # kontroluje, že cesta v katalógu vzniká `cesta_katalog()` a podáva sa ako
 # `kat=` – bez toho by test ostrú mapu prepísal.
+# Napísaná je vo `workers/deploy/mena.py` (mená a cesty sú tam všetky spolu),
+# volaná v `publish-map.py` – kontrolujú sa obe strany, lebo chýbajúce
+# volanie je tá istá chyba ako chýbajúca funkcia.
 if pmap:
-    if "def cesta_katalog(" not in pmap:
-        bad.append(f"{PUBLISH_MAP}: chýba `cesta_katalog()` – rýchly test by "
+    if "def cesta_katalog(" not in MENA_PY:
+        bad.append(f"{MENA}: chýba `cesta_katalog()` – rýchly test by "
                    f"sa zapísal na miesto ostrej mapy toho istého kraja "
                    f"a katalóg by o mape zo 4 km² tvrdil, že je to kraj.")
+    if "cesta_katalog(" not in pmap:
+        bad.append(f"{PUBLISH_MAP}: `cesta_katalog()` sa nevolá, takže uzol "
+                   f"testu a uzol ostrej mapy sú ten istý.")
     if "kat=kat" not in pmap:
         bad.append(f"{PUBLISH_MAP}: `zapis_katalog` sa volá bez `kat=`, takže "
                    f"uzol testu a uzol ostrej mapy sú ten istý.")

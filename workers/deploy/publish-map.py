@@ -42,6 +42,14 @@ mimo_balika = subory.mimo_balika
 velkost_casti = subory.velkost_casti
 vsetky_subory = subory.vsetky_subory
 zaklad_subory = subory.zaklad_subory
+mena = load("deploy_mena", "mena.py")
+bez_testu = mena.bez_testu
+cesta = mena.cesta
+cesta_katalog = mena.cesta_katalog
+env = mena.env
+meno = mena.meno
+safe = mena.safe
+vrstvy = mena.vrstvy
 BALICE = pack.BALICE
 aa_je = pack.aa_je
 auth = load("drive_auth", os.path.join(_DRIVE, "auth.py"))
@@ -54,135 +62,8 @@ FOLDER_ID = "1pvrw7CGUkQLwg8Ql8xbKA4HhQHvPl8_7"
 ZRUSENE = katalog_balikov.zrusene()
 
 
-def env(name, default=""):
-    return (os.environ.get(name) or default).strip()
-
-
 def log(msg):
     print(msg, flush=True)
-
-
-def safe(text):
-    """Kus mena súboru: bez diakritiky, medzier a lomítok."""
-    prevod = {"á": "a", "ä": "a", "č": "c", "ď": "d", "é": "e", "í": "i",
-              "ĺ": "l", "ľ": "l", "ň": "n", "ó": "o", "ô": "o", "ŕ": "r",
-              "š": "s", "ť": "t", "ú": "u", "ý": "y", "ž": "z"}
-    out = []
-    for ch in text.strip().lower():
-        ch = prevod.get(ch, ch)
-        out.append(ch if (ch.isalnum() and ch.isascii()) or ch in "._-" else "_")
-    return "".join(out).strip("_") or "bez_mena"
-
-
-def bez_testu(key):
-    """`presovsky_test4` → `presovsky`."""
-    base = key
-    while True:
-        cut = base.rfind("_test")
-        if cut < 0 or not base[cut + 5:].replace(".", "").isdigit():
-            return base
-        base = base[:cut]
-
-
-def krajina_z_url(url):
-    """Krajina z odkazu na osm.fr export; neznáma ide do `ostatne`."""
-    cesta = url.split("/extracts/", 1)[-1] if "/extracts/" in url else url
-    kusy = [k for k in cesta.split("/") if k]
-    if len(kusy) >= 2:
-        return safe(kusy[-2])
-    return "ostatne"
-
-
-def cesta(regions):
-    """Priečinky pod koreňom: [krajina, kraj?, výsek?]."""
-    region_key = bez_testu(env("REGION_KEY"))
-    custom_url = env("CUSTOM_PBF_URL")
-    area_key = bez_testu(env("AREA_KEY"))
-
-    if custom_url:
-        # vlastný PBF nie je v regions.json
-        kraj = safe(env("CUSTOM_NAME") or region_key
-                    or custom_url.rsplit("/", 1)[-1].split(".")[0])
-        parts = [krajina_z_url(custom_url), kraj]
-    else:
-        r = regions.get(region_key) or {}
-        krajina = safe(r.get("country") or region_key or "ostatne")
-        parts = [krajina]
-        # admin_level 2 je štát, nemá nadradený kraj
-        if r.get("admin_level") != 2 and region_key:
-            parts.append(safe(region_key))
-    # `cely` = celý región, teda žiadny výrez
-    if area_key and area_key != "cely":
-        parts.append(safe(area_key))
-    return parts
-
-
-def cesta_katalog(parts):
-    """Kam to patrí v katalógu; rýchly test má vlastný uzol."""
-    test_km2 = env("TEST_KM2", "0")
-    if test_km2 in ("", "0"):
-        return parts
-    return parts[:-1] + [f"{parts[-1]}_test{safe(test_km2)}km2"]
-
-
-def vrstvy():
-    """Kúsky mena: čo je v mape a z čoho. Vrstva sa píše, aj keď chýba."""
-    vlastne = env("MAP_LAYERS")
-    if vlastne:
-        return [safe(k) for k in vlastne.split(",") if k.strip()]
-
-    out = []
-    if env("CONTOURS_ENABLED") == "true":
-        interval = env("CONTOUR_INTERVAL", "10")
-        out.append(f"vrstevnice_{safe(env('CONTOURS_SOURCE', '?'))}_{safe(interval)}m")
-    else:
-        out.append("bez_vrstevnic")
-
-    if env("ROCKS_ENABLED") == "true":
-        out.append(f"skaly_{safe(env('ROCKS_SOURCE', '?'))}")
-    else:
-        out.append("bez_skal")
-
-    if env("TERRAIN_ENABLED") == "true":
-        out.append(f"tienovanie_{safe(env('TERRAIN_SOURCE', '?'))}")
-    else:
-        out.append("bez_tienovania")
-
-    # trasy a prvky sa píšu, len keď sú
-    if env("TRAILS_ENABLED") == "true":
-        out.append("trasy")
-    if env("FEATURES_ENABLED") == "true":
-        out.append("prvky")
-    if env("TRANSPORT_ENABLED") == "true":
-        out.append("doprava")
-    if env("BOUNDARIES_ENABLED") == "true":
-        out.append("hranice")
-    if env("WATER_ENABLED") == "true":
-        out.append("vodstvo")
-    return out
-
-
-def zaklad():
-    """Stále meno bez prípony: `<kraj>[-<výsek>][-testNkm2]`."""
-    region = bez_testu(env("REGION_KEY")) or "mapa"
-    area = bez_testu(env("AREA_KEY"))
-    kusy = [safe(region)]
-    if area and area != "cely":
-        kusy.append(safe(area))
-    test_km2 = env("TEST_KM2", "0")
-    if test_km2 not in ("", "0"):
-        # test má terén len na pár km²; bez prípony by prepísal ostrú mapu
-        kusy.append(f"test{safe(test_km2)}km2")
-    return "-".join(kusy)
-
-
-# .aar je Apple Archive, iOS ho rozbalí systémovo; zip ostáva navyše
-PRIPONY = {"zip": ".zip", "aar": ".aar"}
-
-
-def meno(kind="", fmt="zip"):
-    """Meno balíka: základ + druh (`` = celá mapa) + prípona formátu."""
-    return zaklad() + (f"-{kind}" if kind else "") + PRIPONY[fmt]
 
 
 def obsah(kind, man, fmt="zip", casti=None):
@@ -211,6 +92,10 @@ def obsah(kind, man, fmt="zip", casti=None):
         "manifest": {"dem": man.get("dem"),
                      "dem_maxzoom": man.get("dem_maxzoom"),
                      "dem_source": man.get("dem_source"),
+                     # appka podľa toho ponúka vrstvu „3D terén"; `dem` na to
+                     # nestačí – dlaždice môžu byť a 3D vypnuté
+                     "terrain_3d": man.get("terrain_3d"),
+                     "terrain_exaggeration": man.get("terrain_exaggeration"),
                      "region": reg},
     }
 
