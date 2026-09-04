@@ -15,24 +15,27 @@ by na nej spadla – alebo horšie: spustila by niečo iné, než si vybral, a b
 by bol zelený. Zoznam vo formulári sa generovať nedá (`choice` v YAMLe je
 zoznam), ale dá sa strážiť – robí to `workers/lint/regenerate.py`.
 
-DVE CESTY, A JE TO ZÁMER. Nie každá vrstva sa dá pregenerovať rovnako lacno:
+VŠETKO IDE JEDNOU CESTOU: „Mapa · Pregeneruj vrstvu kraja"
+(`regenerate-region.yml`) postaví LEN tú jednu vec a na Drive prepíše LEN jej
+balík (`publish-map.py --only=…`, ktorý položku v katalógu doplní, nie
+prepíše). Mapy, dlaždíc ani Pages sa to nedotkne.
 
-  VLASTNÝ BALÍK Z PBF (`body`, `linie`, `navigacia`) ide cez „Mapa ·
-  Pregeneruj vrstvu kraja" (`regenerate-region.yml`). Tie vrstvy sa počítajú
-  z toho istého OSM PBF ako mapa a nič iné z buildu nepotrebujú, takže sa dá
-  postaviť LEN tá vrstva a na Drive prepísať LEN jej balík
-  (`publish-map.py --only=…`, ktorý položku v katalógu doplní, nie prepíše).
-  Trvá to minúty namiesto hodín a mapy sa to nedotkne.
+Ceny sú ale rôzne a je dobré to vedieť dopredu:
 
-  VRSTVY Z VÝŠKOVÉHO MODELU (`vrstevnice`, `skaly`, `tienovanie`) idú cez
-  celý „Mapa · Build map region" s `rebuild`. Nie preto, že by sa nechcelo:
-  potrebujú sklad DEM, jeho doplnenie (`check-dem` a päť `mirror-*` jobov),
-  kľúče cache aj orez na výrez – a to je polovica toho workflowu. Druhá kópia
-  toho všetkého by bola presne ten druh dvoch právd, ktorý sa raz rozíde
-  a vrstevnice by z nej vyšli inak než z buildu. `rebuild` je páka, ktorá na
-  presne toto existuje: zahodí cache tej jednej vrstvy a zvyšok behu ju má
-  z nej. Stojí to celý build kraja – to je cena za jednu pravdu o tom, ako
-  vrstevnice vznikajú.
+  Z PBF (`body`, `linie`, `navigacia`) sú to MINÚTY na kraj – tie vrstvy sa
+  počítajú z toho istého OSM PBF ako mapa a nič iné nepotrebujú.
+
+  Z VÝŠKOVÉHO MODELU (`vrstevnice`, `skaly`, `tienovanie`) sú to desiatky
+  minút až hodiny: treba sklad DEM, prípadne ho doplniť, prečítať ho a nad
+  ním trasovať. Robí to `dem-layers.yml` – TEN ISTÝ workflow, aký volá build
+  mapy, takže sa vrstva z pregenerovania nemá ako rozísť s tou z buildu.
+  Ušetrí sa proti celému buildu všetko ostatné: dlaždice, ikonky, štýl,
+  kontrola webu, Pages a prepísanie ostatných balíkov na Drive.
+
+VRSTEVNICE A SKALY SÚ JEDEN BALÍK (`-vrstevnice-skaly.zip`), takže sa pri
+oboch voľbách počítajú OBE – len tá druhá sa vezme z cache. Balík sa
+prepisuje celý a polovica nová s polovicou chýbajúcou by bola balík, ktorý
+sľubuje vrstvu, ktorú nenesie.
 
 Použitie:
     python3 workers/state/jobs.py --zoznam            # kľúče, v poradí formulára
@@ -55,13 +58,11 @@ CIELE = {
     "regenerate-region.yml": {
         "meno": "Mapa · Pregeneruj vrstvu kraja",
         "podava": {
-            "test": ("TEST", "false"),
-            "options": ("OPTIONS", ""),
-        },
-    },
-    "build-map-region.yml": {
-        "meno": "Mapa · Build map region",
-        "podava": {
+            # Zdroje výšok a prah sklonu majú význam len pre vrstvy
+            # z výškového modelu; pri `body`, `linie` a `navigacia` ich ten
+            # workflow prijme a nepoužije. Podávajú sa aj tak VŽDY a všetky:
+            # zoznam podľa `co` by bol štvrté miesto, kde sa rozhoduje, čo tá
+            # voľba znamená – a to je presne to, čo sa raz rozíde.
             "contour_source": ("CONTOUR_SOURCE", "dmr5"),
             "rock_source": ("ROCK_SOURCE", "dmr5"),
             "shading_source": ("SHADING_SOURCE", "dmr5"),
@@ -103,37 +104,32 @@ JOBS = {
         "workflow": "regenerate-region.yml",
         "inputs": {"co": "linie"},
     },
-    # Ďalej vrstvy z výškového modelu. Idú celým buildom kraja – rozpis prečo
-    # je v hlavičke súboru. `area: cely_region` a `publish_pages: false` sú
-    # natvrdo z toho istého dôvodu ako v dávke „Build map state": výrez
-    # (pohorie) pre osem krajov nedáva zmysel a Pages unesú JEDNU mapu.
+    # Ďalej vrstvy z výškového modelu. Sú drahšie (sklad DEM, čítanie
+    # a trasovanie), ale cesta je tá istá – `dem-layers.yml`, čiže ten istý
+    # workflow, aký nad nimi púšťa build mapy.
     "vrstevnice": {
         "meno": "Vrstevnice",
-        "popis": "izolínie z výškového modelu – balík `-vrstevnice-skaly.zip` "
-                 "(cez celý build kraja, `rebuild: vrstevnice`)",
+        "popis": "izolínie z výškového modelu – balík "
+                 "`-vrstevnice-skaly.zip` (skaly v ňom prídu z cache)",
         "balik": "vrstevnice-skaly",
-        "workflow": "build-map-region.yml",
-        "inputs": {"rebuild": "vrstevnice", "area": "cely_region",
-                   "publish_pages": "false"},
+        "workflow": "regenerate-region.yml",
+        "inputs": {"co": "vrstevnice"},
     },
     "skaly": {
         "meno": "Skaly",
         "popis": "skalné plochy zo sklonu modelu – balík "
-                 "`-vrstevnice-skaly.zip` (cez celý build kraja, "
-                 "`rebuild: skaly`)",
+                 "`-vrstevnice-skaly.zip` (vrstevnice v ňom prídu z cache)",
         "balik": "vrstevnice-skaly",
-        "workflow": "build-map-region.yml",
-        "inputs": {"rebuild": "skaly", "area": "cely_region",
-                   "publish_pages": "false"},
+        "workflow": "regenerate-region.yml",
+        "inputs": {"co": "skaly"},
     },
     "tienovanie": {
         "meno": "Tieňovanie a 3D terén",
-        "popis": "výškové dlaždice – balík `-tienovanie.zip` (cez celý build "
-                 "kraja, `rebuild: tienovanie`)",
+        "popis": "výškové dlaždice pre tieňovanie a 3D – balík "
+                 "`-tienovanie.zip`",
         "balik": "tienovanie",
-        "workflow": "build-map-region.yml",
-        "inputs": {"rebuild": "tienovanie", "area": "cely_region",
-                   "publish_pages": "false"},
+        "workflow": "regenerate-region.yml",
+        "inputs": {"co": "tienovanie"},
     },
 }
 
