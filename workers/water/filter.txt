@@ -6,7 +6,7 @@
 # `r/` JE TU NUTNÉ. Veľké jazero, priehrada aj rieka so šírkou sú v OSM
 # MULTIPOLYGÓNY (`type=multipolygon`), ktorých členmi sú cesty bez vlastného
 # `natural=water`. Filter len na `w/` by z PBF pustil relácie bez geometrie
-# a v dlaždiciach by po Domaši ticho neostalo nič. `-r` v `build.sh` k tomu
+# a v dlaždiciach by po Domaši ticho neostalo nič. `tags-filter` k tomu
 # doťahuje ich členov.
 #
 # Zoznam je zámerne ŠIRŠÍ než schéma (`w/waterway` pustí aj `weir` a `lock`):

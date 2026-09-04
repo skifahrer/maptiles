@@ -762,9 +762,9 @@ jobs:
       # HRANICA BEZ MENA JE ZASE LEN ČIARA a presne kvôli menu ten balík je –
       # vrstva `boundary` OpenMapTiles meno územia nenesie. A je to jediná
       # vrstva, ktorá stojí na tom, že predfilter doťahuje ČLENOV RELÁCIÍ
-      # (`osmium tags-filter -r`): hranica obce je relácia, ktorej cesty samy
-      # `boundary=administrative` nemajú, takže bez `-r` je vrstva prázdna pri
-      # zelenom behu. Rozpis: `workers/lint/boundaries.py`.
+      # (`osmium tags-filter` ich berie sám): hranica obce je relácia, ktorej
+      # cesty samy `boundary=administrative` nemajú, takže s `-R` je vrstva
+      # prázdna pri zelenom behu. Rozpis: `workers/lint/boundaries.py`.
       - name: "Hranice: filter, členovia relácií, meno a všetky úrovne"
         run: python3 workers/lint/boundaries.py
 

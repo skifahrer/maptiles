@@ -9,9 +9,9 @@ name: Mapa · hranice území
 # balík `hranice`.
 #
 # JEDEN ROZDIEL OPROTI OSTATNÝM VRSTVÁM: predfilter musí doťahovať aj ČLENOV
-# RELÁCIÍ (`osmium tags-filter -r`), lebo hranica obce je relácia, ktorej
-# členovia `boundary=administrative` nemajú – a bez nich by Planetiler nemal
-# z čoho zložiť polygón. Robí to `workers/boundaries/build.sh`.
+# RELÁCIÍ (`osmium tags-filter` ich berie sám), lebo hranica obce je relácia,
+# ktorej členovia `boundary=administrative` nemajú – a bez nich by Planetiler
+# nemal z čoho zložiť polygón. Robí to `workers/boundaries/build.sh`.
 #
 # PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map-region.yml`. Ten súbor je pri
 # strope 128 KiB a nad ním GitHub workflow TICHO NEPRIJME: vznikne beh bez
