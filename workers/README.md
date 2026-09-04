@@ -2207,7 +2207,9 @@ km² nedala pomýliť s ostrou, a aby ju **neprepísala**.
 
 Robí to [`workers/deploy/publish-map.py`](deploy/publish-map.py), vypnúť sa to dá
 voľbou `publish=false` v poli `options` a pozrieť si balíky lokálne ide bez
-Drive:
+Drive. **Ako sa balík volá a kam patrí** je vedľa, vo
+[`workers/deploy/mena.py`](deploy/mena.py) — meno na Drive je stále, takže je
+to sľub, a sľuby sú na jednom mieste:
 
 ```bash
 REGION_KEY=presovsky AREA_KEY=cely TILES_MAXZOOM=14 \
