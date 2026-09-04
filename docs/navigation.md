@@ -231,6 +231,15 @@ hranici môžu byť neúplné. Je to **zámer, nie opomenutie**, a `graf.json`
 v balíku to o sebe hovorí (`rozsah: "region"`, `hranica: "trasa končí na
 hranici regiónu…"`) – mlčanie by sa dalo čítať ako pokazený graf.
 
+**A je to naozaj hranica kraja.** Kým sa PBF orezávalo `.poly`-gónom z osm.fr,
+bol graf kraja o 2 – 4 km väčší než jeho mapa: ten polygón je okolo hranice
+rozšírený. Odkedy sa reže presnou OSM reláciou kraja pretnutou s reláciou štátu
+([`workers/plan/boundary.py`](../workers/plan/boundary.py)), pokrýva navigácia
+presne ten istý kraj ako mapa, hľadanie a vrstvy z výškového modelu – ani meter
+susedného kraja alebo cudziny navyše. Že si job berie práve to PBF
+(`ROUTING_PBF: data/region.osm.pbf`, artefakt `pbf` z prípravy) a nie iný
+extrakt, stráži [`workers/lint/navigation.py`](../workers/lint/navigation.py).
+
 Na Pages ten graf **nejde** (nie je čo kresliť a rozpočet stránky je 900 MB na
 celú mapu), preto sa jeho artefakt volá `navigacia-graf` a nie `site-…`:
 `deploy` ho sťahuje až za krokom, ktorý nahráva na Pages. Koľko váži, hovorí

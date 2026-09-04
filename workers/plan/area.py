@@ -34,21 +34,28 @@ import sys
 M_PER_DEG_LAT = 110540.0
 M_PER_DEG_LON = 111320.0
 
-# TÁ ISTÁ HODNOTA AKO `BORDER_BUFFER_M` v `workers/plan/region-poly.py`
-# (definovaná tu, lebo ten súbor má v mene pomlčku a normálne sa `import`-núť
-# nedá – opačný smer, `region-poly.py` odtiaľto normálne importuje).
+# KOĽKO TERÉNU SA POČÍTA EŠTE ZA HRANICOU REGIÓNU – dnes 0.
 #
-# PREČO JU POTREBUJE AJ TOTO. `region-poly.py` nafúkne polygón kraja o kus
-# von (prekryv so susedom namiesto medzery na hranici – rozpis tam), ale
-# vrstvy z výškového modelu (vrstevnice, skaly, tieňovanie) sa počítajú na
-# OKNE `dem_bbox` – a pri `area: cely_region` je to práve bbox z
-# `workers/data/regions.json`, teda TESNÝ obdĺžnik okolo PÔVODNÉHO
-# (nenafúknutého) polygónu, bez rezervy navyše. Nafúknutý `-cutline` by tak
-# von z obdĺžnika nemal čo orezať – okno na disku by končilo skôr, než začne
-# nafúknutý pás, a susedné kraje by sa v teréne prekrývali len na papieri.
-# Preto sa aj toto okno nafúkne o to isté číslo: obe vrstvy (vektorová mapa
-# aj DEM) tak siahajú do rovnakého pása za hranicou kraja.
-BORDER_BUFFER_M = 2500
+# PREČO 0. Kým sa hranica kraja brala z `.poly` osm.fr, bola zaokrúhlená na
+# ~550 m a okolo hranice rozšírená, takže dve susedné mapy na seba nemuseli
+# nadväzovať; riešilo sa to tým, že sa polygón NAFÚKOL o 2 500 m von a mapy sa
+# v tom páse prekrývali. Odkedy sa hranica číta presne z OSM relácie
+# (`workers/plan/boundary.py`), je prekryv zbytočný: susedné kraje zdieľajú tie
+# isté cesty hranice, takže na seba nadväzujú samy od seba – a nafúknutie by
+# už len robilo presne to, čomu sa vyhýbame, teda mapu, vrstevnice, skaly aj
+# tieňovanie kilometre vnútri susedného kraja a za štátnou hranicou.
+#
+# PREČO TU TÁ KONŠTANTA VÔBEC OSTÁVA. Sú to dve veci naraz:
+#   * `pad_bbox` ňou nafukuje OKNO, z ktorého sa čítajú vrstvy z výškového
+#     modelu (`dem_bbox`). Pri `area: cely_region` je to bbox z
+#     `workers/data/regions.json`, teda tesný obdĺžnik okolo polygónu – a
+#     `-cutline` v ňom nesmie vytŕčať von z okna. S 0 je okno presne ten
+#     obdĺžnik a to je správne; keby sa raz presah zase zapol, musí sa okno
+#     zväčšiť s ním, inak by presah na DEM vrstvách nebolo vidieť.
+#   * číslo sa nesie v MENÁCH uložených vrstiev (tieňovanie, skaly), aby po
+#     jeho zmene nevrátil sklad tú starú, orezanú po inom – stráži to
+#     `workers/lint/border-overlap.py`.
+BORDER_BUFFER_M = 0
 
 
 def bbox_km2(w, s, e, n):
@@ -108,12 +115,12 @@ def main():
     ap.add_argument("--out", default="", help="kam zapísať (default stdout)")
     args = ap.parse_args()
 
-    # NAFÚKNUTÉ O TO ISTÉ, O ČO `region-poly.py` NAFÚKNE POLYGÓN (rozpis pri
-    # `BORDER_BUFFER_M`): inak by `-cutline` na hranici kraja siahal ďalej,
-    # než kam vôbec siaha okno, z ktorého sa terén číta, a nafúknutie by na
-    # DEM vrstvách nebolo vidieť. Región je vtedy stále „ten istý kraj", len
-    # s rezervou navyše – to isté, čo si `workers/data/areas.json` už dnes
-    # dopisuje ručne ku každému pohoriu.
+    # OKNO PRE VRSTVY Z DEM. `BORDER_BUFFER_M` je dnes 0, takže je to presne
+    # bbox regiónu a hranicu z neho vyreže až `-cutline` (rozpis pri tej
+    # konštante). Volanie tu ostáva preto, že keby sa presah za hranicu raz
+    # zase zapol, musí sa okno zväčšiť SPOLU s ním – inak by `-cutline`
+    # siahal ďalej, než kam okno vôbec siaha, a na DEM vrstvách by presah
+    # nebolo vidieť.
     region = pad_bbox([float(v) for v in args.region_bbox.split(",")],
                       BORDER_BUFFER_M)
     raw = (args.area or "").strip()

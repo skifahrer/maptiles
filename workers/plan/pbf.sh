@@ -13,10 +13,25 @@
 # a spolieha sa, že neúspešná vetva len vráti nenulový kód.
 #
 # ČO ROBÍ, V PORADÍ:
-#   1. vezme PBF – z vlastnej URL, alebo si kraj VYREŽE z rodičovského
-#      extraktu (`osmfr.parent`); keď už leží z cache, nesťahuje sa
-#   2. voliteľne ho oreže – `crop_bbox`, alebo štvorec rýchleho testu
-#   3. vypíše `key`, `name`, `bbox`, `bboxkey` do $GITHUB_OUTPUT
+#   1. vezme PBF – z vlastnej URL, alebo stiahne rodičovský extrakt
+#      (`osmfr.parent`); keď už leží z cache, nesťahuje sa
+#   2. PREČÍTA Z NEHO PRESNÚ HRANICU REGIÓNU (workers/plan/region-poly.py,
+#      relácia `boundary=administrative` z OSM) a vyreže kraj presne podľa nej
+#   3. voliteľne ho oreže – `crop_bbox`, alebo štvorec rýchleho testu
+#   4. vypíše `key`, `name`, `bbox`, `bboxkey` do $GITHUB_OUTPUT
+#
+# ═══ HRANICA SA ČÍTA Z TOHO ISTÉHO PBF, AKÝM SA REŽE ═══
+#
+# Kým sa hranica sťahovala ako `.poly` z osm.fr, dala sa spočítať PRED PBF –
+# a tak to aj v workflowe stálo, vlastným krokom. Presná hranica je ale
+# v samotných OSM dátach (relácia kraja), takže je poradie opačné: najprv
+# rodičovský extrakt, z neho hranica, a až ňou rez. Preto je volanie
+# `region-poly.py` TU a nie v YAMLe – medzi stiahnutím a rezom nie je kam
+# vložiť krok workflowu.
+#
+# Rozpis, prečo presná hranica a nie `.poly` z osm.fr, je v hlavičke
+# `workers/plan/region-poly.py`; ako sa relácia mení na polygón, hovorí
+# `workers/plan/boundary.py`.
 #
 # ═══ KRAJ SA REŽE Z RODIČA, HOTOVÝ EXPORT KRAJA SA NEPOUŽÍVA ═══
 #
@@ -83,6 +98,30 @@ need_osmium() {
   sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
 }
 
+# `ogr2ogr` so SpatiaLite – hranica kraja sa ním pretína so štátom
+# a zjednodušuje (`workers/plan/boundary.py`). Bez neho skript nepadne, len
+# sa reže plnou geometriou relácie a rez potrvá dlhšie (povie to `::warning::`).
+need_gdal() {
+  command -v ogr2ogr >/dev/null && return 0
+  sudo apt-get update -qq \
+    && sudo apt-get install -y -qq gdal-bin libsqlite3-mod-spatialite
+}
+
+POLY="${REGION_POLY:-data/region.poly}"
+
+# PRESNÁ HRANICA REGIÓNU z daného PBF do `$POLY` a `data/region.geojson`.
+# `$POLY` číta `osmium extract --polygon` (nižšie) aj Planetiler
+# (`workers/lib/region-clip.sh`), `.geojson` vrstvy z výškového modelu
+# (`-cutline`, maska tieňovania) a hranica pre viewer – jedna hranica pre
+# všetkých, aby vrstva nesiahala inam než mapa pod ňou (pravidlo 1).
+hranica_z() { # $1 = PBF, z ktorého sa hranica číta
+  need_osmium
+  need_gdal
+  python3 workers/plan/region-poly.py --region="$KEY" --from-pbf="$1" \
+    --out=data/region.geojson --poly-out="$POLY" \
+    --summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
+}
+
 if [ -n "$CUSTOM_URL" ]; then
   # ----- vlastný región (Európa / svet) -----
   NAME="$OPT_CUSTOM_NAME"
@@ -130,6 +169,31 @@ else
       echo "…alebo vyplň custom_pbf_url s priamou URL na .osm.pbf."
       exit 1
     fi
+    # HRANICA ŠTÁTU A REZ NA ŇU. Hotový export z osm.fr je okolo štátnej
+    # hranice ROZŠÍRENÝ (rovnaká vec ako pri kraji, viď hlavičku
+    # `region-poly.py`), takže v ňom je pás cudziny – a mapa „Slovensko" ho
+    # potom nesie v dlaždiciach aj vo vrstvách z výškového modelu. Reže sa
+    # preto rovnako ako kraj, len je hranica `admin_level=2`.
+    if [ -z "$CACHED" ]; then
+      hranica_z data/region.osm.pbf
+      if [ ! -s "$POLY" ]; then
+        echo "::error::Hranica regiónu ($POLY) nie je – bez nej by mapa „$NAME“ niesla pás cudziny za štátnou hranicou a nikto by to z behu nezistil. Robí ju workers/plan/region-poly.py z relácie `boundary=administrative` v stiahnutom PBF; keď hranicu nenašla, povedala prečo o riadok vyššie."
+        exit 1
+      fi
+      need_osmium
+      # PLÁN S ODHADOM pred drahou časťou (pravidlo 4): rez celého štátu je
+      # drahší než rez kraja, lebo bboxový predfilter `osmium`-u tu nezahodí
+      # nič – všetky uzly ležia v bboxe hranice, ktorou sa reže.
+      echo "Režem $NAME presne na štátnu hranicu ($POLY) – pri celom štáte sú to jednotky až desiatky minút."
+      TCUT=$(date +%s)
+      if ! osmium extract --overwrite -s smart -S types=multipolygon,boundary \
+           --polygon "$POLY" -o data/region-cut.osm.pbf data/region.osm.pbf; then
+        echo "::error::Rez na štátnu hranicu zlyhal. Skús beh zopakovať; keď padá stále, pozri sa, či je $POLY platný \`.poly\` (workers/plan/region-poly.py)."
+        exit 1
+      fi
+      mv data/region-cut.osm.pbf data/region.osm.pbf
+      echo "Vyrezané za $(( $(date +%s) - TCUT )) s → $(du -h data/region.osm.pbf | cut -f1)"
+    fi
   elif [ -z "$CACHED" ]; then
     # ----- kraj: REZ Z RODIČA (prečo, hovorí hlavička súboru) -----
     PDIR=$(jq -r --arg r "$PARENT" '.[$r].osmfr.dir' workers/data/regions.json)
@@ -139,21 +203,11 @@ else
       exit 1
     fi
 
-    # HRANICA MUSÍ BYŤ, INAK SA NEREŽE NIČ. Predošlá podoba tohto kroku mala
-    # v tomto mieste NÁVRAT na priame sťahovanie kraja – a to je presne tichý
-    # omyl (pravidlo 8): keď sa `.poly` nestiahol, beh bol zelený a v mape
-    # zase chýbali CHKO. Radšej spadnúť tu, za pár sekúnd, s návodom.
-    POLY="${REGION_POLY:-data/region.poly}"
-    if [ ! -s "$POLY" ]; then
-      echo "::error::Hranica regiónu ($POLY) nie je, takže sa kraj nemá z čoho vyrezať – a hotový export kraja sa nepoužíva (chýbali by v ňom plochy presahujúce do susedného kraja). Robí ju krok „Polygón kraja“ (workers/plan/region-poly.py) a musí bežať PRED týmto; keď spadol on, zopakuj beh."
-      exit 1
-    fi
-
     need_osmium
     # PLÁN S ODHADOM pred drahou časťou (pravidlo 4) – hodina ticha v logu sa
     # nedá odlíšiť od zaseknutého behu. Čísla sú namerané na Bratislavskom
     # kraji, viď hlavičku.
-    echo "Kraj sa reže z rodiča – $PNAME (~373 MB, potom rez ~30 s)."
+    echo "Kraj sa reže z rodiča – $PNAME (~373 MB, potom rez ~1 min)."
     echo "  dôvod: hotový export kraja nemá členov plôch, čo presahujú do susedného kraja (CHKO, veľké lesy), a Planetiler ich zahodí celé"
     OK=""
     for SLUG in $(slugs "$PARENT"); do
@@ -164,6 +218,21 @@ else
       curl -sL "$OSMFR_BASE/$PDIR/" | grep -oE 'href="[^"]+\.osm\.pbf"' | sort -u || true
       exit 1
     fi
+    # PRESNÁ HRANICA KRAJA – z rodiča, teda z tých istých dát, akými sa reže.
+    # Rodičovský extrakt nesie relácie všetkých krajov aj štátu, takže sa
+    # odtiaľ dá prečítať hranica kraja, pretnúť so štátom a rovno ňou rezať
+    # (rozpis v hlavičke tohto súboru a v `workers/plan/boundary.py`).
+    hranica_z data/parent.osm.pbf
+
+    # HRANICA MUSÍ BYŤ, INAK SA NEREŽE NIČ. Predošlá podoba tohto kroku mala
+    # v tomto mieste NÁVRAT na priame sťahovanie kraja – a to je presne tichý
+    # omyl (pravidlo 8): keď hranica nebola, beh bol zelený a v mape zase
+    # chýbali CHKO. Radšej spadnúť tu, s návodom.
+    if [ ! -s "$POLY" ]; then
+      echo "::error::Hranica regiónu ($POLY) nie je, takže sa kraj nemá z čoho vyrezať – a hotový export kraja sa nepoužíva (chýbali by v ňom plochy presahujúce do susedného kraja). Robí ju workers/plan/region-poly.py z relácie `boundary=administrative` v rodičovskom extrakte (náhrada je `.poly` z osm.fr); keď zlyhalo oboje, povedala prečo o riadok vyššie – skús beh zopakovať."
+      exit 1
+    fi
+
     echo "Rodič stiahnutý ($(du -h data/parent.osm.pbf | cut -f1)), režem $NAME podľa $POLY …"
 
     # `-s smart` = celé cesty a DOPLNENÍ ČLENOVIA relácií, teda presne to,
@@ -180,6 +249,18 @@ else
     # o kus ďalej ešte pýta miesto na orez rýchleho testu.
     rm -f data/parent.osm.pbf
     echo "Vyrezané za $(( $(date +%s) - TCUT )) s → $(du -h data/region.osm.pbf | cut -f1)"
+  fi
+
+  # ----- HRANICA PRI PBF Z CACHE -----
+  # Cache drží PBF, nie hranicu – a hranicu potrebujú aj joby, ktoré nerežú
+  # nič: Planetiler (`--polygon`), vrstevnice a tieňovanie (`-cutline`), maska
+  # v štýle. Číta sa z TOHO ISTÉHO PBF, ktorým je mapa: kraj je v ňom rezaný
+  # presne touto hranicou a `osmium extract -s smart -S
+  # types=multipolygon,boundary` v ňom nechal jeho reláciu celú (aj relácie
+  # susedov a štátu – z nich sa meria šev). Druhé sťahovanie rodiča len kvôli
+  # hranici by bolo 373 MB za niečo, čo už na disku je.
+  if [ ! -s "$POLY" ]; then
+    hranica_z data/region.osm.pbf
   fi
 fi
 
@@ -225,18 +306,14 @@ fi
 # územie. Celý kraj s terénom len na štvorci sa dá stále dostať –
 # `crop_bbox` prázdny a switch `test` odškrtnutý plus `area` na pohorie.
 TEST_KM2="$OPT_TEST_KM2"
-# NAFÚKNUTÉ O PREKRYV SO SUSEDOM (`workers/plan/area.py::BORDER_BUFFER_M`) –
-# TO ISTÉ ČÍSLO, o aké `region-poly.py` nafúkol `.poly`/`region.geojson`
-# (rozpis tam: pás popri hranici má byť v mape kraja aj v mape jeho suseda,
-# nech na seba nadväzujú – meria to `workers/plan/seam.py`).
-# TIEŇOVANIE ČÍTA PRIAMO TOTO
-# OKNO (je vždy na celý región, nie na `area`, viď input `shading_source`
-# vyššie) – bez nafúknutia by `-cutline` v ňom vytŕčal z okna, ktoré ho má
-# orezať, a nafúknutý pás by na hillshade nebol vidieť. Vrstevnice a skaly
-# dostanú to isté nafúknutie cez `workers/plan/area.py` (`AREA_BBOX`, ten
-# istý `pad_bbox`) o kus nižšie. Len `dem_bbox`, nie `bbox`: mapa (dlaždice,
-# katalóg, rozpočet stránky) toto nafúknutie nepotrebuje o nič viac, než už
-# má – kraj je aj bez neho len zlomok svojho obdĺžnika (rozpis vyššie).
+# OKNO PRE VRSTVY Z VÝŠKOVÉHO MODELU. `pad_bbox` ho zväčšuje o
+# `workers/plan/area.py::BORDER_BUFFER_M`, čo je dnes 0 – režeme presne na
+# hranicu, takže okno je presne bbox regiónu a hranicu z neho vyreže
+# `-cutline`. Volanie tu ostáva preto, že keby sa presah za hranicu raz zase
+# zapol, musí sa okno zväčšiť SPOLU s ním: tieňovanie číta priamo toto okno
+# (je vždy na celý región, nie na `area`, viď input `shading_source` vyššie)
+# a `-cutline` v ňom nesmie vytŕčať von. Vrstevnice a skaly dostanú to isté
+# cez `workers/plan/area.py` (`AREA_BBOX`, ten istý `pad_bbox`) o kus nižšie.
 DEM_BBOX=$(python3 - "$BBOX" <<'PY'
 import sys
 sys.path.insert(0, "workers/plan")

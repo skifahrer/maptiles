@@ -10,9 +10,12 @@ name: Mapa · navigačný graf kraja
 # v tom istom zozname na stiahnutie. Rozpis je v hlavičke
 # `workers/deploy/publish-map.py` a v `docs/navigation.md`.
 #
-# TRASA V ŇOM KONČÍ NA HRANICI KRAJA. PBF je rezaný na hranicu (mapa je mapa
-# kraja) a hrana, ktorej chýba druhý koniec, je slepá ulica. Je to ZÁMER, nie
-# opomenutie, a `graf.json` v balíku to o sebe hovorí (`rozsah: "region"`,
+# TRASA V ŇOM KONČÍ NA HRANICI KRAJA – a od prechodu na presnú hranicu z OSM
+# (`workers/plan/boundary.py`) je to hranica kraja, nie „hranica plus dva až
+# štyri kilometre susedného kraja", ako to bolo s rozšíreným `.poly` z osm.fr.
+# PBF je rezaný na ňu (mapa je mapa kraja) a hrana, ktorej chýba druhý koniec,
+# je slepá ulica. Je to ZÁMER, nie opomenutie, a `graf.json` v balíku to
+# o sebe hovorí (`rozsah: "region"`,
 # `hranica: …`) – mlčanie by sa dalo čítať ako pokazená trasa. Kto potrebuje
 # prejsť hranicu, má na to CELOŠTÁTNY graf z vlastnej pipeline („Mapa · Build
 # navigácia“, `navigation.yml`): tá stavia z celých štátnych extraktov, má
@@ -62,7 +65,10 @@ jobs:
       - name: Priprav priečinok na meranie
         run: mkdir -p steps-out
 
-      # To isté PBF, z akého je mapa – job `plan` ho už stiahol a orezal.
+      # To isté PBF, z akého je mapa – job `plan` ho už stiahol a orezal
+      # PRESNE na hranicu kraja. Nič vlastné sa tu nesťahuje: druhý extrakt by
+      # bola druhá pravda o tom, za aké územie navigácia je, a graf by ticho
+      # pokrýval viac než mapa nad ním (stráži to `workers/lint/navigation.py`).
       - name: Stiahni PBF z prípravy
         uses: actions/download-artifact@v8
         with:

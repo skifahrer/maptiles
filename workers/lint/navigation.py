@@ -175,6 +175,24 @@ def main():
                 "graf sa neodkladá ako artefakt `navigacia-graf`. Do balíka "
                 "sa dostane jedine cezeň – `site-*` sa zlieva do `_site` pred "
                 "nahratím na Pages a graf tam nemá čo robiť.")
+        # GRAF KRAJA STOJÍ NA PBF KRAJA – na tom istom, z akého je mapa.
+        # Odkedy je to PBF rezané PRESNE na hranicu kraja
+        # (`workers/plan/boundary.py`), je to zároveň jediné, čo drží
+        # navigáciu „len za tento kraj": keby si job stiahol iný extrakt
+        # (štátny, susedov), graf by ticho pokrýval viac než mapa nad ním
+        # a `graf.json` by o sebe tvrdil `rozsah: region`.
+        if "ROUTING_PBF: data/region.osm.pbf" not in wtext:
+            err(".github/workflows/navigation-region.yml",
+                "graf kraja sa nestavia z `data/region.osm.pbf` "
+                "(`ROUTING_PBF`). To PBF je rezané presne na hranicu kraja, "
+                "takže je to jediné, čo drží navigáciu za ten istý kraj ako "
+                "mapu – iný extrakt by graf ticho rozšíril za hranicu a "
+                "`graf.json` by pritom hlásil `rozsah: region`.")
+        if "name: pbf" not in wtext:
+            err(".github/workflows/navigation-region.yml",
+                "job si nesťahuje artefakt `pbf` z prípravy, takže nemá "
+                "z čoho graf postaviť – alebo si extrakt zháňa sám, čo je "
+                "druhá pravda o tom, za aké územie navigácia je.")
         if os.path.exists(BUILD_MAP):
             bm = open(BUILD_MAP, encoding="utf-8").read()
             if "navigation-region.yml" not in bm:
