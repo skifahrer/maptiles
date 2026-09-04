@@ -32,7 +32,11 @@ Mapa · Build map region      deväť jobov, tie dlhé bežia súbežne:
                                         volá ho aj pregenerovanie vrstvy)
                                trails   značené trasy z OSM relácií
                                transport CELÁ dopravná sieť (cesty, trate,
-                                        trajekty, lanovky) ─► balík `linie`
+                                        trajekty, lanovky) aj s obmedzeniami
+                                        na ceste ─► balík `cesty`
+                               hranice  hranice území a ich názvy ─► balík
+                                        `hranice`
+                               vodstvo  rieky, jazerá, more ─► balík `vodstvo`
                                navigacia navigačný graf Valhally ─► vlastný
                                         balík `-navigacia.zip`
                                assets   SDF sprity a glyfy
@@ -51,19 +55,23 @@ Mapa · Build map state       CELÁ KRAJINA na jedno kliknutie: spustí
                                vypnuté): stránka unesie jednu mapu, osem
                                behov by ju osemkrát prepísalo
 
-Mapa · Regenerate state      JEDNA VRSTVA v celej krajine: body, línie,
-(manuálne, výber vrstvy)     navigačné dáta, vrstevnice, skaly, tieňovanie
+Mapa · Regenerate state      JEDEN BALÍK v celej krajine: body, cesty,
+(manuálne, výber balíka)     hranice, vodstvo, navigácia, vrstevnice,
+                             skaly, tieňovanie
                              ─► tá istá štafeta, kraj po kraji
                              ▲ nad krajom to vždy robí „Mapa · Pregeneruj
                                vrstvu kraja" – prepíše sa len ten jeden balík
-                             ▲ z PBF (body, línie) sú to minúty,
+                             ▲ z PBF (body, cesty, hranice, vodstvo) sú to
+                               minúty,
                                z výškového modelu desiatky minút až hodiny
 
 Mapa · Pregeneruj vrstvu     JEDNA VRSTVA JEDNÉHO KRAJA nanovo, bez toho,
 kraja (manuálne, jeden kraj) aby sa prestavala mapa:
                                body       ─► {kraj}-body.zip
-                               línie      ─► {kraj}-linie.zip
-                                             (dopravná sieť, trasy, obmedzenia)
+                               cesty      ─► {kraj}-cesty.zip
+                                             (sieť aj obmedzenia na ceste)
+                               hranice    ─► {kraj}-hranice.zip
+                               vodstvo    ─► {kraj}-vodstvo.zip
                                navigácia  ─► {kraj}-navigacia.zip
                                vrstevnice ┐ {kraj}-vrstevnice-skaly.zip
                                skaly      ┘ (druhá polovica ide z cache)
@@ -1904,7 +1912,7 @@ Dve veci, ktoré z toho plynú:
   a preriedi sklad `vysledky`. Kým to boli dva workflowy, mali dva plány
   posunuté o pol hodiny, aby si nelezli do cesty.
 
-### Hotová mapa ide aj na Drive – tri ZIPy so stálym menom
+### Hotová mapa ide aj na Drive – deväť balíkov so stálym menom
 
 Okrem GitHub Pages sa každý build publikuje do priečinka na Google Drive.
 Priečinok hovorí, čoho sa mapa týka, a čo chýba, sa vyrobí:
@@ -1914,18 +1922,23 @@ Priečinok hovorí, čoho sa mapa týka, a čo chýba, sa vyrobí:
          krajina  kraj      výsek   (úrovne, čo nedávajú zmysel, sa vynechajú)
 
     presovsky-vysoke_tatry.zip                    základná mapa, BEZ riadkov nižšie,
-                                                  ale S hľadaním; bez glyfov
+                                                  ale SO ZNAČENÝMI TRASAMI
+                                                  a s hľadaním; bez glyfov
                                                   a viewera (tie sú na Pages)
-    presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy (.pmtiles)
     presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice (.pmtiles)
-    presovsky-vysoke_tatry-linie.zip              CELÁ DOPRAVNÁ SIEŤ (cesty od
+    presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy (.pmtiles)
+    presovsky-vysoke_tatry-cesty.zip              CELÁ DOPRAVNÁ SIEŤ (cesty od
                                                   diaľnice po schody, železnice,
-                                                  trajekty, lanovky), značené
-                                                  trasy a obmedzenia na ceste
-    presovsky-vysoke_tatry-navigacia.zip          navigačný graf Valhally
+                                                  trajekty, lanovky) AJ
+                                                  S OBMEDZENIAMI NA CESTE
     presovsky-vysoke_tatry-body.zip               pramene, jaskyne, rozhľadne, … –
-                                                  BODY z OSM (.pmtiles)
+                                                  BODY ZÁUJMU z OSM (.pmtiles)
+    presovsky-vysoke_tatry-hranice.zip            hranice štátu, kraja, okresu
+                                                  a obce AJ S ICH MENAMI
+    presovsky-vysoke_tatry-vodstvo.zip            rieky, jazerá, priehrady, more
+                                                  – každý prvok aj s menom
     presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
+    presovsky-vysoke_tatry-navigacia.zip          navigačný graf Valhally
 
 Každý balík je aj ako **`.aar` (Apple Archive)** – ten istý obsah, to isté
 meno, iná prípona. iOS a macOS ho rozbalia systémovo (framework AppleArchive),
@@ -1942,18 +1955,29 @@ si ich človek nemusel sťahovať, keď ich nechce. Kto ich chce, rozbalí
 príslušný ZIP navrch: cesty vnútri sú tie isté ako v `_site`, takže sa dá
 rozbaliť jeden cez druhý.
 
-**Dopravná sieť, značené trasy, obmedzenia na ceste, navigačný graf a body
-v krajine sú z rovnakého dôvodu VONKU zo základnej mapy** – od nich, na rozdiel
-od vrstevníc a skál, mapa vyzerá rovnako aj bez nich, takže tu ide výlučne
+**KTORÉ BALÍKY SÚ, JE NAPÍSANÉ NA JEDNOM MIESTE** –
+[`workers/data/packages.json`](data/packages.json), číta ho
+[`workers/deploy/baliky.py`](deploy/baliky.py). Ten istý zoznam berie packer
+(čo je v ktorom balíku), formulár „Pregeneruj vrstvu kraja", dávka nad celou
+krajinou, kontroly – a cez `maps.json` (kľúče `app` a `symbol`) aj aplikácia,
+takže balík, o ktorom ešte nevie, sa v nej nezobrazí ako holý kľúč bez ikony.
+Kým bol napísaný na piatich miestach, znamenal nový balík päť úprav a
+ktorákoľvek zabudnutá bola tichá.
+
+**Dopravná sieť, body záujmu, hranice, vodstvo a navigačný graf sú VONKU zo
+základnej mapy** z rovnakého dôvodu ako vrstvy z výškového modelu – s tým
+rozdielom, že od nich mapa vyzerá rovnako aj bez nich, takže tu ide výlučne
 o veľkosť sťahovania:
 
 | balík | čo v ňom je | z ktorých `.pmtiles` |
 |---|---|---|
-| `linie` | CELÁ dopravná sieť + značené trasy + obmedzenia na ceste – všetko líniové z OSM, po čom sa dá ísť | `-transport`, `-trails`, `-roads` |
-| `navigacia` | navigačný graf Valhally pre tento kraj | `routing/` |
+| `cesty` | CELÁ dopravná sieť **aj s obmedzeniami na ceste** (výška podjazdu, šírka, hmotnosť, rýchlosť, pruhy, stúpanie) | `-transport` |
 | `body` | pramene, jaskyne, rozhľadne, pamiatky, banské dedičstvo, geodetické body | `-points` |
+| `hranice` | štát, kraj, okres a obec ako plochy aj čiary, s menom a úrovňou, plus body sídel | `-boundaries` |
+| `vodstvo` | rieky, potoky, kanály, jazerá, priehrady, zálivy, pobrežie – každý prvok aj s menom | `-water` |
+| `navigacia` | navigačný graf Valhally pre tento kraj | `routing/` |
 
-**`-transport.pmtiles` je jadro balíka `linie`** a je to celá cestná, koľajová
+**`-transport.pmtiles` je celý balík `cesty`** a je to celá cestná, koľajová
 a chodníková sieť kraja: cesty od diaľnice po schody, železnice, električky
 a metro, trajekty a lanovky – s menom, číslom, povrchom, prístupom
 a smerovosťou ([`workers/transport/transport.yml`](transport/transport.yml)).
@@ -1964,36 +1988,69 @@ cestovať" znamenalo stiahnuť stovky MB a vytiahnuť si to z nich sám. Zoomy s
 tam to hlavné rozhodnutie (diaľnice a hlavné trate od z6, `service` cesty až
 od z14) a rozhodujú o veľkosti súboru.
 
-**Navigačný graf má VLASTNÝ balík, nie je v `linie`.** Chvíľu tam bol – s tým,
-že je to tá istá sieť z toho istého PBF, len raz nakreslená a raz zjazdná –,
-lenže graf kraja váži **170 až 190 MB**, kým tie tri kreslené vrstvy dokopy
-desiatky. V jednom balíku by z neho bolo deväť desatín a kto chce sieť len
-vidieť, sťahoval by ho tak či tak. Sú to teda dve položky v katalógu a dve
-otázky: „chcem vidieť, kadiaľ sa dá ísť" a „chcem, aby ma to tam doviezlo".
-Rozdiel medzi nimi je vecný, nie formálny: `.pmtiles` je kreslený obraz
-s orezanou a zjednodušenou geometriou bez odbočovacích zákazov, takže sa z neho
-routovať **nedá**; graf v `routing/` je tá istá sieť na jazdenie – rozpis
-v [`docs/navigation.md`](../docs/navigation.md) §1.
+**Obmedzenia na ceste sú ATRIBÚTMI tej siete, nie vlastnou vrstvou.** Výška
+podjazdu, šírka, hmotnosť, rýchlosť, pruhy a stúpanie mali vlastný
+`-roads.pmtiles` – lenže boli to atribúty TÝCH ISTÝCH ciest, aké sú
+v `-transport.pmtiles`. Tá istá cesta tak ležala v dvoch archívoch (raz
+s menom a povrchom, raz s výškou podjazdu) a kto chcel oboje, spájal si ich cez
+`osm_id`. Chýbalo do toho presne osem tagov, tak sú tam. **Hodnoty ostávajú
+reťazcom** a je to zámer: `maxheight: "3.8 m"` a `12'6"` nesú jednotku
+a Planetiler by z nich vzal číslo zo začiatku a zvyšok zahodil – z 3,8 m by
+bolo 12 m, potichu a s platnou dlaždicou. Číslo z toho potrebuje len
+smerovanie, a to si ho parsuje samo.
 
-Krajinné línie a plochy (`-features.pmtiles`: násypy, múry, ploty, vedenia,
-parkoviská, zjazdovky, …) VLASTNÝ balík nemajú a ostávajú v základnej mape –
-sú to línie AJ plochy naraz, takže by nesadli čisto do ani jedného z balíkov
-vyššie bez toho, aby sa appke sľúbilo niečo, čo v nej nie je (rozpis pri
-pravidle 2: keď rozsah nie je celý, musí sa zmeniť meno).
+**Rovnaké tagy dostáva aj NAVIGÁCIA.** Graf sa stavia z celých štátnych
+extraktov bez akéhokoľvek filtra ([`workers/routing/pbf.sh`](routing/pbf.sh)),
+takže `maxheight` a spol. v ňom vždy boli – chýbalo len to, aby si ich niekto
+vypýtal. Profil navigácie preto pozná rozmery vozidla (`vehicle_height`,
+`vehicle_weight`, `vehicle_width`, `vehicle_length`
+v [`workers/data/routing-profiles.json`](data/routing-profiles.json)): to isté
+obmedzenie je tak v balíku `cesty` **na pozretie** („pod týmto mostom je
+3,8 m") a v grafe **na použitie** („trasa sa tomu podjazdu vyhne").
+
+**Hranice a vodstvo sú nové balíky z toho istého dôvodu, pre ktorý existujú
+`cesty`:** v mape sú obe veci nakreslené, ale nie použiteľné. Vrstva `boundary`
+OpenMapTiles nesie `admin_level`, `disputed` a `maritime` – teda ČIARU, po
+ktorej sa kreslí, rozsekanú na úseky medzi susedmi a **bez mena územia**, ktoré
+ohraničuje; z nej sa nedá povedať, v ktorej obci alebo v ktorom okrese nejaký
+bod je. Voda je zase v troch vrstvách (`water`, `waterway`, `water_name`)
+a meno leží mimo geometrie. Obe nové schémy dávajú meno na ten istý prvok
+([`boundaries.yml`](boundaries/boundaries.yml),
+[`water.yml`](water/water.yml)).
+
+**Plocha oceánu vo `vodstve` NIE JE a nedá sa tam mať.** More v OSM nie je
+polygón – skladá sa až z pobrežných čiar celej planéty (Planetiler má na to
+vlastný zdroj `water_polygons`, a preto more v základnej mape je). Z rezaného
+PBF kraja by vzniklo more, ktoré končí na hranici výrezu, takže
+`natural=coastline` ide ako **čiara** a plochu kreslí základná mapa.
+
+**Hranice sa ako jediná vrstva NEOREZÁVAJÚ na región.** Hranica kraja je
+hranicou aj pre suseda a orezaním presne po nej by z nej ostala polovica čiary;
+plocha okresu na okraji by sa zrezala na obdĺžnik bboxu a odpoveď „v ktorom
+okrese som" by pri kraji bola NESPRÁVNA, nie chýbajúca. PBF je aj tak vyrezaný
+po hranicu regiónu, takže „všetko, čo v ňom je" je presne to, čo sa má
+nakresliť.
 
 **Body majú VLASTNÝ `.pmtiles`** (`workers/features/points.yml`) presne kvôli
 balíku `body`: `feature_line`, `feature_area` aj `feature_point` kedysi
 vznikali v jednom súbore (`features.yml`) a appka ich nemala ako rozdeliť bez
 toho, aby ho rozbalila a filtrovala obsah sama. Vstup aj predfilter zostali
 spoločné (`workers/features/build.sh` beží Planetiler nad tým istým PBF
-druhýkrát, raz na každú schému) – rozdelenie sa na to, čo je na mape VIDIEŤ,
-neprejaví, len na tom, v ktorom súbore to leží.
+druhýkrát, raz na každú schému).
 
-**Hľadanie je naopak V NEJ – je to časť, nie balík.** Vlastný `-search.zip`
-malo a bola to chyba v tom, čo mapa sľubuje: kto si stiahol mapu kraja, dostal
-mapu, v ktorej sa nedá nič nájsť, a že mu chýba druhý súbor, nemal ako vedieť.
-Cena je desiatky MB proti stovkám za dlaždice. Balík `-search` preto zanikol
-(`ZRUSENE` v `publish-map.py`) a starý sa na Drive maže.
+Krajinné línie a plochy (`-features.pmtiles`: násypy, múry, ploty, vedenia,
+parkoviská, zjazdovky, …) VLASTNÝ balík nemajú a ostávajú v základnej mape –
+sú to línie AJ plochy naraz, takže by nesadli čisto do ani jedného z balíkov
+vyššie bez toho, aby sa appke sľúbilo niečo, čo v nej nie je.
+
+**Hľadanie a značené trasy sú naopak V NEJ – sú to časti, nie balíky.** Vlastný
+`-search.zip` malo hľadanie a bola to chyba v tom, čo mapa sľubuje: kto si
+stiahol mapu kraja, dostal mapu, v ktorej sa nedá nič nájsť, a že mu chýba
+druhý súbor, nemal ako vedieť. **Značené trasy sú ten istý prípad o krok
+ďalej** – cestovali v balíku `linie` a turistická mapa bez značiek nesľubuje
+to, načo si ju človek stiahol. Cena za oboje sú jednotky až desiatky MB proti
+stovkám za dlaždice, takže sa tu nemá čo šetriť. Balíky `-search` a `-linie`
+preto zanikli (`zrusene` v číselníku) a staré sa na Drive mažú.
 
 **Navigácia je naopak zo základnej mapy VON a má vlastný balík
 `-navigacia.zip`** – cestná a chodníková sieť z OSM ako graf Valhally
@@ -2002,26 +2059,19 @@ Cena je desiatky MB proti stovkám za dlaždice. Balík `-search` preto zanikol
 argumentom ako index, lenže namerané to tak nie je: **graf kraja váži 170 až
 190 MB a mapa s ním 283 MB**, čiže dve tretiny „základnej mapy" bola sieť, po
 ktorej sa jazdí, nie mapa, ktorá sa kreslí. To je presne prípad vrstevníc
-a tieňovania.
+a tieňovania. Stojí vedľa `cesty` a sú to dve otázky: „chcem vidieť, kadiaľ sa
+dá ísť" a „chcem, aby ma to tam doviezlo". Rozdiel medzi nimi je vecný, nie
+formálny: `.pmtiles` je kreslený obraz s orezanou a zjednodušenou geometriou
+bez odbočovacích zákazov, takže sa z neho routovať **nedá**; graf v `routing/`
+je tá istá sieť na jazdenie – rozpis v [`docs/navigation.md`](../docs/navigation.md) §1.
 
-**Chvíľu cestoval graf v balíku `linie` a vrátil sa do vlastného.** Argument
-pre spojenie bol, že je to tá istá sieť z toho istého PBF, len raz nakreslená
-a raz zjazdná. Odkedy je v `linie` **celá dopravná sieť**, to už neplatí: tie
-tri kreslené vrstvy vážia desiatky MB, graf 170 až 190, takže by z balíka bolo
-deväť desatín graf a kto chce sieť len vidieť, sťahoval by ho tak či tak. Sú to
-teda zase dve položky v katalógu — a sú to dve otázky: „chcem vidieť, kadiaľ sa
-dá ísť" a „chcem, aby ma to tam doviezlo". Že sa o grafe dá dozvedieť, drží
-katalóg: `maps.json` nesie `-navigacia.zip` pod `maps.navigacia` vedľa `linie`
-a `body`, takže je v aplikácii v tom istom zozname na stiahnutie ako ony.
-
-**Obe sú vždy za ten jeden región**, ktorého je mapa. Index je z toho istého
-PBF ako mapa; graf sa stavia z `data/region.osm.pbf` toho istého behu
-(workflow [`navigation-region.yml`](../.github/workflows/navigation-region.yml)),
+**Hľadanie aj graf sú vždy za ten jeden región**, ktorého je mapa. Index je
+z toho istého PBF ako mapa; graf sa stavia z `data/region.osm.pbf` toho istého
+behu (workflow [`navigation-region.yml`](../.github/workflows/navigation-region.yml)),
 takže **trasa v ňom končí na hranici kraja** – hrana, ktorej v rezanom PBF
 chýba druhý koniec, je slepá ulica. Je to zámer a `graf.json` v balíku to
 o sebe hovorí (`rozsah: "region"`, `hranica: …`); kto potrebuje prejsť
 hranicu, má na to celoštátny graf z [`navigation.yml`](../.github/workflows/navigation.yml).
-Rozpis oboch je v [`docs/navigation.md`](../docs/navigation.md).
 
 **Koľko z balíka tá časť je, je vidieť v katalógu** – `maps.json` má pod
 balíkom `mapa` kľúč `casti` s `raw_size` (bajty pred zabalením, preto iné meno
@@ -2286,8 +2336,9 @@ o pár odstavcov nižšie.
       "zilinsky": {
         "name": "Žilinský kraj",
         "maps": { "mapa": { "file": "zilinsky.zip", "link": "…", "download": "…", "size": 900000000 },
-                  "vrstevnice-skaly": { … }, "tienovanie": { … },
-                  "linie": { … }, "navigacia": { … }, "body": { … } },
+                  "tienovanie": { … }, "vrstevnice-skaly": { … },
+                  "cesty": { … }, "body": { … }, "hranice": { … },
+                  "vodstvo": { … }, "navigacia": { … } },
         "bbox": [18.305, 48.72, 20.08, 49.635], "maxzoom": 16,
         "contours_maxzoom": 16, "contour_interval": 5, "rocks_maxzoom": 16,
         "rock_slope": 50, "dem_source": "dmr5", "layers": ["vrstevnice_dmr5_5m", "…"],
@@ -2788,8 +2839,8 @@ prvky v základných dlaždiciach jednoducho **nie sú**.
 Preto sa z toho istého PBF ťahajú druhýkrát, vlastnou schémou a do vlastného
 `.pmtiles` – rovnaký vzor ako značené trasy a skaly. Bodové prvky idú do
 VLASTNÉHO súboru (`workers/features/points.yml`), presne kvôli balíku na
-stiahnutie, ktorý appka ponúka zvlášť od línií a plôch (balíky `linie`
-a `body`, `workers/deploy/publish-map.py`) – rovnaký predfilter, len druhý
+stiahnutie, ktorý appka ponúka zvlášť od línií a plôch (balík `body`,
+`workers/data/packages.json`) – rovnaký predfilter, len druhý
 beh Planetileru:
 
 ```
@@ -3545,7 +3596,9 @@ nad krajom nespúšťa celý build, ale to jedno, čo si vyberieš (`co`):
 | voľba | čo sa prepíše | čo to stojí |
 |---|---|---|
 | `body` | `{kraj}-body.zip` | **minúty** – z toho istého PBF ako mapa |
-| `linie` | `{kraj}-linie.zip` (dopravná sieť, trasy, obmedzenia) | **minúty** – z toho istého PBF ako mapa |
+| `cesty` | `{kraj}-cesty.zip` (dopravná sieť aj s obmedzeniami na ceste) | **minúty** – z toho istého PBF ako mapa |
+| `hranice` | `{kraj}-hranice.zip` (hranice území a ich mená) | **minúty** – z toho istého PBF ako mapa |
+| `vodstvo` | `{kraj}-vodstvo.zip` (rieky, jazerá, more) | **minúty** – z toho istého PBF ako mapa |
 | `navigacia` | `{kraj}-navigacia.zip` (graf Valhally) | **minúty** – z toho istého PBF ako mapa |
 | `vrstevnice` | `{kraj}-vrstevnice-skaly.zip` | desiatky minút až hodiny – z výškového modelu |
 | `skaly` | `{kraj}-vrstevnice-skaly.zip` | desiatky minút až hodiny – z výškového modelu |
@@ -3554,9 +3607,11 @@ nad krajom nespúšťa celý build, ale to jedno, čo si vyberieš (`co`):
 Nad krajom to **vždy** robí „Mapa · Pregeneruj vrstvu kraja" – aj pri vrstvách
 z výškového modelu. Prepíše sa preto vždy len ten jeden balík.
 
-**Zoznam je číselník, nie `case` v skripte** (`workers/state/jobs.py`): jedno
-miesto vie, čo sa dá pregenerovať, ktorý workflow to nad krajom spraví a s
-akými poľami. Tú istú otázku si inak kladie formulár dávky, formulár nad
+**Zoznam je číselník, nie `case` v skripte**: ktoré balíky sú, drží
+`workers/data/packages.json` (kľúč `regeneruj` hovorí, čo sa dá postaviť bez
+celého buildu mapy) a `workers/state/jobs.py` k tomu dopĺňa len to, čo je vec
+dávky – poradie vo formulári, vetu do súhrnu a ktorý workflow to nad krajom
+spraví. Tú istú otázku si inak kladie formulár dávky, formulár nad
 jedným krajom aj štafeta — a keby si na ňu odpovedali samy, pribudnutá voľba
 by vo formulári bola a štafeta by na nej spadla. Alebo horšie: spustila by
 niečo iné, než si vybral, a beh by bol zelený. Stráži to
@@ -3568,13 +3623,20 @@ Body a línie sa počítajú z **toho istého OSM PBF** ako mapa a nič iné
 nepotrebujú — príprava PBF, joby tej vrstvy a `publish-map.py
 --only=<balík>`. Minúty.
 
-`linie` je pritom **trojica** (dopravná sieť, značené trasy a obmedzenia na
-ceste), lebo je to jeden balík a `--only` ho prepisuje **celý**: jedna nová
-vrstva a dve chýbajúce by z neho spravili balík, ktorý sľubuje, čo nenesie.
+`cesty` sú pritom **jedna vrstva z jedného jobu**, a je to zmena: kým sa ten
+balík volal `linie`, boli v ňom tri vrstvy z troch jobov a všetky tri museli
+vzniknúť naraz, lebo `--only` prepisuje balík **celý**. Odkedy sú obmedzenia
+na ceste atribútmi tej istej siete a značené trasy cestujú v základnej mape,
+polovica nová s polovicou starou už nemá ako vzniknúť.
 
-`navigacia` je naopak **vlastná voľba**, lebo je vlastný balík — a je to
-zároveň jediné, čo sa mení pri zdvihnutí verzie Valhally, takže prestavovať
-kvôli tomu dopravnú sieť by bolo zbytočné.
+`navigacia` je **vlastná voľba**, lebo je vlastný balík — a je to zároveň
+jediné, čo sa mení pri zdvihnutí verzie Valhally, takže prestavovať kvôli tomu
+dopravnú sieť by bolo zbytočné.
+
+**Základná mapa a články z Wikipédie sa takto pregenerovať nedajú.** Mapa je
+celý build (Planetiler nad celým PBF, štýl, ikonky), takže „len ju" znamená
+spustiť „Mapa · Build map region" – a značené trasy, ktoré v nej cestujú, sú
+preto tiež jej vec. Články majú vlastnú pipeline („Mapa · Build wiki").
 
 Vrstevnice, skaly a tieňovanie potrebujú sklad výškového modelu, prípadne ho
 doplniť, prečítať a nad ním trasovať. Robí to **`dem-layers.yml`** — jedenásť

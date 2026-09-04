@@ -24,23 +24,21 @@ import sys
 
 import yaml
 
-# Druhy balíkov, ktoré `baliky` v `publish-map.py` naozaj vyrába (`""` sa do
-# katalógu zapisuje ako `mapa`) – táto množina musí sedieť s tým zoznamom,
-# inak balík, ktorý pipeline práve pridala (naposledy `linie` a `body`, línie
-# a body z OSM), zhodí lint napriek tomu, že v katalógu je zo skutočného behu.
-DRUHY = {"mapa", "vrstevnice-skaly", "tienovanie", "wikipedia", "linie",
-         "navigacia", "body"}
-# ZRUŠENÉ DRUHY – v katalógu ešte môžu byť (kraj, ktorý sa odvtedy nestaval),
-# ale publikovanie ich už NEVYRÁBA: `search` sa presťahoval DOVNÚTRA balíka
-# `mapa` a jeho veľkosť je pod ním v `casti`. Hlásiť ich ako neznámy druh by
-# znamenalo červený lint za starý zápis, ktorý najbližší build sám prepíše;
-# preto sa berú, ale musia byť aj v `ZRUSENE` v `publish-map.py` – inak by
-# starý `-search.zip` ostal ležať na Drive a katalóg by naň ukazoval.
-# `navigacia` tu bola, kým graf cestoval v `linie`; odkedy je v `linie` CELÁ
-# dopravná sieť (cesty, trate, trajekty, lanovky), má graf zase vlastný balík –
-# sám váži viac než tie tri vrstvy dokopy (rozpis v hlavičke
-# `workers/deploy/publish-map.py`). Je preto späť v `DRUHY`, nie tu.
-ZRUSENE = {"search"}
+# Druhy balíkov, ktoré sa naozaj vyrábajú, a tie, ktoré už NIE. Oboje drží
+# ČÍSELNÍK (`workers/data/packages.json`) – ten istý zoznam, z ktorého ich
+# skladá `publish-map.py`, takže balík, ktorý pipeline práve pridala, tu
+# nezhodí lint napriek tomu, že v katalógu je zo skutočného behu.
+#
+# ZRUŠENÝ DRUH SA BERIE TIEŽ: v katalógu ešte môže byť (kraj, ktorý sa odvtedy
+# nestaval), ale publikovanie ho už nevyrába – `search` sa presťahoval DOVNÚTRA
+# balíka `mapa` (veľkosť je pod ním v `casti`) a `linie` sa rozpadlo na balík
+# `cesty` (dopravná sieť), základnú mapu (značené trasy) a atribúty tej siete
+# (obmedzenia na ceste). Hlásiť ich ako neznámy druh by znamenalo červený lint
+# za starý zápis, ktorý najbližší build sám prepíše.
+with open("workers/data/packages.json", encoding="utf-8") as _f:
+    _CISELNIK = json.load(_f)
+DRUHY = {b["kluc"] for b in _CISELNIK.get("baliky") or []}
+ZRUSENE = set(_CISELNIK.get("zrusene") or ())
 # Meno balíka: `<kraj>[-<výsek>][-testNkm2]` + prípona druhu. Sedí to s
 # `zaklad()` a `meno()` vo `workers/deploy/publish-map.py`.
 MENO = re.compile(r"^[a-z0-9_]+(-[a-z0-9_]+)*(-test[0-9.]+km2)?"
@@ -85,7 +83,12 @@ try:
     pmap_text = open(PUBLISH_MAP, encoding="utf-8").read()
 except OSError:
     pmap_text = ""
-pmap_zrusene = set()
+# `ZRUSENE` v `publish-map.py` UŽ NIE JE literál – berie sa z číselníka
+# (`workers/data/packages.json`, kľúč `zrusene`), takže je to tá istá množina
+# ako `ZRUSENE` vyššie. Kontrola „balík v katalógu je zrušený, ale packer to
+# nevie" tým nezaniká, len sa pýta číselníka: overuje sa, že si ho `publish-
+# map.py` naozaj berie odtiaľ a nezaviedol si vlastný zoznam.
+pmap_zrusene = ZRUSENE if "katalog_balikov.zrusene()" in pmap_text else set()
 for _m in re.findall(r"^ZRUSENE\s*=\s*\(([^)]*)\)", pmap_text, re.M):
     pmap_zrusene |= set(re.findall(r"[\"']([\w-]+)[\"']", _m))
 
@@ -309,8 +312,8 @@ for kluc, preco in (
                   "stiahnutia stoviek MB – a kým sa nedala, ležal "
                   "`search-index.db` v balíku dvakrát a nikto to na veľkosti "
                   "nepoznal. (Navigačný graf tu už nie je: bol dvomi "
-                  "tretinami mapy, takže je zo základnej mapy von a cestuje "
-                  "v balíku `linie` – veľkosť je pod ním.)")):
+                  "tretinami mapy, takže je zo základnej mapy von a má "
+                  "vlastný balík – veľkosť je pod ním.)")):
     if kmap and kluc not in kmap:
         bad.append(f"{CATALOG_PY}: {preco}. Doplň to z `manifest.json` – "
                    f"pozná to, lebo podľa toho číta dlaždice aj viewer.")

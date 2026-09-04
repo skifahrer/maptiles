@@ -92,7 +92,7 @@ function styles() {
           trailsUrl: "https://x/trails.pmtiles",
           featuresUrl: "https://x/features.pmtiles",
           pointsUrl: "https://x/points.pmtiles",
-          roadsUrl: "https://x/roads.pmtiles",
+          transportUrl: "https://x/transport.pmtiles",
           // Hranica stiahnutého regiónu – bez nej by sa kontrola 4 nemala
           // na čom chytiť (vrstvy masky by v štýle vôbec neboli).
           regionOutline: OUTLINE

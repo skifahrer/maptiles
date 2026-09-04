@@ -4,15 +4,18 @@
 # ČO TO JE A PREČO: rozpis je v hlavičke `workers/transport/transport.yml`.
 # Krátko – všetko, po čom sa dá cestovať (cesty od diaľnice po schody,
 # železnice, trajekty, lanovky), v jednom archíve, ktorý sa dá stiahnuť bez
-# zvyšku mapy. Je to VRSTVA NA POUŽITIE, nie druhé kreslenie: štýl si ju
-# nepridáva, lebo cestnú sieť už kreslí základná mapa (rozpis pri balíku
-# `linie` vo `workers/deploy/subory.py`).
+# zvyšku mapy. Je to VRSTVA NA POUŽITIE, nie druhé kreslenie: štýl z nej
+# kreslí len obmedzenia na ceste (výška podjazdu, hmotnosť, rýchlosť) – samotnú
+# cestnú sieť už kreslí základná mapa (rozpis pri balíku `cesty` vo
+# `workers/deploy/subory.py`).
 #
 # PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho
 # GitHub ticho neprijme (stráži „Kontrola · lint workflowov").
 #
-# JEDEN PRIECHOD FILTROM, nie dva ako pri obmedzeniach na ceste – dôvod je
-# v hlavičke `workers/transport/filter.txt`.
+# JEDEN PRIECHOD FILTROM – dôvod je v hlavičke `workers/transport/filter.txt`.
+# Obmedzenia na ceste (výška podjazdu, hmotnosť, rýchlosť) sú odteraz ATRIBÚTY
+# tejto siete a nie vlastná vrstva, takže druhý priechod netreba: `tags-filter`
+# berie objekt celý aj s nimi.
 #
 # Podiel na veľkosti stránky berie z `BUDGET_TRANSPORT_PCT` (env workflowu).
 
@@ -34,10 +37,10 @@ printf '%s\t%s\t%s\t%s\n' "61" "Predfilter dopravnej siete" "$(( $(date +%s) - T
   >> steps-out/transport.tsv
 
 # Prázdny výsledok nie je chyba – 4 km² rýchleho testu môže padnúť do lesa bez
-# jedinej cesty. Mapa vtedy pôjde bez tejto vrstvy a balík `linie` bude o ňu
-# ľahší; že tam nie je, povie `obsah.json` v balíku.
+# jedinej cesty. Balík `cesty` sa vtedy nevyrobí; že tam nie je, povie
+# `obsah.json` v balíku mapy.
 if [ "$AFTER" -lt 2000 ]; then
-  echo "::warning::V tomto území nie je ani jedna cesta, trať, trajekt ani lanovka – balík \`linie\` pôjde bez dopravnej siete."
+  echo "::warning::V tomto území nie je ani jedna cesta, trať, trajekt ani lanovka – balík \`cesty\` sa nevyrobí."
   echo "enabled=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi
@@ -48,8 +51,8 @@ case "$TZ_" in ''|*[!0-9]*) TZ_=14 ;; esac
 if [ "$TZ_" -gt 16 ]; then TZ_=16; fi
 
 # Poistka proti tichej strate: čo má v schéme `min_zoom` nad maxzoomom,
-# Planetiler zahodí BEZ SLOVA. Tá istá poistka ako v joboch `features`
-# a `roads`.
+# Planetiler zahodí BEZ SLOVA. Tá istá poistka ako v joboch `features`,
+# `hranice` a `vodstvo`.
 TOPZ=$(grep -oE 'min_zoom: [0-9]+' workers/transport/transport.yml \
        | grep -oE '[0-9]+' | sort -n | tail -1)
 if [ "${TOPZ:-0}" -gt "$TZ_" ]; then

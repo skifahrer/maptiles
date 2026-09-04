@@ -31,7 +31,8 @@
 #   prázdne      všetky balíky mapy z `_site` (Build map)
 #   wikipedia    jediný balík s článkami z `WIKI` (Build wiki)
 #   iné meno     jediný balík JEDNEJ VRSTVY z `SITE` (Pregeneruj vrstvu kraja) –
-#                `body`, `linie`, `navigacia`; mená balíkov pozná
+#                `body`, `cesty`, `hranice`, `vodstvo`, `navigacia`;
+#                mená balíkov pozná
 #                `workers/deploy/publish-map.py`
 # – a BRANCH, z ktorej si vypýtať čerstvý `maps.json` (viď nižšie)
 # a prihlásenie na Drive z `env:` celého workflowu.

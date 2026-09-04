@@ -1,0 +1,29 @@
+# Predfilter PBF pre workers/boundaries/boundaries.yml (`osmium tags-filter`).
+#
+# JEDEN PRIECHOD: hranica je „administratívna hranica ALEBO pomenované
+# sídlo", teda ALEBO – presne to, čo `tags-filter` vie (pri obmedzeniach na
+# ceste to tak nebolo, tam sa pýtalo „cesta A má obmedzenie").
+#
+# `r/` SÚ TU NUTNÉ A JE TO CELÝ ROZDIEL OPROTI OSTATNÝM VRSTVÁM. Hranica obce
+# nie je v OSM jedna čiara: je to RELÁCIA (`type=boundary`), ktorej členmi sú
+# cesty, a tie samy o sebe `boundary=administrative` nemajú. Filter len na `w/`
+# by z PBF pustil relácie bez ich geometrie – Planetiler by nemal z čoho zložiť
+# polygón a v dlaždiciach by ticho nebolo NIČ. `osmium tags-filter` doťahuje
+# členov relácií sám, keď sa relácia trafí (`-r` je v `build.sh`).
+#
+# Zoznam je zámerne ŠIRŠÍ než schéma (pustí aj `admin_level` 9 a 10, teda
+# mestské časti): filter je hrubé sito, presné rozhodnutie robí schéma. Opačne
+# to neplatí – keď do schémy pribudne kľúč a sem nie, Planetiler dostane PBF,
+# v ktorom ten tag už nie je, a v dlaždiciach sa TICHO neobjaví. Stráži to
+# `workers/lint/boundaries.py`.
+
+# --- samotné hranice: relácia je tá, čo nesie meno a úroveň ---
+r/boundary=administrative
+w/boundary=administrative
+
+# --- názvy území: štát, kraj, okres, obec ---
+# Meno územia je v OSM na DVOCH miestach: na relácii hranice a na bode sídla
+# (`place=city`, `village`, …). Berú sa obe – relácia povie, kde územie končí,
+# bod povie, kde sa jeho meno kreslí.
+n/place
+r/place

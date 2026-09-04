@@ -9,18 +9,27 @@ týka:
 
     <koreň>/slovensko/presovsky/vysoke_tatry/
         presovsky-vysoke_tatry.zip                    základná mapa, BEZ nižšie
-                                                      (ale S hľadaním – to je jej
-                                                      časť, nie balík; bez glyfov
-                                                      a viewera – viď nižšie)
-        presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy
+                                                      (ale SO ZNAČENÝMI TRASAMI
+                                                      a s hľadaním – to sú jej
+                                                      časti, nie balíky; bez
+                                                      glyfov a viewera)
         presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice
-        presovsky-vysoke_tatry-linie.zip              CELÁ dopravná sieť
-                                                      (cesty, trate, trajekty,
-                                                      lanovky), značené trasy
-                                                      a obmedzenia na ceste
-        presovsky-vysoke_tatry-navigacia.zip          navigačný graf (Valhalla)
-        presovsky-vysoke_tatry-body.zip               body z OSM
+        presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy
+        presovsky-vysoke_tatry-cesty.zip              CELÁ dopravná sieť aj
+                                                      s obmedzeniami na ceste
+        presovsky-vysoke_tatry-body.zip               body záujmu z OSM
+        presovsky-vysoke_tatry-hranice.zip            hranice území a ich názvy
+        presovsky-vysoke_tatry-vodstvo.zip            rieky, jazerá, more
         presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
+        presovsky-vysoke_tatry-navigacia.zip          navigačný graf (Valhalla)
+
+KTORÉ BALÍKY SÚ, TU NAPÍSANÉ NIE JE – zoznam vyššie je ukážka, nie zdroj.
+Drží ho `workers/data/packages.json` (číta ho `workers/deploy/baliky.py`) a je
+to ten istý zoznam, z ktorého sa skladá formulár pregenerovania, dávka nad
+krajinou aj mená a ikony v aplikácii. Balík preto pribúda na JEDNOM mieste;
+kým sa písal na piatich, bola ktorákoľvek zabudnutá úprava tichá – vrstva sa
+buď nezabalila nikam, alebo ostala aj v základnej mape a človek si ju stiahol
+dvakrát.
 
 GLYFY A WEBOVÝ VIEWER SA NEBALIA. Fonty boli po dlaždiciach druhá najväčšia vec
 v balíku (tri fontstacky Noto Sans po ~34 MB, celý unicode) a mapa kraja z nich
@@ -51,34 +60,45 @@ nechce – vážia porovnateľne s mapou samou (rozpis v `docs/velkost-balikov.m
 Kto ich chce, rozbalí príslušný ZIP navrch (cesty vnútri sú tie isté ako
 v `_site`, takže sa dá rozbaliť jeden cez druhý).
 
-HĽADANIE JE NAOPAK V NEJ – JE TO ČASŤ, NIE BALÍK. Vlastný `-search.zip` malo
-a bola to chyba v tom, čo mapa sľubuje: kto si stiahol mapu kraja, dostal
-mapu, v ktorej sa nedá nič nájsť, a že mu chýba druhý súbor, nemal ako
-vedieť. Cena za to je desiatky MB proti stovkám, ktoré vážia dlaždice, takže
-sa tu ani nemá čo šetriť. Balík `-search` preto zanikol (`ZRUSENE`) a starý
-sa na Drive maže.
+HĽADANIE A ZNAČENÉ TRASY SÚ NAOPAK V NEJ – SÚ TO ČASTI, NIE BALÍKY. Vlastný
+`-search.zip` malo hľadanie a bola to chyba v tom, čo mapa sľubuje: kto si
+stiahol mapu kraja, dostal mapu, v ktorej sa nedá nič nájsť, a že mu chýba
+druhý súbor, nemal ako vedieť. Značené trasy sú ten istý prípad o krok ďalej –
+turistická mapa bez značiek nesľubuje to, načo si ju človek stiahol. Cena za
+oboje sú jednotky až desiatky MB proti stovkám, ktoré vážia dlaždice, takže sa
+tu nemá čo šetriť. Merajú sa (`casti`), aby bolo v katalógu vidieť, koľko
+z balíka sú.
 
-`-linie.zip` JE CELÁ DOPRAVNÁ SIEŤ, nie prívesok k mape. Sú v ňom tri vrstvy:
-`-transport.pmtiles` (cesty od diaľnice po schody, železnice, električky
-a metro, trajekty a lanovky), `-trails.pmtiles` (značené trasy)
-a `-roads.pmtiles` (obmedzenia na ceste). Cestná sieť V MAPE je vrstva
+`-cesty.zip` JE CELÁ DOPRAVNÁ SIEŤ, nie prívesok k mape: `-transport.pmtiles`,
+teda cesty od diaľnice po schody, železnice, električky a metro, trajekty
+a lanovky – a odteraz aj OBMEDZENIA NA CESTE (výška podjazdu, hmotnosť,
+rýchlosť, pruhy) ako atribúty tých istých ciest. Cestná sieť V MAPE je vrstva
 `transportation` schémy OpenMapTiles – stavaná na kreslenie a v jednom archíve
 s vodstvom, krajinnou pokrývkou a popismi –, takže „chcem len siete, po ktorých
 sa dá cestovať" znamenalo stiahnuť stovky MB a vytiahnuť si to z nich sám.
 Rozpis je v hlavičke `workers/transport/transport.yml`.
+
+BALÍK `linie` SA ROZPADOL A UŽ NIE JE. Boli v ňom tri vrstvy naraz (dopravná
+sieť, značené trasy, obmedzenia na ceste) a každá z nich patrila inam: sieť je
+odteraz `cesty`, trasy sú v mape (viď vyššie) a obmedzenia sú ATRIBÚTY tej
+siete, nie vlastná vrstva – bola to tá istá cesta v druhom archíve, ktorú si
+musel každý spájať späť cez `osm_id`. `linie` je preto v `ZRUSENE` a jeho starý
+súbor sa na Drive maže.
+
+HRANICE A VODSTVO SÚ NOVÉ BALÍKY z toho istého dôvodu, pre ktorý existuje
+`cesty`: v mape sú obe veci nakreslené, ale nie použiteľné. Hranica vo vrstve
+`boundary` OpenMapTiles je čiara BEZ MENA územia, ktoré ohraničuje (takže sa
+z nej nedá povedať, v ktorej obci si), a voda je rozdelená do troch vrstiev
+s menom mimo geometrie. Rozpis je v hlavičkách `workers/boundaries/
+boundaries.yml` a `workers/water/water.yml`.
 
 NAVIGÁCIA JE ZO ZÁKLADNEJ MAPY VON A MÁ VLASTNÝ BALÍK. Balila sa dovnútra mapy
 s tým istým argumentom ako index, lenže NAMERANÉ TO TAK NIE JE: graf kraja váži
 170 až 190 MB a mapa s ním 283 MB, čiže dve tretiny „základnej mapy" bola sieť,
 po ktorej sa jazdí, nie mapa, ktorá sa kreslí. To je presne prípad vrstevníc
 a tieňovania: ťažká vec, ktorú mapa na to, aby sa nakreslila, nepotrebuje.
-
-CHVÍĽU CESTOVAL GRAF V BALÍKU `linie` – s tým, že je to tá istá sieť z toho
-istého PBF, len raz nakreslená a raz zjazdná. Odkedy je v `linie` CELÁ dopravná
-sieť, to už neplatí: tri vrstvy tam vážia desiatky MB, kým graf 170 až 190, tak
-by z balíka bolo deväť desatín graf a kto chce sieť len vidieť, by ho sťahoval
-tak či tak. Graf má preto zase VLASTNÝ balík – jednu položku v katalógu, ktorú
-si človek vyberie alebo nie, presne ako tieňovanie.
+Stojí vedľa `cesty` a sú to dve otázky: „chcem vidieť, kadiaľ sa dá ísť"
+a „chcem, aby ma to tam doviezlo".
 
 HĽADANIE AJ NAVIGÁCIA SÚ VŽDY ZA TEN JEDEN REGIÓN. Index je z toho istého PBF
 ako mapa; graf sa z neho stavia tiež. Trasa v ňom KONČÍ NA HRANICI REGIÓNU –
@@ -151,18 +171,15 @@ def load(name, path):
 pack = load("deploy_pack", "pack.py")   # ako sa balík zabalí (zip / aar)
 catalog = load("deploy_catalog", "catalog.py")  # čo sa píše do maps.json
 subory = load("deploy_subory", "subory.py")     # čo je v ktorom balíku
+katalog_balikov = load("deploy_baliky", "baliky.py")   # ktoré balíky vôbec sú
 # Mená nakrátko: čítajú sa v `main()` vedľa seba a `subory.subory` by bolo
 # horšie čitateľné než to, čo tie funkcie robia.
-body_subory = subory.body_subory
+baliky_vrstiev = subory.baliky_vrstiev
 casti_baliku = subory.casti_baliku
 kde_su_glyfy = subory.kde_su_glyfy
-linie_subory = subory.linie_subory
 manifest_data = subory.manifest_data
-navigacia_subory = subory.navigacia_subory
 mimo_balika = subory.mimo_balika
-tienovanie_subory = subory.tienovanie_subory
 velkost_casti = subory.velkost_casti
-vrstvy_subory = subory.vrstvy_subory
 vsetky_subory = subory.vsetky_subory
 zaklad_subory = subory.zaklad_subory
 BALICE = pack.BALICE
@@ -174,15 +191,19 @@ folder = load("drive_folder", os.path.join(_DRIVE, "folder.py"))  # priečinky a
 # tajomstvo to nie je – id chodí v zdieľanom odkaze; tajomstvom je token.
 FOLDER_ID = "1pvrw7CGUkQLwg8Ql8xbKA4HhQHvPl8_7"
 
-# BALÍKY, KTORÉ UŽ NIE SÚ – ich obsah sa presťahoval DO základnej mapy.
-# (`navigacia` tu bola, kým graf cestoval v `linie`; odkedy je v `linie` celá
-# dopravná sieť, má graf zase vlastný balík – rozpis v hlavičke.)
-# Zoznam nie je pamätník: `-search.zip` z minulých behov na Drive LEŽÍ ďalej
-# (mená sú stále, takže ho nový beh neprepíše) a v katalógu by ostal ako
-# odkaz, ktorý sľubuje niečo, čo si už netreba sťahovať. Preto sa starý balík
-# maže a z položky katalógu vypadne – rovnako, ako keď vrstva v builde nie je.
-# Až prestane byť čo mazať, môže odtiaľto vypadnúť aj `search`.
-ZRUSENE = ("search",)
+# BALÍKY, KTORÉ UŽ NIE SÚ. Drží ich ten istý číselník ako tie živé
+# (`workers/data/packages.json`, kľúč `zrusene`) – balík sa tam presunie
+# z jedného zoznamu do druhého a obe strany zmeny sú tak na jednom mieste.
+#
+# Zoznam nie je pamätník: `-search.zip` aj `-linie.zip` z minulých behov na
+# Drive LEŽIA ďalej (mená sú stále, takže ich nový beh neprepíše) a v katalógu
+# by ostali ako odkaz, ktorý sľubuje niečo, čo si už netreba sťahovať – alebo
+# horšie, čo už neexistuje: obsah `linie` sa rozpadol do `cesty` (dopravná
+# sieť), do základnej mapy (značené trasy) a do atribútov tej siete
+# (obmedzenia na ceste). Preto sa starý balík maže a z položky katalógu
+# vypadne – rovnako, ako keď vrstva v builde nie je. Až prestane byť čo mazať,
+# môže odtiaľto vypadnúť aj on.
+ZRUSENE = katalog_balikov.zrusene()
 
 # Balí sa `deflate` na najnižší stupeň. Obsah `_site` je z veľkej časti už
 # komprimovaný (PMTiles nesú gzip-nuté dlaždice, tieňovanie sú PNG), takže
@@ -328,10 +349,12 @@ def vrstvy():
         out.append("trasy")
     if env("FEATURES_ENABLED") == "true":
         out.append("prvky")
-    if env("ROADS_ENABLED") == "true":
-        out.append("obmedzenia")
     if env("TRANSPORT_ENABLED") == "true":
         out.append("doprava")
+    if env("BOUNDARIES_ENABLED") == "true":
+        out.append("hranice")
+    if env("WATER_ENABLED") == "true":
+        out.append("vodstvo")
     return out
 
 
@@ -499,23 +522,17 @@ def main():
     # počítajú od tej bázy, takže vnútri je `articles.ndjson`, nie
     # `_wiki/articles.ndjson`.
     #
-    # Vrstevnice, skaly, tieňovanie, línie z OSM (trasy, obmedzenia na ceste
-    # a navigačný graf) a body z OSM sa počítajú PRED základnou mapou, lebo tá
-    # ich musí VYNECHAŤ – majú vlastné balíky práve preto, aby si ich človek
-    # nemusel sťahovať, keď ich nechce (viď hlavička súboru). Každý sa počíta RAZ
-    # a to isté pole ide aj do vlastného balíka: druhé volanie tej istej
-    # funkcie je druhá odpoveď na tú istú otázku.
-    vrstvy_pack = vrstvy_subory(args.site, man)
-    tien_pack = tienovanie_subory(args.site, man)
-    # `linie` je celá dopravná sieť z OSM; navigačný graf má VLASTNÝ balík
-    # vedľa nej (sám váži viac než ona) – rozpis v hlavičke súboru aj pri
-    # oboch funkciách.
-    linie_pack = linie_subory(args.site, man)
-    navigacia_pack = navigacia_subory(args.site)
-    body_pack = body_subory(args.site, man)
-    # ČASTI ZÁKLADNEJ MAPY – dnes hľadanie. Zo základnej mapy sa NEVYNÍMAJÚ
-    # (sú v nej, o to ide); počítajú sa preto, aby sa dali premerať a ich
-    # veľkosť išla do katalógu pod balík `mapa`.
+    # VŠETKO, ČO MÁ VLASTNÝ BALÍK, sa počíta PRED základnou mapou, lebo tá to
+    # musí VYNECHAŤ – vlastné balíky majú práve preto, aby si ich človek
+    # nemusel sťahovať, keď ich nechce (viď hlavička súboru). Zoznam drží
+    # číselník (`workers/data/packages.json`), takže sem nový balík nepribúda
+    # ručne: to je celý zmysel tej zmeny. Každý sa počíta RAZ a to isté pole
+    # ide aj do vlastného balíka aj do `vylucit`; druhé volanie tej istej
+    # funkcie by bola druhá odpoveď na tú istú otázku.
+    vrstvy = baliky_vrstiev(args.site, man)
+    # ČASTI ZÁKLADNEJ MAPY – hľadanie a značené trasy. Zo základnej mapy sa
+    # NEVYNÍMAJÚ (sú v nej, o to ide); počítajú sa preto, aby sa dali premerať
+    # a ich veľkosť išla do katalógu pod balík `mapa`.
     #
     # Pri `--only` sa nepočítajú vôbec: tá pipeline základnú mapu nerobí a jej
     # `_site` mapu ani neobsahuje, takže by premerala PRÁZDNO a katalóg by
@@ -533,27 +550,17 @@ def main():
             + (f"{len(subory)} súborov, "
                f"{folder.human(sum(os.path.getsize(p) for p in subory))}"
                if subory else "TENTO BUILD JU NEVYROBIL, v mape nebude"))
+    # Vynechané zo základnej mapy: súbory VŠETKÝCH vlastných balíkov plus to,
+    # čo v balíku nemá čo robiť. Skladá sa to z toho ISTÉHO poľa, z ktorého sa
+    # tie balíky o riadok nižšie vyrábajú – balík, ktorý pribudne do číselníka,
+    # tak nemá ako ostať aj v mape.
+    vylucit = [p for _b, subory in vrstvy for p in subory] + von_pack
     baliky = [
-        ("", "základná mapa (aj s hľadaním) – bez vrstevníc, skál, "
-             "tieňovania, dopravnej siete, navigácie a bodov z OSM, "
-             "glyfov a viewera",
-         args.site, zaklad_subory(args.site, vrstvy_pack + tien_pack
-                                  + linie_pack + navigacia_pack
-                                  + body_pack + von_pack)),
-        ("vrstevnice-skaly", "vrstevnice a skalné plochy (.pmtiles)",
-         args.site, vrstvy_pack),
-        ("tienovanie", "výškové dlaždice pre tieňovanie a 3D terén (raster .pmtiles)",
-         args.site, tien_pack),
-        ("linie", "celá dopravná sieť z OSM (.pmtiles): cesty od diaľnice po "
-                  "schody, železnice, električky a metro, trajekty a lanovky, "
-                  "k tomu značené trasy a obmedzenia na ceste",
-         args.site, linie_pack),
-        ("navigacia", "navigačný graf (Valhalla) – trasa v ňom končí na "
-                      "hranici regiónu",
-         args.site, navigacia_pack),
-        ("body", "pramene, jaskyne, rozhľadne a ďalšie body z OSM (.pmtiles)",
-         args.site, body_pack),
-    ]
+        ("", "základná mapa – celá kresba z OSM aj so značenými trasami "
+             "a hľadaním; bez vrstiev, ktoré majú vlastný balík, a bez glyfov "
+             "a viewera",
+         args.site, zaklad_subory(args.site, vylucit)),
+    ] + [(b["kluc"], b["popis"], args.site, subory) for b, subory in vrstvy]
     # WIKIPÉDIA SA PRIDÁ, LEN KEĎ O NEJ TENTO BEH VIE. Odkedy má vlastnú
     # pipeline (`.github/workflows/wiki.yml`), Build map články nesťahuje –
     # a keby ten balík ostal v zozname natrvalo, videl by ho ako „v tomto
@@ -566,7 +573,7 @@ def main():
     # (dostal som články) alebo `--only=wikipedia` (idem robiť práve ten).
     if args.wiki or args.only == "wikipedia":
         baliky.append(
-            ("wikipedia", "články z Wikipédie: articles.ndjson + index.json",
+            ("wikipedia", katalog_balikov.balik("wikipedia")["popis"],
              args.wiki, vsetky_subory(args.wiki) if args.wiki else []))
     # `--only`: samostatná pipeline (napr. „Build wiki") vyrába JEDEN
     # balík a o zvyšok mapy sa nestará. Bez tohto by musela mať vlastný packer
@@ -574,6 +581,12 @@ def main():
     # Ostatné balíky sa vtedy ani nemažú: to, že ich tento beh nevyrobil,
     # neznamená, že v mape nie sú.
     if args.only:
+        # Základná mapa je v zozname pod prázdnym kľúčom (jej meno nemá
+        # príponu balíka), ale volá sa `mapa` – všade inde, v číselníku aj
+        # v katalógu. `--only=mapa` teda musí ísť, inak by bola jediným
+        # balíkom, ktorý sa nedá pregenerovať sám.
+        if args.only == "mapa":
+            args.only = ""
         znam = [k for k, *_ in baliky]
         if args.only not in znam:
             raise SystemExit(f"::error::`--only={args.only}` nepoznám. Balíky "

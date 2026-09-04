@@ -112,7 +112,8 @@ for pair in "${CONTOURS:-}:contours:vrstevnice" \
             "${TRAILS:-}:trails:značené trasy" \
             "${FEATURES:-}:features:krajinné prvky" \
             "${POINTS:-}:points:body v krajine" \
-            "${ROADS:-}:roads:obmedzenia na ceste"; do
+            "${BOUNDARIES:-}:boundaries:hranice území" \
+            "${WATER:-}:water:vodstvo"; do
   IFS=: read -r on src popis <<<"$pair"
   [ "$on" = 'true' ] || continue
   check "$BASE/tiles/$REGION-$src.pmtiles" 206 "$popis (Range request)" \

@@ -3455,9 +3455,12 @@ export const SHIELD_DEFS = [
  *                                        DRUHÝ výstup toho istého jobu ako
  *                                        `featuresUrl` (workers/features/points.yml)
  * @param {number} [opts.pointsMaxzoom]   najvyšší zoom dlaždíc s bodmi
- * @param {string} [opts.roadsUrl]        pmtiles:// URL s obmedzeniami na ceste,
- *                                        alebo null, keď ich beh nevyrobil
- * @param {number} [opts.roadsMaxzoom]    najvyšší zoom dlaždíc s obmedzeniami
+ * @param {string} [opts.transportUrl]    pmtiles:// URL s dopravnou sieťou
+ *                                        (balík `cesty`); štýl z nej kreslí
+ *                                        len obmedzenia na ceste, čiary ciest
+ *                                        sú v základnej mape. null, keď ju
+ *                                        beh nevyrobil
+ * @param {number} [opts.transportMaxzoom] najvyšší zoom dlaždíc so sieťou
  * @param {string} [opts.demSource]       zdroj výšok (kľúč z DEM_SOURCES) –
  *                                        určuje atribúciu vrstevníc a skál
  * @param {string|null} [opts.demTiles]   raster-dem dlaždice pre hillshade
@@ -3502,8 +3505,8 @@ export function buildStyle({
   featuresMaxzoom = 15,
   pointsUrl = null,
   pointsMaxzoom = 15,
-  roadsUrl = null,
-  roadsMaxzoom = 15,
+  transportUrl = null,
+  transportMaxzoom = 14,
   demSource = DEFAULT_DEM_SOURCE,
   demTiles = DEFAULT_DEM_TILES,
   demTilesSource = null,
@@ -3648,15 +3651,18 @@ export function buildStyle({
         '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
     };
   }
-  // Obmedzenia na ceste (workers/roads/roads.yml) – výška podjazdov a tunelov,
-  // šírka, hmotnosť, maximálna rýchlosť. Vrstva `transportation` OpenMapTiles
-  // z toho nenesie ANI JEDNU hodnotu, takže je to – rovnako ako krajinné prvky
-  // – druhé čítanie toho istého PBF do vlastného .pmtiles.
-  if (roadsUrl) {
-    style.sources.roads = {
+  // DOPRAVNÁ SIEŤ (workers/transport/transport.yml) – balík `cesty`. Štýl
+  // z nej kreslí LEN OBMEDZENIA NA CESTE: výšku podjazdov a tunelov, šírku,
+  // hmotnosť a maximálnu rýchlosť. Vrstva `transportation` OpenMapTiles z toho
+  // nenesie ANI JEDNU hodnotu, takže je to – rovnako ako krajinné prvky –
+  // druhé čítanie toho istého PBF do vlastného .pmtiles. Samotné čiary ciest
+  // sa odtiaľto NEKRESLIA: tie sú v základnej mape a druhýkrát by len ležali
+  // na tých istých miestach.
+  if (transportUrl) {
+    style.sources.transport = {
       type: "vector",
-      url: roadsUrl,
-      maxzoom: roadsMaxzoom,
+      url: transportUrl,
+      maxzoom: transportMaxzoom,
       attribution:
         '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
     };
@@ -5585,16 +5591,16 @@ export function buildStyle({
   // s číslom bez jednotky je presne to, čo je aj na tabuli. Číslo z tej
   // hodnoty potrebuje len smerovanie („zmestí sa vozidlo?"), a to si ju
   // parsuje samo (`docs/navigation.md`).
-  if (roadsUrl) {
-    // --- výška: to, kvôli čomu vrstva existuje ---
+  if (transportUrl) {
+    // --- výška: to, kvôli čomu je obmedzenie v archíve siete ---
     // Od z12, lebo obmedzenie výšky rozhoduje o tom, či tam vozidlo vôbec
     // prejde – to sa má dať vidieť skôr, než človek dojde na križovatku.
     add(
       {
         id: "road-limit-height",
         type: "symbol",
-        source: "roads",
-        "source-layer": "road_limit",
+        source: "transport",
+        "source-layer": "transport",
         minzoom: 12,
         filter: ["any", ["has", "maxheight"], ["has", "maxheight_physical"]],
         layout: {
@@ -5626,8 +5632,8 @@ export function buildStyle({
       {
         id: "road-limit-mass",
         type: "symbol",
-        source: "roads",
-        "source-layer": "road_limit",
+        source: "transport",
+        "source-layer": "transport",
         minzoom: 14,
         filter: ["all",
           ["!", ["has", "maxheight"]],
@@ -5662,8 +5668,8 @@ export function buildStyle({
       {
         id: "road-maxspeed",
         type: "symbol",
-        source: "roads",
-        "source-layer": "road_limit",
+        source: "transport",
+        "source-layer": "transport",
         minzoom: 15,
         filter: ["has", "maxspeed"],
         layout: {

@@ -13,12 +13,36 @@
 # metro, ozubnica, lanovková dráha), trajekty a lanovky – s menom, číslom,
 # povrchom, prístupom a smerovosťou.
 #
+# OBMEDZENIA NA CESTE SÚ TU, NIE VEDĽA. Výška podjazdu, šírka, hmotnosť,
+# rýchlosť, pruhy a stúpanie mali chvíľu vlastnú vrstvu (`-roads.pmtiles`)
+# a vlastný predfilter – lenže boli to ATRIBÚTY TÝCH ISTÝCH CIEST, aké sú tu.
+# Tá istá cesta tak ležala v dvoch archívoch: raz s menom a povrchom, raz
+# s výškou podjazdu, a kto chcel oboje, musel si ich spájať sám cez `osm_id`.
+# Odkedy je to jeden archív, je „cesta" jeden riadok so všetkým, čo o nej OSM
+# vie – a chýbalo do toho presne osem tagov.
+#
+# HODNOTY OBMEDZENÍ SÚ REŤAZCE, A JE TO ZÁMER. Lákalo by dať `maxheight:
+# double` do `tag_mappings` a mať v dlaždici číslo. Planetiler ho ale parsuje
+# cez `Parse.parseDoubleOrNull`, ktorý po zlyhaní `Double.parseDouble` skúsi
+# `NumberFormat.parse` (planetiler-core, `util/Parse.java`, riadok 143) – a ten
+# vezme ČÍSLO ZO ZAČIATKU a zvyšok zahodí:
+#
+#   "3.8"    → 3,8   dobre
+#   "3.8 m"  → 3,8   dobre
+#   "12'6\"" → 12    TICHO ZLE – z 3,8 m je 12 m
+#   "50 mph" → 50    TICHO ZLE – z 80 km/h je 50
+#
+# Nula chýb v hláškach, nula chýb v builde, len zle nakreslená mapa. Do
+# dlaždice preto ide TO, ČO JE V OSM – a mapa ukazuje presne to, čo je na
+# tabuli. Číslo z toho potrebuje len smerovanie („zmestí sa vozidlo?"), a to si
+# ho parsuje samo (Valhalla má na `maxheight` a spol. vlastné čítanie tagov,
+# `docs/navigation.md`). `lanes` a `layer` sú `integer` – celé čísla bez
+# jednotky, na ktorých sa ten omyl spraviť nedá.
+#
 # ČO TO NIE JE. Nie je to navigačný graf: dlaždica je kreslený obraz s orezanou
 # geometriou, bez odbočovacích zákazov a bez topológie, po ktorej sa dá viesť
 # trasa. Na to je Valhallin graf (`docs/navigation.md`), ktorý má vlastný balík
-# vedľa tohto. A nie sú to ani obmedzenia na ceste (výška podjazdu, hmotnosť) –
-# tie majú vlastnú vrstvu (`workers/roads/roads.yml`), lebo sú vzácne a idú
-# o dva zoomy skôr než sieť, v ktorej ležia.
+# vedľa tohto a rozmery vozidla si berie z TÝCH ISTÝCH tagov priamo z PBF.
 #
 # ZOOMY SÚ TU TO HLAVNÉ ROZHODNUTIE, rovnako ako pri krajinných prvkoch.
 # Chodníkov, ciest k domom a poľných ciest je v OSM rádovo viac než ciest
@@ -38,9 +62,14 @@
 # zvoleným maxzoomom a padne).
 #
 # PREDFILTER (`workers/transport/filter.txt`) MUSÍ PUSTIŤ VŠETKO, ČO TU JE.
-# Keď sem pribudne trieda a do filtra nie, Planetiler dostane PBF, v ktorom
-# ten tag už nie je, a v dlaždiciach sa ticho neobjaví. Stráži to
-# `workers/lint/transport.py`.
+# Keď sem pribudne TRIEDA (nová hodnota `highway=`, `railway=`) a do filtra
+# nie, Planetiler dostane PBF, v ktorom ten tag už nie je, a v dlaždiciach sa
+# ticho neobjaví. Stráži to `workers/lint/transport.py`.
+#
+# Na obmedzenia to neplatí a je dobré vedieť prečo: `osmium tags-filter` berie
+# objekt CELÝ aj so všetkými tagmi, takže `w/highway` prinesie aj `maxheight`
+# a `maxspeed` toho istého úseku. Kľúč obmedzenia teda do filtra pridávať
+# netreba – trieda áno.
 schema_name: FricoMaps dopravná sieť
 schema_description: >-
   Všetko, po čom sa dá cestovať – cesty od diaľnice po schody, železnice,
@@ -53,12 +82,12 @@ sources:
     type: osm
     local_path: data/transport.osm.pbf
 
-# `layer` je celé číslo (nad/pod sebou); ako reťazec by sa v štýle ani
-# v analýze nedalo porovnávať. `maxspeed` a `lanes` tu ZÁMERNE nie sú – patria
-# k obmedzeniam na ceste (`workers/roads/roads.yml`) a druhá kópia tých hodnôt
-# by bola druhá pravda o tej istej ceste.
+# `layer` (nad/pod sebou) a `lanes` (počet pruhov) sú celé čísla; ako reťazec
+# by sa v štýle ani v analýze nedali porovnávať. Rozmery a rýchlosť tu ZÁMERNE
+# nie sú – tie ostávajú reťazcom, lebo nesú jednotku (rozpis v hlavičke).
 tag_mappings:
   layer: integer
+  lanes: integer
 
 definitions:
   # Atribúty sú pre všetky bloky ROVNAKÉ a píšu sa raz – dve kópie zoznamu by
@@ -110,6 +139,23 @@ definitions:
     # takže atribút jednoducho nevznikne.
     - key: usage
     - key: electrified
+    # ČI SA TAM VOZIDLO ZMESTÍ. Rozmer a hmotnosť sú vzácne (na ceste raz za
+    # desiatky kilometrov) a rozhodujú o tom, či tadiaľ vozidlo vôbec prejde.
+    # Sú to reťazce s jednotkou tak, ako sú v OSM – rozpis v hlavičke.
+    # `maxheight:physical` je nameraná výška podjazdu, keď tabuľa chýba.
+    - key: maxheight
+    - key: maxheight_physical
+      value:
+        tag_value: "maxheight:physical"
+    - key: maxwidth
+    - key: maxweight
+    # AKO SA TAM DÁ ÍSŤ. Rýchlosť, pruhy, šírka a stúpanie – takmer na každej
+    # ceste, takže z nich štýl kreslí až od vysokých zoomov; v archíve sú
+    # od začiatku, lebo ho číta aj ten, kto nekreslí.
+    - key: maxspeed
+    - key: width
+    - key: lanes
+    - key: incline
     - key: osm_id
       value: '${ feature.id }'
       type: long
@@ -386,6 +432,62 @@ examples:
           class: service
           druh: highway
           service: driveway
+
+  - name: Podjazd pod mostom – výška je na ceste POD ním, ktorá `bridge` nemá
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: secondary
+        ref: II/584
+        maxheight: "3.8"
+    output:
+      - layer: transport
+        geometry: line
+        min_zoom: 9
+        tags:
+          class: secondary
+          druh: highway
+          ref: II/584
+          maxheight: "3.8"
+          bridge: null
+          tunnel: null
+
+  - name: Jednotka v hodnote sa NEPREPOČÍTAVA, ide do dlaždice ako je
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: tertiary
+        maxheight: "3.8 m"
+        maxweight: "7.5"
+    output:
+      - layer: transport
+        geometry: line
+        min_zoom: 9
+        tags:
+          maxheight: "3.8 m"
+          maxweight: "7.5"
+
+  - name: Rýchlosť a pruhy sú na tej istej ceste ako jej meno
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: primary
+        name: Levočská
+        maxspeed: "90"
+        lanes: "2"
+    output:
+      - layer: transport
+        geometry: line
+        min_zoom: 6
+        tags:
+          class: primary
+          druh: highway
+          name: Levočská
+          maxspeed: "90"
+          lanes: 2
 
   - name: Rieka nie je doprava
     input:

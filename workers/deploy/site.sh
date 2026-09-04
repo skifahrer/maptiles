@@ -83,8 +83,10 @@ jq -n \
   --argjson features "$FEATURES_ENABLED" \
   --argjson fmaxzoom "$FEATURES_MAXZOOM" \
   --argjson points "$POINTS_ENABLED" \
-  --argjson roads "$ROADS_ENABLED" \
-  --argjson rdmaxzoom "$ROADS_MAXZOOM" \
+  --argjson boundaries "$BOUNDARIES_ENABLED" \
+  --argjson bmaxzoom "$BOUNDARIES_MAXZOOM" \
+  --argjson water "$WATER_ENABLED" \
+  --argjson wmaxzoom "$WATER_MAXZOOM" \
   --argjson transport "$TRANSPORT_ENABLED" \
   --argjson trmaxzoom "$TRANSPORT_MAXZOOM" \
   --argjson contours "$CONTOURS_ENABLED" \
@@ -166,20 +168,28 @@ jq -n \
         points: ("tiles/" + $region + "-points.pmtiles"),
         points_maxzoom: $fmaxzoom
       } else {} end)
-      # Obmedzenia na ceste – vlastný .pmtiles, takže vlastná položka
-      # a vlastný prepínač. `roads_maxzoom` tu MUSÍ byť: kto ho nenájde,
-      # dosadí `maxzoom` mapy (16) a nad skutočným stropom pýta neexistujúce
-      # dlaždice – štítky s výškou ticho zmiznú a vyzerá to ako pokazené
-      # ťuknutie do mapy, nie ako chýbajúce dáta.
-      + (if $roads then {
-        roads: ("tiles/" + $region + "-roads.pmtiles"),
-        roads_maxzoom: $rdmaxzoom
+      # HRANICE ÚZEMÍ A ICH NÁZVY – vlastný .pmtiles a balík `hranice`.
+      # `boundaries_maxzoom` tu MUSÍ byť: kto ho nenájde, dosadí `maxzoom`
+      # mapy (16) a nad skutočným stropom pýta neexistujúce dlaždice – mená
+      # obcí ticho zmiznú a vyzerá to ako pokazené ťuknutie do mapy, nie ako
+      # chýbajúce dáta.
+      + (if $boundaries then {
+        boundaries: ("tiles/" + $region + "-boundaries.pmtiles"),
+        boundaries_maxzoom: $bmaxzoom
       } else {} end)
-      # CELÁ DOPRAVNÁ SIEŤ – vlastný .pmtiles a jadro balíka `linie`.
-      # V MANIFESTE JE, HOCI JU ŠTÝL NEKRESLÍ: manifest je zoznam toho, čo
+      # VODSTVO – vlastný .pmtiles a balík `vodstvo`. Ten istý dôvod pre
+      # `water_maxzoom` ako o riadok vyššie.
+      + (if $water then {
+        water: ("tiles/" + $region + "-water.pmtiles"),
+        water_maxzoom: $wmaxzoom
+      } else {} end)
+      # CELÁ DOPRAVNÁ SIEŤ – vlastný .pmtiles a celý balík `cesty`.
+      # V MANIFESTE JE, HOCI Z NEJ ŠTÝL KRESLÍ LEN OBMEDZENIA NA CESTE
+      # (výška podjazdu, hmotnosť, rýchlosť – samotnú sieť kreslí základná
+      # mapa): manifest je zoznam toho, čo
       # v mape JE (odtiaľ ho číta `workers/deploy/subory.py`, keď skladá
       # balíky, aj katalóg), nie zoznam toho, čo si pýta štýl. Keby tu
-      # nebola, balík `linie` by sa skladal podľa mien súborov v `_site`
+      # nebola, balík `cesty` by sa skladal podľa mien súborov v `_site`
       # a vrstva by z neho pri prvej zmene mena ticho vypadla.
       # Cestná sieť sa v mape kreslí z vrstvy `transportation` základných
       # dlaždíc – rozpis, prečo je toto NAVYŠE a nie namiesto, je v hlavičke

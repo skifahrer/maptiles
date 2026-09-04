@@ -236,13 +236,16 @@ function styleFor(manifest) {
         ? `pmtiles://${baseUrl}/${region.points}`
         : null,
     pointsMaxzoom: region.points_maxzoom || 15,
-    // Obmedzenia na ceste – výška podjazdov a tunelov, šírka, hmotnosť,
-    // maximálna rýchlosť. Vlastný .pmtiles (workers/roads/roads.yml).
-    roadsUrl:
-      region.roads && roadsCheck.checked
-        ? `pmtiles://${baseUrl}/${region.roads}`
+    // DOPRAVNÁ SIEŤ (workers/transport/transport.yml) – balík `cesty`. Štýl
+    // z nej kreslí len OBMEDZENIA NA CESTE (výška podjazdov a tunelov, šírka,
+    // hmotnosť, maximálna rýchlosť); čiary ciest sú v základnej mape, takže
+    // prepínač v paneli sa aj ďalej volá „Obmedzenia na ceste" – to je to,
+    // čo sa ním zapína.
+    transportUrl:
+      region.transport && roadsCheck.checked
+        ? `pmtiles://${baseUrl}/${region.transport}`
         : null,
-    roadsMaxzoom: region.roads_maxzoom || 15,
+    transportMaxzoom: region.transport_maxzoom || 14,
     demSource: region.dem_source || DEFAULT_DEM_SOURCE,
     demTiles,
     // Tieňovanie má vo formulári pipeline vlastný výber modelu, takže
@@ -615,7 +618,7 @@ async function main() {
     $("row-rocks").hidden = !region.rocks;
     $("row-trails").hidden = !region.trails;
     $("row-features").hidden = !region.features;
-    $("row-roads").hidden = !region.roads;
+    $("row-roads").hidden = !region.transport;
     $("row-terrain").hidden = manifest.dem === null;
     $("row-hillshade").hidden = manifest.dem === null;
   };

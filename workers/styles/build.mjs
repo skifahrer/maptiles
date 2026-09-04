@@ -15,7 +15,8 @@
  *   --fonts-dir  … adresár s glyfmi na Pages – z neho sa vyberú fontstacky
  *   --overrides  … úpravy z developer módu (poc/web/style-overrides.json)
  *   --trails     … značené trasy z OSM relácií (vlastný .pmtiles)
- *   --roads      … obmedzenia na ceste (výška podjazdov a tunelov, šírka,
+ *   --transport  … dopravná sieť; štýl z nej kreslí obmedzenia na ceste
+ *                  (výška podjazdov a tunelov, šírka,
  *                  hmotnosť, maximálna rýchlosť), ktoré vrstva
  *                  `transportation` OpenMapTiles nenesie vôbec
  *   --features   … krajinné prvky (línie a plochy), ktoré schéma OpenMapTiles
@@ -96,8 +97,8 @@ const pointsMaxzoom = Number(args["points-maxzoom"] || featuresMaxzoom);
 const hasPoints = args.points === "true" || args.points === "1";
 // Obmedzenia na ceste (výška podjazdov, šírka, hmotnosť, maximálna rýchlosť)
 // – opäť vlastný .pmtiles, vlastný maxzoom a voliteľné.
-const roadsMaxzoom = Number(args["roads-maxzoom"] || 15);
-const hasRoads = args.roads === "true" || args.roads === "1";
+const transportMaxzoom = Number(args["transport-maxzoom"] || 14);
+const hasTransport = args.transport === "true" || args.transport === "1";
 // Zdroj výšok ovplyvňuje atribúciu vrstevníc a skál v štýle.
 const demSource = DEM_SOURCES[args["dem-source"]]
   ? args["dem-source"]
@@ -350,10 +351,10 @@ for (const type of MAP_TYPES) {
         ? `pmtiles://${baseUrl}/tiles/${region}-points.pmtiles`
         : null,
       pointsMaxzoom,
-      roadsUrl: hasRoads
-        ? `pmtiles://${baseUrl}/tiles/${region}-roads.pmtiles`
+      transportUrl: hasTransport
+        ? `pmtiles://${baseUrl}/tiles/${region}-transport.pmtiles`
         : null,
-      roadsMaxzoom,
+      transportMaxzoom,
       demSource,
       demTiles,
       demTilesSource,
@@ -392,7 +393,7 @@ console.log(
   `Značené trasy: ${hasTrails ? `áno (do z${trailsMaxzoom})` : "nie"}, ` +
   `Krajinné prvky: ${hasFeatures ? `áno (do z${featuresMaxzoom})` : "nie"}, ` +
   `Body v krajine: ${hasPoints ? `áno (do z${pointsMaxzoom})` : "nie"}, ` +
-  `Obmedzenia na ceste: ${hasRoads ? `áno (do z${roadsMaxzoom})` : "nie"}, ` +
+  `Dopravná sieť (obmedzenia na ceste): ${hasTransport ? `áno (do z${transportMaxzoom})` : "nie"}, ` +
   `Vrstevnice: ${
     hasContours ? `áno (do z${contoursMaxzoom}, výšky: ${DEM_SOURCES[demSource].label})` : "nie"
   }, ` +

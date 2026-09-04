@@ -91,13 +91,18 @@
         "avoid_tertiary",
         "avoid_track",
         "top_speed",
+        "vehicle_height",
+        "vehicle_weight",
+        "vehicle_width",
+        "vehicle_length",
         "vignettes"
       ]
     },
     "bus": {
       "name": "Autobusom (vozidlo, nie linka)",
       "costing": { "valhalla": "bus", "graphhopper": "car" },
-      "options": ["avoid_motorway", "avoid_trunk", "avoid_toll", "avoid_track", "top_speed"],
+      "options": ["avoid_motorway", "avoid_trunk", "avoid_toll", "avoid_track", "top_speed",
+                  "vehicle_height", "vehicle_weight", "vehicle_width", "vehicle_length"],
       "note": [
         "POZOR, TOTO NIE JE CESTOVANIE AUTOBUSOM. `bus` je v motore VOZIDLO –",
         "trasa pre autobus ako pre auto s inými rozmermi a zákazmi. Kto sa",
@@ -250,6 +255,72 @@
         "Karavan so stovkou na tachometri má diaľnicu prestať vyhrávať sám,",
         "bez toho, aby sa jej musel vyhýbať."
       ]
+    },
+    "vehicle_height": {
+      "name": "Výška vozidla",
+      "type": "size",
+      "unit": "m",
+      "range": [1.5, 4.5],
+      "default": null,
+      "valhalla": { "set_value": "height" },
+      "graphhopper": {
+        "priority": [{ "if": "max_height < {value}", "multiply_by": "0" }]
+      },
+      "note": [
+        "TOTO JE DRUHÁ POLOVICA OBMEDZENÍ NA CESTE. Výška podjazdu je v OSM",
+        "(`maxheight`) a odteraz aj v balíku `cesty` ako atribút tej istej",
+        "cesty – tam je NA POZRETIE („pod týmto mostom je 3,8 m“). Tu je tá",
+        "istá hodnota NA POUŽITIE: povedz, aké vysoké vozidlo máš, a trasa sa",
+        "podjazdu vyhne. Bez tejto voľby je obmedzenie v dlaždici údaj, ktorý",
+        "si musí každý prečítať sám, a navigácia ho ticho ignoruje.",
+        "",
+        "Graf ich má z toho istého PBF ako mapa a nič sa preň nefiltruje",
+        "(`workers/routing/pbf.sh` berie celé štátne extrakty), takže tagy",
+        "v ňom SÚ – chýbalo len to, aby si ich niekto vypýtal.",
+        "",
+        "JEDNOTKA JE METER A PREPOČÍTAVA SA TU, nie v dlaždici: motor chce",
+        "číslo, kým v OSM je hodnota reťazec s jednotkou (`3.8 m`, `12'6\"`).",
+        "Preto je v dlaždici to, čo je na tabuli, a tu to, čo pochopí motor."
+      ]
+    },
+    "vehicle_weight": {
+      "name": "Hmotnosť vozidla",
+      "type": "size",
+      "unit": "t",
+      "range": [1.0, 60.0],
+      "default": null,
+      "valhalla": { "set_value": "weight" },
+      "graphhopper": {
+        "priority": [{ "if": "max_weight < {value}", "multiply_by": "0" }]
+      },
+      "note": [
+        "Vo Valhalle je `weight` voľba nákladného costingu (`truck`); pri",
+        "`auto` ju motor prijme a nepoužije. Je to teda voľba, ktorá dáva",
+        "zmysel s `bus` a s nákladným vozidlom – pri osobnom aute je",
+        "obmedzenie hmotnosti aj tak zriedka to, čo trasu rozhodne."
+      ]
+    },
+    "vehicle_width": {
+      "name": "Šírka vozidla",
+      "type": "size",
+      "unit": "m",
+      "range": [1.0, 3.0],
+      "default": null,
+      "valhalla": { "set_value": "width" },
+      "graphhopper": {
+        "priority": [{ "if": "max_width < {value}", "multiply_by": "0" }]
+      }
+    },
+    "vehicle_length": {
+      "name": "Dĺžka vozidla",
+      "type": "size",
+      "unit": "m",
+      "range": [2.0, 25.0],
+      "default": null,
+      "valhalla": { "set_value": "length" },
+      "graphhopper": {
+        "priority": [{ "if": "max_length < {value}", "multiply_by": "0" }]
+      }
     },
     "vignettes": {
       "name": "Diaľničná známka po krajinách",

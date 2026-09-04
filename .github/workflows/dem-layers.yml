@@ -19,7 +19,8 @@ name: Mapa · vrstvy z výškového modelu
 #
 # Bokom od toho to `build-map-region.yml` aj potrebuje: mal 130 KiB pri strope
 # 128 KiB + 466 B a nad ním ho GitHub TICHO NEPRIJME (dôvod a čísla sú
-# v hlavičke `roads.yml`). Týchto jedenásť jobov je z neho tá najväčšia časť.
+# v hlavičke `transport.yml`). Týchto jedenásť jobov je z neho tá najväčšia
+# časť.
 #
 # ── ČO JE V ŇOM ───────────────────────────────────────────────────────────
 #   check-dem          je v sklade model pre naše územie? čo treba doplniť?
@@ -43,7 +44,7 @@ name: Mapa · vrstvy z výškového modelu
 # cez `secrets: inherit` a podiely na rozpočte stránky cez inputy – tie totiž
 # číta aj job `tiles` u volajúceho (koľko mu z rozpočtu zostalo), takže sú
 # definované RAZ tam a sem sa podávajú. To isté a z toho istého dôvodu robí
-# `roads.yml` s `budget_pct`.
+# `transport.yml` s `budget_pct`.
 #
 # Zvyšok `env:` (sklady na Drive, ladenie hladkosti vrstevníc a obrysu skál)
 # sa presťahoval SEM CELÝ: čítajú ho iba tieto joby, takže by kópia
@@ -489,7 +490,7 @@ env:
   # ho nededí a ten istý údaj číta aj job `tiles` u volajúceho, keď si počíta,
   # koľko mu z rozpočtu zostalo. Definované sú preto RAZ, u volajúceho
   # (`build-map-region.yml`), a sem sa podávajú; to isté a z toho istého dôvodu
-  # robí `roads.yml` s `budget_pct`.
+  # robí `transport.yml` s `budget_pct`.
   BUDGET_CONTOURS_PCT: ${{ inputs.budget_contours_pct }}
   BUDGET_ROCKS_PCT: ${{ inputs.budget_rocks_pct }}
   BUDGET_TERRAIN_PCT: ${{ inputs.budget_terrain_pct }}
