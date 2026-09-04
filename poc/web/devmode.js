@@ -224,9 +224,8 @@ const TRAIL_MARK_KEYS = Object.fromEntries(TRAIL_MARK_COLOURS);
 const BAKED_IMAGE = /^(mark-|shield-|pat:)/;
 const pickableIcons = (set, extra) => {
   const vsetky = (set?.icons || []).filter((n) => !BAKED_IMAGE.test(n));
-  // SADA MÁ TÚ ISTÚ IKONU DVAKRÁT: `aerialway` aj `aerialway_11`. Štýl
-  // používa tú s príponou (`specialIcons`, `iconClasses`), takže tá bez nej
-  // je v zozname len dvojička, ktorá vyzerá rovnako a nedá sa od nej odlíšiť.
+  // sada má tú istú ikonu dvakrát (`aerialway` aj `aerialway_11`); štýl
+  // používa tú s príponou, tá bez nej je len nerozoznateľná dvojička
   const s = set?.suffix;
   const maPriponu = new Set(s ? vsetky.filter((n) => n.endsWith(s)) : []);
   const bezDvojiciek = s
@@ -360,8 +359,7 @@ async function copyText(text, button) {
 const zoomRangeText = (layer) => {
   const mn = layer.minzoom ?? 0;
   const mx = layer.maxzoom ?? MAX_DISPLAY_Z + 4;
-  // Nad MAX_DISPLAY_Z sa priblížiť nedá, takže „do z21" a „bez hornej hranice"
-  // je pre čitateľa to isté.
+  // nad MAX_DISPLAY_Z sa priblížiť nedá
   const noTop = mx > MAX_DISPLAY_Z;
   if (mn <= 0 && noTop) return "vždy";
   if (noTop) return `z${mn}+`;
@@ -397,18 +395,15 @@ function zoomRangeFor(layer, z, on) {
   if (on) {
     const patch = { show: true };
     if (z < mn) patch.minzoom = z;
-    // `maxzoom` je horná hranica bez rovnosti – aby sa vrstva kreslila aj na
-    // `z`, musí siahať o krok vyššie. Hodnotu treba zapísať aj na samom
-    // vrchu: vrstva môže mať vlastný `maxzoom` zo štýlu (POI má 16), takže
-    // „zmazať úpravu" by ju na z20 nezaplo.
+    // `maxzoom` je horná hranica bez rovnosti; zapísať treba aj na vrchu,
+    // lebo vrstva môže mať vlastný `maxzoom` zo štýlu
     if (z >= mx) patch.maxzoom = Math.min(z + 1, top);
     return patch;
   }
 
   // Vrstva sa na tom zoome aj tak nekreslí – netreba nič meniť.
   if (z < mn || z >= mx) return {};
-  // Bližší koniec ustúpi; pri rovnakej vzdialenosti sa oreže zospodu, lebo
-  // mapa sa častejšie ladí smerom „od akého zoomu sa to objaví".
+  // bližší koniec ustúpi; pri rovnosti sa oreže zospodu
   if (z - mn <= mx - 1 - z) {
     return z + 1 >= mx ? { hide: true } : { minzoom: z + 1 };
   }
@@ -522,7 +517,6 @@ export function initDevMode({
   /** Čo sa pri poslednom vložení nedalo preniesť – vypíše to stavový riadok. */
   let clipNote = "";
 
-  // ---------- základná kostra ----------
   const body = el("div", { class: "dev-body" });
   const status = el("div", { class: "dev-status" });
   const tabsBar = el("div", { class: "dev-tabs" });
@@ -542,12 +536,8 @@ export function initDevMode({
   /** Bitmapy spritov pre náhľad ikoniek – načítajú sa raz. */
   const spriteImages = new Map();
 
-  // Rýchly prepínač svetlá/tmavá – bez neho by ladenie tmavého variantu farby
-  // (`paintDark`, záložka „Vrstvy") znamenalo zatvoriť developer mode, prepnúť
-  // tému v paneli nastavení a otvoriť ho znova. Prepína len medzi týmito
-  // dvoma: ostatné dve témy (Outdoor, Retro) ostávajú vo výbere pod ⚙,
-  // lebo tmavý variant patrí len téme „tmava" (rozpis pri `applyLayerOverrides`
-  // v themes.js).
+  // rýchly prepínač svetlá/tmavá – tmavý variant farby sa inak nedá ladiť bez
+  // zatvorenia panela. Len medzi týmito dvoma: `paintDark` platí len pre `tmava`.
   const themeToggle = setTheme
     ? el("button", {
         class: "dev-mini dev-themetoggle",
@@ -581,32 +571,25 @@ export function initDevMode({
   root.appendChild(body);
   root.appendChild(status);
 
-  // Posuvník zoomu sleduje mapu, takže zoznam vždy ukazuje, čo je naozaj
-  // povolené na tom zoome, na ktorom sa práve pozeráme.
+  // posuvník zoomu sleduje mapu, nech zoznam ukazuje, čo je naozaj povolené
   const map = getMap();
   if (map) {
     map.on("zoomend", () => {
       zoomView = map.getZoom();
-      // Pásik zoomov je aj v stohu a v inšpektore (tam ukazuje rozsah tej
-      // vrstvy, ktorá prvok pod kurzorom naozaj nakreslila) – keby sa
-      // prekresľovali len „Vrstvy", ukazoval by tam zoom spred priblíženia.
+      // pásik zoomov je aj v stohu a v inšpektore
       if (tab !== "layers" && tab !== "stack" && tab !== "pick") return;
       if (zoomTimer) clearTimeout(zoomTimer);
       zoomTimer = setTimeout(renderBody, 120);
     });
 
-    // Inšpektor berie klik len s otvorenou záložkou „Prvky" – inak by
-    // developer mode potichu zobral kliknutie popupu s POI.
+    // inak by developer mode potichu zobral kliknutie popupu s POI
     map.on("click", (ev) => {
       if (tab !== "pick") return;
       pickAt(ev.point, ev.lngLat);
     });
 
-    // Po každej zmene štýlu (farba, vrstva, prepnutie témy) sa vrstvy
-    // zvýraznenia stratia – `setStyle` zmaže všetko, čo v novom štýle nie je.
-    // Doplnenie ide cez timeout, aby prebehlo až po dokončení zmeny; podmienka
-    // `getLayer` v `restoreHighlight` zároveň bráni zacykleniu (`addLayer`
-    // vyvolá `styledata` znova).
+    // `setStyle` zmaže všetko, čo v novom štýle nie je, takže sa vrstvy
+    // zvýraznenia dopĺňajú cez timeout; `getLayer` bráni zacykleniu
     let restoreTimer = null;
     map.on("styledata", () => {
       if (!picked || map.getLayer(`${HL_PREFIX}-line`)) return;
@@ -615,11 +598,8 @@ export function initDevMode({
     });
   }
 
-  // ---------- výber prvkov v mape (záložka Prvky) ----------
-  // Mapa je poskladaná z desiatok vrstiev nad sebou: na jednom mieste býva
-  // plocha, cesta, jej obrys, vrstevnica, pásik trasy aj popisok. Inšpektor
-  // vypíše **všetko**, čo je pod kurzorom, aj so všetkými atribútmi – takže
-  // je vidieť, z ktorej vrstvy to je a čo v dlaždici naozaj stojí.
+  // výber prvkov v mape: inšpektor vypíše všetko pod kurzorom aj s atribútmi,
+  // takže je vidieť, z ktorej vrstvy to je a čo v dlaždici naozaj stojí
   const HL_SOURCE = "__dev-pick";
   const HL_PREFIX = "__dev-pick";
   const EMPTY_FC = { type: "FeatureCollection", features: [] };
@@ -726,8 +706,7 @@ export function initDevMode({
     }
     all = all.filter((f) => !String(f.layer?.id || "").startsWith(HL_PREFIX));
 
-    // Ten istý prvok býva v niekoľkých dlaždiciach (rozrezaný na hranici),
-    // takže by sa v zozname zopakoval.
+    // ten istý prvok býva v niekoľkých dlaždiciach (rozrezaný na hranici)
     const seen = new Set();
     const feats = [];
     for (const f of all) {
@@ -737,10 +716,7 @@ export function initDevMode({
       feats.push(f);
     }
 
-    // Pásiky značených trás sú posunuté VEDĽA cesty (`line-offset`), takže
-    // klik do cesty ich netrafí. Hľadajú sa preto v širšom okolí a vypisujú
-    // sa zvlášť: „ktoré trasy tadiaľto vedú" je iná otázka než „na čo som
-    // presne klikol".
+    // pásiky trás sú posunuté vedľa cesty, takže ich klik do cesty netrafí
     const trailIds = layersOfSource(m, "trails", "line");
     const wide = r + 18;
     let trails = [];
@@ -801,7 +777,6 @@ export function initDevMode({
     );
   }
 
-  // ---------- ukladanie a prekreslenie ----------
   function apply({ rerender = true, immediate = false } = {}) {
     saveOverrides(overrides);
     renderStatus();
@@ -810,8 +785,8 @@ export function initDevMode({
       onChange(overrides);
       if (rerender) render();
     };
-    // Aj „okamžité" použitie ide cez timeout: zmeny prichádzajú z change/blur
-    // handlerov a prekresliť panel priamo v nich Chromium neznesie.
+    // aj „okamžité" použitie ide cez timeout: prekresliť panel priamo
+    // v change/blur handleri Chromium neznesie
     if (applyTimer) clearTimeout(applyTimer);
     applyTimer = setTimeout(run, immediate ? 0 : 90);
   }
@@ -845,15 +820,12 @@ export function initDevMode({
           (perMap ? ` · po mapách: ${perMap}` : "") +
           " · uložené v prehliadači"
         : "Žiadne zmeny – mapa beží na pôvodnom štýle.") +
-      // Čo sa pri kopírovaní štýlu neprenieslo, musí byť vidieť: polovičný
-      // vklad bez slova vyzerá ako pokazené kopírovanie.
+      // čo sa pri kopírovaní neprenieslo, musí byť vidieť
       (clipNote ? ` — ${clipNote}` : "");
   }
 
-  // ---------- pomocníci nad overrides ----------
-  // Úpravy sú v dvoch priečinkoch: spoločné (`overrides.layers`) a pre jeden
-  // typ mapy (`overrides.maps[<typ>].layers`). Čítanie ich mieša rovnako ako
-  // generátor štýlu, zápis ide do toho, ktorý je práve zvolený.
+  // úpravy sú v dvoch priečinkoch: spoločné a pre jeden typ mapy. Čítanie ich
+  // mieša ako generátor štýlu, zápis ide do toho, ktorý je zvolený.
 
   /** Priečinok pre daný typ mapy; `create` ho v prípade potreby založí. */
   function mapBucket(create = false) {
@@ -888,9 +860,8 @@ export function initDevMode({
       ...(base.paint || own.paint
         ? { paint: { ...(base.paint || {}), ...(own.paint || {}) } }
         : {}),
-      // Tá istá otázka, čo `paint`, len pre jeho tmavý variant (rozpis pri
-      // `setLayerPaintDark`) – bez toho by úprava „len táto mapa" v paneli
-      // ukazovala tmavú farbu zo spoločnej úpravy, ale zlúčenie by ju stratilo.
+      // to isté ako `paint`, len pre tmavý variant – inak by zlúčenie stratilo
+      // tmavú farbu zo spoločnej úpravy
       ...(base.paintDark || own.paintDark
         ? { paintDark: { ...(base.paintDark || {}), ...(own.paintDark || {}) } }
         : {}),
@@ -958,9 +929,8 @@ export function initDevMode({
    * prevezme, čo je nastavené spoločne, a nezačne od nuly.
    */
   function patchSub(id, key, patch, base) {
-    // `base` je to, čo má vrstva zabudované v štýle (napr. kamienky v skalnej
-    // ploche). Bez neho by prvá zmena farby vzoru zahodila jeho veľkosť
-    // a hrúbku – úprava by vznikla z prázdna, nie z toho, čo je vidieť.
+    // `base` je to, čo má vrstva zabudované v štýle; bez neho by prvá zmena
+    // farby vzoru zahodila jeho veľkosť a hrúbku
     const cur = { ...(base || {}), ...((layerOverride(id) || {})[key] || {}) };
     setLayerOverride(id, { [key]: { ...cur, ...patch } });
   }
@@ -996,8 +966,7 @@ export function initDevMode({
   function drawOrder() {
     return (getStyle()?.layers || []).filter((l) => {
       const meta = l.metadata || {};
-      // Odvodené vrstvy (vzor, okraj) aj druhá polovica dvojice (zúbky,
-      // čiarkovanie železnice) sa presúvajú so svojou predlohou.
+      // odvodené vrstvy a druhá polovica dvojice sa presúvajú s predlohou
       if (meta["frico:derived"] || meta["frico:with"]) return false;
       // Maska regiónu ostáva navrchu vždy – rozpis pri `applyLayerOrder`.
       return !REGION_MASK_LAYERS.includes(l.id);
@@ -1010,7 +979,6 @@ export function initDevMode({
     (layer.metadata || {})["frico:derived"] ||
     layer.id;
 
-  // ---------- kategória a podkategória ----------
   /**
    * KATEGÓRIA JE VRSTVA, PODKATEGÓRIA JE JEJ ROZLÍŠENIE.
    *
@@ -1083,12 +1051,9 @@ export function initDevMode({
     if (!base) return null;
     const kat = categoryOf(styled);
     const varianty = variantsOf(base.id);
-    // Vrstva bez rozlíšení nemá kam viesť – riadok „kategória: táto vrstva"
-    // by v detaile každej vrstvy len zaberal miesto. V inšpektore je to iné:
-    // tam je to odkaz odtiaľ do editora, a ten treba vždy.
+    // vrstva bez rozlíšení nemá kam viesť; v inšpektore je to odkaz do editora
     if (!always && !kat && !varianty.length) return null;
-    // Zvýraznené je to, čo sa práve ladí: po prekliku na podkategóriu je to
-    // ona, nie kategória, v ktorej detaile ten riadok stojí.
+    // zvýraznené je to, čo sa práve ladí
     const naVariante = (i) =>
       kat ? kat.index === i : focusVariant === `${base.id}:${i}`;
     const kids = [
@@ -1133,8 +1098,8 @@ export function initDevMode({
     if (editScope === "all") {
       delete overrides.layers[id];
       for (const m of Object.values(overrides.maps)) delete m.layers?.[id];
-      // Aj presun v poradí kreslenia: ten je spoločný pre všetky mapy, takže
-      // v rozsahu „len táto mapa" ho zrušiť nemožno – tak ako spoločnú úpravu.
+      // presun v poradí je spoločný pre všetky mapy, tak sa v rozsahu jednej
+      // mapy zrušiť nedá
       setLayerOrder(id, undefined);
     } else {
       delete mapBucket()?.layers?.[id];
@@ -1185,14 +1150,12 @@ export function initDevMode({
     let done = 0;
     for (const id of ids) {
       const target = style.layers.find((l) => l.id === id);
-      // Vrstva, z ktorej sa kopírovalo, sa preskočí: vznikla by z toho úprava
-      // presne s tým, čo v štýle aj tak je – teda „zmena", ktorá nič nemení.
+      // vrstva, z ktorej sa kopírovalo, by dostala úpravu, čo nič nemení
       if (!target || target.id === styleClip.from) continue;
       const { patch, skipped: miss } = pasteStyle(styleClip, target);
       for (const m of miss) skipped.add(m);
       if (!Object.keys(patch).length) continue;
-      // `paint` sa dopĺňa po vlastnostiach, aby vloženie nezmazalo farbu,
-      // ktorú si tam niekto nastavil zvlášť; ostatné kľúče sa prepíšu.
+      // `paint` sa dopĺňa po vlastnostiach, ostatné kľúče sa prepíšu
       const cur = { ...((scopedOverride(id) || {}).paint || {}) };
       setLayerOverride(id, {
         ...patch,
@@ -1242,7 +1205,6 @@ export function initDevMode({
   const canDecorate = (layer) =>
     layer.type === "fill" || layer.type === "line" || layer.type === "fill-extrusion";
 
-  // ---------- ovládacie prvky ----------
   function colorControl({ value, onInput, onReset, changed, note }) {
     const hex = toHex6(value);
     // Alfu drží políčko, nie pipetka – rozpis pri `alphaOf` vyššie.
@@ -1260,8 +1222,7 @@ export function initDevMode({
       onInput(text.value);
     });
     text.addEventListener("change", () => {
-      // Nezrozumiteľný zápis nemá prepísať farbu na čiernu: vrátime sa
-      // k tomu, čo v políčku bolo, a alfa ostane, kde bola.
+      // nezrozumiteľný zápis nemá prepísať farbu na čiernu
       if (!isHexColor(text.value)) {
         text.value = withAlpha(picker.value, alpha);
         return;
@@ -1341,7 +1302,6 @@ export function initDevMode({
     return el("label", { class: "dev-field" }, [el("span", { text: label }), select]);
   }
 
-  // ---------- tab: vrstvy ----------
   /** Vrstvy, ktoré vypisujeme – odvodené (vzor, okraj) patria pod svoju predlohu. */
   function listedLayers() {
     return getStyle().layers.filter((l) => !(l.metadata || {})["frico:derived"]);
@@ -1375,8 +1335,7 @@ export function initDevMode({
   function setVisible(ids, visible) {
     const byProfile = mapTypeHidden(getStyle()?.layers || [], mapTypeId());
     for (const id of ids) {
-      // „Všetky mapy" musí znamenať naozaj všetky: výnimka nastavená
-      // v niektorej mape by inak spoločné rozhodnutie potichu prebila.
+      // „všetky mapy" musí znamenať naozaj všetky
       if (editScope === "all") clearMapVisibility(id);
 
       if (!visible) {
@@ -1458,12 +1417,8 @@ export function initDevMode({
   function goToZoom(z) {
     zoomView = Math.min(MAX_DISPLAY_Z, Math.max(0, Number(z)));
     getMap()?.jumpTo({ zoom: zoomView });
-    // Prekreslenie ide o tik neskôr, nie priamo tu. Volá sa to totiž
-    // z `change` handlera číselného políčka a Chromium neznesie, keď sa
-    // uprostred spracovania udalosti vymení podstrom, v ktorom ten input
-    // leží: `replaceChildren` skončí výnimkou „The node to be removed is no
-    // longer a child of this node". Tá istá obchádzka je v `apply()` a bola
-    // tam napísaná presne z tohto dôvodu – tu chýbala.
+    // prekreslenie o tik neskôr: `replaceChildren` uprostred spracovania
+    // `change` vymení podstrom, v ktorom ten input leží, a Chromium to neznesie
     setTimeout(renderBody, 0);
   }
 
@@ -1502,8 +1457,7 @@ export function initDevMode({
     slider.addEventListener("change", () => goToZoom(slider.value));
     number.addEventListener("change", () => goToZoom(number.value));
 
-    // Skoky na zoomy, kde sa mapa naozaj láme (prehľad → okres → mesto →
-    // ulica → detail), nech sa nemusí trafovať posuvníkom.
+    // skoky na zoomy, kde sa mapa naozaj láme
     const jumps = [4, 8, 10, 12, 14, 16, 18, 20].map((zz) =>
       el("button", {
         type: "button",
@@ -1589,8 +1543,7 @@ export function initDevMode({
     });
     searchInput.addEventListener("input", () => {
       search = searchInput.value;
-      // Hľadanie je nový začiatok – zvýraznená podkategória z predošlého
-      // prekliku by ostala svietiť pri niečom, čo sa už nehľadá.
+      // hľadanie je nový začiatok
       focusVariant = null;
       renderBody();
       const next = body.querySelector(".dev-search");
@@ -1624,7 +1577,6 @@ export function initDevMode({
       )
     ]);
 
-    // ----- hromadné operácie -----
     const bulkColor = el("input", { type: "color", class: "dev-color", value: "#ff0000" });
     const bulk = el("div", { class: `dev-bulk${selectedLayers.size ? " on" : ""}` }, [
       el("span", { class: "dev-bulklabel", text: `Vybraných: ${selectedLayers.size}` }),
@@ -1664,8 +1616,7 @@ export function initDevMode({
           apply();
         }
       }),
-      // Hromadné „na tomto zoome áno/nie": vyber vrstvy, nastav zoom a jedným
-      // tlačidlom povedz, čo na ňom má byť vidieť.
+      // hromadné „na tomto zoome áno/nie"
       el("button", {
         type: "button",
         class: "dev-btn",
@@ -1722,8 +1673,7 @@ export function initDevMode({
           copyText(JSON.stringify(out, null, 2), ev.currentTarget);
         }
       }),
-      // Schránka na štýl je z detailu vrstvy, ale vložiť sa dá aj hromadne –
-      // „nech všetky múry vyzerajú ako plot" je jedno zadanie, nie desať.
+      // schránka na štýl je z detailu vrstvy, ale vložiť sa dá aj hromadne
       styleClip
         ? el("button", {
             type: "button",
@@ -1749,7 +1699,6 @@ export function initDevMode({
       })
     ]);
 
-    // ----- zoznam po skupinách -----
     const byGroup = new Map();
     for (const layer of layers) {
       const g = (layer.metadata || {})["frico:group"] || "ostatne";
@@ -1840,7 +1789,7 @@ export function initDevMode({
    */
   function renderStack() {
     const poradie = drawOrder();
-    // Odhora nadol: prvý riadok je posledná vrstva štýlu, teda tá navrchu.
+    // odhora nadol: prvý riadok je posledná vrstva štýlu
     const zhora = [...poradie].reverse();
     const q = stackSearch.trim().toLowerCase();
     const presuny = new Set((overrides.order || []).map((m) => m.id));
@@ -1863,9 +1812,8 @@ export function initDevMode({
 
     /** Kam presun zapíše `before`, keď má vrstva skončiť tesne NAD `cielom`. */
     const nadCiel = (cielIndex) => {
-      // „Nad" v zozname zhora nadol znamená „kreslí sa neskôr", teda tesne
-      // pred vrstvu, ktorá je nad cieľom. Nad prvým riadkom už nič nie je –
-      // vtedy je to „úplne navrch" (`null`).
+      // „nad" v zozname zhora znamená „kreslí sa neskôr"; nad prvým riadkom
+      // už nič nie je (`null` = úplne navrch)
       const vyssie = zhora[cielIndex - 1];
       return vyssie ? vyssie.id : null;
     };
@@ -1881,8 +1829,7 @@ export function initDevMode({
       const hidden = isHidden(layer);
       const inactive = !activeAt(layer, zoomView);
       const zmeneny = presuny.has(layer.id);
-      // Vzor, okraj a druhá polovica dvojice sa presúvajú s ňou – nech je
-      // vidieť, že sa nehýbe jedna vrstva, ale prvok.
+      // vzor, okraj a druhá polovica dvojice sa presúvajú s ňou
       const rodina = (getStyle()?.layers || []).filter(
         (l) => (l.metadata || {})["frico:derived"] === layer.id ||
                (l.metadata || {})["frico:with"] === layer.id
@@ -1892,9 +1839,8 @@ export function initDevMode({
         class:
           `dev-stackrow${zmeneny ? " changed" : ""}${hidden ? " off" : ""}` +
           `${inactive && !hidden ? " inactive" : ""}`,
-        // Reťazec, nie `true`: `draggable` je vymenovaný atribút a prázdna
-        // hodnota znamená „auto", teda NEŤAHATEĽNÉ – riadok by sa chytiť
-        // nedal a nikde by to nezasvietilo.
+        // reťazec, nie `true`: prázdna hodnota `draggable` znamená „auto",
+        // teda neťahateľné
         draggable: q ? null : "true",
         title: `${layer.id} · ${zhora.length - i}. odspodku`
       }, [
@@ -1961,14 +1907,12 @@ export function initDevMode({
           : null
       ]);
 
-      // ŤAHANIE. Kam vrstva padne, hovorí polovica riadka, nad ktorou kurzor
-      // je: horná = nad tento riadok, dolná = pod neho. Bez toho by sa nedalo
-      // povedať, či ide o „pred" alebo „za" – a jedna z tých dvoch odpovedí
-      // by vždy chýbala (napr. úplne navrch).
+      // kam vrstva padne, hovorí polovica riadka pod kurzorom: horná = nad,
+      // dolná = pod
       row.addEventListener("dragstart", (ev) => {
         dragId = layer.id;
         ev.dataTransfer.effectAllowed = "move";
-        // Bez `setData` Firefox ťahanie vôbec nespustí.
+        // bez `setData` Firefox ťahanie vôbec nespustí
         ev.dataTransfer.setData("text/plain", layer.id);
         row.classList.add("dragging");
       });
@@ -2069,8 +2013,7 @@ export function initDevMode({
       if (label) label.textContent = `Vybraných: ${selectedLayers.size}`;
     });
 
-    // Riadok rozlišuje „mám to upravené v tejto mape" od „mám to upravené
-    // spoločne" – inak by sa nedalo poznať, kde úprava vlastne sedí.
+    // riadok rozlišuje „upravené v tejto mape" od „upravené spoločne"
     const scoped = scopedOverride(layer.id);
     const cls =
       `dev-row${o ? " changed" : ""}${scoped ? " scoped" : ""}` +
@@ -2090,11 +2033,8 @@ export function initDevMode({
         }
       }),
       el("span", { class: `dev-kind k-${kind}`, text: KIND_LABELS[kind] || kind }),
-      // ČO MÁ VRSTVA NAVYŠE, MUSÍ BYŤ VIDIEŤ AJ ZATVORENÉ. Rozlíšenie podľa
-      // `kľúč = hodnota` je samostatná vrstva s vlastnou ikonou a farbou –
-      // kým sa o ňom dalo dozvedieť len rozbalením detailu, dalo sa naklikať
-      // a zabudnúť naň. To isté platí o obryse: „Miestne cesty – obrys" a
-      // „Miestne cesty" sú v zozname vedľa seba a líšia sa jedným slovom.
+      // čo má vrstva navyše, musí byť vidieť aj zatvorené: rozlíšenie podľa
+      // `kľúč = hodnota` aj obrys sa dali naklikať a zabudnúť na ne
       (o?.variants || []).length
         ? el("span", {
             class: "dev-varbadge",
@@ -2120,8 +2060,7 @@ export function initDevMode({
         el("span", { text: `${open ? "▾ " : "▸ "}${meta["frico:label"] || layer.id}` }),
         el("small", { text: layer.id })
       ]),
-      // Štítok s rozsahom je zároveň prepínač „na tomto zoome áno / nie" –
-      // to je pri prezeraní po zoomoch tá najčastejšia úprava vôbec.
+      // štítok s rozsahom je zároveň prepínač „na tomto zoome áno / nie"
       el("button", {
         type: "button",
         class: `dev-zrange${inactive ? " off" : ""}`,
@@ -2138,7 +2077,7 @@ export function initDevMode({
 
     return el("div", {
       class: "dev-item",
-      // Kotva pre odkaz „celá kategória" z inšpektora aj z podkategórie.
+      // kotva pre odkaz „celá kategória" z inšpektora
       "data-focus": `layer:${layer.id}`
     }, [head, open ? layerDetails(layer) : null]);
   }
@@ -2261,10 +2200,8 @@ export function initDevMode({
           smooth: false
         };
       }
-      // KRIVKA (zoomové zlomy) sa ukazuje tými istými riadkami: zlom je
-      // začiatok pásma a „plynulý prechod" je zaškrtnutý. Tak sa dá doladiť
-      // aj to, čo vzniklo kopírovaním štýlu z inej vrstvy (`snapshotStyle`
-      // krivku zo štýlu odfotí ako zlomy), bez druhého ovládania.
+      // krivka sa ukazuje tými istými riadkami: zlom je začiatok pásma
+      // a „plynulý prechod" je zaškrtnutý
       const st = sortStops(value.filter((s) => Array.isArray(s) && s.length === 2));
       if (st.length) {
         return {
@@ -2286,8 +2223,7 @@ export function initDevMode({
     if (!rows || !rows.length) return undefined;
     if (rows.length === 1) {
       const v = rows[0][2];
-      // Sto percent nie je úprava, je to „nechaj, čo počíta štýl" – a takú
-      // vetu netreba ukladať (`cleanRelative` by ju aj tak zahodila).
+      // sto percent nie je úprava, je to „nechaj, čo počíta štýl"
       if (isRelative(v) && (v.scale ?? 1) === 1 && (v.add ?? 0) === 0) return undefined;
       return v;
     }
@@ -2312,9 +2248,8 @@ export function initDevMode({
     const mode = stav.mode || (allowPercent ? "rel" : "abs");
     const smooth = stav.smooth;
     const zNow = zoomCell();
-    // `styleAt` je to, čo na tom zoome počíta štýl (farba aj číslo), `baseAt`
-    // je to isté len pre čísla – percento sa nedá počítať z hexu a `null`
-    // z neho je poctivejšia odpoveď než nula.
+    // `styleAt` je to, čo na tom zoome počíta štýl, `baseAt` len pre čísla –
+    // percento sa nedá počítať z hexu
     const styleAt = (z) => valueAtZoom(styleValue, z);
     const baseAt = (z) => {
       const v = styleAt(z);
@@ -2401,11 +2336,8 @@ export function initDevMode({
     /** Jeden riadok pásma: `z od – do`, hodnota, kôš. */
     const rowEl = (i) => {
       const [od, doZ] = rows[i];
-      // Hranica sa smie posunúť len tam, kde ostane pásmo aj susedovi – inak
-      // by z posunu vypadol prázdny rozsah. Prvé pásmo smie začínať aj nad
-      // z0: to, čo je pod ním, drží jeho hodnotu (`step` aj `interpolate`
-      // pod prvým zlomom nič neinterpolujú). Práve tak vyzerá krivka
-      // odfotená z inej vrstvy – prvý zlom má tam, kde ho má štýl.
+      // hranica sa smie posunúť len tam, kde ostane pásmo aj susedovi.
+      // Prvé pásmo smie začínať aj nad z0 – pod prvým zlomom sa neinterpoluje.
       const dolna = i === 0 ? 0 : rows[i - 1][0] + 1;
       const horna = doZ;
       const zInput = el("input", {
@@ -2436,7 +2368,6 @@ export function initDevMode({
       ]);
     };
 
-    // ---- hlavička: meno, hodnota (pri jedinom pásme), prepínač %, reset ----
     const modeBtn = (id, text, title) =>
       el("button", {
         type: "button",
@@ -2445,10 +2376,8 @@ export function initDevMode({
         title,
         onclick: () => {
           if (mode === id) return;
-          // PREPNUTIE NIČ NEZAHODÍ: percento sa vyčísli nad tým, čo počíta
-          // štýl na začiatku pásma, a pevná hodnota sa naopak prepočíta na
-          // percento. Presné to byť nemôže (percento drží krivku, pevná
-          // hodnota ju zahadzuje), ale prázdny zoznam by bol horší.
+          // prepnutie nič nezahodí: percento sa vyčísli nad tým, čo počíta štýl
+          // na začiatku pásma, a naopak. Presné to byť nemôže.
           const next = rows.map(([od, doZ, v]) => {
             const zaklad = baseAt(od);
             if (id === "rel") {
@@ -2557,8 +2486,7 @@ export function initDevMode({
     const where = opts.where || "paint";
     const o = layerOverride(layer.id) || {};
     const zapisVlastnost = where === "layout" ? setLayerLayout : setLayerPaint;
-    // Vlastnosť, ktorú štýl nenastavil, nie je „nič" – pri `layout` platí
-    // predvoľba MapLibre, a bez nej by percento nemalo čo násobiť.
+    // pri `layout` platí predvoľba MapLibre, bez nej by percento nemalo čo násobiť
     const vStyle = (layer[where] || {})[prop];
     const styleValue =
       vStyle !== undefined
@@ -2658,9 +2586,7 @@ export function initDevMode({
     }
 
     if (o) {
-      // Rozsah rozhoduje aj o tom, či je čo zahodiť: v „len táto mapa" sa
-      // spoločná úprava zrušiť NEDÁ a tlačidlo, ktoré po stlačení nič
-      // neurobí, je horšie než zhasnuté – povie prečo.
+      // v „len táto mapa" sa spoločná úprava zrušiť nedá; tlačidlo povie prečo
       const mozeReset = editScope === "all" || !!scoped;
       row.push(
         el("button", {
@@ -2700,19 +2626,14 @@ export function initDevMode({
     const o = layerOverride(layer.id) || {};
     const parts = [layerTools(layer)];
 
-    // ---- kategória a jej podkategórie ----
-    // Rozlíšenia sú až na konci detailu (sú to výnimky, nie hlavné nastavenie),
-    // takže bez tohto riadka sa o nich zhora nedalo dozvedieť – ani skočiť na
-    // ne, keď človek prišiel z inšpektora s „chcem len park".
+    // rozlíšenia sú až na konci detailu, tak sa o nich zhora nedalo dozvedieť
     const crumbs = categoryLinks(layer, { here: "layer" });
     if (crumbs) parts.push(crumbs);
 
     // ---- toto je obrys inej vrstvy ----
     parts.push(...borderLayerBanner(layer));
 
-    // ---- rozsah zoomu ----
-    // Zoom je prvý, lebo „čo je vidieť kedy" je najčastejšia otázka: pásik
-    // ukáže celý rozsah naraz a klikom sa mení, čísla sú na jemné doladenie.
+    // zoom je prvý: „čo je vidieť kedy" je najčastejšia otázka
     const zoomField = (prop, label) =>
       numberField({
         label,
@@ -2721,8 +2642,7 @@ export function initDevMode({
         max: 24,
         step: 0.5,
         placeholder: prop === "minzoom" ? "0" : "24",
-        // Šípka na prázdnom políčku by inak skočila na spodnú medzu, čiže
-        // „do z0" – teda rozsah, v ktorom vrstva nie je nikde.
+        // šípka na prázdnom políčku by skočila na spodnú medzu, teda „do z0"
         stepFrom: prop === "minzoom" ? 0 : MAX_DISPLAY_Z,
         onChange: (v) => {
           setLayerOverride(layer.id, { [prop]: v });
@@ -2791,9 +2711,8 @@ export function initDevMode({
 
     // ---- prerušovanie čiary ----
     if (layer.type === "line") {
-      // ČO JE V TOM VÝBERE VIDIEŤ, MUSÍ BYŤ TO, ČO JE V MAPE: prvou položkou
-      // je prerušovanie zo štýlu (`frico:dash`), takže pri železnici tam
-      // nesvieti „Plná". „Plná" je plnohodnotná úprava (rozpis v `cleanLayers`).
+      // prvou položkou je prerušovanie zo štýlu (`frico:dash`), takže pri
+      // železnici tam nesvieti „Plná". „Plná" je plnohodnotná úprava.
       parts.push(sectionTitle("Prerušovanie", "plná, čiarkovaná, bodkovaná…"));
       parts.push(
         el("div", { class: `dev-sub${o.dash ? " changed" : ""}` }, [
@@ -2844,10 +2763,8 @@ export function initDevMode({
     const paletteMap = (layer.metadata || {})["frico:palette"] || {};
     for (const [prop, value] of props) parts.push(...colorRow(layer, prop, value, paletteMap[prop]));
 
-    // FARBY, KTORÉ SI VRSTVA VYBERÁ VÝRAZOM (pásik trasy podľa značky z OSM).
-    // Tie sa na vrstve prepísať nedajú – menia sa v palete a platia pre celú
-    // tému. Ovládanie je aj tak tu, nech sa farba ladí tam, kde je vidieť,
-    // čo mení.
+    // farby, ktoré si vrstva vyberá výrazom (pásik trasy podľa značky), sa na
+    // vrstve prepísať nedajú – menia sa v palete a platia pre celú tému
     if (extraKeys.length) {
       const colors = mergedPalette(getTheme(), overrides);
       const changedPalette = overrides.palette[getTheme()] || {};
@@ -2887,9 +2804,8 @@ export function initDevMode({
     const o = layerOverride(layer.id) || {};
     const uprava = (o.paint || {})[prop];
     const bezVyplne = uprava === NO_FILL;
-    // BEZ VÝPLNE má zmysel len na ploche: plocha stratí farbu pozadia, ale
-    // vzor aj okraj na nej ostanú. Nie je to krytie 0 (to zhasne aj obrys
-    // z `fill-outline-color`) ani vypnutie vrstvy (tým by zmizol aj vzor).
+    // bez výplne má zmysel len na ploche: vzor aj okraj ostanú. Nie je to
+    // krytie 0 ani vypnutie vrstvy.
     const canNoFill = prop === "fill-color" || prop === "fill-extrusion-color";
     const label = COLOR_LABELS[prop] || prop.replace(/-color$/, "");
     const darkValue = (o.paintDark || {})[prop];
@@ -2916,8 +2832,7 @@ export function initDevMode({
         : layerValueEditor(layer, prop, { kind: "color", label })
     );
 
-    // Riadok navyše len vtedy, keď je čo ponúknuť – tmavý variant a „bez
-    // výplne". Pri priehľadnej farbe nemá tmavý variant čo prepísať.
+    // riadok navyše len vtedy, keď je čo ponúknuť
     if (!bezVyplne) {
       const extras = [];
       extras.push(
@@ -3013,8 +2928,7 @@ export function initDevMode({
     const set = (getIconSets?.() || []).find(
       (s) => s.id === selectedIconSource(overrides)
     ) || (getIconSets?.() || [])[0];
-    // Súčasná ikona je v zozname vždy, aj keby ju nasadená sada nemala –
-    // inak by výber ticho ukázal prvú položku a tvrdil, že je vybraná.
+    // súčasná ikona je v zozname vždy, aj keby ju nasadená sada nemala
     return [
       sectionTitle("Ikona", "ikona celej vrstvy; podľa kľúč = hodnota sa mení nižšie"),
       el("div", { class: `dev-sub${o.icon ? " changed" : ""}` }, [
@@ -3059,11 +2973,8 @@ export function initDevMode({
     const builtinPattern = (layer.metadata || {})["frico:pattern"] || null;
     const patChanged = "pattern" in o;
     const pat = patChanged ? o.pattern : builtinPattern;
-    // ČO JE POD VZOROM. Vzor je vždy DRUHÁ vrstva nad plochou, takže sám
-    // o sebe nehovorí nič: šrafovanie nad tmavozeleným lesom vyzerá inak než
-    // nad svetlou lúkou. Farba podkladu je preto v náhľade – ovládať sa dá
-    // hore vo „Farbách", kde je aj tak (druhá pipetka na to isté bola len
-    // druhé miesto, kde tú istú vec vrátiť späť).
+    // vzor je vždy druhá vrstva nad plochou, takže sám o sebe nehovorí nič;
+    // farba podkladu je preto v náhľade
     const podkladProp = primaryColorProp(layer);
     const podklad =
       o.paint && o.paint[podkladProp] === NO_FILL ? "none" : primaryColor(layer);
@@ -3074,9 +2985,7 @@ export function initDevMode({
     };
     const parts = [sectionTitle("Vzor", "šrafovanie, kamienky, vlastný obrázok")];
     const patternRow = [
-      // NÁHĽAD, NIE MENO. „Šupiny (skaly)" nepovie ani ako hustý ten vzor je,
-      // ani ako vyzerá nad farbou tejto plochy – a práve to sú tie dve veci,
-      // kvôli ktorým sa vzor prepína.
+      // náhľad, nie meno: „Šupiny (skaly)" nepovie, ako hustý ten vzor je
       el("button", {
         type: "button",
         class: "dev-patbtn",
@@ -3109,8 +3018,7 @@ export function initDevMode({
               ? "Vypnúť vzor, ktorý má vrstva zo štýlu"
               : "Bez vzoru",
             onclick: () => {
-              // „Žiadny" nad vrstvou so vzorom zo štýlu musí vzor VYPNÚŤ
-              // (`null`), nie len zahodiť úpravu – tá by ho vrátila späť.
+              // „Žiadny" musí vzor vypnúť (`null`), nie zahodiť úpravu
               setLayerOverride(layer.id, { pattern: builtinPattern ? null : undefined });
               apply({ immediate: true });
             }
@@ -3118,15 +3026,12 @@ export function initDevMode({
         : null
     ];
     if (pat) {
-      // Doladenie vychádza z ÚČINNÉHO vzoru (`pat`), nie z prázdna – inak by
-      // posun veľkosti nad skalnou plochou zabudol jej farbu aj krytie.
+      // doladenie vychádza z účinného vzoru, nie z prázdna
       const patch = (p) => {
         patchSub(layer.id, "pattern", p, pat);
         apply({ immediate: true });
       };
-      // FARBA, VEĽKOSŤ A HRÚBKA PLATIA LEN NA KRESLENÝ VZOR. Vlastný obrázok
-      // ich má zapečené v sebe (prevzorkoval sa pri nahratí), takže ponúkať
-      // ich pri ňom by boli tri políčka, ktoré nič nerobia.
+      // vlastný obrázok má farbu, veľkosť a hrúbku zapečené v sebe
       if (!pat.image) {
         patternRow.push(
           colorControl({
@@ -3166,8 +3071,7 @@ export function initDevMode({
         })
       );
     }
-    // „Zmenené" je úprava vzoru, nie vzor samotný: kamienky zo štýlu sú
-    // predvolený stav mapy, nie niečo, čo v tejto relácii niekto naklikal.
+    // „zmenené" je úprava vzoru, nie vzor zo štýlu
     parts.push(el("div", { class: `dev-sub${patChanged ? " changed" : ""}` }, patternRow));
 
     if (patternOpen.has(layer.id)) {
@@ -3180,9 +3084,8 @@ export function initDevMode({
             setLayerOverride(layer.id, {
               pattern: next
                 ? {
-                    // Kreslený vzor si nesie farbu, veľkosť a hrúbku – keď ich
-                    // vrstva ešte nemá, začne sa tmavším odtieňom vlastnej
-                    // výplne, nie čiernou: vzor má plochu kresliť, nie prebiť.
+                    // začne sa tmavším odtieňom vlastnej výplne, nie čiernou:
+                    // vzor má plochu kresliť, nie prebiť
                     ...(next.image
                       ? {}
                       : { size: 16, weight: 1, color: darken(primaryColor(layer)) }),
@@ -3298,8 +3201,7 @@ export function initDevMode({
             apply({ rerender: false });
           }
         }),
-        // Tmavý variant farby okraja – tá istá otázka ako pri `paintDark`,
-        // len na vlastnosti, ktorá nesedí v `paint` (okraj je odvodená vrstva).
+        // tmavý variant farby okraja – to isté ako `paintDark`
         out.colorDark !== undefined
           ? colorControl({
               value: out.colorDark,
@@ -3346,11 +3248,8 @@ export function initDevMode({
     }
     parts.push(el("div", { class: `dev-sub${out ? " changed" : ""}` }, outlineRow));
     if (out) {
-      // ŠÍRKA OKRAJA ZNAMENÁ PRI PLOCHE A PRI ČIARE NIEČO INÉ (rozpis pri
-      // `outlineWidth` v themes.js): plocha vlastnú hrúbku nemá, takže číslo
-      // je absolútna šírka obrysovej čiary a percento by nemalo z čoho
-      // počítať. Čiara hrúbku má, takže percento je „toľkokrát hrubší než
-      // čiara" a číslo „toľko px na každej strane".
+      // šírka okraja znamená pri ploche a pri čiare niečo iné (viď `outlineWidth`):
+      // plocha vlastnú hrúbku nemá, takže percento by nemalo z čoho počítať
       parts.push(
         zoomValueEditor({
           key: `${layer.id}:outline:width`,
@@ -3403,8 +3302,7 @@ export function initDevMode({
     for (const f of features) {
       for (const [k, v] of Object.entries(f.properties || {})) {
         if (v == null || v === "") continue;
-        // Meno, popis ani `ref` nie sú kategórie – rozlíšiť podľa nich by
-        // znamenalo variant na každú cestu zvlášť.
+        // meno, popis ani `ref` nie sú kategórie
         if (SKIP_ATTRS.has(k) || k.startsWith("name")) continue;
         if (!out.has(k)) out.set(k, new Map());
         const hodnoty = out.get(k);
@@ -3413,8 +3311,7 @@ export function initDevMode({
         hodnoty.set(s, (hodnoty.get(s) || 0) + 1);
       }
     }
-    // Atribút s jedinou hodnotou nerozlíši nič – variant by z predlohy vzal
-    // všetko a predloha by ostala prázdna.
+    // atribút s jedinou hodnotou nerozlíši nič
     for (const [k, v] of out) if (v.size < 2) out.delete(k);
     return out;
   }
@@ -3505,9 +3402,7 @@ export function initDevMode({
       const suhrn = variantSummary(v);
       const riadky = [
         el("div", { class: "dev-row" }, [
-          // ID PODKATEGÓRIE PATRÍ DO RIADKA. Inšpektor pod kurzorom hlási
-          // `landcover-grass__var1` – kým to tu nebolo napísané, nedalo sa
-          // povedať, ktorý z rámikov je ten, na ktorý sa práve pozerám.
+          // id podkategórie patrí do riadka: inšpektor hlási `…__var1`
           el("span", { class: "dev-varbadge", text: `podkategória ${i + 1}` }),
           el("span", { class: "dev-name" }, [
             el("span", { text: variantName(v, i) }),
@@ -3536,12 +3431,8 @@ export function initDevMode({
         ])
       ];
 
-      // ---- ikona ----
-      // AJ TAM, KDE SI VRSTVA MENO IKONY SKLADÁ VÝRAZOM (POI podľa triedy).
-      // Variant je vlastná vrstva a `variantLayers` jej `icon-image` prepíše
-      // natvrdo, takže „prameň má prameň a zvyšok vodných zdrojov studňu"
-      // funguje aj tam, kde sa ikona celej vrstvy vybrať nedá – a práve to
-      // je otázka, kvôli ktorej sa rozlíšenie podľa `kľúč = hodnota` robí.
+      // aj tam, kde si vrstva meno ikony skladá výrazom (POI podľa triedy):
+      // variant je vlastná vrstva a `variantLayers` jej `icon-image` prepíše
       if (isSymbol) {
         const kluc = `${layer.id}:${i}`;
         const zoStyle = typeof iconNow === "string" ? iconNow : "";
@@ -3587,7 +3478,6 @@ export function initDevMode({
         }
       }
 
-      // ---- farba ----
       const farbaProp = primaryColorProp(layer);
       if (farbaProp) {
         riadky.push(
@@ -3605,7 +3495,6 @@ export function initDevMode({
         );
       }
 
-      // ---- čiara: prerušovanie, hrúbka, okraj ----
       if (isLine) {
         riadky.push(
           el("div", { class: `dev-sub${v.dash ? " changed" : ""}` }, [
@@ -3616,9 +3505,7 @@ export function initDevMode({
               onChange: (d) => patchVariant(layer.id, i, { dash: d || undefined })
             })
           ]),
-          // Hrúbka variantu sa ladí tým istým editorom ako hrúbka vrstvy –
-          // vrátane pásiem, takže „nespevnená cesta je od z16 tenšia" je
-          // jedno naklikanie, nie prepísanie celej krivky.
+          // hrúbka variantu sa ladí tým istým editorom, vrátane pásiem
           zoomValueEditor({
             key: `${layer.id}:var${i}:line-width`,
             label: "hrúbka",
@@ -3683,7 +3570,6 @@ export function initDevMode({
       return parts;
     }
 
-    // ---- pridanie ----
     const atributy = scanAttrs(layer);
     if (!atributy.size) {
       parts.push(el("div", { class: "dev-sub" }, [
@@ -3705,7 +3591,7 @@ export function initDevMode({
         onChange: (k) => {
           variantAttr.set(layer.id, k);
           variantValues.set(layer.id, new Set());
-          // Len stav panela – mapa sa nemení, tak sa ani neprekresľuje.
+          // len stav panela – mapa sa nemení
           render();
         }
       }),
@@ -3753,7 +3639,6 @@ export function initDevMode({
     return parts;
   }
 
-  // ---------- tab: prvky ----------
   /**
    * PORADIE KRESLENIA jednej vrstvy.
    *
@@ -3792,9 +3677,8 @@ export function initDevMode({
         `${i + 1}. z ${poradie.length} · navrchu je posledná · platí pre všetky typy máp`
       ),
       el("div", { class: "dev-sub" }, [
-        // Susedia sa MUSIA dať dočítať celí: „posunul som to nad to správne?"
-        // je jediná otázka, na ktorú tento riadok odpovedá, a orezaný na
-        // „nad ňou: Kroviny a kos…" neodpovedá na ňu vôbec.
+        // susedia sa musia dať dočítať celí – orezané „nad ňou: Kroviny a kos…"
+        // neodpovedá na nič
         el("span", {
           class: "dev-note wrap",
           text:
@@ -3850,9 +3734,8 @@ export function initDevMode({
             })
           : null
       ]),
-      // Skok cez celý zoznam. „O jednu vyššie" je pri dvoch stovkách vrstiev
-      // na presun násypu pod cesty nepoužiteľné – toto je tá istá otázka
-      // položená naraz.
+      // skok cez celý zoznam: „o jednu vyššie" je pri dvoch stovkách vrstiev
+      // nepoužiteľné
       el("div", { class: `dev-sub${presun ? " changed" : ""}` }, [
         selectField({
           label: "kresliť tesne pod",
@@ -3886,8 +3769,7 @@ export function initDevMode({
     if (props.rel != null) {
       return ["relácia", `https://www.openstreetmap.org/relation/${props.rel}`];
     }
-    // OpenMapTiles dlaždice id prvkov nenesú; `osm_id` býva len tam, kde si
-    // ho schéma výslovne vypýtala.
+    // OpenMapTiles dlaždice id prvkov nenesú
     if (props.osm_id != null) {
       const id = Number(props.osm_id);
       if (Number.isFinite(id) && id > 0) {
@@ -3900,16 +3782,14 @@ export function initDevMode({
   function trailRow(p) {
     const colours = mergedPalette(getTheme(), overrides);
     const type = TRAIL_TYPES.find((t) => t.id === p.route);
-    // Tá istá cesta k farbe ako v štýle: pomenovaná značka → paleta,
-    // neznámy hex z OSM → priamo, žiadna farba → podľa druhu trasy.
+    // tá istá cesta k farbe ako v štýle: značka → paleta, hex z OSM → priamo
     const colour =
       colours[TRAIL_MARK_KEYS[p.colour]] ||
       p.hex ||
       colours[type?.palette] ||
       "#888888";
     const title = [p.ref, p.name].filter(Boolean).join(" ") || "(bez názvu)";
-    // Značka, ako ju do dlaždíc zapísal `workers/trails/tags.py` – v teréne
-    // je to práve ona, takže patrí do inšpektora hneď vedľa farby.
+    // značka, ako ju do dlaždíc zapísal `workers/trails/tags.py`
     const markLabel = p.mark
       ? `značka ${MARK_SHAPES.find((sh) => sh.id === p.mark)?.label || p.mark} ` +
         `(${p.mark_fg} na ${p.mark_bg === "yellow" ? "žltom" : p.mark_bg})`
@@ -3964,10 +3844,7 @@ export function initDevMode({
     const crumbs = categoryLinks(styled, { always: true });
     if (crumbs) parts.push(crumbs);
 
-    // ---- na akých zoomoch sa prvok naozaj kreslí ----
-    // Rozsah sa berie z vykreslenej vrstvy (podkategória ho dedí od predlohy),
-    // takže je to presne to, čo mapa robí – nie to, čo má nastavená predloha
-    // v inej téme či type mapy.
+    // rozsah sa berie z vykreslenej vrstvy, takže je to presne to, čo mapa robí
     parts.push(
       sectionTitle(
         "Zobrazené od–do",
@@ -3985,9 +3862,7 @@ export function initDevMode({
       ])
     );
 
-    // ---- poradie kreslenia ----
-    // Ten istý editor, aký je v detaile vrstvy: čo je nad čím, sa hľadá
-    // s pohľadom do mapy, a to je práve tu.
+    // ten istý editor, aký je v detaile vrstvy
     parts.push(orderSection(styled));
     return parts;
   }
@@ -4035,11 +3910,8 @@ export function initDevMode({
             ev.currentTarget
           )
       }),
-      // ✎ MUSÍ NIEKDE SKONČIŤ. `f.layer.id` je id vykreslenej vrstvy – pri
-      // podkategórii (`…__var1`) také id v zozname vrstiev nie je vôbec,
-      // takže hľadanie podľa neho vypísalo prázdny zoznam. Odkaz preto vedie
-      // na to miesto, kde sa prvok naozaj ladí: na rámik podkategórie
-      // v detaile jej predlohy, inak na samotnú vrstvu.
+      // ✎ musí niekde skončiť: id podkategórie (`…__var1`) v zozname vrstiev
+      // nie je, tak odkaz vedie na jej rámik v detaile predlohy
       el("button", {
         type: "button",
         class: "dev-mini",
@@ -4118,8 +3990,7 @@ export function initDevMode({
     const osmUrl = `https://www.openstreetmap.org/#map=${Math.round(picked.zoom)}/${lat.toFixed(5)}/${lng.toFixed(5)}`;
 
     const head = el("div", { class: "dev-bulk on" }, [
-      // Zoom, na ktorom sa klikalo, patrí k výberu rovnako ako súradnice:
-      // „prečo to tu nie je" je skoro vždy otázka o zoome.
+      // „prečo to tu nie je" je skoro vždy otázka o zoome
       el("span", { class: "dev-bulklabel", text: `${coords} · z${picked.zoom.toFixed(1)}` }),
       el("button", {
         type: "button",
@@ -4146,9 +4017,7 @@ export function initDevMode({
 
     const parts = [hint, head];
 
-    // Značené trasy sa vypisujú zvlášť: pásiky sú posunuté vedľa cesty, takže
-    // klik do cesty ich netrafí – a práve „ktoré trasy tadiaľto vedú" je to,
-    // čo človek pri chodníku hľadá.
+    // trasy zvlášť: pásiky sú posunuté vedľa cesty, klik do cesty ich netrafí
     if (picked.trails.length) {
       parts.push(
         el("h4", { class: "dev-h4", text: `Značené trasy tadiaľto (${picked.trails.length})` }),
@@ -4174,7 +4043,6 @@ export function initDevMode({
     return el("div", {}, parts);
   }
 
-  // ---------- tab: paleta ----------
   function renderPalette() {
     const theme = getTheme();
     const colors = mergedPalette(theme, overrides);
@@ -4309,11 +4177,8 @@ export function initDevMode({
     ]);
   }
 
-  // ---------- tab: trasy ----------
-  // Značené trasy sa nedajú poriadne ladiť v záložke Vrstiev: jeden druh
-  // trasy sú tam TRI vrstvy (pásik, ikona, názov), farba nie je v `paint`, ale
-  // vo výraze podľa značky z OSM, a odstup od cesty je vlastnosť všetkých
-  // naraz. Táto záložka je preto o druhu trasy, nie o vrstve.
+  // trasy sa nedajú ladiť v záložke Vrstiev: jeden druh sú tri vrstvy, farba
+  // nie je v `paint` a odstup od cesty je vlastnosť všetkých naraz
 
   /**
    * ČO SA NA JEDNEJ TRASE DÁ LADIŤ PODĽA ZOOMU.
@@ -4374,9 +4239,8 @@ export function initDevMode({
    */
   function layerBlock(id, role) {
     const layer = getStyle().layers.find((l) => l.id === id);
-    // Vrstva nemusí existovať: ikona sa nekreslí, keď ju sada ikoniek nemá,
-    // a značka vtedy, keď ju developer mode vypol. Mlčky sa preskočiť nesmie
-    // – inak by panel vyzeral, že sa tá vec nedá nastaviť.
+    // vrstva nemusí existovať (ikona bez sady, vypnutá značka); mlčky sa
+    // preskočiť nesmie
     if (!layer) {
       return el("div", { class: "dev-sub" }, [
         el("span", { class: "dev-note", text: `${role.label}: v mape teraz nie je (${role.note})` })
@@ -4389,10 +4253,7 @@ export function initDevMode({
       if ((layer.paint || {})[prop] === undefined) continue;
       rows.push(layerValueEditor(layer, prop, NUM_PROPS[prop] || { label: prop }));
     }
-    // Rovnako ako v záložke Vrstiev: ponúka sa to, čo na vrstve niečo znamená,
-    // nie to, čo štýl náhodou nastavil (rozpis pri `layoutPropsFor`). Bez toho
-    // sa nedal zaviesť rozostup tam, kde ho štýl nechal na predvolenom –
-    // a práve to je otázka „ako často má byť číslo cesty vidieť".
+    // ponúka sa to, čo na vrstve niečo znamená, nie to, čo štýl náhodou nastavil
     const daSa = new Set(layoutPropsFor(layer));
     for (const prop of role.layout || []) {
       if (!daSa.has(prop)) continue;
@@ -4556,7 +4417,6 @@ export function initDevMode({
     const changedPalette = overrides.palette[theme] || {};
     const gaps = trailGapPx(overrides);
 
-    // ---- odstup od cesty ----
     const gapFields = [
       ["road", "Pri ceste", "pásik ide tesne za okraj cesty aj s jej obrysom"],
       ["path", "Pri chodníku a lesnej ceste", "jemný odstup, nech je pod pásikom vidieť aj chodník"],
@@ -4580,9 +4440,8 @@ export function initDevMode({
       ])
     );
 
-    // ---- značky v teréne ----
-    // Rozostup je to, čo z „v pravidelných intervaloch" naozaj rozhoduje:
-    // menší = značka je vidieť častejšie, ale trasa sa zaplní štvorcami.
+    // rozostup rozhoduje: menší = značka je vidieť častejšie, ale trasa
+    // sa zaplní štvorcami
     const marks = trailMarkPx(overrides);
     const markFields = [
       ["spacing", "Rozostup po trase", ...TRAIL_MARK_RANGES.spacing, 5,
@@ -4611,14 +4470,12 @@ export function initDevMode({
       ])
     );
 
-    // ---- druhy trás ----
     const typeRows = TRAIL_TYPES.map((type) => {
       const def = trailTypeDef(type, overrides);
       const own = overrides.trails.types[type.id] || {};
       const icons = iconNames(trailIconNow(type.id));
-      // Zoomy a pásma sú za rozkliknutím: sú to štyri vrstvy krát pár čísel,
-      // takže rozbalené naraz pri šiestich druhoch trás by sa v paneli
-      // nedalo nič nájsť. Zbalené ostáva to, čo sa mení najčastejšie.
+      // zoomy a pásma sú za rozkliknutím – štyri vrstvy krát pár čísel × šesť
+      // druhov trás by sa nedalo prehľadať
       const otvorene = trailOpen.has(type.id);
       const layerZmeny = TRAIL_LAYER_ROLES.filter(
         (r) => layerOverride(`trail-${type.id}${r.suffix}`)
@@ -4685,9 +4542,8 @@ export function initDevMode({
         el("div", { class: `dev-sub${own.mark != null ? " changed" : ""}` }, [
           selectField({
             label: "Značka",
-            // Tri odpovede, nie dve: prázdna položka je „taká, aká je v OSM"
-            // (`osmc:symbol` – pásová, vrcholová, bicykel), „žiadna" značky
-            // vypne a meno tvaru ich všetky prekreslí na jeden.
+            // tri odpovede: prázdna = ako v OSM, „žiadna" vypne, meno tvaru
+            // prekreslí všetky na jeden
             value: own.mark != null ? own.mark || "ziadna" : "",
             options: [
               ["", "— podľa OSM —"],
@@ -4710,8 +4566,7 @@ export function initDevMode({
         el("div", { class: `dev-sub${own.icon != null ? " changed" : ""}` }, [
           el("span", {
             class: "dev-note",
-            // Ikonka sa kreslí len tam, kde trasa značku NEMÁ (neznáma farba
-            // z OSM) – inak by na jednej čiare boli dva symboly naraz.
+            // ikonka sa kreslí len tam, kde trasa značku nemá
             text: `Ikona druhu: ${own.icon != null
               ? (own.icon || "žiadna")
               : (trailIconNow(type.id) || "žiadna")} · kreslí sa tam, kde trasa značku nemá`
@@ -4733,15 +4588,13 @@ export function initDevMode({
           kluc: `trail:${type.id}`,
           value: own.icon != null ? own.icon : trailIconNow(type.id),
           names: icons,
-          // Prázdna položka je „žiadna" – trasa hustá na ikonky sa inak
-          // nedá zbaviť inak než skrytím celej vrstvy.
+          // prázdna položka je „žiadna"
           noneLabel: "žiadna",
           onPick: (v) => {
             setTrailType(type.id, { icon: v });
             apply({ immediate: true });
           }
         }),
-        // ---- zoom a pásma všetkých vrstiev tejto trasy ----
         otvorene
           ? el("div", { class: "dev-details" }, [
               el("div", { class: "dev-h5" }, [
@@ -4766,10 +4619,8 @@ export function initDevMode({
       ]);
     });
 
-    // ---- farby značiek ----
-    // Turistická značka farbu NESIE z OSM (červená, modrá…), takže farba
-    // druhu trasy je pri nej len náhrada pre trasy bez značky. Skutočné
-    // farby značiek sú tieto – a patria sem, nie do palety niekde inde.
+    // turistická značka farbu nesie z OSM, takže farba druhu trasy je len
+    // náhrada pre trasy bez značky
     const markRows = TRAIL_MARK_COLOURS.map(([name, key]) =>
       el("div", { class: `dev-prow${changedPalette[key] ? " changed" : ""}` }, [
         el("span", { class: "dev-swatch", style: `background:${colors[key]}` }),
@@ -4850,12 +4701,8 @@ export function initDevMode({
     ]);
   }
 
-  // ---------- tab: štítky ciest ----------
-  // Štítok s číslom cesty („D1", „I/18") sa nedá ladiť v záložke Vrstiev
-  // rovnako ako trasa: farba ani tvar nie sú v `paint`, sú UPEČENÉ do obrázka
-  // v sprite (`workers/assets/shields.mjs`). V prehliadači sa preto dá
-  // prepnúť TVAR – všetky tvary sú v sprite naraz, takže je to zmena mena
-  // obrázka; farba štítka sa mení v palete a prejaví sa až po builde.
+  // štítok s číslom cesty je upečený do obrázka v sprite, takže sa tu dá
+  // prepnúť len tvar (všetky tvary sú v sprite naraz); farba sa mení v palete
 
   /**
    * ČO SA NA ŠTÍTKU S ČÍSLOM CESTY DÁ LADIŤ PODĽA ZOOMU.
@@ -4890,8 +4737,7 @@ export function initDevMode({
       const own = overrides.shields[id];
       return el("div", { class: `dev-item${own ? " changed" : ""}` }, [
         el("div", { class: "dev-row" }, [
-          // Náhľad je obyčajný HTML štvorček vo farbách štítka – obrázok
-          // v sprite je až v mape a tu ide o to, ktorý riadok je ktorý.
+          // náhľad je obyčajný HTML štvorček – ide o to, ktorý riadok je ktorý
           el("span", {
             class: "dev-swatch",
             style: `background:${colors[colorKey]};color:${colors[textKey]};` +
@@ -4942,10 +4788,7 @@ export function initDevMode({
               : null
           })
         ]),
-        // Zoom, veľkosť čísla a rozostup po ceste – to isté, čo sa pri
-        // značkách trás ladí v záložke „Trasy". Dovtedy sa to dalo nastaviť
-        // len v zozname vrstiev, kde sa `road-shield-primary` musel najprv
-        // nájsť medzi dvoma stovkami iných.
+        // zoom, veľkosť čísla a rozostup – to isté, čo pri značkách trás
         layerBlock(`road-shield-${id}`, SHIELD_LAYER_ROLE)
       ]);
     });
@@ -4970,9 +4813,7 @@ export function initDevMode({
             overrides.shields = {};
             for (const [id, , , colorKey, , , textKey, borderKey] of SHIELD_DEFS) {
               for (const key of [colorKey, textKey, borderKey]) setPaletteColor(key, undefined);
-              // Aj zoom, veľkosť a rozostup – tie sedia v `layers`, nie
-              // v `shields`, takže by ich vyprázdnenie `shields` nechalo tak
-              // a tlačidlo by nesplnilo, čo sľubuje.
+              // aj zoom, veľkosť a rozostup: sedia v `layers`, nie v `shields`
               resetLayer(`road-shield-${id}`);
             }
             apply();
@@ -4982,7 +4823,6 @@ export function initDevMode({
     ]);
   }
 
-  // ---------- tab: ikony ----------
   /**
    * Náhľad ikoniek: sprite je SDF, takže alfa nesie vzdialenostné pole a
    * hrana symbolu leží na 0,75. Prekreslíme ho na plnú farbu, nech je vidieť,
@@ -5006,7 +4846,7 @@ export function initDevMode({
       const data = tctx.getImageData(0, 0, w, h);
       for (let i = 0; i < data.data.length; i += 4) {
         const a = data.data[i + 3];
-        // 191 = hrana SDF; úzky prechod okolo nej dá vyhladený okraj.
+        // 191 = hrana SDF; úzky prechod okolo nej dá vyhladený okraj
         const alpha = a >= 200 ? 255 : a >= 175 ? ((a - 175) * 255) / 25 : 0;
         data.data[i] = r;
         data.data[i + 1] = g;
@@ -5048,14 +4888,12 @@ export function initDevMode({
       });
 
       const canvas = el("canvas", { class: "dev-preview", width: "360", height: "26" });
-      // Ukážeme len ikony, ktoré sada naozaj má.
+      // len ikony, ktoré sada naozaj má
       const index = set.index || null;
       const names = PREVIEW_CLASSES.map((c) => `${c}${set.suffix || ""}`)
         .filter((n) => set.icons.includes(n))
         .slice(0, 14);
-      // Sprite načítava `spriteImageFor` – jedno miesto pre náhľad sady aj
-      // pre mriežku s výberom ikoniek. Kým sa obrázok stiahne, je plátno
-      // prázdne a po dokreslení sa panel prekreslí sám.
+      // sprite načítava `spriteImageFor` – jedno miesto pre náhľad aj mriežku
       if (names.length) {
         drawPreview(
           canvas,
@@ -5098,10 +4936,8 @@ export function initDevMode({
     ]);
   }
 
-  // ---------- vlastná sada ikoniek ----------
-  // Sprite je verejná dvojica súborov, takže nie je dôvod, aby bol zoznam
-  // sád uzavretý v zdrojáku. Sem sa zadá adresa BEZ prípony (pipeline si
-  // doplní `.json` aj `.png`) a prípona mien ikon, ak ju sada má (`_11`).
+  // vlastná sada ikoniek: adresa bez prípony (pipeline doplní `.json` aj
+  // `.png`) a prípona mien ikon, ak ju sada má (`_11`)
   function customSetSection() {
     const rows = (overrides.iconSets || []).map((set) =>
       el("div", { class: "dev-prow changed" }, [
@@ -5116,8 +4952,7 @@ export function initDevMode({
           text: "×",
           onclick: () => {
             overrides.iconSets = (overrides.iconSets || []).filter((x) => x.id !== set.id);
-            // Zmazaná sada nesmie ostať vybraná – mapa by sa pýtala na sprite,
-            // ktorý nikto nesťahuje, a ostala by bez ikon.
+            // zmazaná sada nesmie ostať vybraná, mapa by ostala bez ikon
             if (overrides.icons === set.id) overrides.icons = DEFAULT_ICON_SOURCE;
             apply({ immediate: true });
           }
@@ -5179,10 +5014,8 @@ export function initDevMode({
     ]);
   }
 
-  // ---------- vlastné ikony ----------
-  // Jedna konkrétna vec inak: značka, POI, čokoľvek symbolové. Obrázok sa
-  // prevedie na PNG a leží PRIAMO v úpravách, takže ho má aj mapa v mobile
-  // (rozpis v hlavičke `poc/web/dev-icons.js`).
+  // vlastné ikony: obrázok sa prevedie na PNG a leží priamo v úpravách,
+  // takže ho má aj mapa v mobile (viď `poc/web/dev-icons.js`)
   /**
    * NAHRATIE VLASTNÉHO OBRÁZKA AKO VZORU.
    *
@@ -5224,9 +5057,7 @@ export function initDevMode({
           ...(overrides.customIcons || []).filter((x) => x.name !== name),
           { name, png, pixelRatio }
         ];
-        // Obrázok aj jeho použitie ako vzoru naraz: keby sa uložil len
-        // obrázok, musel by ho človek ešte nájsť v mriežke – a keby sa uložil
-        // len vzor, ukazoval by na obrázok, ktorý v úpravách nie je.
+        // obrázok aj jeho použitie ako vzoru naraz
         const skuska = {
           ...overrides,
           customIcons: next,
@@ -5344,15 +5175,12 @@ export function initDevMode({
     ]);
   }
 
-  // ---------- tab: POI ----------
   function scanPoiClasses() {
     const map2 = getMap();
     if (!map2) return [];
     const counts = new Map();
-    // Aj vlastné body (prameň, jaskyňa, rozhľadňa): sú to tie isté kategórie
-    // s tou istou otázkou („akou značkou sa kreslia") a ich vrstva berie
-    // ikonu aj skryté triedy z toho istého zoznamu – keby tu neboli, dali by
-    // sa nastaviť len naslepo.
+    // aj vlastné body: sú to tie isté kategórie a ich vrstva berie ikonu
+    // aj skryté triedy z toho istého zoznamu
     for (const [source, sourceLayer] of [["omt", "poi"], ["points", "feature_point"]]) {
       let features = [];
       try {
@@ -5424,17 +5252,15 @@ export function initDevMode({
         setPoiHidden(cls, !check.checked);
         apply({ rerender: false });
       });
-      // Trieda skrytá spoločne sa v rozsahu „len táto mapa" vrátiť nedá –
-      // nech je jasné, prečo odškrtnutie nič neurobí.
+      // trieda skrytá spoločne sa v rozsahu „len táto mapa" vrátiť nedá
       const stuck = editScope === "map" && inBase.has(cls);
       const ikona = poiIconNow(cls);
       const zmenena = vlastne[cls] !== undefined;
       const otvorene = poiOpen.has(cls);
       const riadok = el("div", { class: `dev-prow${hidden.has(cls) ? " off" : ""}${zmenena ? " changed" : ""}` }, [
         check,
-        // NÁHĽAD JE PRIAMO V RIADKU, nie až po rozkliknutí: otázka „akú má
-        // táto kategória ikonu" je práve tá, kvôli ktorej sem človek ide,
-        // a meno (`restaurant_11`) na ňu neodpovedá.
+        // náhľad je priamo v riadku: meno (`restaurant_11`) neodpovedá na to,
+        // akú má kategória ikonu
         iconPreview({ name: ikona, set, image, custom: overrides.customIcons || [], color: farba }),
         el("button", {
           type: "button",
@@ -5538,7 +5364,6 @@ export function initDevMode({
     ]);
   }
 
-  // ---------- tab: súbor ----------
   function renderFile() {
     const json = serializeOverrides(overrides);
     const area = el("textarea", { class: "dev-json", spellcheck: "false" });
@@ -5625,7 +5450,6 @@ export function initDevMode({
     ]);
   }
 
-  // ---------- render ----------
   function renderBody() {
     const view =
       tab === "layers"
