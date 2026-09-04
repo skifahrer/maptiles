@@ -17,6 +17,13 @@
  *     zo všetkých vrstiev naraz, aj so všetkými atribútmi z dlaždice, plus
  *     zoznam značených trás, ktoré tadiaľ vedú (ich pásiky sú posunuté vedľa
  *     cesty, takže do nich klik netrafí),
+ *   - a **rovno tam ho aj ladiť**: pásik hovorí, na ktorých zoomoch sa prvok
+ *     naozaj kreslí (a kde v ňom je práve mapa), šípka „o úroveň vyššie" ho
+ *     posúva v poradí kreslenia dovtedy, kým nesedí, a odkazy vedú tam, kde
+ *     sa nastavuje – pri **podkategórii** (`landcover-grass__var1`, teda
+ *     „park" z „Trávy a lúk") do jej rámika, nie do celej kategórie; z rámika
+ *     vedie odkaz späť hore na kategóriu a z kategórie na všetky jej
+ *     podkategórie,
  *   - nastaviť **čokoľvek podľa zoomu jedným editorom**: každé číslo aj farba
  *     má pod sebou zoznam pásiem („z0–z13 takto, z14–z20 inak"), ktorý vždy
  *     pokrýva celý rozsah, a jedinú otázku navyše – či je hodnota **percentom
@@ -93,6 +100,7 @@ import {
   trailTypeDef,
   shieldShapeFor,
   DEFAULT_MAP_TYPE,
+  variantLayerFor,
   mapTypeDef,
   mapTypeHidden,
   normalizeMapType
@@ -463,6 +471,19 @@ export function initDevMode({
    */
   const variantAttr = new Map();
   const variantValues = new Map();
+  /**
+   * Podkategória, na ktorú sa práve odskočilo (`id vrstvy:poradie`) – nech je
+   * po prekliku z inšpektora vidieť, KTORÝ z rámikov je ten, čo bol pod
+   * kurzorom. Je to zvýraznenie, nie výber: ladiť sa dá ďalej čokoľvek.
+   */
+  let focusVariant = null;
+  /**
+   * Jednorazový pokyn „po prekreslení odskoč sem" (hodnota atribútu
+   * `data-focus`). Detail vrstvy má aj tri obrazovky, takže odkaz na
+   * podkategóriu bez odskoku by skončil na jeho začiatku – teda inde, než
+   * kam mieril.
+   */
+  let scrollTo = null;
   let poiClasses = [];
   let applyTimer = null;
   let zoomTimer = null;
@@ -566,7 +587,10 @@ export function initDevMode({
   if (map) {
     map.on("zoomend", () => {
       zoomView = map.getZoom();
-      if (tab !== "layers") return;
+      // Pásik zoomov je aj v stohu a v inšpektore (tam ukazuje rozsah tej
+      // vrstvy, ktorá prvok pod kurzorom naozaj nakreslila) – keby sa
+      // prekresľovali len „Vrstvy", ukazoval by tam zoom spred priblíženia.
+      if (tab !== "layers" && tab !== "stack" && tab !== "pick") return;
       if (zoomTimer) clearTimeout(zoomTimer);
       zoomTimer = setTimeout(renderBody, 120);
     });
@@ -985,6 +1009,125 @@ export function initDevMode({
     (layer.metadata || {})["frico:with"] ||
     (layer.metadata || {})["frico:derived"] ||
     layer.id;
+
+  // ---------- kategória a podkategória ----------
+  /**
+   * KATEGÓRIA JE VRSTVA, PODKATEGÓRIA JE JEJ ROZLÍŠENIE.
+   *
+   * „Tráva a lúky" je vrstva `landcover-grass`; „park" je jej rozlíšenie
+   * podľa `subclass = park`, ktoré sa v mape kreslí ako samostatná vrstva
+   * `landcover-grass__var1`. V ÚPRAVÁCH ale samostatná nie je – žije ako
+   * `variants[0]` svojej predlohy, a preto ju zoznam vrstiev nevypisuje.
+   *
+   * Inšpektor teda ukazoval id, ktoré sa nedalo nikde nájsť: ✎ do zoznamu
+   * vrstiev nenašlo nič a od „chcem prefarbiť len park" k tomu jedinému
+   * rámiku, kde sa park ladí, neviedla žiadna cesta. Tieto tri funkcie sú tá
+   * cesta – tam aj späť.
+   */
+  const styleLayer = (id) => (getStyle()?.layers || []).find((l) => l.id === id) || null;
+
+  /** Meno vrstvy tak, ako ho vypisuje zoznam. */
+  const layerLabel = (l) => (l?.metadata || {})["frico:label"] || l?.id || "";
+
+  /**
+   * Nadradená kategória – vrstva, do ktorej priečinka úprava naozaj patrí.
+   * Odvodené vrstvy (podkategória, vzor, okraj) vlastný priečinok nemajú:
+   * zoom aj poradie kreslenia držia po predlohe, takže „vypni to na z14"
+   * musí ísť na ňu, inak by sa zapísalo tam, kam sa mapa nepozerá.
+   */
+  const editBase = (layer) =>
+    styleLayer((layer?.metadata || {})["frico:derived"] || layer?.id) || layer || null;
+
+  /**
+   * Podkategória, ak vrstvu nakreslilo rozlíšenie: predloha, poradové číslo
+   * a samotné rozlíšenie z úprav. `__varN` píše `variantLayers` v themes.js –
+   * a `__outline` za ním má obrys tej podkategórie, ktorý patrí k tomu istému.
+   */
+  function categoryOf(layer) {
+    const parentId = variantLayerFor(layer);
+    if (!parentId) return null;
+    const parent = styleLayer(parentId);
+    const m = /__var(\d+)(?:__[a-z]+)?$/.exec(layer?.id || "");
+    if (!parent || !m) return null;
+    const index = Number(m[1]) - 1;
+    return { parent, index, variant: variantsOf(parentId)[index] || null };
+  }
+
+  /** Rozlíšenie do jedného riadka: `subclass = park`. */
+  const variantName = (v, i) =>
+    v ? `${v.attr} = ${v.values.join(", ")}` : `rozlíšenie ${i + 1}`;
+
+  /**
+   * Otvorí vrstvu v záložke „Vrstvy". Keď je zadaná podkategória, odskočí
+   * rovno na jej rámik a zvýrazní ho – bez toho by odkaz skončil na začiatku
+   * detailu a hľadať by sa muselo znova.
+   */
+  function openLayer(id, variantIndex = null) {
+    const layer = styleLayer(id);
+    tab = "layers";
+    search = id;
+    expanded.add(id);
+    collapsed.delete((layer?.metadata || {})["frico:group"]);
+    focusVariant = variantIndex == null ? null : `${id}:${variantIndex}`;
+    scrollTo = variantIndex == null ? `layer:${id}` : `variant:${id}:${variantIndex}`;
+    render();
+  }
+
+  /**
+   * Odkazy „celá kategória ↔ jej podkategórie" do jedného riadka. Ten istý
+   * riadok je v inšpektore aj v detaile vrstvy, takže sa medzi nimi dá chodiť
+   * oboma smermi bez toho, aby si človek pamätal id vrstvy.
+   */
+  function categoryLinks(styled, { here = null, always = false } = {}) {
+    const base = editBase(styled);
+    if (!base) return null;
+    const kat = categoryOf(styled);
+    const varianty = variantsOf(base.id);
+    // Vrstva bez rozlíšení nemá kam viesť – riadok „kategória: táto vrstva"
+    // by v detaile každej vrstvy len zaberal miesto. V inšpektore je to iné:
+    // tam je to odkaz odtiaľ do editora, a ten treba vždy.
+    if (!always && !kat && !varianty.length) return null;
+    // Zvýraznené je to, čo sa práve ladí: po prekliku na podkategóriu je to
+    // ona, nie kategória, v ktorej detaile ten riadok stojí.
+    const naVariante = (i) =>
+      kat ? kat.index === i : focusVariant === `${base.id}:${i}`;
+    const kids = [
+      el("span", { class: "dev-note", text: "kategória:" }),
+      el("button", {
+        type: "button",
+        class: `dev-chip${here === "layer" && !varianty.some((_, i) => naVariante(i)) ? " on" : ""}`,
+        text: layerLabel(base),
+        title: `Upraviť celú kategóriu „${layerLabel(base)}" (${base.id}) – `
+          + `zmena sa dotkne všetkých jej prvkov`,
+        onclick: () => openLayer(base.id)
+      })
+    ];
+    if (varianty.length) {
+      kids.push(el("span", { class: "dev-note", text: "· podkategórie:" }));
+      varianty.forEach((v, i) => {
+        kids.push(
+          el("button", {
+            type: "button",
+            class: `dev-chip${naVariante(i) ? " on" : ""}`,
+            text: v.label || variantName(v, i),
+            title: `${base.id}__var${i + 1} – upraviť len prvky ${variantName(v, i)}; `
+              + `zvyšok kategórie ostane, ako je`,
+            onclick: () => openLayer(base.id, i)
+          })
+        );
+      });
+    } else if (!kat) {
+      kids.push(
+        el("span", {
+          class: "dev-note",
+          text: "· bez podkategórií",
+          title: "Rozlíšenie podľa `kľúč = hodnota` (napr. len `subclass = park`) "
+            + "sa pridáva na konci detailu vrstvy."
+        })
+      );
+    }
+    return el("div", { class: "dev-crumbs" }, kids);
+  }
 
   function resetLayer(id) {
     if (editScope === "all") {
@@ -1446,6 +1589,9 @@ export function initDevMode({
     });
     searchInput.addEventListener("input", () => {
       search = searchInput.value;
+      // Hľadanie je nový začiatok – zvýraznená podkategória z predošlého
+      // prekliku by ostala svietiť pri niečom, čo sa už nehľadá.
+      focusVariant = null;
       renderBody();
       const next = body.querySelector(".dev-search");
       if (next) {
@@ -1990,7 +2136,11 @@ export function initDevMode({
       })
     ]);
 
-    return el("div", { class: "dev-item" }, [head, open ? layerDetails(layer) : null]);
+    return el("div", {
+      class: "dev-item",
+      // Kotva pre odkaz „celá kategória" z inšpektora aj z podkategórie.
+      "data-focus": `layer:${layer.id}`
+    }, [head, open ? layerDetails(layer) : null]);
   }
 
   /** Nadpis sekcie v detaile vrstvy – aby bolo vidieť, čo sa kde nastavuje. */
@@ -2549,6 +2699,13 @@ export function initDevMode({
   function layerDetails(layer) {
     const o = layerOverride(layer.id) || {};
     const parts = [layerTools(layer)];
+
+    // ---- kategória a jej podkategórie ----
+    // Rozlíšenia sú až na konci detailu (sú to výnimky, nie hlavné nastavenie),
+    // takže bez tohto riadka sa o nich zhora nedalo dozvedieť – ani skočiť na
+    // ne, keď človek prišiel z inšpektora s „chcem len park".
+    const crumbs = categoryLinks(layer, { here: "layer" });
+    if (crumbs) parts.push(crumbs);
 
     // ---- toto je obrys inej vrstvy ----
     parts.push(...borderLayerBanner(layer));
@@ -3348,10 +3505,24 @@ export function initDevMode({
       const suhrn = variantSummary(v);
       const riadky = [
         el("div", { class: "dev-row" }, [
+          // ID PODKATEGÓRIE PATRÍ DO RIADKA. Inšpektor pod kurzorom hlási
+          // `landcover-grass__var1` – kým to tu nebolo napísané, nedalo sa
+          // povedať, ktorý z rámikov je ten, na ktorý sa práve pozerám.
+          el("span", { class: "dev-varbadge", text: `podkategória ${i + 1}` }),
           el("span", { class: "dev-name" }, [
-            el("span", { text: `${v.attr} = ${v.values.join(", ")}` }),
-            el("small", { text: suhrn || "zatiaľ bez vlastného štýlu" })
+            el("span", { text: variantName(v, i) }),
+            el("small", {
+              text: `${layer.id}__var${i + 1} · ${suhrn || "zatiaľ bez vlastného štýlu"}`
+            })
           ]),
+          el("button", {
+            type: "button",
+            class: "dev-mini",
+            title: `Späť hore na celú kategóriu „${layerLabel(layer)}" – `
+              + `nastavenia nad týmto rámikom platia pre všetky jej prvky`,
+            text: "↑",
+            onclick: () => openLayer(layer.id)
+          }),
           el("button", {
             type: "button",
             class: "dev-mini",
@@ -3498,7 +3669,10 @@ export function initDevMode({
         }
       }
 
-      parts.push(el("div", { class: "dev-variant" }, riadky));
+      parts.push(el("div", {
+        class: `dev-variant${focusVariant === `${layer.id}:${i}` ? " focus" : ""}`,
+        "data-focus": `variant:${layer.id}:${i}`
+      }, riadky));
     });
 
     if (varianty.length >= MAX_VARIANTS) {
@@ -3618,8 +3792,11 @@ export function initDevMode({
         `${i + 1}. z ${poradie.length} · navrchu je posledná · platí pre všetky typy máp`
       ),
       el("div", { class: "dev-sub" }, [
+        // Susedia sa MUSIA dať dočítať celí: „posunul som to nad to správne?"
+        // je jediná otázka, na ktorú tento riadok odpovedá, a orezaný na
+        // „nad ňou: Kroviny a kos…" neodpovedá na ňu vôbec.
         el("span", {
-          class: "dev-note",
+          class: "dev-note wrap",
           text:
             (nad ? `nad ňou: ${menoV(nad)}` : "je úplne navrchu") +
             " · " +
@@ -3760,13 +3937,70 @@ export function initDevMode({
     ]);
   }
 
+  /**
+   * ČO SA S PRVKOM POD KURZOROM DÁ UROBIŤ HNEĎ TU.
+   *
+   * Inšpektor dovtedy vedel len povedať „toto nakreslila vrstva X" a ✎ hodilo
+   * človeka do zoznamu vrstiev. Pri PODKATEGÓRII (`landcover-grass__var1`) to
+   * ale nespravilo nič: taká vrstva v zozname nie je, lebo v úpravách nie je
+   * vrstvou, ale rozlíšením svojej predlohy – hľadanie nenašlo nič a panel
+   * ostal prázdny.
+   *
+   * Tri otázky, ktoré nad prvkom v mape vznikajú, sú preto rovno tu:
+   *   - „na akých zoomoch to vlastne vidím" – pásik ukazuje rozsah TEJ
+   *     VRSTVY, ktorá prvok naozaj nakreslila, a v ňom zoom, na ktorom sa
+   *     práve pozerám,
+   *   - „chcem ladiť len park, nie celú trávu" – odkaz na podkategóriu aj na
+   *     nadradenú kategóriu, oboma smermi,
+   *   - „toto má byť nad tamtým" – o úroveň vyššie; poradie sa prekreslí,
+   *     takže ďalší klik posunie zase o jednu, až kým to nesedí.
+   */
+  function pickTools(styled) {
+    if (!styled) return [];
+    const base = editBase(styled);
+    const kat = categoryOf(styled);
+    const parts = [];
+
+    const crumbs = categoryLinks(styled, { always: true });
+    if (crumbs) parts.push(crumbs);
+
+    // ---- na akých zoomoch sa prvok naozaj kreslí ----
+    // Rozsah sa berie z vykreslenej vrstvy (podkategória ho dedí od predlohy),
+    // takže je to presne to, čo mapa robí – nie to, čo má nastavená predloha
+    // v inej téme či type mapy.
+    parts.push(
+      sectionTitle(
+        "Zobrazené od–do",
+        `${zoomRangeText(styled)} · mapa je na z${zoomView.toFixed(1)}`
+      ),
+      zoomStrip(base),
+      el("div", { class: "dev-sub" }, [
+        el("span", {
+          class: "dev-note wrap",
+          text: kat
+            ? `Zoom drží nadradená kategória „${layerLabel(base)}" – podkategória `
+              + `sa kreslí s ňou, takže klik do pásika mení obe.`
+            : "Klik do pásika = na tom zoome áno / nie."
+        })
+      ])
+    );
+
+    // ---- poradie kreslenia ----
+    // Ten istý editor, aký je v detaile vrstvy: čo je nad čím, sa hľadá
+    // s pohľadom do mapy, a to je práve tu.
+    parts.push(orderSection(styled));
+    return parts;
+  }
+
   function featureItem(f, index) {
-    const meta = (getStyle()?.layers || []).find((l) => l.id === f.layer.id)?.metadata || {};
+    const styled = styleLayer(f.layer.id);
+    const meta = styled?.metadata || {};
     const props = f.properties || {};
     const keys = Object.keys(props).sort();
     const open = pickOpen.has(index);
     const kind = meta["frico:kind"] || "";
     const link = osmLink(props);
+    const kat = categoryOf(styled);
 
     const head = el("div", { class: "dev-row" }, [
       el("span", {
@@ -3801,17 +4035,23 @@ export function initDevMode({
             ev.currentTarget
           )
       }),
+      // ✎ MUSÍ NIEKDE SKONČIŤ. `f.layer.id` je id vykreslenej vrstvy – pri
+      // podkategórii (`…__var1`) také id v zozname vrstiev nie je vôbec,
+      // takže hľadanie podľa neho vypísalo prázdny zoznam. Odkaz preto vedie
+      // na to miesto, kde sa prvok naozaj ladí: na rámik podkategórie
+      // v detaile jej predlohy, inak na samotnú vrstvu.
       el("button", {
         type: "button",
         class: "dev-mini",
-        title: "Nájsť vrstvu v zozname vrstiev",
+        title: kat
+          ? `Upraviť podkategóriu ${variantName(kat.variant, kat.index)} `
+            + `vo vrstve „${layerLabel(kat.parent)}"`
+          : "Nájsť vrstvu v zozname vrstiev",
         text: "✎",
-        onclick: () => {
-          tab = "layers";
-          search = f.layer.id;
-          expanded.add(f.layer.id);
-          render();
-        }
+        onclick: () =>
+          kat
+            ? openLayer(kat.parent.id, kat.index)
+            : openLayer(editBase(styled)?.id || f.layer.id)
       })
     ]);
 
@@ -3833,7 +4073,10 @@ export function initDevMode({
         ])
       );
     }
-    return el("div", { class: "dev-item" }, [head, el("div", { class: "dev-details" }, rows)]);
+    return el("div", { class: "dev-item" }, [
+      head,
+      el("div", { class: "dev-details" }, [...rows, ...pickTools(styled)])
+    ]);
   }
 
   function renderPick() {
@@ -3843,7 +4086,11 @@ export function initDevMode({
         "Klikni do mapy a tu bude <b>všetko, čo je pod kurzorom</b> – plochy, " +
         "čiary, body aj popisky zo všetkých vrstiev naraz, s celým obsahom " +
         "dlaždice. Vypisuje sa len to, čo je na danom zoome naozaj vykreslené; " +
-        "vybraté prvky sú v mape zvýraznené oranžovo."
+        "vybraté prvky sú v mape zvýraznené oranžovo. Po rozbalení prvku je " +
+        "pod jeho atribútmi <b>pásik zoomov</b> (na ktorých sa naozaj kreslí), " +
+        "odkazy na <b>kategóriu a jej podkategórie</b> a posun v poradí " +
+        "kreslenia – <b>o úroveň vyššie</b> sa dá klikať dovtedy, kým prvok " +
+        "nesedí tam, kde má."
     });
 
     const radius = numberField({
@@ -3871,7 +4118,9 @@ export function initDevMode({
     const osmUrl = `https://www.openstreetmap.org/#map=${Math.round(picked.zoom)}/${lat.toFixed(5)}/${lng.toFixed(5)}`;
 
     const head = el("div", { class: "dev-bulk on" }, [
-      el("span", { class: "dev-bulklabel", text: coords }),
+      // Zoom, na ktorom sa klikalo, patrí k výberu rovnako ako súradnice:
+      // „prečo to tu nie je" je skoro vždy otázka o zoome.
+      el("span", { class: "dev-bulklabel", text: `${coords} · z${picked.zoom.toFixed(1)}` }),
       el("button", {
         type: "button",
         class: "dev-mini",
@@ -5399,6 +5648,13 @@ export function initDevMode({
     const scroll = body.scrollTop;
     body.replaceChildren(view);
     body.scrollTop = scroll;
+    // Odskok na podkategóriu, na ktorú sa práve kliklo – až tu, lebo dovtedy
+    // ten rámik v dokumente nie je a skrolovať sa nemá kam.
+    if (scrollTo) {
+      const ciel = body.querySelector(`[data-focus="${scrollTo}"]`);
+      scrollTo = null;
+      if (ciel) ciel.scrollIntoView({ block: "center" });
+    }
   }
 
   function render() {
