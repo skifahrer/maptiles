@@ -230,6 +230,22 @@ on:
         required: false
         default: "false"
         type: string
+      # ---------- hotové vrstvy z predošlých behov ----------
+      # `true` = vrstva, ktorá už raz s TÝMITO nastaveniami vznikla, sa
+      # neprepočítava, aj keď sa medzitým doplnil sklad výškového modelu
+      # alebo zmenil skript, ktorý ju počíta. Hľadá sa predponou kľúča
+      # (`workers/plan/cache-keys.sh`) a je to nahlas: job, ktorý ju takto
+      # vzal, to hlási `::notice::`.
+      #
+      # Zapína si to dávka nad krajinou – osem krajov krát tri vrstvy je deň
+      # výpočtu a druhýkrát za sebou je to deň za nič. Jeden kraj beží bez
+      # toho, teda prísne: po zmene skriptu sa vrstva prepočíta, lebo presne
+      # to od takého behu čakáš.
+      opt_reuse_layers:
+        description: "Nepočítať vrstvu, ktorá s týmito nastaveniami už raz vznikla"
+        required: false
+        default: "false"
+        type: string
       # ---------- rozpočet stránky ----------
       opt_size_limit_mb:
         description: "Rozpočet celej stránky v MB"
@@ -735,10 +751,21 @@ jobs:
       # žiadne právo nepotrebuje.
       contents: read
     outputs:
+      # Tri vrstvy, tri nezávislé kľúče – a ku každému predpona `*_hotove`
+      # (tie isté nastavenia, iný otlačok skladu či skriptov) a kľúč
+      # `*_stary` spred rozdelenia. Rozpis je vo `workers/plan/cache-keys.sh`.
       contours: ${{ steps.keys.outputs.contours }}
-      demtiles_contours: ${{ steps.keys.outputs.demtiles_contours }}
-      demtiles_terrain: ${{ steps.keys.outputs.demtiles_terrain }}
+      contours_hotove: ${{ steps.keys.outputs.contours_hotove }}
+      contours_stary: ${{ steps.keys.outputs.contours_stary }}
+      rocks: ${{ steps.keys.outputs.rocks }}
+      rocks_hotove: ${{ steps.keys.outputs.rocks_hotove }}
+      rocks_stary: ${{ steps.keys.outputs.rocks_stary }}
       terrain: ${{ steps.keys.outputs.terrain }}
+      terrain_hotove: ${{ steps.keys.outputs.terrain_hotove }}
+      terrain_stary: ${{ steps.keys.outputs.terrain_stary }}
+      demtiles_contours: ${{ steps.keys.outputs.demtiles_contours }}
+      demtiles_rocks: ${{ steps.keys.outputs.demtiles_rocks }}
+      demtiles_terrain: ${{ steps.keys.outputs.demtiles_terrain }}
       slope: ${{ steps.keys.outputs.slope }}
     steps:
       - name: Checkout
@@ -771,20 +798,28 @@ jobs:
           OPT_SHADING_SOURCE: ${{ inputs.opt_shading_source }}
           OPT_TERRAIN_MAXZOOM: ${{ inputs.opt_terrain_maxzoom }}
           ROCK_SLOPE: ${{ inputs.rock_slope }}
-          # `contours-build.sh` je v otlačku tiež: je to on, kto vrstevnice
-          # zjednodušuje a zaobľuje, takže jeho zmena mení obsah dlaždíc.
-          # Kým v ňom nebol, dala sa zmeniť tolerancia a beh vrátil z cache
-          # staré, zubaté vrstevnice – zelený a tichý (pravidlo 8).
-          # Otlačok ale vidí len súbory, a ladenie hladkosti (CONTOUR_DEM_LOWPASS,
-          # CONTOUR_SIMPLIFY, CONTOUR_SMOOTH) je v `env:` tohto workflowu –
-          # tie sú preto v kľúči zvlášť, viď `workers/plan/cache-keys.sh`.
-          # V otlačku musí byť KAŽDÝ súbor, ktorý rozhoduje o TVARE, aj ten
-          # z `workers/lib/`: `contour-blocks.py` reže obrysy na bloky a lepí
-          # švy (oprava zlepovania by sa bez neho na už spočítanom regióne
-          # neprejavila) a `rock-plan.py` vyberá mriežku, na ktorej sa trasuje.
-          # `rocks.sh` je druhá polovica `build.sh` (ten prerástol 800 riadkov,
-          # tak sa rozdelil) – bez neho v otlačku by sa zmena vo výpočte skál
-          # ticho vrátila z cache ako pôvodné skaly.
+          # DVA OTLAČKY, NIE JEDEN. Kým bol spoločný, oprava v `rocks.sh`
+          # zahodila aj hodinu vrstevníc, ktoré na ňom nestoja – a naopak.
+          #
+          # V otlačku vrstvy musí byť KAŽDÝ súbor, ktorý rozhoduje o jej
+          # TVARE: `build.sh` je spoločný začiatok oboch polovíc (a je preto
+          # v oboch), `contour-blocks.py` reže obrysy na bloky a lepí švy,
+          # `rock-plan.py` vyberá mriežku, na ktorej sa trasuje, a
+          # `slope-chunks.py` číta sklon z Drive po častiach – ten v otlačku
+          # dovtedy chýbal, takže sa jeho zmena na už spočítanom kraji
+          # neprejavila.
+          #
+          # Otlačok vidí ale len SÚBORY, a ladenie tvaru (CONTOUR_DEM_LOWPASS,
+          # CONTOUR_SIMPLIFY, CONTOUR_SMOOTH, ROCK_ALGO, ROCK_VEC_RES,
+          # ROCK_SIMPLIFY, ROCK_SMOOTH) je v `env:` tohto workflowu – tie sú
+          # preto v kľúči zvlášť, viď `workers/plan/cache-keys.sh`. Kým tam
+          # neboli, dala sa prestaviť hladkosť a beh vrátil z cache starý,
+          # zubatý tvar – zelený a tichý (pravidlo 8).
+          SCHEMA_CONTOURS: ${{ hashFiles('workers/contours-rocks/contours.yml', 'workers/contours-rocks/build.sh', 'workers/contours-rocks/smooth-shapes.py', 'workers/lib/contour-blocks.py') }}
+          SCHEMA_ROCKS: ${{ hashFiles('workers/contours-rocks/rocks.yml', 'workers/contours-rocks/rocks.sh', 'workers/contours-rocks/build.sh', 'workers/contours-rocks/rock-areas.py', 'workers/contours-rocks/rock-plan.py', 'workers/contours-rocks/slope-chunks.py', 'workers/contours-rocks/smooth-shapes.py', 'workers/lib/contour-blocks.py') }}
+          # Otlačok spred rozdelenia – LEN do kľúča `*_stary`, ktorým sa
+          # nájdu záznamy z behov pred touto zmenou. Zoznam súborov sa preto
+          # nesmie meniť: keby sa menil, prestal by na ne sadať.
           SCHEMA_HASH: ${{ hashFiles('workers/contours-rocks/contours.yml', 'workers/contours-rocks/rocks.yml', 'workers/contours-rocks/rock-areas.py', 'workers/contours-rocks/rock-plan.py', 'workers/contours-rocks/smooth-shapes.py', 'workers/contours-rocks/build.sh', 'workers/contours-rocks/rocks.sh', 'workers/lib/contour-blocks.py') }}
         run: workers/plan/cache-keys.sh
 
@@ -798,16 +833,22 @@ jobs:
           drop() { # $1 = kľúč cache
             python3 workers/drive/cache.py --delete --key="$1"
           }
-          if [ '${{ inputs.opt_contours_rebuild }}' = 'true' ] || [ '${{ inputs.opt_rocks_rebuild }}' = 'true' ]; then
+          # Vrstva po vrstve, lebo kľúč po kľúči: `rebuild: skaly` nemá
+          # dôvod zahodiť hodinu vrstevníc a naopak. Aj kľúč spred
+          # rozdelenia, inak by prepočítaná vrstva ostala v tieni starého
+          # záznamu – ten sa hľadá druhým `restore` krokom a vrátil by
+          # výsledok, ktorý si práve povedal prepočítať.
+          if [ '${{ inputs.opt_contours_rebuild }}' = 'true' ]; then
             drop '${{ steps.keys.outputs.contours }}'
-            # Skaly majú ten istý kľúč s príponou `-rocks` (vlastný job,
-            # vlastný záznam). Kým sa mazal len ten prvý, pregenerovanie skál
-            # síce prepočítalo, ale uložiť sa už nemalo kam – a ďalší beh
-            # dostal z cache tie PÔVODNÉ skaly, ako keby sa nič nezmenilo.
-            drop '${{ steps.keys.outputs.contours }}-rocks'
+            drop '${{ steps.keys.outputs.contours_stary }}'
+          fi
+          if [ '${{ inputs.opt_rocks_rebuild }}' = 'true' ]; then
+            drop '${{ steps.keys.outputs.rocks }}'
+            drop '${{ steps.keys.outputs.rocks_stary }}'
           fi
           if [ '${{ inputs.opt_terrain_rebuild }}' = 'true' ]; then
             drop '${{ steps.keys.outputs.terrain }}'
+            drop '${{ steps.keys.outputs.terrain_stary }}'
           fi
 
   # ---------- vrstevnice a skaly ----------
@@ -878,16 +919,50 @@ jobs:
       # Planetiler dostať presne toľko miesta, koľko naozaj zvýšilo – inak by
       # sa build po hodine tilovania zabil na tom, že súčet je nad limitom.
       #
-      # Pri pregenerovaní (`contours_rebuild` / `rocks_rebuild`) sa restore
-      # preskočí, takže krok nižšie beží aj vtedy, keď cache existuje. Starý
-      # záznam už zmazal krok „Pregenerovanie", nech sa dá uložiť nový.
-      - name: Cache vrstevníc a skál (restore)
+      # Pri pregenerovaní (`contours_rebuild`) sa restore preskočí, takže
+      # výpočet nižšie beží aj vtedy, keď cache existuje. Starý záznam už
+      # zmazal krok „Pregenerovanie", nech sa dá uložiť nový. `rocks_rebuild`
+      # tu už NIE JE: skaly majú vlastný kľúč aj vlastný job, takže ich
+      # pregenerovanie nemá dôvod zahodiť hodinu vrstevníc.
+      - name: Cache vrstevníc (restore)
         id: contours-cache
-        if: ${{ inputs.opt_contours == 'true' && inputs.opt_contours_rebuild != 'true' && inputs.opt_rocks_rebuild != 'true' }}
+        if: ${{ inputs.opt_contours == 'true' && inputs.opt_contours_rebuild != 'true' }}
         uses: ./.github/actions/cache-restore
         with:
           path: contours-out
           key: ${{ needs.keys.outputs.contours }}
+          # PREDPONA S NASTAVENIAMI, keď si beh pýta hotové vrstvy. Trafí sa
+          # na najnovšie vrstevnice, ktoré vznikli s tými istými nastaveniami
+          # – aj keď sa medzitým doplnil sklad modelu alebo zmenil skript.
+          # Prázdna (teda vypnutá) je to prísna cache ako doteraz: hotové je
+          # len to, čo sedí na kľúč do posledného znaku.
+          restore-keys: ${{ inputs.opt_reuse_layers == 'true' && needs.keys.outputs.contours_hotove || '' }}
+
+      # MIGRÁCIA, jednorazová: kým vrstevnice a skaly zdieľali jeden kľúč,
+      # ležali vrstevnice pod `contours-v10-…`. Bez tohto kroku by ich
+      # premenovanie kľúča zahodilo a prvá dávka po zmene by celé Slovensko
+      # počítala odznova. PRESNÝ kľúč, nie predpona: staré skaly majú ten
+      # istý kľúč s príponou `-rocks`, takže by ich predpona vrátila ako
+      # vrstevnice. Dá sa zmazať, keď priečinok cache prejde obrátkou
+      # (prerieďuje sa na 30 dní).
+      - name: Cache vrstevníc – kľúč spred rozdelenia (restore)
+        id: contours-cache-stary
+        if: ${{ inputs.opt_contours == 'true' && inputs.opt_contours_rebuild != 'true' && steps.contours-cache.outputs.cache-hit != 'true' && steps.contours-cache.outputs.cache-matched-key == '' }}
+        uses: ./.github/actions/cache-restore
+        with:
+          path: contours-out
+          key: ${{ needs.keys.outputs.contours_stary }}
+
+      # Jedna odpoveď na „počítať, alebo nie" pre všetky štyri miesta, ktoré
+      # ju v tomto jobe potrebujú – rozpis vo `workers/plan/hotova-vrstva.sh`.
+      - name: Sú vrstevnice hotové?
+        id: hotove
+        env:
+          VRSTVA: Vrstevnice
+          HIT: ${{ steps.contours-cache.outputs.cache-hit }}
+          MATCHED: ${{ steps.contours-cache.outputs.cache-matched-key }}
+          HIT_STARY: ${{ steps.contours-cache-stary.outputs.cache-hit }}
+        run: workers/plan/hotova-vrstva.sh
 
       # DEM dlaždice sú desiatky MB na kus a menia sa len vtedy, keď sa zmení
       # sklade – čo je presne to, čo hovorí `demkey`. Tie sa nepregenerúvajú
@@ -906,9 +981,12 @@ jobs:
           name: region-poly
           path: data
 
+      # LEN KEĎ SA NAOZAJ POČÍTA. Výškový model je gigabajty a je vstupom
+      # výpočtu – k hotovej vrstve netreba ani bajt z neho. Kým sa sťahoval
+      # vždy, stál cache hit toľko, čo polovica výpočtu.
       - name: Cache DEM dlaždíc (restore)
         id: demtiles-cache
-        if: ${{ inputs.opt_contours == 'true' }}
+        if: ${{ inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' }}
         uses: ./.github/actions/cache-restore
         with:
           path: dem
@@ -927,7 +1005,7 @@ jobs:
       # súbor má strop, nad ktorým ho GitHub ticho neprijme (stráži to Lint
       # workflows). Sem chodia len hodnoty z formulára a z prípravy.
       - name: Vrstevnice a skaly z DEM
-        if: ${{ inputs.opt_contours == 'true' && steps.contours-cache.outputs.cache-hit != 'true' }}
+        if: ${{ inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' }}
         env:
           ONLY: contours
           GH_TOKEN: ${{ github.token }}
@@ -975,8 +1053,12 @@ jobs:
       # Uloží sa hneď, ako vrstevnice a skaly existujú – aj keď by build ďalej
       # spadol, hodiny výpočtu ostanú v cache.
 
-      - name: Cache vrstevníc a skál (save)
-        if: ${{ always() && inputs.opt_contours == 'true' && steps.contours-cache.outputs.cache-hit != 'true' && hashFiles('contours-out/**') != '' }}
+      # UKLADÁ SA LEN TO, ČO SA NAOZAJ SPOČÍTALO. Vrstva vzatá po predpone
+      # (hotová z predošlého behu) sa pod dnešný kľúč uložiť nesmie: tvrdila
+      # by o sebe dnešný otlačok skriptov a najbližší prísny beh by ju vzal
+      # ako presnú zhodu – teda tichá stará vrstva pod novým menom.
+      - name: Cache vrstevníc (save)
+        if: ${{ always() && inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' && hashFiles('contours-out/**') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
         with:
@@ -1009,7 +1091,9 @@ jobs:
         if: ${{ inputs.opt_contours == 'true' }}
         env:
           ONLY: contours
-          CACHE_HIT: ${{ steps.contours-cache.outputs.cache-hit }}
+          # „Nič sa nepočítalo" je aj hotová vrstva z predošlého behu, nielen
+          # presná zhoda kľúča – súhrn behu má povedať jedno aj druhé.
+          CACHE_HIT: ${{ steps.hotove.outputs.mam }}
           OPT_CONTOUR_LINES: ${{ inputs.opt_contour_lines }}
           OPT_CONTOUR_MAXZOOM: ${{ inputs.opt_contour_maxzoom }}
           OPT_ROCKS: ${{ inputs.opt_rocks }}
@@ -1101,13 +1185,38 @@ jobs:
 
       - name: Stiahni Planetiler
         run: workers/lib/planetiler.sh
-      - name: Cache vrstevníc a skál (restore)
+      - name: Cache skál (restore)
         id: contours-cache
-        if: ${{ inputs.opt_contours == 'true' && inputs.opt_contours_rebuild != 'true' && inputs.opt_rocks_rebuild != 'true' }}
+        if: ${{ inputs.opt_contours == 'true' && inputs.opt_rocks_rebuild != 'true' }}
         uses: ./.github/actions/cache-restore
         with:
           path: contours-out
-          key: ${{ needs.keys.outputs.contours }}-rocks
+          key: ${{ needs.keys.outputs.rocks }}
+          # Hotové skaly z predošlého behu – to isté ako pri vrstevniciach,
+          # s jednou výnimkou: pri `rock_source: tienovanie` a prázdnom
+          # `rock_img_asset` obrysy PRÁVE TERAZ počíta podpipeline „Dáta ·
+          # tieňované skaly" (job `shading-rocks` vyššie). Vziať vtedy hotové
+          # skaly by znamenalo zaplatiť ju celú a jej výsledok zahodiť – a to
+          # potichu. Keď je asset pomenovaný, je v kľúči, takže sa nič
+          # nezahadzuje a predpona platí.
+          restore-keys: ${{ (inputs.opt_reuse_layers == 'true' && (inputs.opt_rock_source != 'tienovanie' || inputs.opt_rock_img_asset != '')) && needs.keys.outputs.rocks_hotove || '' }}
+
+      - name: Cache skál – kľúč spred rozdelenia (restore)
+        id: contours-cache-stary
+        if: ${{ inputs.opt_contours == 'true' && inputs.opt_rocks_rebuild != 'true' && steps.contours-cache.outputs.cache-hit != 'true' && steps.contours-cache.outputs.cache-matched-key == '' }}
+        uses: ./.github/actions/cache-restore
+        with:
+          path: contours-out
+          key: ${{ needs.keys.outputs.rocks_stary }}
+
+      - name: Sú skaly hotové?
+        id: hotove
+        env:
+          VRSTVA: Skaly
+          HIT: ${{ steps.contours-cache.outputs.cache-hit }}
+          MATCHED: ${{ steps.contours-cache.outputs.cache-matched-key }}
+          HIT_STARY: ${{ steps.contours-cache-stary.outputs.cache-hit }}
+        run: workers/plan/hotova-vrstva.sh
 
       # Polygón kraja z prípravy – bez neho by sa vrstva počítala na celom
       # bboxe regiónu, teda aj mimo kraj (pri Prešovskom 37 % územia navyše).
@@ -1118,17 +1227,21 @@ jobs:
           name: region-poly
           path: data
 
+      # Model aj časti sklonu sú vstupy VÝPOČTU – k hotovým skalám ich netreba
+      # a sú to gigabajty (rozpis pri tom istom kroku v jobe s vrstevnicami).
       - name: Cache DEM dlaždíc (restore)
         id: demtiles-cache
-        if: ${{ inputs.opt_contours == 'true' }}
+        if: ${{ inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' }}
         uses: ./.github/actions/cache-restore
         with:
           path: dem
-          key: ${{ needs.keys.outputs.demtiles_contours }}-rocks
+          key: ${{ needs.keys.outputs.demtiles_rocks }}
 
+      # `opt_rocks_rebuild` tu ostáva: pregenerovanie skál má prečítať sklon
+      # nanovo, nie nadviazať na časti z predošlého behu.
       - name: Cache častí sklonu (restore)
         id: slope-cache
-        if: ${{ inputs.opt_contours == 'true' && inputs.opt_rocks_rebuild != 'true' }}
+        if: ${{ inputs.opt_contours == 'true' && inputs.opt_rocks_rebuild != 'true' && steps.hotove.outputs.pocitaj == 'true' }}
         uses: ./.github/actions/cache-restore
         with:
           path: slope-chunks
@@ -1137,7 +1250,7 @@ jobs:
             ${{ needs.keys.outputs.slope }}
 
       - name: Vrstevnice a skaly z DEM
-        if: ${{ inputs.opt_contours == 'true' && steps.contours-cache.outputs.cache-hit != 'true' }}
+        if: ${{ inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' }}
         env:
           ONLY: rocks
           GH_TOKEN: ${{ github.token }}
@@ -1176,13 +1289,13 @@ jobs:
           DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
         run: bash workers/contours-rocks/build.sh
 
-      - name: Cache vrstevníc a skál (save)
-        if: ${{ always() && inputs.opt_contours == 'true' && steps.contours-cache.outputs.cache-hit != 'true' && hashFiles('contours-out/**') != '' }}
+      - name: Cache skál (save)
+        if: ${{ always() && inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' && hashFiles('contours-out/**') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
         with:
           path: contours-out
-          key: ${{ needs.keys.outputs.contours }}-rocks
+          key: ${{ needs.keys.outputs.rocks }}
 
       - name: Cache častí sklonu (save)
         if: ${{ always() && inputs.opt_contours == 'true' && inputs.test_km2 == '0' && steps.slope-cache.outputs.cache-hit != 'true' && hashFiles('slope-chunks/**') != '' }}
@@ -1198,7 +1311,7 @@ jobs:
         uses: ./.github/actions/cache-save
         with:
           path: dem
-          key: ${{ needs.keys.outputs.demtiles_contours }}-rocks
+          key: ${{ needs.keys.outputs.demtiles_rocks }}
 
       # Vo `workers/contours-rocks/site.sh` – ten istý krok majú DVA joby
       # (`contours` a `rocks`), takže tu stál dvakrát a dve kópie sa vždy
@@ -1208,7 +1321,7 @@ jobs:
         if: ${{ inputs.opt_contours == 'true' }}
         env:
           ONLY: rocks
-          CACHE_HIT: ${{ steps.contours-cache.outputs.cache-hit }}
+          CACHE_HIT: ${{ steps.hotove.outputs.mam }}
           OPT_CONTOUR_LINES: ${{ inputs.opt_contour_lines }}
           OPT_CONTOUR_MAXZOOM: ${{ inputs.opt_contour_maxzoom }}
           OPT_ROCKS: ${{ inputs.opt_rocks }}
@@ -1295,13 +1408,6 @@ jobs:
           name: region-poly
           path: data
 
-      - name: Cache DEM dlaždíc (restore)
-        id: demtiles-cache
-        uses: ./.github/actions/cache-restore
-        with:
-          path: dem
-          key: ${{ needs.keys.outputs.demtiles_terrain }}
-
       - name: Cache výškových dlaždíc (restore)
         id: terrain-cache
         if: ${{ inputs.opt_terrain == 'true' && inputs.opt_terrain_rebuild != 'true' }}
@@ -1309,6 +1415,42 @@ jobs:
         with:
           path: terrain-out
           key: ${{ needs.keys.outputs.terrain }}
+          # Hotové tieňovanie z predošlého behu – tie isté nastavenia, iný
+          # otlačok skladu modelu. Rozpis pri `opt_reuse_layers` hore.
+          restore-keys: ${{ inputs.opt_reuse_layers == 'true' && needs.keys.outputs.terrain_hotove || '' }}
+
+      # MIGRÁCIA, jednorazová: kľúč mal dovtedy otlačok skladu PRED bboxom,
+      # takže sa naň nová predpona s nastaveniami netrafí. Bez tohto kroku by
+      # prvá dávka po zmene počítala tieňovanie celého Slovenska odznova.
+      # Dá sa zmazať, keď priečinok cache prejde obrátkou (30 dní).
+      - name: Cache výškových dlaždíc – starý kľúč (restore)
+        id: terrain-cache-stary
+        if: ${{ inputs.opt_terrain == 'true' && inputs.opt_terrain_rebuild != 'true' && steps.terrain-cache.outputs.cache-hit != 'true' && steps.terrain-cache.outputs.cache-matched-key == '' }}
+        uses: ./.github/actions/cache-restore
+        with:
+          path: terrain-out
+          key: ${{ needs.keys.outputs.terrain_stary }}
+
+      - name: Je tieňovanie hotové?
+        id: hotove
+        env:
+          VRSTVA: Tieňovanie
+          HIT: ${{ steps.terrain-cache.outputs.cache-hit }}
+          MATCHED: ${{ steps.terrain-cache.outputs.cache-matched-key }}
+          HIT_STARY: ${{ steps.terrain-cache-stary.outputs.cache-hit }}
+        run: workers/plan/hotova-vrstva.sh
+
+      # AŽ ZA ROZHODNUTÍM, a len keď sa počíta: výškový model je gigabajty
+      # a je vstupom výpočtu – hotové dlaždice z neho nepotrebujú nič. Kým
+      # stál tento krok nad cache vrstvy, sťahoval sa model aj do behu, ktorý
+      # potom nespočítal ani jednu dlaždicu.
+      - name: Cache DEM dlaždíc (restore)
+        id: demtiles-cache
+        if: ${{ inputs.opt_terrain == 'true' && steps.hotove.outputs.pocitaj == 'true' }}
+        uses: ./.github/actions/cache-restore
+        with:
+          path: dem
+          key: ${{ needs.keys.outputs.demtiles_terrain }}
 
       - name: Tieňovanie reliéfu (PNG dlaždice z vybraného DEM)
         id: terrain
@@ -1326,8 +1468,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           OPT_UGKK_FALLBACK: ${{ inputs.opt_ugkk_fallback }}
         run: workers/terrain/build.sh
+      # Uloží sa len to, čo sa naozaj spočítalo – rozpis pri tom istom kroku
+      # v jobe s vrstevnicami.
       - name: Cache výškových dlaždíc (save)
-        if: ${{ always() && inputs.opt_terrain == 'true' && steps.terrain.outputs.fell_back != 'true' && steps.terrain-cache.outputs.cache-hit != 'true' && hashFiles('terrain-out/**') != '' }}
+        if: ${{ always() && inputs.opt_terrain == 'true' && steps.terrain.outputs.fell_back != 'true' && steps.hotove.outputs.pocitaj == 'true' && hashFiles('terrain-out/**') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
         with:

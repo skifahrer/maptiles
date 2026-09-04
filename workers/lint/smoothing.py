@@ -202,10 +202,13 @@ def main():
 
     # ---------- 6. staré dáta sa nesmú vrátiť ----------
     keys = open(KEYS).read()
-    if not re.search(r'echo "contours=contours-v(\d+)-', keys):
+    # Číslo verzie stojí v `C_NASTAVENIA` – tam sa kľúč vrstevníc skladá
+    # (nastavenia dopredu, otlačky dozadu, viď hlavičku toho súboru).
+    if not re.search(r'^C_NASTAVENIA="contours-v(\d+)-', keys, re.M):
         bad.append("V `workers/plan/cache-keys.sh` nie je verzia v kľúči "
-                   "`contours=`. Zmena tvaru vrstevníc sa bez nej neprejaví – "
-                   "cache vráti tie staré a build bude zelený.")
+                   "vrstevníc (`C_NASTAVENIA=\"contours-v<číslo>-…\"`). Zmena "
+                   "tvaru vrstevníc sa bez nej neprejaví – cache vráti tie "
+                   "staré a build bude zelený.")
     if not re.search(r"^\s*ROCK_ALGO:\s*v\d+", wf, re.M):
         bad.append("V `dem-layers.yml` nie je `ROCK_ALGO: v<číslo>` – meno "
                    "assetu so skalami by potom nenieslo TVAR obrysu a sklad by "

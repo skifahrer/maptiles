@@ -46,8 +46,32 @@
 # ── KEĎ KRAJ SPADNE, DÁVKA IDE ĎALEJ ──────────────────────────────────────
 # Zmysel dávky je „sprav to nad celým Slovenskom a nechaj ma tak". Spadnutý
 # kraj preto reťaz nezastaví; zapíše sa do kolíka a POSLEDNÝ úsek na ňom
-# spadne, aby dávka neskončila zelená s dierou v mape. Kto chce zastaviť
-# všetko, zruší posledný beh reťaze – ďalší článok už nevznikne.
+# spadne, aby dávka neskončila zelená s dierou v mape.
+#
+# ── ZRUŠENIE ZASTAVÍ VŠETKO ───────────────────────────────────────────────
+# Spadnutý kraj a ZRUŠENÝ kraj vyzerajú v API skoro rovnako (`completed`
+# s inou `conclusion`), ale znamenajú opak: prvé je porucha, po ktorej má
+# dávka ísť ďalej, druhé je „dosť, zastav to". Kým sa to nerozlišovalo, dávka
+# sa nedala zastaviť: kto zrušil beh kraja, dostal o minútu ďalší kraj a k nemu
+# ďalší článok štafety – zastaviť by musel v správnom poradí dve veci naraz.
+#
+# Zrušiť beh môže aj GitHub sám (tri behy v jednej `concurrency` skupine) a od
+# ručného zrušenia sa to nedá odlíšiť. Preto sa dávka nezastaví ticho: do
+# súhrnu napíše, čo ostalo nepostavené, aj kolík, ktorým sa dá pokračovať.
+#
+# Odteraz platí OBOJE, nech sa dá zastaviť z ktorejkoľvek strany:
+#
+#   zrušíš beh KRAJA     článok, ktorý naň čaká, nespustí ďalší kraj ani ďalší
+#                        svoj beh; napíše súhrn a skončí. Reťaz končí.
+#   zrušíš beh DÁVKY     článok pri odchode zruší aj beh kraja, na ktorý čakal
+#                        (GitHub dá kroku pri zrušení pár sekúnd a `trap` ich
+#                        využije). Bez toho by kraj bežal ešte hodiny a dávka
+#                        by sa „nedala zastaviť" – to je presne tá skúsenosť,
+#                        pre ktorú tu ten `trap` je.
+#
+# Zastavená dávka NIE JE spadnutá dávka: beh skončí zelený a nahlas to napíše
+# do súhrnu. Červený krížik za rozhodnutie človeka je šum, po ktorom si nikto
+# nevšimne ten, čo je porucha.
 #
 # ── ČO MUSÍ DODAŤ VOLAJÚCI ────────────────────────────────────────────────
 # Premenné: COUNTRY REPO (a voliteľne REF SELF REGION_WF SUMMARY)
@@ -82,6 +106,29 @@ USEKOV_NA_KRAJ=3
 
 log() { echo "$@"; }
 sumar() { echo "$@" >> "$SUMMARY"; }
+
+# Spánok, ktorý sa dá prerušiť. `sleep 60` je pre bash popredný príkaz a trap
+# by sa vykonal až po ňom – teda po minúte, ktorú nám GitHub pri zrušení
+# nedá. Na pozadí a `wait` znamená, že signál príde hneď.
+cakaj() {
+  sleep "$1" &
+  wait "$!" 2>/dev/null || true
+}
+
+# ZRUŠENÝ BEH DÁVKY ZRUŠÍ AJ KRAJ, na ktorý práve čakal. Bez toho ostane kraj
+# bežať ešte hodiny a človek, ktorý dávku zastavil, sa na to pozerá.
+# Best effort: GitHub pošle kroku SIGINT a o pár sekúnd ho zabije natvrdo,
+# takže na jedno volanie API čas je a na viac sa nespoliehame.
+pri_zruseni() {
+  trap - INT TERM
+  if [ -n "${BEZI_ID:-}" ]; then
+    log "Beh dávky bol zrušený – ruším aj beh kraja ${BEZI_KRAJ:-?} ($BEZI_ID)."
+    gh run cancel "$BEZI_ID" --repo "$REPO" 2>/dev/null || \
+      log "::warning::Beh kraja $BEZI_ID sa nepodarilo zrušiť – zruš ho ručne, inak dobehne do konca."
+  fi
+  exit 130
+}
+trap pri_zruseni INT TERM
 
 odkaz() { echo "$SERVER/$REPO/actions/runs/$1"; }
 
@@ -169,15 +216,38 @@ estafeta_hlavna() {
         sumar "Kraj **$BEZI_KRAJ** ešte beží dlhšie než $((CAKANIE_MAX_S / 3600)) h – čaká naň ďalší článok štafety."
         exit 0
       fi
-      sleep "$POLL_S"
+      cakaj "$POLL_S"
     done
     vysledok="${stav#completed }"
     vysledok="${vysledok:-neznámy}"
     log "Kraj $BEZI_KRAJ (beh $BEZI_ID) skončil: $vysledok"
+    HOTOVE="${HOTOVE:+$HOTOVE,}$BEZI_KRAJ:$vysledok:$BEZI_ID"
+    # ZRUŠENÝ KRAJ ZASTAVÍ CELÚ DÁVKU. Nie je to porucha, ale rozhodnutie
+    # človeka – a jediné, ako ho vie povedať behu, ktorý práve beží. Kým sa
+    # zrušenie rátalo ako spadnutý kraj, dávka po ňom spustila ďalší kraj
+    # a ďalší svoj beh, takže sa nedala zastaviť.
+    if [ "$vysledok" = "cancelled" ]; then
+      ZOSTAVA_PRED="$ZOSTAVA"
+      BEZI_ID=""; BEZI_KRAJ=""; POLE_BEZI=""; ZOSTAVA=""
+      napis_sumar
+      sumar "**Dávka zastavená.** Beh kraja bol zrušený, takže sa ďalší kraj"
+      sumar "nespúšťa a reťaz štafety tu končí."
+      if [ -n "$ZOSTAVA_PRED" ]; then
+        # KOLÍK NA POKRAČOVANIE. Zrušenie nemusí byť rozhodnutie človeka –
+        # GitHub zruší beh kraja aj sám, keď sú v skupine `pages` tri behy
+        # naraz, a v API to vyzerá rovnako. Nech sa teda dá pokračovať tam,
+        # kde sa prestalo, bez toho, aby si zvyšné kraje prepisoval z tabuľky:
+        # prázdne prvé pole = „na nič sa nečaká, spusti prvý zo zostávajúcich".
+        sumar ""
+        sumar "Nepostavené ostali: \`$ZOSTAVA_PRED\`. Pokračovať sa dá tou istou"
+        sumar "dávkou s kolíkom \`|$ZOSTAVA_PRED|$HOTOVE|0\` v poli \`pokracovanie\`."
+      fi
+      log "Kraj bol zrušený – dávka končí. Nepostavené: ${ZOSTAVA_PRED:-(nič)}"
+      return 0
+    fi
     if [ "$vysledok" != "success" ]; then
       log "::warning::Kraj $BEZI_KRAJ skončil ako $vysledok. Dávka pokračuje ďalším krajom – posledný článok na tom spadne, aby dávka neskončila zelená s dierou v mape."
     fi
-    HOTOVE="${HOTOVE:+$HOTOVE,}$BEZI_KRAJ:$vysledok:$BEZI_ID"
     BEZI_ID=""; BEZI_KRAJ=""; POLE_BEZI=""
   fi
 
@@ -211,9 +281,11 @@ estafeta_hlavna() {
       exit 1
     fi
     log "Kraj $kraj beží ako $id ($(odkaz "$id"))"
+    # Zapísať PRED odovzdaním štafety: keby niekto zrušil dávku práve teraz,
+    # `trap` musí vedieť, ktorý kraj má zrušiť s ňou.
+    BEZI_ID="$id"; BEZI_KRAJ="$kraj"; ZOSTAVA="$zvysok"
     NOVY_KOLIK="$id:$kraj|$zvysok|$HOTOVE|$USEK"
     odovzdaj "$NOVY_KOLIK"
-    BEZI_ID="$id"; BEZI_KRAJ="$kraj"; ZOSTAVA="$zvysok"
   fi
 
   napis_sumar
