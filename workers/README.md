@@ -49,7 +49,7 @@ Mapa · Build map state       CELÁ KRAJINA na jedno kliknutie: spustí
 Mapa · Regenerate state      JEDNA VRSTVA v celej krajine: body, línie,
 (manuálne, výber vrstvy)     navigačné dáta, vrstevnice, skaly, tieňovanie
                              ─► tá istá štafeta, kraj po kraji
-                             ▲ body, línie a navigácia sú MINÚTY na kraj:
+                             ▲ body a línie sú MINÚTY na kraj:
                                majú vlastný balík, takže sa dá prepísať len
                                on („Mapa · Pregeneruj vrstvu kraja")
                              ▲ vrstvy z výškového modelu idú celým buildom
@@ -58,9 +58,9 @@ Mapa · Regenerate state      JEDNA VRSTVA v celej krajine: body, línie,
 
 Mapa · Pregeneruj vrstvu     JEDNA VRSTVA JEDNÉHO KRAJA nanovo, bez toho,
 kraja (manuálne, jeden kraj) aby sa prestavala mapa:
-                               body     ─► {kraj}-body.zip
-                               línie    ─► {kraj}-linie.zip
-                               navigácia ─► {kraj}-navigacia.zip
+                               body   ─► {kraj}-body.zip
+                               línie  ─► {kraj}-linie.zip
+                                          (trasy, obmedzenia AJ graf)
                              ▲ na Drive sa prepíše LEN ten balík a v
                                `maps.json` sa položka DOPLNÍ, nie prepíše
                              ▲ na Pages NEJDE – je to jedna vrstva, nie mapa
@@ -1855,16 +1855,15 @@ Priečinok hovorí, čoho sa mapa týka, a čo chýba, sa vyrobí:
          krajina  kraj      výsek   (úrovne, čo nedávajú zmysel, sa vynechajú)
 
     presovsky-vysoke_tatry.zip                    základná mapa, BEZ riadkov nižšie,
-                                                  ale S hľadaním a navigáciou;
-                                                  bez glyfov a viewera (tie sú na Pages)
+                                                  ale S hľadaním; bez glyfov
+                                                  a viewera (tie sú na Pages)
     presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy (.pmtiles)
     presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice (.pmtiles)
-    presovsky-vysoke_tatry-linie.zip              značené trasy a obmedzenia na ceste –
-                                                  LÍNIE z OSM (.pmtiles)
+    presovsky-vysoke_tatry-linie.zip              značené trasy, obmedzenia na ceste
+                                                  a navigačný graf Valhally –
+                                                  VŠETKO LÍNIOVÉ z OSM
     presovsky-vysoke_tatry-body.zip               pramene, jaskyne, rozhľadne, … –
                                                   BODY z OSM (.pmtiles)
-    presovsky-vysoke_tatry-navigacia.zip          cestná a chodníková sieť z OSM
-                                                  ako graf Valhally
     presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
 
 Každý balík je aj ako **`.aar` (Apple Archive)** – ten istý obsah, to isté
@@ -1889,13 +1888,15 @@ výlučne o veľkosť sťahovania:
 
 | balík | čo v ňom je | z ktorých `.pmtiles` |
 |---|---|---|
-| `linie` | značené trasy a obmedzenia na ceste – ČISTO líniové dáta z OSM | `-trails`, `-roads` |
+| `linie` | značené trasy, obmedzenia na ceste a navigačný graf – VŠETKO líniové z OSM | `-trails`, `-roads`, `routing/` |
 | `body` | pramene, jaskyne, rozhľadne, pamiatky, banské dedičstvo, geodetické body | `-points` |
 
-`linie` je cestná sieť **na kreslenie**, `navigacia` (nižšie) tá istá sieť **na
-jazdenie**. Nie je to tá istá vec dvakrát: dlaždica je kreslený obraz
-s orezanou a zjednodušenou geometriou bez odbočovacích zákazov, takže sa z nej
-routovať nedá – rozpis v [`docs/navigation.md`](../docs/navigation.md) §1.
+V `linie` je tá istá cestná a chodníková sieť DVAKRÁT, a nie je to tá istá vec
+dvakrát: `.pmtiles` je sieť **na kreslenie** (kreslený obraz s orezanou
+a zjednodušenou geometriou bez odbočovacích zákazov, takže sa z nej routovať
+nedá), graf Valhally v `routing/` je tá istá sieť **na jazdenie** – rozpis
+v [`docs/navigation.md`](../docs/navigation.md) §1. Práve preto sú v jednom
+balíku: kto po tých čiarach chce ísť, chce oboje.
 
 Krajinné línie a plochy (`-features.pmtiles`: násypy, múry, ploty, vedenia,
 parkoviská, zjazdovky, …) VLASTNÝ balík nemajú a ostávajú v základnej mape –
@@ -1917,15 +1918,25 @@ mapu, v ktorej sa nedá nič nájsť, a že mu chýba druhý súbor, nemal ako v
 Cena je desiatky MB proti stovkám za dlaždice. Balík `-search` preto zanikol
 (`ZRUSENE` v `publish-map.py`) a starý sa na Drive maže.
 
-**Navigácia má VLASTNÝ balík `-navigacia.zip`** – cestná a chodníková sieť
-z OSM ako graf Valhally (`_site/routing/`: `valhalla_tiles.tar`,
-`valhalla.json`, `admins.sqlite`, `timezones.sqlite`, `graf.json`). Balila sa
-dovnútra mapy s tým istým argumentom ako index, lenže namerané to tak nie je:
-**graf kraja váži 170 až 190 MB a mapa s ním 283 MB**, čiže dve tretiny
-„základnej mapy" bola sieť, po ktorej sa jazdí, nie mapa, ktorá sa kreslí. To
-je presne prípad vrstevníc a tieňovania. Že sa o balíku dá dozvedieť, drží
-katalóg: `maps.json` ho nesie pod `maps.navigacia` vedľa `linie` a `body`,
-takže je v aplikácii v tom istom zozname na stiahnutie ako ony.
+**Navigácia je naopak zo základnej mapy VON a cestuje v balíku `linie`** –
+cestná a chodníková sieť z OSM ako graf Valhally (`_site/routing/`:
+`valhalla_tiles.tar`, `valhalla.json`, `admins.sqlite`, `timezones.sqlite`,
+`graf.json`). Balila sa dovnútra mapy s tým istým argumentom ako index, lenže
+namerané to tak nie je: **graf kraja váži 170 až 190 MB a mapa s ním 283 MB**,
+čiže dve tretiny „základnej mapy" bola sieť, po ktorej sa jazdí, nie mapa,
+ktorá sa kreslí. To je presne prípad vrstevníc a tieňovania.
+
+**Chvíľu mal graf vlastný `-navigacia.zip` a vrátilo sa to späť – ale do
+`linie`, nie do mapy.** Delenie na „línie" a „navigáciu" nemalo odberateľa:
+značené trasy, obmedzenia na ceste aj graf sú tá istá cestná a chodníková sieť
+z toho istého PBF, raz nakreslená a raz zjazdná, a kto po tých čiarach chce
+ísť, chce oboje. Dva balíky boli za to dve položky v katalógu, dve mená, dve
+veľkosti a dve miesta, kde sa dá zabudnúť – s tichým výsledkom „mapa vie, kde
+čo je, ale nevie ťa tam doviezť". `-navigacia.zip` je preto v `ZRUSENE`
+(`publish-map.py`): starý sa na Drive maže a z katalógu vypadne, presne ako
+kedysi `-search.zip`. Že sa o grafe dá dozvedieť, drží katalóg: `maps.json`
+nesie `-linie.zip` pod `maps.linie` vedľa `body`, takže je v aplikácii v tom
+istom zozname na stiahnutie ako ony.
 
 **Obe sú vždy za ten jeden región**, ktorého je mapa. Index je z toho istého
 PBF ako mapa; graf sa stavia z `data/region.osm.pbf` toho istého behu
@@ -3458,8 +3469,7 @@ nad krajom nespúšťa celý build, ale to jedno, čo si vyberieš (`co`):
 | voľba | čo sa prepíše | ako a čo to stojí |
 |---|---|---|
 | `body` | `{kraj}-body.zip` | vlastná pipeline, **minúty** na kraj |
-| `linie` | `{kraj}-linie.zip` | vlastná pipeline, **minúty** na kraj |
-| `navigacia` | `{kraj}-navigacia.zip` | vlastná pipeline, **minúty** na kraj |
+| `linie` | `{kraj}-linie.zip` (trasy, obmedzenia **aj graf**) | vlastná pipeline, **minúty** na kraj |
 | `vrstevnice` | `{kraj}-vrstevnice-skaly.zip` | celý build kraja, `rebuild: vrstevnice` |
 | `skaly` | `{kraj}-vrstevnice-skaly.zip` | celý build kraja, `rebuild: skaly` |
 | `tienovanie` | `{kraj}-tienovanie.zip` | celý build kraja, `rebuild: tienovanie` |
@@ -3474,11 +3484,16 @@ niečo iné, než si vybral, a beh by bol zelený. Stráži to
 
 ### Dve cesty, dve ceny — a prečo
 
-Body, línie a navigácia sa počítajú z **toho istého OSM PBF** ako mapa a nič
-iné z buildu nepotrebujú. A hlavne: každá z nich má **vlastný balík** na
-Drive, takže sa dá postaviť len tá vrstva a prepísať len jej súbor. Robí to
-**Mapa · Pregeneruj vrstvu kraja** (`regenerate-region.yml`) — príprava PBF,
-jeden job vrstvy a `publish-map.py --only=<balík>`.
+Body a línie sa počítajú z **toho istého OSM PBF** ako mapa a nič iné
+z buildu nepotrebujú. A hlavne: obe majú **vlastný balík** na Drive, takže sa
+dá postaviť len tá vrstva a prepísať len jej súbor. Robí to **Mapa ·
+Pregeneruj vrstvu kraja** (`regenerate-region.yml`) — príprava PBF, joby tej
+vrstvy a `publish-map.py --only=<balík>`.
+
+`linie` je pritom **trojica** (značené trasy, obmedzenia na ceste a navigačný
+graf), lebo je to jeden balík. Samostatná voľba „navigácia" by znamenala
+`--only=linie` s balíkom, v ktorom je len graf — trasy a obmedzenia by z neho
+ticho vypadli, lebo `--only` prepisuje balík **celý**.
 
 Vrstevnice, skaly a tieňovanie takú cestu nemajú a je to zámer. Potrebujú
 sklad výškového modelu, jeho doplnenie (`check-dem` a päť jobov `mirror-*`),
@@ -3491,7 +3506,7 @@ tom, ako vrstevnice vznikajú.
 
 ### Čo sa na Drive stane a čo nie
 
-Pri `body`, `linie` a `navigacia` sa nahrá **jeden** balík (ZIP aj `.aar`),
+Pri `body` a `linie` sa nahrá **jeden** balík (ZIP aj `.aar`),
 starý súbor toho mena sa prepíše a položka v `maps.json` sa **doplní, nie
 prepíše**. Ostatné balíky kraja sa nedotknú — a to je celý rozdiel oproti
 buildu mapy: tam „vrstva v builde nie je" znamená „nemá tam čo robiť", tu len

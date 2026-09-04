@@ -89,20 +89,19 @@ JOBS = {
         "workflow": "regenerate-region.yml",
         "inputs": {"co": "body"},
     },
+    # LÍNIE A NAVIGÁCIA SÚ JEDNA VOĽBA, lebo sú JEDEN BALÍK. Značené trasy,
+    # obmedzenia na ceste a graf Valhally je tá istá cestná a chodníková sieť
+    # z toho istého PBF – raz nakreslená a raz zjazdná – a `-linie.zip` nesie
+    # všetky tri. Samostatná voľba „navigácia" by znamenala `--only=linie`
+    # s balíkom, v ktorom je len graf: trasy a obmedzenia by z neho ticho
+    # vypadli. Rozpis je v hlavičke `workers/deploy/subory.py`.
     "linie": {
         "meno": "Línie z OSM",
-        "popis": "značené trasy a obmedzenia na ceste – balík `-linie.zip`",
+        "popis": "značené trasy, obmedzenia na ceste a navigačný graf "
+                 "(Valhalla) – balík `-linie.zip`",
         "balik": "linie",
         "workflow": "regenerate-region.yml",
         "inputs": {"co": "linie"},
-    },
-    "navigacia": {
-        "meno": "Navigačné dáta",
-        "popis": "cestná a chodníková sieť z OSM ako graf Valhally – balík "
-                 "`-navigacia.zip`",
-        "balik": "navigacia",
-        "workflow": "regenerate-region.yml",
-        "inputs": {"co": "navigacia"},
     },
     # Ďalej vrstvy z výškového modelu. Idú celým buildom kraja – rozpis prečo
     # je v hlavičke súboru. `area: cely_region` a `publish_pages: false` sú

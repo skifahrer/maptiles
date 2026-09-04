@@ -27,7 +27,7 @@ nie je), a pre všetkých ostatných musí adresa v štýle na niečo ukazovať.
   5. `workers/world/style.mjs` neodkazuje na glyfy DO BALÍKA – tam už nie sú –,
      ale na adresu, z ktorej si ich vezme ten, kto nie je appka,
   6. hľadanie zo základnej mapy nevypadlo a je premerané (vlastný balík nemá),
-  7. navigačný graf je NAOPAK von – má vlastný balík `-navigacia.zip` – a v tom
+  7. navigačný graf je NAOPAK von – cestuje v balíku `-linie.zip` – a v tom
      balíku je celý; v základnej mape by ho každý stiahol druhýkrát.
 
 Spustiť sa dá aj lokálne:
@@ -176,7 +176,7 @@ if "fonts/Noto Sans Regular/0-255.pbf" in neznamy:
 # `zaklad_subory` vynecháva) a NIČ NESPADNE – preto kontrola.
 baliky = zabalene()
 mapa_zip = baliky.get("mapa", set())
-nav_zip = baliky.get("navigacia", set())
+linie_zip = baliky.get("linie", set())
 
 if baliky and "tiles/search-index.db" not in mapa_zip:
     bad.append(
@@ -205,15 +205,17 @@ elif not merane["search"].get("files"):
         f"sú. Zmenil sa výber podľa mena alebo priečinka? V mape by tá časť "
         f"ostala, len by o nej katalóg tvrdil, že tam nie je.")
 
-# ---- 7. navigačný graf: vlastný balík, a preto ZO ZÁKLADNEJ MAPY VON ----
+# ---- 7. navigačný graf: v balíku `linie`, a preto ZO ZÁKLADNEJ MAPY VON ----
 # Graf sa kedysi balil dovnútra mapy s argumentom „jednotky až desiatky MB
 # proti stovkám za dlaždice". Namerané to tak nie je: 170 až 190 MB grafu
-# v 283 MB mape, čiže dve tretiny. Odvtedy má vlastný balík – a obe strany tej
-# zmeny sa dajú pokaziť potichu. Nechať ho v mape ZNOVA (vypadne riadok
-# z `vylucit`) znamená, že si ho každý stiahne dvakrát a na súbore to nikto
-# nepozná; to je presne to, čo sa stalo `search-index.db`. Nezabaliť ho nikam
-# (vypadne balík zo zoznamu) znamená mapu, ktorá vie, kde čo je, ale nevie ťa
-# tam doviezť – a spoznať sa to dá až v telefóne.
+# v 283 MB mape, čiže dve tretiny. Odvtedy je zo základnej mapy von a cestuje
+# v balíku `linie` (tá istá cestná a chodníková sieť z toho istého PBF ako
+# trasy a obmedzenia, len zjazdná) – a obe strany tej zmeny sa dajú pokaziť
+# potichu. Nechať ho v mape ZNOVA (vypadne riadok z `vylucit`) znamená, že si
+# ho každý stiahne dvakrát a na súbore to nikto nepozná; to je presne to, čo
+# sa stalo `search-index.db`. Nezabaliť ho nikam (`graf_subory` prestane byť
+# v `linie_subory`) znamená mapu, ktorá vie, kde čo je, ale nevie ťa tam
+# doviezť – a spoznať sa to dá až v telefóne.
 for meno in ("routing/valhalla_tiles.tar", "routing/valhalla.json",
              "routing/admins.sqlite", "routing/timezones.sqlite",
              "routing/graf.json"):
@@ -221,13 +223,13 @@ for meno in ("routing/valhalla_tiles.tar", "routing/valhalla.json",
         break
     if meno in mapa_zip:
         bad.append(
-            f"{PUBLISH}: `{meno}` ostal v ZÁKLADNEJ MAPE, hoci navigácia má "
-            f"vlastný balík `-navigacia.zip`. Cesty vnútri sú tie isté, takže "
-            f"by ho mal každý dvakrát: raz v mape, raz v balíku – a na "
-            f"veľkosti to nikto nepozná. Patrí do `vylucit` v `zaklad_subory`.")
-    if meno not in nav_zip:
+            f"{PUBLISH}: `{meno}` ostal v ZÁKLADNEJ MAPE, hoci graf cestuje "
+            f"v balíku `-linie.zip`. Cesty vnútri sú tie isté, takže by ho mal "
+            f"každý dvakrát: raz v mape, raz v balíku – a na veľkosti to nikto "
+            f"nepozná. Patrí do `vylucit` v `zaklad_subory`.")
+    if meno not in linie_zip:
         bad.append(
-            f"{PUBLISH}: `{meno}` sa do balíka `navigacia` nedostal. Graf sú "
+            f"{PUBLISH}: `{meno}` sa do balíka `linie` nedostal. Graf sú "
             f"štyri súbory, ktoré si musia sedieť, plus `graf.json` s tým, "
             f"z čoho je – keď jeden chýba, trasa sa „len nenájde“ a vyzerá to "
             f"ako chyba aplikácie, nie ako chýbajúci súbor v balíku.")
@@ -256,16 +258,27 @@ for druh, meno in (("vrstevnice-skaly", "tiles/kraj-contours.pmtiles"),
 if "navigacia" in merane:
     bad.append(
         f"{SUBORY}: `casti_baliku` hlási `navigacia` ako ČASŤ základnej mapy, "
-        f"hoci má vlastný balík. Katalóg by tú istú vec niesol dvakrát – pod "
-        f"`maps.mapa.casti` aj pod `maps.navigacia` – a veľkosti by sa "
-        f"sčítali do čísla, ktoré si nikto nestiahne.")
+        f"hoci graf cestuje v balíku `linie`. Katalóg by tú istú vec niesol "
+        f"dvakrát – pod `maps.mapa.casti` aj pod `maps.linie` – a veľkosti by "
+        f"sa sčítali do čísla, ktoré si nikto nestiahne.")
 
+# ZRUŠENÝ BALÍK SA MUSÍ AJ MAZAŤ. `-navigacia.zip` zanikol spojením s `linie`,
+# ale na Drive z minulých behov LEŽÍ – mená sú stále, takže ho nový beh
+# neprepíše. Bez `ZRUSENE` by v priečinku ostal vedľa nového `-linie.zip`
+# a katalóg by ponúkal oba: kto by si stiahol ten druhý, dostal by graf, ktorý
+# už nikto neaktualizuje. To isté sa kedysi stalo `-search.zip`.
 pmap_text = open(PUBLISH, encoding="utf-8").read()
-if '("navigacia", ' not in pmap_text:
+if not re.search(r"^ZRUSENE\s*=.*\bnavigacia\b", pmap_text, re.M):
     bad.append(
-        f"{PUBLISH}: balík `navigacia` nie je v zozname `baliky`. Graf sa "
-        f"postaví, artefakt vznikne, zo základnej mapy je vynechaný – a na "
-        f"Drive neskončí nikde.")
+        f"{PUBLISH}: `navigacia` nie je v `ZRUSENE`. Ten balík zanikol "
+        f"(graf je odteraz v `linie`), takže sa starý `-navigacia.zip` musí "
+        f"z Drive mazať a z katalógu vypadnúť – inak ponúka graf, ktorý už "
+        f"nikto neprepisuje.")
+if '("navigacia", ' in pmap_text:
+    bad.append(
+        f"{PUBLISH}: balík `navigacia` je späť v zozname `baliky`. Graf patrí "
+        f"do `linie` – dva balíky pre tú istú sieť sú dve položky v katalógu "
+        f"a dve miesta, kde sa dá zabudnúť.")
 
 # ---- 4. Pages tie súbory naozaj má ----
 with open(SITE, encoding="utf-8") as f:

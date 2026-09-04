@@ -28,15 +28,17 @@ import yaml
 # katalógu zapisuje ako `mapa`) – táto množina musí sedieť s tým zoznamom,
 # inak balík, ktorý pipeline práve pridala (naposledy `linie` a `body`, línie
 # a body z OSM), zhodí lint napriek tomu, že v katalógu je zo skutočného behu.
-DRUHY = {"mapa", "vrstevnice-skaly", "tienovanie", "wikipedia", "linie", "body",
-         "navigacia"}
+DRUHY = {"mapa", "vrstevnice-skaly", "tienovanie", "wikipedia", "linie", "body"}
 # ZRUŠENÉ DRUHY – v katalógu ešte môžu byť (kraj, ktorý sa odvtedy nestaval),
 # ale publikovanie ich už NEVYRÁBA: `search` sa presťahoval DOVNÚTRA balíka
 # `mapa` a jeho veľkosť je pod ním v `casti`. Hlásiť ich ako neznámy druh by
 # znamenalo červený lint za starý zápis, ktorý najbližší build sám prepíše;
 # preto sa berú, ale musia byť aj v `ZRUSENE` v `publish-map.py` – inak by
 # starý `-search.zip` ostal ležať na Drive a katalóg by naň ukazoval.
-ZRUSENE = {"search"}
+# `navigacia` je tu od spojenia balíkov: graf cestuje v `linie` (tá istá sieť
+# z toho istého PBF, raz nakreslená a raz zjazdná), takže sa `-navigacia.zip`
+# už nevyrába a starý sa maže.
+ZRUSENE = {"search", "navigacia"}
 # Meno balíka: `<kraj>[-<výsek>][-testNkm2]` + prípona druhu. Sedí to s
 # `zaklad()` a `meno()` vo `workers/deploy/publish-map.py`.
 MENO = re.compile(r"^[a-z0-9_]+(-[a-z0-9_]+)*(-test[0-9.]+km2)?"
@@ -305,8 +307,8 @@ for kluc, preco in (
                   "stiahnutia stoviek MB – a kým sa nedala, ležal "
                   "`search-index.db` v balíku dvakrát a nikto to na veľkosti "
                   "nepoznal. (Navigačný graf tu už nie je: bol dvomi "
-                  "tretinami mapy, takže má vlastný balík `navigacia` a "
-                  "veľkosť pod ním.)")):
+                  "tretinami mapy, takže je zo základnej mapy von a cestuje "
+                  "v balíku `linie` – veľkosť je pod ním.)")):
     if kmap and kluc not in kmap:
         bad.append(f"{CATALOG_PY}: {preco}. Doplň to z `manifest.json` – "
                    f"pozná to, lebo podľa toho číta dlaždice aj viewer.")

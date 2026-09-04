@@ -24,7 +24,8 @@ Navigačný graf: rozsah, jeho uzol v katalógu a to, čo sa v ňom NESMIE strat
      (mapa je mapa kraja a navigácia je za ten istý kraj), takže trasa v ňom
      končí na hranici – a keď to `graf.json` nepovie, nedá sa to odlíšiť od
      pokazeného grafu. Rovnako musí platiť, že ten graf stavia ten istý
-     skript a že sa do VLASTNÉHO BALÍKA (`-navigacia.zip`) naozaj dostane.
+     skript a že sa do balíka `-linie.zip` (kam graf od spojenia balíkov
+     patrí – k trasám a obmedzeniam, ktoré sú tá istá sieť) naozaj dostane.
 
   4. KRAJINA MIMO `vignettes.json`. Rozsah, ktorý pokrýva krajinu, o ktorej
      `vignettes.json` nevie, znamená, že sa v nej voľba `vignettes` nespýta
@@ -51,9 +52,9 @@ AREAS = os.path.join(_DATA, "routing-areas.json")
 REGIONS = os.path.join(_DATA, "regions.json")
 VIGNETTES = os.path.join(_DATA, "vignettes.json")
 WORKFLOW = os.path.join(".github", "workflows", "navigation.yml")
-# Druhý rozsah toho istého grafu: JEDEN KRAJ, a graf má vedľa mapy toho kraja
-# vlastný balík. Volá ho `build-map-region.yml` cez `workflow_call` (vlastný
-# súbor, lebo ten je pri strope 128 KiB).
+# Druhý rozsah toho istého grafu: JEDEN KRAJ, a graf ide vedľa mapy toho kraja
+# do balíka `-linie.zip`. Volá ho `build-map-region.yml` cez `workflow_call`
+# (vlastný súbor, lebo ten je pri strope 128 KiB).
 REGION_WORKFLOW = os.path.join(".github", "workflows", "navigation-region.yml")
 BUILD_MAP = os.path.join(".github", "workflows", "build-map-region.yml")
 PBF_SH = os.path.join(_WORKERS, "routing", "pbf.sh")
@@ -179,9 +180,9 @@ def main():
             if "navigation-region.yml" not in bm:
                 err(".github/workflows/build-map-region.yml",
                     "build mapy nevolá `navigation-region.yml`, takže sa "
-                    "k mape kraja nepostaví balík navigácie – a nikto to "
-                    "nepovie: mapa je v poriadku, len sa v nej nedá nikam "
-                    "doviezť a `-navigacia.zip` v priečinku proste nie je.")
+                    "k mape kraja nepostaví graf – a nikto to nepovie: mapa "
+                    "je v poriadku, len sa v nej nedá nikam doviezť a "
+                    "`-linie.zip` je o polovicu ľahší, než má byť.")
             if "name: navigacia-graf" not in bm:
                 err(".github/workflows/build-map-region.yml",
                     "graf sa pri balení nesťahuje (`navigacia-graf`). Job ho "
@@ -191,23 +192,31 @@ def main():
     else:
         err(".github/workflows/navigation-region.yml", "workflow neexistuje.")
 
-    # --- 5b. graf má VLASTNÝ BALÍK a v základnej mape nie je ---
+    # --- 5b. graf je v balíku `linie` a v základnej mape nie je ---
     # Kým sa balil dovnútra mapy, bol argument „jednotky až desiatky MB proti
     # stovkám za dlaždice". Namerané: 170 až 190 MB grafu v 283 MB mape, čiže
-    # dve tretiny „základnej mapy" bola sieť, po ktorej sa jazdí. Odkedy má
-    # vlastný balík, musí byť v zozname `baliky` – inak sa postaví, zo
-    # základnej mapy je vynechaný a na Drive neskončí nikde. Čo je v ňom,
-    # kontroluje `workers/lint/packaging.py` nad naozaj zabalenými ZIPmi.
-    publish = os.path.join(_WORKERS, "deploy", "publish-map.py")
-    if os.path.exists(publish):
-        pm = open(publish, encoding="utf-8").read()
-        if '("navigacia", ' not in pm:
-            err("workers/deploy/publish-map.py",
-                "balík `navigacia` nie je medzi `baliky`. Graf kraja sa "
-                "postaví a nikam sa nenahrá – a katalóg o ňom nepovie nič, "
-                "takže si ho appka nemá ako vypýtať.")
+    # dve tretiny „základnej mapy" bola sieť, po ktorej sa jazdí. Zo základnej
+    # mapy je preto von – a cestuje v balíku `linie`, k trasám a obmedzeniam
+    # na ceste: je to tá istá sieť z toho istého PBF, raz nakreslená a raz
+    # zjazdná. Kontroluje sa, že ho `linie_subory` naozaj berie; ČO v tom
+    # balíku skončí, overuje `workers/lint/packaging.py` nad naozaj zabalenými
+    # ZIPmi.
+    subory = os.path.join(_WORKERS, "deploy", "subory.py")
+    if os.path.exists(subory):
+        sub = open(subory, encoding="utf-8").read()
+        if "graf_subory" not in sub:
+            err("workers/deploy/subory.py",
+                "`graf_subory` tu nie je – graf kraja sa postaví a nikam sa "
+                "nenahrá, a katalóg o ňom nepovie nič, takže si ho appka nemá "
+                "ako vypýtať.")
+        elif not re.search(r"def linie_subory\(.*?\bgraf_subory\(", sub, re.S):
+            err("workers/deploy/subory.py",
+                "`linie_subory` už nepriberá `graf_subory`. Graf by sa "
+                "postavil, zo základnej mapy by bol vynechaný a do žiadneho "
+                "balíka by sa nedostal – mapa, ktorá vie, kde čo je, ale "
+                "nevie ťa tam doviezť.")
     else:
-        err("workers/deploy/publish-map.py", "skript neexistuje.")
+        err("workers/deploy/subory.py", "skript neexistuje.")
 
     if os.path.exists(GRAPH_SH):
         graph = open(GRAPH_SH, encoding="utf-8").read()
@@ -243,8 +252,8 @@ def main():
         print(f"\n{len(bad)} problém(ov) v navigačnom grafe.")
         return 1
     print("Navigačný graf: rozsahy majú vlastný uzol v katalógu, celoštátny "
-          "PBF sa nereže, graf kraja o svojej hranici hovorí a má vlastný "
-          "balík, graf sa overuje celý a formulár sedí s číselníkom.")
+          "PBF sa nereže, graf kraja o svojej hranici hovorí a je v balíku "
+          "`linie`, graf sa overuje celý a formulár sedí s číselníkom.")
     return 0
 
 
