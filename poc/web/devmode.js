@@ -17,11 +17,24 @@
  *     zo všetkých vrstiev naraz, aj so všetkými atribútmi z dlaždice, plus
  *     zoznam značených trás, ktoré tadiaľ vedú (ich pásiky sú posunuté vedľa
  *     cesty, takže do nich klik netrafí),
- *   - zmeniť farbu ktoréhokoľvek prvku: farby vrstvy zvlášť aj celej palety
+ *   - nastaviť **čokoľvek podľa zoomu jedným editorom**: každé číslo aj farba
+ *     má pod sebou zoznam pásiem („z0–z13 takto, z14–z20 inak"), ktorý vždy
+ *     pokrýva celý rozsah, a jedinú otázku navyše – či je hodnota **percentom
+ *     z toho, čo počíta štýl** (zoomová krivka ostane, mení sa jej mierka:
+ *     „na z19 nech je prvok o desatinu väčší, obrys o desatinu tenší"), alebo
+ *     **pevnou hodnotou**. Jedno pásmo cez celý rozsah je to, čo bývalo
+ *     „pevné číslo" a „× a +",
+ *   - zmeniť farbu ktoréhokoľvek prvku: jedna farba je jeden riadok aj s jej
+ *     tmavým variantom, „bez výplne" a rozpisom po zoomoch; farby celej palety
  *     naraz, vrátane hromadnej editácie výberu a kopírovania hodnôt – a to aj
  *     tam, kde si vrstva farbu vyberá **výrazom** (pásik trasy podľa značky
  *     z OSM): tie sa ladia z palety priamo v riadku vrstvy,
- *   - vymeniť **ikonu** symbolovej vrstvy za ktorúkoľvek zo sady,
+ *   - vymeniť **ikonu** symbolovej vrstvy za ktorúkoľvek zo sady – a to aj
+ *     len pre prvky s konkrétnym `kľúč = hodnota` z OSM (studnička inak než
+ *     prameň), spolu s ich vlastnou farbou, hrúbkou a okrajom,
+ *   - ladiť **obrys** oboma cestami rovnako: či je obrys samostatná vrstva zo
+ *     štýlu („Miestne cesty – obrys"; panel povie, čo obťahuje a koľko z neho
+ *     na každej strane vidieť), alebo si ho vrstva pridá sama,
  *   - dať ploche alebo čiare opakujúci sa **vzor** a ľubovoľný **okraj**,
  *     čiare aj prerušovanie,
  *   - skryť konkrétne triedy POI a prepnúť celú sadu ikoniek,
@@ -53,7 +66,6 @@ import {
   sortBands,
   isBandList,
   isRelative,
-  scaleExpr,
   emptyOverrides,
   normalizeOverrides,
   hasOverrides,
@@ -65,6 +77,7 @@ import {
   TRAIL_MARK_COLOURS,
   LAYOUT_PROPS,
   LAYOUT_PROP_IDS,
+  PAINT_DEFAULTS,
   MAX_VARIANTS,
   CUSTOM_ICON_PREFIX,
   CUSTOM_ICON_MAX_COUNT,
@@ -99,7 +112,6 @@ import { el } from "./dom.js";
 import {
   iconPicker,
   iconPreview,
-  drawSpriteIcon,
   fileToIconPng,
   iconNameFromFile,
   CUSTOM_ICON_MAX_PX
@@ -122,6 +134,74 @@ const STORAGE_KEY = "fricomaps.overrides";
 const SCOPE_KEY = "fricomaps.devscope";
 const KIND_LABELS = Object.fromEntries(LAYER_KINDS.map((k) => [k.id, k.label]));
 const GROUP_LABELS = Object.fromEntries(LAYER_GROUPS.map((g) => [g.id, g.label]));
+/**
+ * MENÁ FARIEB PO ĽUDSKY – jedno miesto pre celý panel.
+ *
+ * `line-color` v riadku nepovie nič navyše oproti tomu, že vrstva je čiara,
+ * a pri symbole stáli vedľa seba `text`, `text-halo` a `icon-halo`, čo je
+ * trikrát to isté slovo. Meno vlastnosti ostáva v bublinke, v zozname je to,
+ * čo tá farba v mape naozaj zafarbí.
+ */
+const COLOR_LABELS = {
+  "fill-color": "výplň",
+  "fill-outline-color": "obrys výplne",
+  "fill-extrusion-color": "steny",
+  "line-color": "čiara",
+  "text-color": "text",
+  "text-halo-color": "lem textu",
+  "icon-color": "ikona",
+  "icon-halo-color": "lem ikony",
+  "circle-color": "bod",
+  "circle-stroke-color": "obrys bodu",
+  "background-color": "podklad",
+  "hillshade-shadow-color": "tieň",
+  "hillshade-highlight-color": "prisvetlenie",
+  "hillshade-accent-color": "hrany"
+};
+
+/**
+ * ČÍSLA, KTORÉ SA DAJÚ LADIŤ, a ich medze – jedna tabuľka pre celý panel.
+ *
+ * Bývali to dva zoznamy: zopár blokov ručne napísaných v detaile vrstvy
+ * (hrúbka a krytie čiary, krytie plochy, sila tieňovania) a vedľa nich
+ * `PAINT_RANGES` pre záložky Trasy a Štítky. Rozišli sa presne tak, ako sa
+ * dva zoznamy toho istého rozísť musia: lem písma sa dal ladiť pri trasách,
+ * ale nie v zozname vrstiev.
+ *
+ * `on` je druh vrstvy, ktorý tú vlastnosť pozná – nedá sa uhádnuť predponou
+ * (`fill-extrusion-opacity` sa začína rovnako ako `fill-opacity`, a nie sú to
+ * tie isté vrstvy). `core` znamená „ponúkni to aj vtedy, keď to štýl
+ * nenastavil": krytie má každá plocha, aj keď v `paint` nie je – bez toho by
+ * sa nedalo zaviesť.
+ */
+const NUM_PROPS = {
+  // NIE 0: nulová hrúbka je zmiznutá čiara, nie vypnutá vrstva (na to je 👁).
+  "line-width": { on: "line", core: true, min: 0.1, max: 40, step: 0.5, label: "hrúbka čiary", unit: " px" },
+  "line-opacity": { on: "line", core: true, min: 0, max: 1, step: 0.05, label: "krytie" },
+  "fill-opacity": { on: "fill", core: true, min: 0, max: 1, step: 0.05, label: "krytie" },
+  "fill-extrusion-opacity": { on: "fill-extrusion", core: true, min: 0, max: 1, step: 0.05, label: "krytie" },
+  "text-opacity": { on: "symbol", min: 0, max: 1, step: 0.05, label: "krytie písma" },
+  "text-halo-width": { on: "symbol", min: 0, max: 8, step: 0.5, label: "lem písma", unit: " px" },
+  "icon-opacity": { on: "symbol", min: 0, max: 1, step: 0.05, label: "krytie ikony" },
+  "icon-halo-width": { on: "symbol", min: 0, max: 8, step: 0.5, label: "lem ikony", unit: " px" },
+  "circle-stroke-width": { on: "circle", min: 0, max: 10, step: 0.5, label: "obrys bodu", unit: " px" },
+  "hillshade-exaggeration": {
+    on: "hillshade", core: true, min: 0, max: 1, step: 0.05, label: "sila tieňovania"
+  }
+};
+
+/**
+ * Ktoré čísla má zmysel ponúknuť na tejto vrstve: tie, ktoré štýl nastavil,
+ * plus tie, ktoré k jej druhu patria vždy. Vlastnosť, ktorú druh vrstvy
+ * nepozná, by bola políčko, ktoré nič nerobí.
+ */
+const numPropsFor = (layer) =>
+  Object.keys(NUM_PROPS).filter((prop) => {
+    const m = NUM_PROPS[prop];
+    if (m.on !== layer.type) return false;
+    return m.core === true || (layer.paint || {})[prop] !== undefined;
+  });
+
 /** Meno značky z dlaždíc → kľúč palety (rovnako ako v štýle). */
 const TRAIL_MARK_KEYS = Object.fromEntries(TRAIL_MARK_COLOURS);
 
@@ -1864,6 +1944,23 @@ export function initDevMode({
         }
       }),
       el("span", { class: `dev-kind k-${kind}`, text: KIND_LABELS[kind] || kind }),
+      // ČO MÁ VRSTVA NAVYŠE, MUSÍ BYŤ VIDIEŤ AJ ZATVORENÉ. Rozlíšenie podľa
+      // `kľúč = hodnota` je samostatná vrstva s vlastnou ikonou a farbou –
+      // kým sa o ňom dalo dozvedieť len rozbalením detailu, dalo sa naklikať
+      // a zabudnúť naň. To isté platí o obryse: „Miestne cesty – obrys" a
+      // „Miestne cesty" sú v zozname vedľa seba a líšia sa jedným slovom.
+      (o?.variants || []).length
+        ? el("span", {
+            class: "dev-varbadge",
+            text: `${o.variants.length}×`,
+            title: o.variants
+              .map((v) => `${v.attr} = ${v.values.join(", ")}: ${variantSummary(v) || "bez štýlu"}`)
+              .join("\n")
+          })
+        : null,
+      (layer.metadata || {})["frico:border-of"]
+        ? el("span", { class: "dev-borderbadge", text: "obrys" })
+        : null,
       el("button", {
         type: "button",
         class: "dev-name",
@@ -1940,299 +2037,398 @@ export function initDevMode({
   }
 
   /**
-   * Číselná vlastnosť z `paint` (šírka čiary, krytie). Väčšina z nich je
-   * v štýle zadaná interpoláciou podľa zoomu – vtedy je pole prázdne
-   * a v ňom nápoveda; vyplnením sa nahradí konštantou, vymazaním sa vráti
-   * pôvodná interpolácia.
+   * „OD ZOOMU PO ZOOM TOTO" – JEDEN editor pre každé číslo aj farbu vrstvy.
+   *
+   * PREČO JEDEN. Tá istá otázka („čo má vrstva robiť na ktorom zoome") mala
+   * v paneli ŠTYRI ovládania vedľa seba: pevné číslo, `× a +` hneď za ním,
+   * krivku zoomových zlomov a zoomové pásma – každé s vlastným tvarom
+   * hodnoty aj vlastným tlačidlom. Ktoré z nich použiť, sa nedalo uhádnuť
+   * a dve si priamo protirečili (pevné číslo zahodí krivku), takže sa jedno
+   * muselo ZAMYKAŤ, keď bolo vyplnené druhé. Panel tak mal štyri páky na
+   * jednu vec a tri z nich boli väčšinu času zhasnuté.
+   *
+   * TERAZ JE TO JEDEN ZOZNAM PÁSIEM, ktorý vždy pokrýva celý rozsah zoomov:
+   *
+   *     z0 – z13    100 %
+   *     z14 – z20   110 %
+   *
+   * a k nemu jediná otázka navyše: či sa hodnota zadáva ako PERCENTO z toho,
+   * čo počíta štýl (zoomová krivka zo štýlu ostáva, mení sa jej mierka –
+   * „na z19 nech je to o desatinu väčšie"), alebo ako PEVNÁ hodnota. Jedno
+   * pásmo cez celý rozsah je presne to, čo bývalo „pevné číslo" a „× a +",
+   * takže sa nestratilo nič – len sa to prestalo pýtať štyrikrát.
+   *
+   * `smooth` je posledný zvyšok krivky: pri pevných hodnotách sa dá povedať,
+   * či sa medzi pásmami hodnota LÁME (schodisko, `step`), alebo PRECHÁDZA
+   * (krivka, `interpolate`). Je to zaškrtávacie políčko pod zoznamom, nie
+   * prepínač tvaru: riadky sú v oboch prípadoch tie isté. Percento je vždy
+   * plynulé – preškálovaná krivka je stále krivka.
    */
-  /**
-   * Editor HODNOTY PODĽA ZOOMU – „na z11 takto, na z16 inak".
-   *
-   * DVA TVARY, DVE OTÁZKY, JEDEN PREPÍNAČ:
-   *
-   *   krivka  `[[zoom, hodnota], …]`      … ako hodnota RASTIE (plynulý prechod)
-   *   pásma   `[[od, do, hodnota], …]`    … čo PLATÍ v tomto rozsahu (skok na hranici)
-   *
-   * PREČO PRIBUDLI PÁSMA. Kým bola k dispozícii len krivka, „od z9 do z11
-   * takáto čiara, na z12 takáto, od z13 do z17 takáto" sa muselo napísať
-   * šiestimi zlomami – tú istú hodnotu dvakrát, na oboch hranicách každého
-   * pásma –, inak sa medzi nimi plynule menila. Pri strope
-   * {@link MAX_PAINT_STOPS} zlomov sa do toho zmestili štyri pásma a piate
-   * už nie. V pásmach je to jeden riadok na pásmo.
-   *
-   * PREČO SA `do` NEDÁ PÍSAŤ VOĽNE. Pásma musia ísť za sebou bez medzier
-   * a bez prekryvov (inak ich `normalizeOverrides` odmietne a s nimi celú
-   * vlastnosť), takže rozhoduje HRANICA: `do` jedného pásma je vždy `od`
-   * nasledujúceho mínus jedna. Editovateľné je preto `od` každého pásma
-   * (posúva hranicu) a `do` toho POSLEDNÉHO; ostatné `do` sa dopočítajú.
-   * Z tohto panela sa tak medzera nedá vyrobiť ani omylom.
-   *
-   * PREČO PODĽA AKTUÁLNEHO ZOOMU. Zlom aj hranica pásma sa pridáva tam, kde
-   * práve stojí mapa (`+ zlom pri z14`, `+ pásmo od z14`), lebo tak sa mapa
-   * aj ladí: nastavíš zoom, pozrieš sa, opravíš farbu. Písať zoom do políčka
-   * a až potom sa naň presunúť by bolo to isté dvakrát – a druhý raz naslepo.
-   *
-   * Jeden zlom aj jedno pásmo sú platné a znamenajú pevnú hodnotu
-   * (`interpolate` ani `step` s jediným výstupom by nemal čo robiť, preto ich
-   * `paintValue` rozbalí).
-   */
-  function zoomStopsEditor({ layer, prop, kind, min, max, step, where = "paint" }) {
-    const o = layerOverride(layer.id) || {};
-    // `paint` alebo `layout` – ten istý editor, lebo je to tá istá otázka
-    // („čo platí na ktorom zoome"). Rozdiel je len v tom, kam sa hodnota
-    // zapíše a odkiaľ sa číta, čo je tu na dvoch riadkoch.
-    const zapisVlastnost = where === "layout" ? setLayerLayout : setLayerPaint;
-    const cur = o[where] && o[where][prop];
-    const list = Array.isArray(cur) ? cur : null;
-    const pasma = list ? isBandList(list) : false;
-    const stops = list && !pasma ? list : null;
-    const bands = pasma ? sortBands(list) : null;
-    const zNow = zoomCell();
 
-    const zapis = (next) => {
-      // ZORADIŤ HNEĎ PRI ZÁPISE, nie až pri skladaní štýlu. Zlomy aj pásma
-      // vznikajú v poradí, v akom ich naklikáš (najprv z18, potom z12),
-      // a `interpolate` chce striktne rastúce – MapLibre by pri porušení
-      // odmietol CELÝ štýl a mapa by sa nenačítala. Uložené má byť to isté,
-      // čo je platné. Prázdny zoznam neukladáme – to je „nechaj, čo je v štýle".
-      zapisVlastnost(layer.id, prop, next && next.length ? next : undefined);
+  /** Otvorené rozpisy podľa zoomu – kľúč je `${vrstva}:${kde}:${vlastnosť}`. */
+  const zoomOpen = new Set();
+
+  /** Číslo do políčka – bez zbytočných desatín. */
+  const fmtNum = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
+
+  /** Percento, ako ho vidí človek (`{scale: 1.1}` → 110). */
+  const pctOf = (v) => Math.round((v?.scale ?? 1) * 100);
+
+  /**
+   * Percento späť do uloženej hodnoty. `add` sa NESIE ĎALEJ, hoci ho panel
+   * neponúka: ručne upravený súbor ho dovoliť môže a tichý zánik konštanty
+   * pri prvom ťuknutí do percenta by bola zmena mapy, ktorú nikto nechcel.
+   */
+  const relWithPct = (rel, percento) => ({
+    scale: Math.round(Math.min(1000, Math.max(10, percento))) / 100,
+    ...(rel && rel.add != null ? { add: rel.add } : {})
+  });
+
+  /**
+   * Uložená hodnota → riadky editora `[[od, do, hodnota], …]`.
+   *
+   * `rows: null` znamená „úprava nie je" – vtedy platí, čo počíta štýl.
+   * Zoznam vždy vyjde SÚVISLÝ: `do` každého riadku je `od` nasledujúceho
+   * mínus jedna, posledný siaha po strop zobrazenia. Vďaka tomu sa medzera
+   * ani prekryv nedajú naklikať (`cleanPaintBands` by ich odmietol a s nimi
+   * celú vlastnosť).
+   */
+  function readRows(value) {
+    if (value === undefined) return { rows: null, mode: null, smooth: false };
+    if (isRelative(value)) {
+      return { rows: [[0, MAX_DISPLAY_Z, value]], mode: "rel", smooth: false };
+    }
+    if (Array.isArray(value) && value.length && Array.isArray(value[0])) {
+      if (isBandList(value)) {
+        const b = sortBands(value);
+        return {
+          rows: b.map(([od, doZ, v], i) => [
+            od,
+            i + 1 < b.length ? b[i + 1][0] - 1 : Math.max(doZ, MAX_DISPLAY_Z),
+            v
+          ]),
+          mode: b.some(([, , v]) => isRelative(v)) ? "rel" : "abs",
+          smooth: false
+        };
+      }
+      // KRIVKA (zoomové zlomy) sa ukazuje tými istými riadkami: zlom je
+      // začiatok pásma a „plynulý prechod" je zaškrtnutý. Tak sa dá doladiť
+      // aj to, čo vzniklo kopírovaním štýlu z inej vrstvy (`snapshotStyle`
+      // krivku zo štýlu odfotí ako zlomy), bez druhého ovládania.
+      const st = sortStops(value.filter((s) => Array.isArray(s) && s.length === 2));
+      if (st.length) {
+        return {
+          rows: st.map(([z, v], i) => [
+            z,
+            i + 1 < st.length ? st[i + 1][0] - 1 : MAX_DISPLAY_Z,
+            v
+          ]),
+          mode: "abs",
+          smooth: true
+        };
+      }
+    }
+    return { rows: [[0, MAX_DISPLAY_Z, value]], mode: "abs", smooth: false };
+  }
+
+  /** Riadky späť do tvaru, ktorý pozná súbor úprav. */
+  function writeRows(rows, mode, smooth) {
+    if (!rows || !rows.length) return undefined;
+    if (rows.length === 1) {
+      const v = rows[0][2];
+      // Sto percent nie je úprava, je to „nechaj, čo počíta štýl" – a takú
+      // vetu netreba ukladať (`cleanRelative` by ju aj tak zahodila).
+      if (isRelative(v) && (v.scale ?? 1) === 1 && (v.add ?? 0) === 0) return undefined;
+      return v;
+    }
+    if (mode === "abs" && smooth) return rows.map(([od, , v]) => [od, v]);
+    return rows.map(([od, doZ, v]) => [od, doZ, v]);
+  }
+
+  /**
+   * @param {object} opts
+   * @param {string} opts.key         kde to je (drží si „rozbalené")
+   * @param {string} opts.label       meno vlastnosti po ľudsky
+   * @param {"number"|"color"} opts.kind
+   * @param {*} opts.styleValue       čo tú vlastnosť počíta štýl (základ percenta)
+   * @param {*} opts.value            úprava, ako je uložená
+   * @param {(next: *) => void} opts.onChange  `undefined` = späť na štýl
+   */
+  function zoomValueEditor({
+    key, label, kind = "number", min, max, step, unit = "",
+    styleValue, value, onChange, allowPercent = kind !== "color", note
+  }) {
+    const stav = readRows(value);
+    const mode = stav.mode || (allowPercent ? "rel" : "abs");
+    const smooth = stav.smooth;
+    const zNow = zoomCell();
+    // `styleAt` je to, čo na tom zoome počíta štýl (farba aj číslo), `baseAt`
+    // je to isté len pre čísla – percento sa nedá počítať z hexu a `null`
+    // z neho je poctivejšia odpoveď než nula.
+    const styleAt = (z) => valueAtZoom(styleValue, z);
+    const baseAt = (z) => {
+      const v = styleAt(z);
+      return typeof v === "number" ? v : null;
+    };
+    const vychodzia = () =>
+      mode === "rel"
+        ? { scale: 1 }
+        : styleAt(zNow) ?? (kind === "color" ? "#888888" : min ?? 1);
+    const rows = stav.rows || [[0, MAX_DISPLAY_Z, vychodzia()]];
+    const zmenene = value !== undefined;
+    const rozbalene = rows.length > 1 || zoomOpen.has(key);
+
+    const zapis = (next, m = mode, s = smooth) => {
+      onChange(writeRows(next, m, s));
       apply({ immediate: true });
     };
-    const setStops = (next) => zapis(next && next.length ? sortStops(next) : null);
-    // Pásma sa pred zápisom EŠTE ZOSÚVISLIA: `do` každého okrem posledného je
-    // `od` nasledujúceho mínus jedna. Vstup z políčka `od` sa tým môže dotknúť
-    // dvoch riadkov naraz a nikdy z toho nevyjde medzera ani prekryv.
-    const setBands = (next) => {
-      if (!next || !next.length) return zapis(null);
-      const zoradene = sortBands(next).filter(
-        ([od], i, a) => i === 0 || od > a[i - 1][0]
-      );
-      zapis(
-        zoradene.map(([od, doZ, v], i) => [
-          od,
-          i + 1 < zoradene.length ? zoradene[i + 1][0] - 1 : Math.max(od, doZ),
-          v
-        ])
-      );
-    };
 
-    // Hodnota, s ktorou nový zlom (pásmo) začína: čo tá vlastnosť práve
-    // v mape má.
-    const nowValue = () => {
-      const v = (layer[where] || {})[prop];
-      const naZoome = valueAtZoom(list || v, zNow);
-      if (naZoome != null) return naZoome;
-      if (typeof v === "number" || (typeof v === "string" && v.startsWith("#"))) return v;
-      return kind === "color" ? primaryColor(layer) : min ?? 1;
-    };
-
-    const hodnotaCtrl = (v, setVal) =>
-      kind === "color"
-        ? colorControl({ value: v, onInput: setVal, onReset: null, changed: false })
-        : numberField({
-            label: "", value: v, min, max, step, stepFrom: v,
-            // Vyprázdnené políčko zlomu je spodná medza, NIE nula: nulová
-            // hrúbka je neviditeľná čiara (viď `paintNumber`).
-            onChange: (nv) => setVal(nv ?? min ?? 0)
-          });
-
-    const zoomInput = (z, onChange, title) => {
-      const input = el("input", {
-        type: "number", class: "dev-num dev-num-z",
-        min: "0", max: String(MAX_DISPLAY_Z), step: "1", value: String(z),
-        title: title || ""
-      });
-      input.addEventListener("change", () => onChange(Number(input.value)));
-      return input;
-    };
-
-    // ---- riadky: krivka ----
-    const stopRows = (stops || []).map(([z, v], i) => {
-      const setVal = (nv) => setStops(stops.map((s, j) => (j === i ? [s[0], nv] : s)));
-      return el("div", { class: "dev-stop" }, [
-        el("span", { class: "dev-stopz", text: "z" }),
-        zoomInput(z, (nz) => setStops(stops.map((s, j) => (j === i ? [nz, s[1]] : s)))),
-        hodnotaCtrl(v, setVal),
-        el("button", {
-          type: "button", class: "dev-mini", title: "Zmazať tento zlom", text: "×",
-          onclick: () => setStops(stops.filter((_, j) => j !== i))
-        })
+    /** Riadky s dopočítaným `do` – hranicu drží `od` nasledujúceho. */
+    const zosuvisli = (list) => {
+      const zoradene = [...list].sort((a, b) => a[0] - b[0]);
+      return zoradene.map(([od, doZ, v], i) => [
+        od,
+        i + 1 < zoradene.length ? zoradene[i + 1][0] - 1 : Math.max(od, MAX_DISPLAY_Z),
+        v
       ]);
-    });
+    };
 
-    // ---- riadky: pásma ----
-    const bandRows = (bands || []).map(([od, doZ, v], i) => {
-      const posledne = i + 1 === bands.length;
-      const setVal = (nv) => setBands(bands.map((b, j) => (j === i ? [b[0], b[1], nv] : b)));
-      // Hranica sa smie posunúť len tam, kde ostane pásmo aj susedovi –
-      // inak by z posunu vypadol prázdny rozsah.
-      const dolna = i === 0 ? 0 : bands[i - 1][0] + 1;
-      const horna = posledne ? doZ : bands[i + 1][0] - 1;
-      return el("div", { class: "dev-stop" }, [
-        el("span", { class: "dev-stopz", text: "z" }),
-        zoomInput(
-          od,
-          (nz) =>
-            setBands(
-              bands.map((b, j) =>
-                j === i ? [Math.min(Math.max(nz, dolna), horna), b[1], b[2]] : b
-              )
-            ),
-          `Od tohto zoomu platí táto hodnota (${dolna}–${horna})`
-        ),
-        posledne
-          ? el("span", { class: "dev-stopz", text: "–" })
-          : el("span", { class: "dev-stopz dev-bandto", text: `– ${doZ}` }),
-        posledne
-          ? zoomInput(
-              doZ,
-              (nz) => setBands(bands.map((b, j) => (j === i ? [b[0], Math.max(nz, b[0]), b[2]] : b))),
-              "Po tento zoom vrátane; vyššie platí tá istá hodnota"
-            )
-          : null,
-        hodnotaCtrl(v, setVal),
-        el("button", {
-          type: "button",
-          class: "dev-mini",
-          title: bands.length === 1
-            ? "Zrušiť pásma"
-            : "Zmazať toto pásmo – pohltí ho susedné, aby nevznikla medzera",
-          text: "×",
-          onclick: () => {
-            if (bands.length === 1) return setBands(null);
-            // Vypustené pásmo POHLTÍ sused: predošlé si predĺži `do`
-            // (o to sa postará zosúvislenie v `setBands`), a keď je vypustené
-            // prvé, druhé si posunie `od` na jeho začiatok.
-            const zvysok = bands.filter((_, j) => j !== i);
-            if (i === 0) zvysok[0] = [od, zvysok[0][1], zvysok[0][2]];
-            setBands(zvysok);
+    const setRow = (i, patch) =>
+      zapis(zosuvisli(rows.map((r, j) => (j === i ? [patch.od ?? r[0], r[1], "v" in patch ? patch.v : r[2]] : r))));
+
+    /** Ovládanie hodnoty jedného riadku. */
+    const valueCell = (i) => {
+      const v = rows[i][2];
+      if (kind === "color") {
+        return colorControl({
+          value: typeof v === "string" ? v : "#888888",
+          changed: zmenene,
+          onInput: (c) => {
+            onChange(writeRows(rows.map((r, j) => (j === i ? [r[0], r[1], c] : r)), mode, smooth));
+            apply({ rerender: false });
           }
-        })
-      ]);
-    });
-
-    // ---- prepínač tvaru ----
-    // Prepnutie NEZAHODÍ, čo je nastavené: krivka sa preloží na pásma (zlom
-    // = začiatok pásma) a pásma na krivku (začiatok pásma = zlom). Presné to
-    // byť nemôže – plynulý prechod a skok sú dve rôzne veci –, ale zahodiť
-    // odladené hodnoty a nechať prázdno by bolo horšie.
-    const prepni = (naPasma) => {
-      if (naPasma) {
-        const z = stops
-          ? sortStops(stops).map(([sz, v], i, a) => [
-              sz, i + 1 < a.length ? a[i + 1][0] - 1 : Math.max(sz, MAX_DISPLAY_Z), v
-            ])
-          : [[zNow, MAX_DISPLAY_Z, nowValue()]];
-        setBands(z);
-      } else {
-        setStops(bands ? bands.map(([od, , v]) => [od, v]) : [[zNow, nowValue()]]);
+        });
       }
+      if (mode === "rel") {
+        const input = el("input", {
+          type: "number", class: "dev-num dev-pct",
+          min: "10", max: "1000", step: "5",
+          value: String(pctOf(isRelative(v) ? v : null)),
+          title: `${label}: percento z toho, čo na tomto zoome počíta štýl. `
+            + `100 % = bez zmeny.`
+        });
+        input.addEventListener("change", () =>
+          setRow(i, { v: relWithPct(isRelative(v) ? v : null, Number(input.value)) })
+        );
+        const zoStyle = baseAt(rows[i][0]);
+        return el("span", { class: "dev-valcell" }, [
+          input,
+          el("span", { class: "dev-unit", text: "%" }),
+          zoStyle == null
+            ? null
+            : el("small", {
+                class: "dev-note",
+                text: `= ${fmtNum(zoStyle * (isRelative(v) ? v.scale ?? 1 : 1) + (isRelative(v) ? v.add ?? 0 : 0))}${unit}`
+              })
+        ]);
+      }
+      const input = el("input", {
+        type: "number", class: "dev-num",
+        min, max, step,
+        value: typeof v === "number" ? String(fmtNum(v)) : "",
+        placeholder: String(fmtNum(baseAt(rows[i][0]) ?? "")),
+        title: `${label}: pevná hodnota na týchto zoomoch`
+      });
+      input.addEventListener("change", () =>
+        setRow(i, { v: input.value === "" ? baseAt(rows[i][0]) ?? min ?? 0 : Number(input.value) })
+      );
+      return el("span", { class: "dev-valcell" }, [
+        input,
+        unit ? el("span", { class: "dev-unit", text: unit }) : null
+      ]);
     };
-    const prepinac = el("div", { class: "dev-shape" }, [
-      el("button", {
-        type: "button",
-        class: `dev-mini dev-shapebtn${pasma ? "" : " on"}`,
-        title: "Plynulý prechod medzi zlomami (interpolate)",
-        text: "krivka",
-        onclick: () => (pasma ? prepni(false) : null)
-      }),
-      el("button", {
-        type: "button",
-        class: `dev-mini dev-shapebtn${pasma ? " on" : ""}`,
-        title: "V pásme konštantná hodnota, na hranici skok (step)",
-        text: "pásma",
-        onclick: () => (pasma ? null : prepni(true))
-      })
-    ]);
 
-    const uzTam = pasma
-      ? (bands || []).some(([od]) => od === zNow)
-      : (stops || []).some(([z]) => z === zNow);
-    const plno = (list || []).length >= MAX_PAINT_STOPS;
-    return el("div", { class: "dev-stops" }, [
-      list ? prepinac : null,
-      ...(pasma ? bandRows : stopRows),
+    /** Jeden riadok pásma: `z od – do`, hodnota, kôš. */
+    const rowEl = (i) => {
+      const [od, doZ] = rows[i];
+      // Hranica sa smie posunúť len tam, kde ostane pásmo aj susedovi – inak
+      // by z posunu vypadol prázdny rozsah. Prvé pásmo smie začínať aj nad
+      // z0: to, čo je pod ním, drží jeho hodnotu (`step` aj `interpolate`
+      // pod prvým zlomom nič neinterpolujú). Práve tak vyzerá krivka
+      // odfotená z inej vrstvy – prvý zlom má tam, kde ho má štýl.
+      const dolna = i === 0 ? 0 : rows[i - 1][0] + 1;
+      const horna = doZ;
+      const zInput = el("input", {
+        type: "number", class: "dev-num dev-num-z",
+        min: String(dolna), max: String(horna), step: "1", value: String(od),
+        title: `Od tohto zoomu platí riadok (${dolna}–${horna})`
+      });
+      zInput.addEventListener("change", () =>
+        setRow(i, { od: Math.min(Math.max(Number(zInput.value), dolna), horna) })
+      );
+      return el("div", { class: `dev-zrow${od <= zNow && zNow <= doZ ? " now" : ""}` }, [
+        el("span", { class: "dev-stopz", text: "z" }),
+        zInput,
+        el("span", { class: "dev-stopz", text: `– z${doZ}` }),
+        valueCell(i),
+        rows.length > 1
+          ? el("button", {
+              type: "button", class: "dev-mini",
+              title: "Zrušiť toto pásmo – pohltí ho susedné, aby nevznikla medzera",
+              text: "×",
+              onclick: () => {
+                const zvysok = rows.filter((_, j) => j !== i);
+                if (i === 0) zvysok[0] = [0, zvysok[0][1], zvysok[0][2]];
+                zapis(zosuvisli(zvysok));
+              }
+            })
+          : null
+      ]);
+    };
+
+    // ---- hlavička: meno, hodnota (pri jedinom pásme), prepínač %, reset ----
+    const modeBtn = (id, text, title) =>
       el("button", {
         type: "button",
-        class: "dev-mini dev-addstop",
-        title: plno
-          ? `Viac než ${MAX_PAINT_STOPS} ${pasma ? "pásiem" : "zlomov"} sa do úprav nezmestí`
-          : uzTam
-            ? `Na zoome ${zNow} už ${pasma ? "pásmo začína" : "zlom je"} – zmeň ho v riadku vyššie`
-            : pasma
-              ? `Rozdelí pásmo na zoome, kde práve stojí mapa`
-              : `Pridá zlom na zoome, kde práve stojí mapa`,
-        text: pasma ? `+ pásmo od z${zNow}` : `+ zlom pri z${zNow}`,
-        disabled: uzTam || plno || null,
-        onclick: () =>
-          pasma
-            // Nové pásmo vznikne ROZDELENÍM toho, v ktorom mapa práve stojí –
-            // preto sa z tohto tlačidla nedá vyrobiť medzera.
-            ? setBands([...bands, [zNow, MAX_DISPLAY_Z, nowValue()]])
-            : setStops([...(stops || []), [zNow, nowValue()]])
-      }),
-      // Bez zoznamu je prepínač na konci: prvé ťuknutie zároveň hovorí, ktorý
-      // tvar chceš, a hneď v ňom vyrobí prvý riadok.
-      list
+        class: `dev-mini dev-modebtn${mode === id ? " on" : ""}`,
+        text,
+        title,
+        onclick: () => {
+          if (mode === id) return;
+          // PREPNUTIE NIČ NEZAHODÍ: percento sa vyčísli nad tým, čo počíta
+          // štýl na začiatku pásma, a pevná hodnota sa naopak prepočíta na
+          // percento. Presné to byť nemôže (percento drží krivku, pevná
+          // hodnota ju zahadzuje), ale prázdny zoznam by bol horší.
+          const next = rows.map(([od, doZ, v]) => {
+            const zaklad = baseAt(od);
+            if (id === "rel") {
+              const pomer = zaklad && typeof v === "number" ? v / zaklad : 1;
+              return [od, doZ, relWithPct(null, Math.round(pomer * 100))];
+            }
+            const cislo = isRelative(v)
+              ? (zaklad ?? 1) * (v.scale ?? 1) + (v.add ?? 0)
+              : v;
+            return [od, doZ, fmtNum(typeof cislo === "number" ? cislo : zaklad ?? 1)];
+          });
+          zapis(next, id, smooth);
+        }
+      });
+
+    const head = el("div", { class: `dev-zvhead${zmenene ? " changed" : ""}` }, [
+      el("span", { class: "dev-propname", text: label }),
+      ...(rows.length === 1 ? [valueCell(0)] : []),
+      ...(allowPercent && kind !== "color"
+        ? [
+            el("span", { class: "dev-modes" }, [
+              modeBtn("rel", "% štýlu", "Percento z toho, čo počíta štýl – zoomová krivka "
+                + "zo štýlu ostane, mení sa len jej mierka"),
+              modeBtn("abs", "pevná", "Pevná hodnota – zoomová krivka zo štýlu sa zahodí")
+            ])
+          ]
+        : []),
+      zmenene
         ? el("button", {
             type: "button", class: "dev-mini",
-            title: `Zrušiť ${pasma ? "pásma" : "zoomové zlomy"} a nechať, čo je v štýle`,
+            title: `Späť na to, čo počíta štýl (${label})`,
             text: "⟲",
-            onclick: () => zapis(null)
+            onclick: () => {
+              zoomOpen.delete(key);
+              onChange(undefined);
+              apply({ immediate: true });
+            }
           })
         : el("button", {
-            type: "button", class: "dev-mini dev-addstop",
-            title: "V pásme je hodnota konštantná a na hranici skočí (step)",
-            text: `+ pásmo od z${zNow}`,
-            onclick: () => setBands([[zNow, MAX_DISPLAY_Z, nowValue()]])
+            type: "button", class: "dev-mini",
+            title: "Rozpísať hodnotu po zoomoch",
+            text: rozbalene ? "▾ zoom" : "▸ zoom",
+            onclick: () => {
+              if (zoomOpen.has(key)) zoomOpen.delete(key);
+              else zoomOpen.add(key);
+              renderBody();
+            }
           })
+    ]);
+
+    if (!rozbalene) {
+      return el("div", { class: "dev-zv" }, [head, note ? el("small", { class: "dev-note", text: note }) : null]);
+    }
+
+    const plno = rows.length >= MAX_PAINT_STOPS;
+    const uzTam = rows.some(([od]) => od === zNow) || zNow === 0;
+    const split = el("button", {
+      type: "button",
+      class: "dev-mini dev-addstop",
+      text: `+ rozdeliť pri z${zNow}`,
+      disabled: plno || uzTam || null,
+      title: plno
+        ? `Viac než ${MAX_PAINT_STOPS} pásiem sa do úprav nezmestí`
+        : uzTam
+          ? `Na z${zNow} už pásmo začína – zmeň ho v riadku vyššie`
+          : `Rozdelí pásmo na zoome, kde práve stojí mapa`,
+      onclick: () => {
+        const i = rows.findIndex(([od, doZ]) => zNow > od && zNow <= doZ);
+        if (i < 0) return;
+        const [, doZ, v] = rows[i];
+        zapis(zosuvisli([
+          ...rows.slice(0, i),
+          [rows[i][0], zNow - 1, v],
+          [zNow, doZ, isRelative(v) ? { ...v } : v],
+          ...rows.slice(i + 1)
+        ]));
+      }
+    });
+
+    const plynule = el("input", { type: "checkbox", class: "dev-check" });
+    plynule.checked = smooth;
+    plynule.addEventListener("change", () => zapis(rows, mode, plynule.checked));
+
+    return el("div", { class: "dev-zv" }, [
+      head,
+      ...(rows.length > 1 ? rows.map((_, i) => rowEl(i)) : []),
+      el("div", { class: "dev-zvfoot" }, [
+        split,
+        mode === "abs" && rows.length > 1
+          ? el("label", { class: "dev-inline" }, [
+              plynule,
+              el("span", { text: "plynulý prechod medzi pásmami" })
+            ])
+          : null,
+        note ? el("small", { class: "dev-note", text: note }) : null
+      ])
     ]);
   }
 
   /**
-   * Číselná vlastnosť z `paint` – a hlavne CESTA SPÄŤ NA „AUTO".
-   *
-   * Bez nej sa dala vlastnosť len nastaviť: hrúbka čiary je v štýle krivka
-   * podľa zoomu, políčko preto ukazuje „auto" a jediný spôsob, ako sa k nemu
-   * vrátiť, bolo vymazať políčko naslepo. Šípkou dole sa pritom prázdne
-   * políčko skočí na spodnú medzu (nulová hrúbka = neviditeľná čiara), takže
-   * z jedného ťuknutia bola zmiznutá vrstva bez cesty naspäť. Odteraz je pri
-   * zmenenej hodnote `⟲` ako všade inde v paneli a v bublinke je aj to, čo
-   * „auto" na tomto zoome znamená – aby bolo z čoho vyjsť.
+   * Editor nad jednou vlastnosťou VRSTVY (`paint` alebo `layout`) – tenká
+   * obálka nad `zoomValueEditor`, aby sa čítanie a zápis nepísali na desiatich
+   * miestach znova.
    */
-  /**
-   * „AUTO × % + N" – úprava NAD tým, čo počíta štýl, namiesto pevného čísla.
-   *
-   * Prečo to políčko existuje. Pevná hodnota ZAHODÍ zoomovú krivku, takže
-   * „cesty o štvrtinu hrubšie" sa dovtedy dalo povedať len prepísaním celej
-   * krivky ručne – zvlášť pre každú triedu cesty, a prvý zoom navyše to ticho
-   * rozhodil. Percento krivku nechá a zmení jej mierku (rozpis pri
-   * `isRelative` v `themes.js`), takže hrúbka aj obrys škálujú ďalej.
-   *
-   * Dve políčka, nie jedno: `×` drží pomer na všetkých zoomoch rovnaký, `+`
-   * je jemný doplnok. Prázdne = nechaj tak (`× 1`, `+ 0`), takže vyprázdnenie
-   * oboch je „späť na štýl".
-   */
-  function relativeInputs({ layer, prop, where, rel, onSet }) {
-    const pole = (kluc, znak, krok, siroko) => {
-      const input = el("input", {
-        type: "number",
-        class: "dev-num dev-rel",
-        step: krok,
-        value: rel && rel[kluc] != null ? rel[kluc] : "",
-        placeholder: siroko,
-        title: `${prop}: ${znak === "×" ? "koľkokrát" : "o koľko"} oproti tomu, `
-          + `čo počíta štýl – prázdne nechá pôvodnú hodnotu`
-      });
-      input.addEventListener("change", () => {
-        const next = { ...(rel || {}) };
-        if (input.value === "") delete next[kluc];
-        else next[kluc] = Number(input.value);
-        onSet(next);
-      });
-      return el("span", { class: "dev-relpair" }, [el("span", { text: znak }), input]);
-    };
-    return [pole("scale", "×", 0.05, "1"), pole("add", "+", 0.5, "0")];
+  function layerValueEditor(layer, prop, opts = {}) {
+    const where = opts.where || "paint";
+    const o = layerOverride(layer.id) || {};
+    const zapisVlastnost = where === "layout" ? setLayerLayout : setLayerPaint;
+    // Vlastnosť, ktorú štýl nenastavil, nie je „nič" – pri `layout` platí
+    // predvoľba MapLibre, a bez nej by percento nemalo čo násobiť.
+    const vStyle = (layer[where] || {})[prop];
+    const styleValue =
+      vStyle !== undefined
+        ? vStyle
+        : where === "layout"
+          ? LAYOUT_PROPS[prop]?.def
+          : PAINT_DEFAULTS[prop];
+    return zoomValueEditor({
+      key: `${layer.id}:${where}:${prop}`,
+      label: opts.label || prop,
+      kind: opts.kind || "number",
+      min: opts.min,
+      max: opts.max,
+      step: opts.step,
+      unit: opts.unit || "",
+      note: opts.note,
+      styleValue,
+      value: (o[where] || {})[prop],
+      onChange: (next) => zapisVlastnost(layer.id, prop, next)
+    });
   }
 
   /**
@@ -2260,176 +2456,6 @@ export function initDevMode({
       if (prop === "symbol-spacing") return poCiare;
       return false;
     });
-  }
-
-  function paintNumber({ layer, prop, label, min, max, step, where = "paint" }) {
-    const o = layerOverride(layer.id) || {};
-    // `paint` aj `layout` – to isté políčko, len iná polica (rozpis pri
-    // `zoomStopsEditor`).
-    const zapisVlastnost = where === "layout" ? setLayerLayout : setLayerPaint;
-    // Vlastnosť, ktorú štýl nenastavil, nie je „nič" – platí pre ňu predvoľba
-    // MapLibre (`LAYOUT_PROPS[...].def`). Bez nej by pri nej svietilo prázdne
-    // „auto", z ktorého sa nedá vyjsť, a percento by nemalo čo násobiť
-    // (tú istú hodnotu dosadzuje `overrideValue` pri skladaní štýlu).
-    const vStyle = (layer[where] || {})[prop];
-    const cur = vStyle === undefined && where === "layout"
-      ? LAYOUT_PROPS[prop]?.def
-      : vStyle;
-    const isNum = typeof cur === "number";
-    const uprava = (o[where] || {})[prop];
-    const overridden = uprava !== undefined;
-    const rel = isRelative(uprava) ? uprava : null;
-    const back = () => {
-      zapisVlastnost(layer.id, prop, undefined);
-      apply({ immediate: true });
-    };
-    const resetBtn = (title) =>
-      el("button", { type: "button", class: "dev-mini", title, text: "⟲", onclick: back });
-    // `×` a `+` sa píšu do tej istej vlastnosti ako pevná hodnota – sú to dve
-    // odpovede na jednu otázku, takže sa navzájom nahrádzajú, nie sčítavajú.
-    const relPolia = () =>
-      relativeInputs({
-        layer, prop, where, rel,
-        onSet: (next) => {
-          const prazdne = next.scale == null && next.add == null;
-          zapisVlastnost(layer.id, prop, prazdne ? undefined : next);
-          apply({ immediate: true });
-        }
-      });
-
-    // Keď tú istú vlastnosť riadia zoomové zlomy, pevná hodnota by ich prepísala
-    // – políčko sa preto zamkne a povie, kde sa to teraz nastavuje. Dve páky na
-    // jednu vlastnosť by sa inak tichým prepisom navzájom rušili.
-    if (Array.isArray(o[where] && o[where][prop])) {
-      // Do políčka širokého 46 px sa „podľa zoomu" nezmestí (odsekne sa na
-      // „podľa"), takže tam je pomlčka a vysvetlenie v bublinke – vedľajší
-      // riadok „… podľa zoomu" povie zvyšok.
-      const field = numberField({ label, value: undefined, min, max, step,
-                                  placeholder: "—", onChange: () => {} });
-      const input = field.querySelector("input");
-      input.disabled = true;
-      input.title = `${prop} je nastavené podľa zoomu nižšie (krivka alebo pásma) – `
-        + `zruš to (⟲), ak chceš jednu pevnú hodnotu`;
-      field.classList.add("changed");
-      field.appendChild(resetBtn(`Späť na to, čo počíta štýl (${prop})`));
-      return field;
-    }
-
-    // RELATÍVNA ÚPRAVA. Krivka zo štýlu ostáva, mení sa jej mierka – v políčku
-    // preto nie je čo vypĺňať a ukazuje sa, čo z toho na tomto zoome vyšlo.
-    // (`cur` je už PO úprave: panel dostáva štýl, na ktorom úprava sedí.)
-    if (rel) {
-      const teraz = valueAtZoom(cur, zoomView);
-      const field = numberField({
-        label, value: undefined, min, max, step,
-        placeholder: typeof teraz === "number" ? String(teraz) : "—",
-        onChange: () => {}
-      });
-      const input = field.querySelector("input");
-      input.disabled = true;
-      input.title = `${prop} je ${relPopis(rel)} oproti štýlu`
-        + (typeof teraz === "number" ? ` – na z${zoomCell()} je to ${teraz}` : "");
-      field.classList.add("changed");
-      for (const p of relPolia()) field.appendChild(p);
-      field.appendChild(resetBtn(`Späť na to, čo počíta štýl (${prop})`));
-      return field;
-    }
-
-    // Čo tá vlastnosť na TOMTO zoome naozaj robí. Bez toho je „auto" prázdne
-    // miesto a prvá vlastná hodnota je hádanie.
-    const auto = overridden ? null : valueAtZoom(cur, zoomView);
-    const autoText = typeof auto === "number" ? String(auto) : null;
-    const field = numberField({
-      label,
-      value: isNum ? Math.round(cur * 100) / 100 : undefined,
-      min,
-      max,
-      step,
-      // Do políčka sa „podľa zoomu" nezmestí, patrí teda do bublinky.
-      placeholder: isNum ? "" : "auto",
-      // Šípka na prázdnom políčku nesmie skočiť na spodnú medzu (0 = zmiznutá
-      // čiara) – začne sa od toho, čo je v mape teraz.
-      stepFrom: autoText,
-      title: vStyle === undefined && where === "layout"
-        ? `${prop} štýl nenastavuje – platí predvoľba MapLibre (${cur}). `
-          + `Vyplnením alebo „×" sa dá zaviesť.`
-        : isNum
-        ? `${prop} je pevná hodnota – ⟲ vedľa ju vráti na to, čo počíta štýl`
-        : `${prop} sa v štýle mení podľa zoomu` +
-          (autoText ? ` (na z${zoomCell()} je to ${autoText})` : "") +
-          " – vyplnením sa nahradí pevnou hodnotou",
-      onChange: (v) => {
-        zapisVlastnost(layer.id, prop, v);
-        apply({ immediate: true });
-      }
-    });
-    // `×` a `+` sú tu vždy, aj nad nedotknutou vlastnosťou – práve vtedy sú
-    // totiž najužitočnejšie („nechaj krivku, len hrubšie") a keby sa ukázali
-    // až po vyplnení pevnej hodnoty, nikto by ich nenašiel.
-    for (const p of relPolia()) field.appendChild(p);
-    if (!overridden) return field;
-    field.classList.add("changed");
-    field.appendChild(resetBtn(`Späť na to, čo počíta štýl (${prop} podľa zoomu)`));
-    return field;
-  }
-
-  /**
-   * Šírka okraja – pevná hodnota a pri ČIARE aj „× a +" (rozpis pri sekcii
-   * „okraj"). Pole zlomov sem nechodí z panela, ale ručne upravený súbor ho
-   * dovoliť môže, takže sa s ním počíta: políčko sa vtedy zamkne, nech ho
-   * pevná hodnota ticho neprepíše.
-   */
-  function outlineWidthField(layer, out, isArea) {
-    const w = out.width;
-    const zapis = (v) => {
-      patchSub(layer.id, "outline", { width: v });
-      apply({ immediate: true });
-    };
-    if (Array.isArray(w)) {
-      const field = numberField({ label: "šírka", value: undefined, min: 0.5, max: 40,
-                                  step: 0.5, placeholder: "—", onChange: () => {} });
-      const input = field.querySelector("input");
-      input.disabled = true;
-      input.title = "šírka okraja je nastavená podľa zoomu – prepíš ju v súbore úprav";
-      return field;
-    }
-    const rel = isRelative(w) ? w : null;
-    const field = numberField({
-      label: "šírka",
-      value: rel ? undefined : w,
-      min: 0.5,
-      max: 40,
-      step: 0.5,
-      placeholder: rel ? "—" : "",
-      title: rel
-        ? `okraj je ${relPopis(rel)} oproti hrúbke čiary`
-        : isArea
-        ? "šírka obrysovej čiary v px"
-        : "toľko px obrysu na každej strane čiary",
-      onChange: (v) => zapis(v ?? 1)
-    });
-    if (rel) field.querySelector("input").disabled = true;
-    // Plocha vlastnú hrúbku nemá, takže nie je čo násobiť – „×" by tam bolo
-    // políčko, ktoré vyzerá, že niečo robí, a nerobí nič.
-    if (!isArea) {
-      for (const p of relativeInputs({
-        layer, prop: "šírka okraja", where: "paint", rel,
-        onSet: (next) => {
-          const prazdne = next.scale == null && next.add == null;
-          // Okraj bez šírky nie je okraj – prázdne „× a +" sa vrátia na 1 px.
-          zapis(prazdne ? 1 : next);
-        }
-      })) field.appendChild(p);
-    }
-    return field;
-  }
-
-  /** „1,4× a +0,5 px" – relatívna úprava po slovensky, do bublinky a súhrnu. */
-  function relPopis(rel) {
-    const casti = [];
-    if (rel.scale != null) casti.push(`${rel.scale}×`);
-    if (rel.add != null) casti.push(`${rel.add > 0 ? "+" : ""}${rel.add}`);
-    return casti.join(" a ") || "bez zmeny";
   }
 
   /**
@@ -2511,10 +2537,21 @@ export function initDevMode({
     return el("div", { class: "dev-tools" }, row);
   }
 
+  /**
+   * DETAIL VRSTVY – zhora nadol tak, ako sa mapa ladí: čo je vidieť (zoom),
+   * akou farbou, aké hrubé, s akým obrysom a vzorom, a nakoniec výnimky
+   * podľa toho, čo je v OSM napísané.
+   *
+   * Každé číslo aj farba idú tým istým editorom (`layerValueEditor`), takže
+   * „na týchto zoomoch inak" sa všade pýta rovnako a nikde nie sú dve páky
+   * na jednu vlastnosť.
+   */
   function layerDetails(layer) {
     const o = layerOverride(layer.id) || {};
-    const paletteMap = (layer.metadata || {})["frico:palette"] || {};
     const parts = [layerTools(layer)];
+
+    // ---- toto je obrys inej vrstvy ----
+    parts.push(...borderLayerBanner(layer));
 
     // ---- rozsah zoomu ----
     // Zoom je prvý, lebo „čo je vidieť kedy" je najčastejšia otázka: pásik
@@ -2535,7 +2572,9 @@ export function initDevMode({
           apply({ immediate: true });
         }
       });
-    parts.push(sectionTitle("Zoom", "klik do pásika = na tom zoome áno / nie"));
+    parts.push(
+      sectionTitle("Zobrazené od–do", "klik do pásika = na tom zoome áno / nie")
+    );
     parts.push(zoomStrip(layer));
     parts.push(
       el("div", { class: `dev-fields${o.minzoom != null || o.maxzoom != null ? " changed" : ""}` }, [
@@ -2580,108 +2619,84 @@ export function initDevMode({
     parts.push(orderSection(layer));
 
     // ---- farby ----
-    if (colorProps(layer).length) parts.push(sectionTitle("Farby"));
-    for (const [prop, value] of colorProps(layer)) {
-      const paletteKey = paletteMap[prop];
-      const overridden = !!(o.paint && o.paint[prop] !== undefined);
-      const bezVyplne = o.paint && o.paint[prop] === NO_FILL;
-      // BEZ VÝPLNE má zmysel len na ploche: plocha stratí farbu pozadia, ale
-      // vzor aj okraj na nej ostanú. Nie je to krytie 0 (to zhasne aj obrys
-      // z `fill-outline-color`) ani vypnutie vrstvy (tým by zmizol aj vzor).
-      const canNoFill = prop === "fill-color" || prop === "fill-extrusion-color";
+    parts.push(...colorSection(layer));
+
+    // ---- ikona ----
+    parts.push(...iconSection(layer));
+
+    // ---- čísla (hrúbka, krytie, veľkosť ikony, sila tieňovania) ----
+    parts.push(...numberSection(layer));
+
+    if (!canDecorate(layer)) {
+      parts.push(...variantSection(layer, o));
+      return el("div", { class: "dev-details" }, parts);
+    }
+
+    // ---- prerušovanie čiary ----
+    if (layer.type === "line") {
+      // ČO JE V TOM VÝBERE VIDIEŤ, MUSÍ BYŤ TO, ČO JE V MAPE: prvou položkou
+      // je prerušovanie zo štýlu (`frico:dash`), takže pri železnici tam
+      // nesvieti „Plná". „Plná" je plnohodnotná úprava (rozpis v `cleanLayers`).
+      parts.push(sectionTitle("Prerušovanie", "plná, čiarkovaná, bodkovaná…"));
       parts.push(
-        el("div", { class: "dev-prop" }, [
-          el("span", { class: "dev-propname", text: prop.replace(/-color$/, "") }),
-          bezVyplne
-            ? el("span", { class: "dev-note", text: "bez výplne (priehľadná)" })
-            : colorControl({
-                value,
-                changed: overridden,
-                note: paletteKey ? `paleta: ${PALETTE_LABELS[paletteKey] || paletteKey}` : "",
-                onInput: (v) => {
-                  setLayerPaint(layer.id, prop, v);
-                  apply({ rerender: false });
-                },
-                onReset: overridden
-                  ? () => {
-                      setLayerPaint(layer.id, prop, undefined);
-                      apply({ immediate: true });
-                    }
-                  : null
-              })
-        ])
-      );
-      // ---- tmavý variant tejto farby ----
-      // Bez výplne nemá zmysel dopĺňať: priehľadná farba je priehľadná
-      // v každej téme, dark mode by pri nej nemal čo prepísať.
-      if (!bezVyplne) {
-        const darkValue = (o.paintDark || {})[prop];
-        const hasDark = darkValue !== undefined;
-        parts.push(
-          el("div", { class: `dev-prop dev-prop-dark${hasDark ? " changed" : ""}` }, [
-            el("span", { class: "dev-propname", text: "🌙 v tmavej téme" }),
-            hasDark
-              ? colorControl({
-                  value: darkValue,
-                  changed: true,
-                  onInput: (v) => {
-                    setLayerPaintDark(layer.id, prop, v);
-                    apply({ rerender: false });
-                  },
-                  onReset: () => {
-                    setLayerPaintDark(layer.id, prop, undefined);
-                    apply({ immediate: true });
-                  }
-                })
-              : el("button", {
-                  type: "button",
-                  class: "dev-btn",
-                  text: "Vlastná farba pre tmavú tému",
-                  onclick: () => {
-                    setLayerPaintDark(layer.id, prop, value);
-                    apply({ immediate: true });
-                  }
-                })
-          ])
-        );
-      }
-      if (canNoFill) {
-        const box = el("input", { type: "checkbox", class: "dev-check" });
-        box.checked = !!bezVyplne;
-        box.addEventListener("change", () => {
-          setLayerPaint(layer.id, prop, box.checked ? NO_FILL : undefined);
-          apply({ immediate: true });
-        });
-        parts.push(
-          el("label", { class: `dev-field dev-inline${bezVyplne ? " changed" : ""}` }, [
-            box,
-            el("span", { text: "bez výplne – ostane len vzor a okraj" })
-          ])
-        );
-      }
-      parts.push(
-        el("div", { class: "dev-prop" }, [
-          el("span", { class: "dev-propname", text: "podľa zoomu" }),
-          zoomStopsEditor({ layer, prop, kind: "color" })
+        el("div", { class: `dev-sub${o.dash ? " changed" : ""}` }, [
+          dashField({
+            label: "vzor",
+            value: o.dash || "",
+            builtin: builtinDash(layer),
+            onChange: (v) => {
+              setLayerOverride(layer.id, { dash: v || undefined });
+              apply({ immediate: true });
+            }
+          })
         ])
       );
     }
 
-    // ---- farby, ktoré vrstva vyberá výrazom ----
-    // Napr. pásik trasy má farbu podľa značky z OSM, takže v `paint` nie je
-    // hex, ale `match`. Taká farba sa nedá prepísať na vrstve – mení sa
-    // v palete, a tá platí pre celú tému. Ovládanie je aj tak tu, nech sa
-    // farba ladí tam, kde je vidieť, čo mení.
+    // ---- opakujúci sa vzor ----
+    parts.push(...patternSection(layer, o));
+
+    // ---- okraj ----
+    parts.push(...outlineSection(layer, o));
+
+    // ---- rozlíšenie podľa atribútu OSM ----
+    parts.push(...variantSection(layer, o));
+
+    return el("div", { class: "dev-details" }, parts);
+  }
+
+  /**
+   * FARBY VRSTVY NA JEDNOM MIESTE.
+   *
+   * Kým to bolo rozsypané, mala jedna farba až päť rôznych ovládaní na
+   * rôznych miestach detailu: pipetku v „Farbách", vlastný riadok „🌙 v tmavej
+   * téme", zaškrtávacie políčko „bez výplne", ďalší editor „podľa zoomu"
+   * a k tomu ešte raz tú istú pipetku dole pri vzore ako „Podklad" – dva
+   * ovládacie prvky nad tou istou vlastnosťou, každý s vlastným tlačidlom
+   * späť. Teraz je jedna farba jeden riadok: pipetka, jej tmavý variant,
+   * „bez výplne" tam, kde to má zmysel, a rozpis po zoomoch pod tým istým
+   * `▸ zoom`, aký majú čísla.
+   */
+  function colorSection(layer) {
+    const props = colorProps(layer);
     const extraKeys = (layer.metadata || {})["frico:palette-extra"] || [];
+    if (!props.length && !extraKeys.length) return [];
+    const parts = [
+      sectionTitle("Farby", "🌙 je tmavý variant tej istej farby, ▸ zoom ju rozpíše po zoomoch")
+    ];
+    const paletteMap = (layer.metadata || {})["frico:palette"] || {};
+    for (const [prop, value] of props) parts.push(...colorRow(layer, prop, value, paletteMap[prop]));
+
+    // FARBY, KTORÉ SI VRSTVA VYBERÁ VÝRAZOM (pásik trasy podľa značky z OSM).
+    // Tie sa na vrstve prepísať nedajú – menia sa v palete a platia pre celú
+    // tému. Ovládanie je aj tak tu, nech sa farba ladí tam, kde je vidieť,
+    // čo mení.
     if (extraKeys.length) {
       const colors = mergedPalette(getTheme(), overrides);
       const changedPalette = overrides.palette[getTheme()] || {};
       parts.push(
         el("div", { class: "dev-prop dev-prophead" }, [
-          el("span", {
-            class: "dev-propname",
-            text: "farby z palety (platia pre celú tému)"
-          })
+          el("span", { class: "dev-propname", text: "z palety (platia pre celú tému)" })
         ])
       );
       for (const key of extraKeys) {
@@ -2707,213 +2722,200 @@ export function initDevMode({
         );
       }
     }
+    return parts;
+  }
 
-    // ---- ikona ----
-    // Len tam, kde je meno ikony v štýle napevno – mená skladané výrazom
-    // (POI podľa triedy) sa vyberajú z dát, nie zo zoznamu.
-    const iconNow = (layer.layout || {})["icon-image"];
-    if (layer.type === "symbol" && typeof iconNow === "string") {
-      parts.push(sectionTitle("Ikona"));
-      const set = (getIconSets?.() || []).find(
-        (s) => s.id === selectedIconSource(overrides)
-      ) || (getIconSets?.() || [])[0];
-      // Súčasná ikona je v zozname vždy, aj keby ju nasadená sada nemala –
-      // inak by `select` ticho ukázal prvú položku a tvrdil, že je vybraná.
-      const names = pickableIcons(set, iconNow);
-      parts.push(
-        el("div", { class: `dev-sub${o.icon ? " changed" : ""}` }, [
-          el("span", { class: "dev-note", text: `teraz: ${iconNow}` }),
-          o.icon
-            ? el("button", {
+  /** Jedna farba vrstvy: svetlá, tmavá, „bez výplne" a rozpis po zoomoch. */
+  function colorRow(layer, prop, value, paletteKey) {
+    const o = layerOverride(layer.id) || {};
+    const uprava = (o.paint || {})[prop];
+    const bezVyplne = uprava === NO_FILL;
+    // BEZ VÝPLNE má zmysel len na ploche: plocha stratí farbu pozadia, ale
+    // vzor aj okraj na nej ostanú. Nie je to krytie 0 (to zhasne aj obrys
+    // z `fill-outline-color`) ani vypnutie vrstvy (tým by zmizol aj vzor).
+    const canNoFill = prop === "fill-color" || prop === "fill-extrusion-color";
+    const label = COLOR_LABELS[prop] || prop.replace(/-color$/, "");
+    const darkValue = (o.paintDark || {})[prop];
+    const parts = [];
+
+    parts.push(
+      bezVyplne
+        ? el("div", { class: "dev-zv" }, [
+            el("div", { class: "dev-zvhead changed" }, [
+              el("span", { class: "dev-propname", text: label }),
+              el("span", { class: "dev-note", text: "bez výplne – vidno mapu pod vrstvou" }),
+              el("button", {
                 type: "button",
                 class: "dev-mini",
-                title: "Späť na pôvodnú ikonu",
+                title: "Vrátiť výplň",
                 text: "⟲",
                 onclick: () => {
-                  setLayerOverride(layer.id, { icon: undefined });
+                  setLayerPaint(layer.id, prop, undefined);
                   apply({ immediate: true });
                 }
               })
-            : null
-        ]),
-        iconGrid({
-          kluc: `layer:${layer.id}`,
-          value: iconNow,
-          names,
-          onPick: (v) => {
-            setLayerOverride(layer.id, { icon: v === iconNow && !o.icon ? undefined : v });
-            apply({ immediate: true });
-          }
+            ])
+          ])
+        : layerValueEditor(layer, prop, { kind: "color", label })
+    );
+
+    // Riadok navyše len vtedy, keď je čo ponúknuť – tmavý variant a „bez
+    // výplne". Pri priehľadnej farbe nemá tmavý variant čo prepísať.
+    if (!bezVyplne) {
+      const extras = [];
+      extras.push(
+        darkValue !== undefined
+          ? colorControl({
+              value: darkValue,
+              changed: true,
+              note: "🌙 v tmavej téme",
+              onInput: (v) => {
+                setLayerPaintDark(layer.id, prop, v);
+                apply({ rerender: false });
+              },
+              onReset: () => {
+                setLayerPaintDark(layer.id, prop, undefined);
+                apply({ immediate: true });
+              }
+            })
+          : el("button", {
+              type: "button",
+              class: "dev-mini",
+              text: "🌙 tmavá téma",
+              title: "Vlastná farba pre tmavú tému – tá istá vlastnosť, len keď je "
+                + "zapnutá téma tmavá",
+              onclick: () => {
+                setLayerPaintDark(layer.id, prop, typeof value === "string" ? value : "#888888");
+                apply({ immediate: true });
+              }
+            })
+      );
+      if (canNoFill) {
+        extras.push(
+          el("button", {
+            type: "button",
+            class: "dev-mini",
+            text: "bez výplne",
+            title: "Plocha bez farby pozadia – vzor a okraj na nej ostanú "
+              + "(nie je to krytie 0 ani vypnutá vrstva)",
+            onclick: () => {
+              setLayerPaint(layer.id, prop, NO_FILL);
+              apply({ immediate: true });
+            }
+          })
+        );
+      }
+      if (paletteKey) {
+        extras.push(
+          el("span", {
+            class: "dev-note",
+            text: `paleta: ${PALETTE_LABELS[paletteKey] || paletteKey}`
+          })
+        );
+      }
+      parts.push(el("div", { class: "dev-zvextras" }, extras));
+    }
+    return parts;
+  }
+
+  /**
+   * ČÍSLA VRSTVY – hrúbka, krytie, lem, veľkosť ikony, sila tieňovania.
+   *
+   * Je to JEDEN zoznam podľa druhu vrstvy (`NUM_PROPS`), nie štyri bloky
+   * napísané zvlášť pre čiaru, plochu, symbol a reliéf. Kým to boli bloky,
+   * pribudla vlastnosť vždy len do toho jedného, na ktorý sa vtedy pozeralo:
+   * lem písma sa dal ladiť v záložke Trasy, ale nie v zozname vrstiev.
+   */
+  function numberSection(layer) {
+    const parts = [];
+    const paintProps = numPropsFor(layer);
+    const layoutProps = layer.type === "symbol" ? layoutPropsFor(layer) : [];
+    if (!paintProps.length && !layoutProps.length) return parts;
+    parts.push(sectionTitle("Čísla", "„% štýlu\" drží zoomovú krivku, „pevná\" ju nahradí"));
+    for (const prop of paintProps) parts.push(layerValueEditor(layer, prop, NUM_PROPS[prop]));
+    for (const prop of layoutProps) {
+      const m = LAYOUT_PROPS[prop];
+      parts.push(
+        layerValueEditor(layer, prop, {
+          where: "layout",
+          label: m.label,
+          min: m.min,
+          max: m.max,
+          step: m.step
         })
       );
     }
+    return parts;
+  }
 
-    // ---- veľkosť a rozostup symbolov ----
-    // `layout` vlastnosti, nie `paint`: veľkosť ikony a to, ako husto sedia
-    // symboly po čiare (turistické značky, šípky jednosmeriek, čísla ciest),
-    // sú rozloženie, nie farba. Ladia sa okom a PO ZOOMOCH – práve preto je
-    // pod každou z nich ten istý editor kriviek a pásiem ako pri hrúbke.
-    if (layer.type === "symbol") {
-      const layoutRows = layoutPropsFor(layer);
-      if (layoutRows.length) {
-        parts.push(sectionTitle("Veľkosť a rozostup", "koľko miesta symbol zaberie"));
-        for (const prop of layoutRows) {
-          const medze = LAYOUT_PROPS[prop];
-          parts.push(
-            el("div", { class: "dev-sub" }, [
-              paintNumber({
-                layer, prop, where: "layout", label: medze.label,
-                min: medze.min, max: medze.max, step: medze.step
-              })
-            ]),
-            el("div", { class: "dev-prop" }, [
-              el("span", { class: "dev-propname", text: `${medze.label} podľa zoomu` }),
-              zoomStopsEditor({
-                layer, prop, where: "layout", kind: "number",
-                min: medze.min, max: medze.max, step: medze.step
-              })
-            ])
-          );
+  /** Ikona symbolovej vrstvy – len tam, kde je jej meno v štýle napevno. */
+  function iconSection(layer) {
+    const iconNow = (layer.layout || {})["icon-image"];
+    if (layer.type !== "symbol" || typeof iconNow !== "string") return [];
+    const o = layerOverride(layer.id) || {};
+    const set = (getIconSets?.() || []).find(
+      (s) => s.id === selectedIconSource(overrides)
+    ) || (getIconSets?.() || [])[0];
+    // Súčasná ikona je v zozname vždy, aj keby ju nasadená sada nemala –
+    // inak by výber ticho ukázal prvú položku a tvrdil, že je vybraná.
+    return [
+      sectionTitle("Ikona", "ikona celej vrstvy; podľa kľúč = hodnota sa mení nižšie"),
+      el("div", { class: `dev-sub${o.icon ? " changed" : ""}` }, [
+        el("span", { class: "dev-note", text: `teraz: ${iconNow}` }),
+        o.icon
+          ? el("button", {
+              type: "button",
+              class: "dev-mini",
+              title: "Späť na pôvodnú ikonu",
+              text: "⟲",
+              onclick: () => {
+                setLayerOverride(layer.id, { icon: undefined });
+                apply({ immediate: true });
+              }
+            })
+          : null
+      ]),
+      iconGrid({
+        kluc: `layer:${layer.id}`,
+        value: iconNow,
+        names: pickableIcons(set, iconNow),
+        onPick: (v) => {
+          setLayerOverride(layer.id, { icon: v === iconNow && !o.icon ? undefined : v });
+          apply({ immediate: true });
         }
-      }
-    }
+      })
+    ];
+  }
 
-    // ---- sila tieňovania reliéfu ----
-    // Jediné číslo mimo trojice farba/krytie/hrúbka, ktoré úpravy poznajú.
-    // Je tu preto, že „silnejšie tieňovanie" sa ladí okom a po jednom zoome:
-    // na prehľade stačí naznačiť tvar pohoria, v detaile má reliéf niesť to
-    // hlavné – a to sú dve rôzne hodnoty, nie jedna.
-    if (layer.type === "hillshade") {
-      parts.push(
-        sectionTitle("Sila tieňovania", "0 = plocho, 1 = najsilnejšie"),
-        el("div", { class: "dev-sub" }, [
-          paintNumber({
-            layer,
-            prop: "hillshade-exaggeration",
-            label: "sila",
-            min: 0,
-            max: 1,
-            step: 0.05
-          })
-        ]),
-        el("div", { class: "dev-prop" }, [
-          el("span", { class: "dev-propname", text: "sila podľa zoomu" }),
-          zoomStopsEditor({
-            layer, prop: "hillshade-exaggeration", kind: "number",
-            min: 0, max: 1, step: 0.05
-          })
-        ])
-      );
-    }
-
-    if (!canDecorate(layer)) return el("div", { class: "dev-details" }, parts);
-
-    const isLine = layer.type === "line";
-    parts.push(
-      sectionTitle(
-        isLine ? "Štýl čiary" : "Štýl plochy",
-        isLine ? "plná, čiarkovaná, bodkovaná…" : "výplň a vzor"
-      )
-    );
-
-    // ---- prerušovanie a hrúbka čiary ----
-    // Toto je to, čím sa náučný chodník odlíši od zvyšku: druh čiary
-    // (`line-dasharray`) plus jej hrúbka a krytie.
-    if (isLine) {
-      // ČO JE V TOM VÝBERE VIDIEŤ, MUSÍ BYŤ TO, ČO JE V MAPE. Kým tu stálo
-      // `o.dash || "solid"`, ukazoval výber pri železnici „Plná" (a pritom
-      // je čiarkovaná), voľba „Plná" sa zahodila ako predvolená a čiarkovanie
-      // sa nedalo ani zmeniť, ani vypnúť. Teraz je prvou položkou to, čo má
-      // vrstva zo štýlu, a „Plná" je plnohodnotná úprava (rozpis v `add`
-      // a v `cleanLayers`).
-      const vlastny = builtinDash(layer);
-      parts.push(
-        el("div", { class: `dev-sub${o.dash ? " changed" : ""}` }, [
-          dashField({
-            label: "Čiara",
-            value: o.dash || "",
-            builtin: vlastny,
-            onChange: (v) => {
-              setLayerOverride(layer.id, { dash: v || undefined });
-              apply({ immediate: true });
-            }
-          }),
-          paintNumber({
-            layer,
-            prop: "line-width",
-            label: "hrúbka",
-            // NIE 0: nulová hrúbka čiaru nekreslí a v mape to vyzerá ako
-            // chýbajúce dáta, nie ako vypnutá vrstva. Na vypnutie je 👁.
-            min: 0.1,
-            max: 40,
-            step: 0.5
-          }),
-          paintNumber({
-            layer,
-            prop: "line-opacity",
-            label: "krytie",
-            min: 0,
-            max: 1,
-            step: 0.1
-          })
-        ])
-      );
-      // Hrúbka a krytie sa dajú nastaviť aj PODĽA ZOOMU – práve tie dve sa
-      // ladia najčastejšie (tenko na prehľade, hrubo v detaile).
-      for (const [prop, label, min, max, step] of [
-        ["line-width", "hrúbka podľa zoomu", 0.1, 40, 0.5],
-        ["line-opacity", "krytie podľa zoomu", 0, 1, 0.1]
-      ]) {
-        parts.push(
-          el("div", { class: "dev-prop" }, [
-            el("span", { class: "dev-propname", text: label }),
-            zoomStopsEditor({ layer, prop, kind: "number", min, max, step })
-          ])
-        );
-      }
-    } else {
-      // Plocha: krytie výplne. Vzor a okraj sú nižšie – spolu je z toho
-      // „šrafovaná plocha s prerušovaným okrajom", ktorá sa dá naklikať.
-      const opacityProp =
-        layer.type === "fill-extrusion" ? "fill-extrusion-opacity" : "fill-opacity";
-      parts.push(
-        el("div", { class: "dev-sub" }, [
-          paintNumber({ layer, prop: opacityProp, label: "krytie", min: 0, max: 1, step: 0.05 })
-        ]),
-        el("div", { class: "dev-prop" }, [
-          el("span", { class: "dev-propname", text: "krytie podľa zoomu" }),
-          zoomStopsEditor({ layer, prop: opacityProp, kind: "number", min: 0, max: 1, step: 0.05 })
-        ])
-      );
-    }
-
-    // ---- opakujúci sa vzor ----
-    // Vzor môže mať vrstva ZABUDOVANÝ V ŠTÝLE (`frico:pattern` – kamienky
-    // v skalnej ploche). Ovládanie preto pracuje s ÚČINNÝM vzorom, nie
-    // s úpravou: bez toho by rozbaľovačka nad skalami tvrdila „žiadny",
-    // hoci v mape vzor je, a prvá zmena veľkosti by ho vyrobila odznova
-    // s inou farbou.
-    //
-    // Tri stavy, ktoré sa musia dať rozlíšiť:
-    //   kľúč chýba  … platí to, čo je v štýle
-    //   `null`      … vzor zo štýlu je VYPNUTÝ (nie „nič nezmenené")
-    //   predpis     … vlastný vzor
+  /**
+   * OPAKUJÚCI SA VZOR. Vzor môže mať vrstva ZABUDOVANÝ V ŠTÝLE
+   * (`frico:pattern` – kamienky v skalnej ploche), takže ovládanie pracuje
+   * s ÚČINNÝM vzorom, nie s úpravou: bez toho by rozbaľovačka nad skalami
+   * tvrdila „žiadny", hoci v mape vzor je.
+   *
+   * Tri stavy, ktoré sa musia dať rozlíšiť:
+   *   kľúč chýba  … platí to, čo je v štýle
+   *   `null`      … vzor zo štýlu je VYPNUTÝ (nie „nič nezmenené")
+   *   predpis     … vlastný vzor
+   */
+  function patternSection(layer, o) {
     const builtinPattern = (layer.metadata || {})["frico:pattern"] || null;
     const patChanged = "pattern" in o;
     const pat = patChanged ? o.pattern : builtinPattern;
     // ČO JE POD VZOROM. Vzor je vždy DRUHÁ vrstva nad plochou, takže sám
     // o sebe nehovorí nič: šrafovanie nad tmavozeleným lesom vyzerá inak než
-    // nad svetlou lúkou. Farba podkladu je preto priamo tu – aj v náhľade,
-    // aj ako ovládanie.
+    // nad svetlou lúkou. Farba podkladu je preto v náhľade – ovládať sa dá
+    // hore vo „Farbách", kde je aj tak (druhá pipetka na to isté bola len
+    // druhé miesto, kde tú istú vec vrátiť späť).
     const podkladProp = primaryColorProp(layer);
     const podklad =
       o.paint && o.paint[podkladProp] === NO_FILL ? "none" : primaryColor(layer);
-    const nastavenyPodklad = !!(o.paint && o.paint[podkladProp] !== undefined);
 
     const vyber = () => {
       setPatternPickerOpen(layer.id, !patternOpen.has(layer.id));
       renderBody();
     };
+    const parts = [sectionTitle("Vzor", "šrafovanie, kamienky, vlastný obrázok")];
     const patternRow = [
       // NÁHĽAD, NIE MENO. „Šupiny (skaly)" nepovie ani ako hustý ten vzor je,
       // ani ako vyzerá nad farbou tejto plochy – a práve to sú tie dve veci,
@@ -3011,46 +3013,6 @@ export function initDevMode({
     // predvolený stav mapy, nie niečo, čo v tejto relácii niekto naklikal.
     parts.push(el("div", { class: `dev-sub${patChanged ? " changed" : ""}` }, patternRow));
 
-    // ---- podklad pod vzorom ----
-    if (podkladProp) {
-      parts.push(
-        el("div", { class: `dev-sub${nastavenyPodklad ? " changed" : ""}` }, [
-          el("span", { class: "dev-note", text: "Podklad" }),
-          podklad === "none"
-            ? el("span", { class: "dev-note", text: "bez výplne – vidno mapu pod vrstvou" })
-            : colorControl({
-                value: podklad,
-                changed: nastavenyPodklad,
-                onInput: (v) => {
-                  setLayerPaint(layer.id, podkladProp, v);
-                  apply({ rerender: false });
-                },
-                onReset: nastavenyPodklad
-                  ? () => {
-                      setLayerPaint(layer.id, podkladProp, undefined);
-                      apply({ immediate: true });
-                    }
-                  : null
-              }),
-          layer.type === "fill" || layer.type === "fill-extrusion"
-            ? el("button", {
-                type: "button",
-                class: "dev-btn",
-                text: podklad === "none" ? "vrátiť výplň" : "bez výplne",
-                title:
-                  "Plocha bez farby pozadia – vzor a okraj na nej ostanú " +
-                  "(nie je to krytie 0 ani vypnutá vrstva)",
-                onclick: () => {
-                  setLayerPaint(layer.id, podkladProp, podklad === "none" ? undefined : NO_FILL);
-                  apply({ immediate: true });
-                }
-              })
-            : null
-        ])
-      );
-    }
-
-    // ---- mriežka vzorov + vlastný obrázok ----
     if (patternOpen.has(layer.id)) {
       parts.push(
         patternPicker({
@@ -3081,23 +3043,75 @@ export function initDevMode({
       );
       parts.push(patternUpload(layer));
     }
+    return parts;
+  }
 
-    // ---- okraj ----
-    // ŠÍRKA OKRAJA ZNAMENÁ PRI PLOCHE A PRI ČIARE NIEČO INÉ, a je to preto, že
-    // sa obťahuje niečo iné (rozpis pri `outlineWidth` v `themes.js`):
-    //
-    //   plocha  vlastnú hrúbku nemá, takže okraj je samostatná čiara a číslo
-    //           je jej ABSOLÚTNA šírka. „× a +" tu preto nemajú z čoho počítať.
-    //   čiara   hrúbku má, takže okraj je casing POD ŇOU a počíta sa OD NEJ:
-    //           číslo je „toľko px na každej strane", `×` je „toľkokrát
-    //           hrubší". Práve `×` je odpoveď na obrys, ktorý na prehľade
-    //           prekryje cestu a v detaile nie je vidieť – konštanta drží
-    //           pomer len na jednom zoome.
+  /**
+   * OBRYS AKO SAMOSTATNÁ VRSTVA – „Miestne cesty – obrys".
+   *
+   * V mape sú obrysy dvoma spôsobmi a treba ich vedieť rozlíšiť. Buď je obrys
+   * VLASTNÁ VRSTVA zo štýlu (širšia čiara pod cestou, `frico:border-of`),
+   * alebo si ho vrstva pridá sama (`outline` v úprave, nižšie). Ovládanie je
+   * v oboch prípadoch to isté – farba, šírka, prerušovanie, krytie – a šírka
+   * ide v oboch tým istým editorom, aby „obrys na 90 %" znamenalo to isté bez
+   * ohľadu na to, ktorou z tých dvoch ciest obrys vznikol.
+   *
+   * Čo pri samostatnej vrstve treba povedať nahlas: jej hrúbka je CELÁ šírka
+   * aj s čiarou, ktorú obťahuje, nie prídavok k nej. Bez toho vyzerá „obrys
+   * 10,6 px pod cestou 9 px" ako preklep, hoci je to 0,8 px na každej strane.
+   */
+  function borderLayerBanner(layer) {
+    const of = (layer.metadata || {})["frico:border-of"];
+    if (!of) return [];
+    const predloha = getStyle().layers.find((l) => l.id === of);
+    const z = zoomCell();
+    const sirkaObrysu = valueAtZoom((layer.paint || {})["line-width"], z);
+    const sirkaCiary = predloha ? valueAtZoom((predloha.paint || {})["line-width"], z) : null;
+    const presah =
+      typeof sirkaObrysu === "number" && typeof sirkaCiary === "number"
+        ? Math.round(((sirkaObrysu - sirkaCiary) / 2) * 100) / 100
+        : null;
+    return [
+      el("div", { class: "dev-border" }, [
+        el("span", { class: "dev-borderbadge", text: "obrys" }),
+        el("span", {
+          class: "dev-note",
+          text:
+            `Obrys vrstvy „${(predloha?.metadata || {})["frico:label"] || of}". ` +
+            `Kreslí sa POD ňou, takže jeho hrúbka je celá šírka aj s čiarou` +
+            (presah != null
+              ? ` – na z${z} má čiara ${sirkaCiary} px, obrys ${sirkaObrysu} px, ` +
+                `teda ${presah} px vidieť na každej strane.`
+              : ".")
+        }),
+        predloha
+          ? el("button", {
+              type: "button",
+              class: "dev-mini",
+              text: "otvoriť čiaru",
+              title: `Otvoriť detail vrstvy "${of}"`,
+              onclick: () => {
+                expanded.add(of);
+                renderBody();
+              }
+            })
+          : null
+      ])
+    ];
+  }
+
+  /** Okraj, ktorý si vrstva pridá sama (`outline` v úprave). */
+  function outlineSection(layer, o) {
     const out = o.outline;
     const isArea = layer.type !== "line";
-    parts.push(
-      sectionTitle("Okraj", isArea ? "obrys plochy" : "širší obrys pod čiarou")
-    );
+    const parts = [
+      sectionTitle(
+        "Okraj",
+        isArea
+          ? "obrysová čiara nad plochou"
+          : "širší obrys pod čiarou; % je násobok hrúbky čiary"
+      )
+    ];
     const outlineRow = [
       selectField({
         label: "Okraj",
@@ -3127,9 +3141,8 @@ export function initDevMode({
             apply({ rerender: false });
           }
         }),
-        // Tmavý variant farby okraja – tá istá otázka ako pri `paintDark`
-        // vyššie, len na vlastnosti, ktorá nesedí v `paint` (okraj je
-        // odvodená vrstva, rozpis pri `cleanLayers` v themes.js).
+        // Tmavý variant farby okraja – tá istá otázka ako pri `paintDark`,
+        // len na vlastnosti, ktorá nesedí v `paint` (okraj je odvodená vrstva).
         out.colorDark !== undefined
           ? colorControl({
               value: out.colorDark,
@@ -3146,16 +3159,15 @@ export function initDevMode({
             })
           : el("button", {
               type: "button",
-              class: "dev-btn",
-              text: "🌙 vlastná farba pre tmavú tému",
+              class: "dev-mini",
+              text: "🌙 tmavá téma",
               onclick: () => {
                 patchSub(layer.id, "outline", { colorDark: out.color });
                 apply({ immediate: true });
               }
             }),
-        outlineWidthField(layer, out, isArea),
         dashField({
-          label: "čiara",
+          label: "prerušovanie",
           value: out.dash || "solid",
           onChange: (v) => {
             patchSub(layer.id, "outline", { dash: v === "solid" ? undefined : v });
@@ -3176,11 +3188,31 @@ export function initDevMode({
       );
     }
     parts.push(el("div", { class: `dev-sub${out ? " changed" : ""}` }, outlineRow));
-
-    // ---- rozlíšenie podľa atribútu OSM ----
-    parts.push(...variantSection(layer, o));
-
-    return el("div", { class: "dev-details" }, parts);
+    if (out) {
+      // ŠÍRKA OKRAJA ZNAMENÁ PRI PLOCHE A PRI ČIARE NIEČO INÉ (rozpis pri
+      // `outlineWidth` v themes.js): plocha vlastnú hrúbku nemá, takže číslo
+      // je absolútna šírka obrysovej čiary a percento by nemalo z čoho
+      // počítať. Čiara hrúbku má, takže percento je „toľkokrát hrubší než
+      // čiara" a číslo „toľko px na každej strane".
+      parts.push(
+        zoomValueEditor({
+          key: `${layer.id}:outline:width`,
+          label: "šírka okraja",
+          min: 0.5,
+          max: 40,
+          step: 0.5,
+          unit: " px",
+          allowPercent: !isArea,
+          styleValue: isArea ? out.width : (layer.paint || {})["line-width"],
+          value: out.width,
+          note: isArea
+            ? "šírka obrysovej čiary v px"
+            : "px = toľko obrysu na každej strane, % = násobok hrúbky čiary",
+          onChange: (v) => patchSub(layer.id, "outline", { width: v ?? 1 })
+        })
+      );
+    }
+    return parts;
   }
 
   /**
@@ -3255,112 +3287,218 @@ export function initDevMode({
     patchVariant(id, i, { paint: Object.keys(cur).length ? cur : undefined });
   }
 
+  /** Pri ktorých rozlíšeniach je rozbalený výber ikony. */
+  const variantIconOpen = new Set();
+
+  /** Čo má rozlíšenie nastavené inak než predloha – do jedného riadku. */
+  function variantSummary(v) {
+    const kusy = [];
+    if (v.icon !== undefined) kusy.push(`ikona ${v.icon || "žiadna"}`);
+    for (const [prop, value] of Object.entries(v.paint || {})) {
+      const meno = COLOR_LABELS[prop] || NUM_PROPS[prop]?.label || prop;
+      kusy.push(
+        isRelative(value)
+          ? `${meno} ${pctOf(value)} %`
+          : Array.isArray(value)
+            ? `${meno} podľa zoomu`
+            : `${meno} ${value}`
+      );
+    }
+    for (const [prop, value] of Object.entries(v.layout || {})) {
+      const meno = LAYOUT_PROPS[prop]?.label || prop;
+      kusy.push(isRelative(value) ? `${meno} ${pctOf(value)} %` : `${meno} ${value}`);
+    }
+    if (v.dash) kusy.push(`čiara ${dashLabel(v.dash)}`);
+    if (v.outline) kusy.push("vlastný okraj");
+    return kusy.join(" · ");
+  }
+
+  /**
+   * ROZLÍŠENIE PODĽA `kľúč = hodnota` Z OSM – „studnička má inú ikonu než
+   * prameň", „nespevnená cesta bodkovane".
+   *
+   * Je to ten istý zoznam, aký panel vypisuje v „Prvkoch" pod kurzorom: kľúč
+   * z dlaždice a hodnoty, ktoré v ňom naozaj sú. Vybrané hodnoty dostanú
+   * vlastnú vrstvu (`variants` v úprave) a z predlohy sa odoberú, takže sa
+   * prvok nakreslí práve raz.
+   *
+   * IKONA JE TU NAJDÔLEŽITEJŠIA. Formát úprav ju vo variante vedel od
+   * začiatku (`cleanVariants` aj `variantLayers` s ňou počítajú), ale panel
+   * ju nemal kde vybrať – dala sa nastaviť len celej vrstve naraz, takže
+   * „vodný zdroj s `natural=spring` nech má prameň a zvyšok studňu" sa
+   * naklikať nedalo vôbec.
+   */
   function variantSection(layer, o) {
     if (!layer["source-layer"]) return [];
     const parts = [
       sectionTitle(
-        "Rozlíšenie podľa OSM",
-        "napr. nespevnená cesta bodkovane, spevnená plnou čiarou"
+        "Podľa kľúč = hodnota",
+        "vlastná ikona alebo štýl pre prvky s konkrétnym tagom z OSM"
       )
     ];
     const varianty = o.variants || [];
     const isLine = layer.type === "line";
+    const isSymbol = layer.type === "symbol";
+    const iconNow = (layer.layout || {})["icon-image"];
+    const set = (getIconSets?.() || []).find(
+      (s) => s.id === selectedIconSource(overrides)
+    ) || (getIconSets?.() || [])[0];
 
     varianty.forEach((v, i) => {
-      const row = [
-        el("span", { class: "dev-name" }, [
-          el("span", { text: v.label || v.attr }),
-          el("small", { text: `${v.attr} = ${v.values.join(", ")}` })
+      const suhrn = variantSummary(v);
+      const riadky = [
+        el("div", { class: "dev-row" }, [
+          el("span", { class: "dev-name" }, [
+            el("span", { text: `${v.attr} = ${v.values.join(", ")}` }),
+            el("small", { text: suhrn || "zatiaľ bez vlastného štýlu" })
+          ]),
+          el("button", {
+            type: "button",
+            class: "dev-mini",
+            title: "Zrušiť toto rozlíšenie – prvky sa vrátia do predlohy",
+            text: "🗑",
+            onclick: () => {
+              setVariants(layer.id, varianty.filter((_, j) => j !== i));
+              apply({ immediate: true });
+            }
+          })
         ])
       ];
-      if (isLine) {
-        row.push(
-          dashField({
-            label: "čiara",
-            value: v.dash || "",
-            builtin: builtinDash(layer),
-            onChange: (d) => patchVariant(layer.id, i, { dash: d || undefined })
-          })
-        );
-      }
-      const farbaProp = primaryColorProp(layer);
-      if (farbaProp) {
-        row.push(
-          colorControl({
-            value: v.paint?.[farbaProp] ?? layer.paint[farbaProp],
-            changed: v.paint?.[farbaProp] !== undefined,
-            onInput: (c) => {
-              patchVariantPaint(layer.id, i, farbaProp, c);
-            },
-            onReset: v.paint?.[farbaProp] !== undefined
-              ? () => patchVariantPaint(layer.id, i, farbaProp, undefined)
-              : null
-          })
-        );
-      }
-      // Hrúbka len relatívne: variant je „to isté, len inak" a pevné číslo by
-      // z neho spravilo vrstvu, ktorá s predlohou už nemá nič spoločné.
-      if (isLine) {
-        row.push(
-          el("span", { class: "dev-field" }, [
-            el("span", { text: "hrúbka" }),
-            ...relativeInputs({
-              layer, prop: "hrúbka variantu", where: "paint",
-              rel: isRelative(v.paint?.["line-width"]) ? v.paint["line-width"] : null,
-              onSet: (next) => {
-                const prazdne = next.scale == null && next.add == null;
-                patchVariantPaint(layer.id, i, "line-width", prazdne ? undefined : next);
-              }
-            })
-          ]),
-          selectField({
-            label: "okraj",
-            value: v.outline ? "on" : "off",
-            options: [["off", "žiadny"], ["on", "obrys pod čiarou"]],
-            onChange: (val) => patchVariant(layer.id, i, {
-              outline: val === "on"
-                ? v.outline || { color: darken(primaryColor(layer)), width: { scale: 1.5 } }
-                : undefined
-            })
-          })
-        );
-        if (v.outline) {
-          row.push(
-            colorControl({
-              value: v.outline.color,
-              changed: true,
-              onInput: (c) => patchVariant(layer.id, i, { outline: { ...v.outline, color: c } })
+
+      // ---- ikona ----
+      // AJ TAM, KDE SI VRSTVA MENO IKONY SKLADÁ VÝRAZOM (POI podľa triedy).
+      // Variant je vlastná vrstva a `variantLayers` jej `icon-image` prepíše
+      // natvrdo, takže „prameň má prameň a zvyšok vodných zdrojov studňu"
+      // funguje aj tam, kde sa ikona celej vrstvy vybrať nedá – a práve to
+      // je otázka, kvôli ktorej sa rozlíšenie podľa `kľúč = hodnota` robí.
+      if (isSymbol) {
+        const kluc = `${layer.id}:${i}`;
+        const zoStyle = typeof iconNow === "string" ? iconNow : "";
+        const teraz = v.icon !== undefined ? v.icon : zoStyle;
+        riadky.push(
+          el("div", { class: `dev-sub${v.icon !== undefined ? " changed" : ""}` }, [
+            el("span", { class: "dev-propname", text: "ikona" }),
+            el("span", {
+              class: "dev-note",
+              text: teraz || (zoStyle ? "žiadna" : "podľa kategórie prvku")
             }),
-            el("span", { class: "dev-field" }, [
-              el("span", { text: "šírka" }),
-              ...relativeInputs({
-                layer, prop: "šírka okraja variantu", where: "paint",
-                rel: isRelative(v.outline.width) ? v.outline.width : null,
-                onSet: (next) => {
-                  const prazdne = next.scale == null && next.add == null;
-                  patchVariant(layer.id, i, {
-                    outline: { ...v.outline, width: prazdne ? 1 : next }
-                  });
-                }
-              })
-            ])
+            el("button", {
+              type: "button",
+              class: "dev-mini",
+              text: variantIconOpen.has(kluc) ? "▾ vybrať" : "▸ vybrať",
+              onclick: () => {
+                if (variantIconOpen.has(kluc)) variantIconOpen.delete(kluc);
+                else variantIconOpen.add(kluc);
+                renderBody();
+              }
+            }),
+            v.icon !== undefined
+              ? el("button", {
+                  type: "button",
+                  class: "dev-mini",
+                  title: "Späť na ikonu, akú má celá vrstva",
+                  text: "⟲",
+                  onclick: () => patchVariant(layer.id, i, { icon: undefined })
+                })
+              : null
+          ])
+        );
+        if (variantIconOpen.has(kluc)) {
+          riadky.push(
+            iconGrid({
+              kluc: `variant:${kluc}`,
+              value: teraz,
+              names: pickableIcons(set, zoStyle || undefined),
+              noneLabel: "bez ikony",
+              onPick: (n) => patchVariant(layer.id, i, { icon: n || "" })
+            })
           );
         }
       }
-      row.push(
-        el("button", {
-          type: "button",
-          class: "dev-mini",
-          title: "Zrušiť toto rozlíšenie – prvky sa vrátia do predlohy",
-          text: "🗑",
-          onclick: () => {
-            const list = varianty.filter((_, j) => j !== i);
-            setVariants(layer.id, list);
-            apply({ immediate: true });
-          }
-        })
-      );
-      parts.push(el("div", { class: "dev-sub changed" }, row));
+
+      // ---- farba ----
+      const farbaProp = primaryColorProp(layer);
+      if (farbaProp) {
+        riadky.push(
+          el("div", { class: `dev-sub${v.paint?.[farbaProp] !== undefined ? " changed" : ""}` }, [
+            el("span", { class: "dev-propname", text: COLOR_LABELS[farbaProp] || "farba" }),
+            colorControl({
+              value: v.paint?.[farbaProp] ?? layer.paint[farbaProp],
+              changed: v.paint?.[farbaProp] !== undefined,
+              onInput: (c) => patchVariantPaint(layer.id, i, farbaProp, c),
+              onReset: v.paint?.[farbaProp] !== undefined
+                ? () => patchVariantPaint(layer.id, i, farbaProp, undefined)
+                : null
+            })
+          ])
+        );
+      }
+
+      // ---- čiara: prerušovanie, hrúbka, okraj ----
+      if (isLine) {
+        riadky.push(
+          el("div", { class: `dev-sub${v.dash ? " changed" : ""}` }, [
+            dashField({
+              label: "prerušovanie",
+              value: v.dash || "",
+              builtin: builtinDash(layer),
+              onChange: (d) => patchVariant(layer.id, i, { dash: d || undefined })
+            })
+          ]),
+          // Hrúbka variantu sa ladí tým istým editorom ako hrúbka vrstvy –
+          // vrátane pásiem, takže „nespevnená cesta je od z16 tenšia" je
+          // jedno naklikanie, nie prepísanie celej krivky.
+          zoomValueEditor({
+            key: `${layer.id}:var${i}:line-width`,
+            label: "hrúbka",
+            min: 0.1,
+            max: 40,
+            step: 0.5,
+            unit: " px",
+            styleValue: (layer.paint || {})["line-width"],
+            value: v.paint?.["line-width"],
+            onChange: (nv) => patchVariantPaint(layer.id, i, "line-width", nv)
+          }),
+          el("div", { class: `dev-sub${v.outline ? " changed" : ""}` }, [
+            selectField({
+              label: "okraj",
+              value: v.outline ? "on" : "off",
+              options: [["off", "žiadny"], ["on", "obrys pod čiarou"]],
+              onChange: (val) => patchVariant(layer.id, i, {
+                outline: val === "on"
+                  ? v.outline || { color: darken(primaryColor(layer)), width: { scale: 1.5 } }
+                  : undefined
+              })
+            }),
+            v.outline
+              ? colorControl({
+                  value: v.outline.color,
+                  changed: true,
+                  onInput: (c) => patchVariant(layer.id, i, { outline: { ...v.outline, color: c } })
+                })
+              : null
+          ])
+        );
+        if (v.outline) {
+          riadky.push(
+            zoomValueEditor({
+              key: `${layer.id}:var${i}:outline`,
+              label: "šírka okraja",
+              min: 0.5,
+              max: 40,
+              step: 0.5,
+              unit: " px",
+              styleValue: (layer.paint || {})["line-width"],
+              value: v.outline.width,
+              note: "px = toľko obrysu na každej strane, % = násobok hrúbky čiary",
+              onChange: (nv) =>
+                patchVariant(layer.id, i, { outline: { ...v.outline, width: nv ?? 1 } })
+            })
+          );
+        }
+      }
+
+      parts.push(el("div", { class: "dev-variant" }, riadky));
     });
 
     if (varianty.length >= MAX_VARIANTS) {
@@ -3969,14 +4107,6 @@ export function initDevMode({
     }
   ];
 
-  /** Medze číselných vlastností z `paint` – `layout` si ich nesie sám. */
-  const PAINT_RANGES = {
-    // NIE 0: nulová hrúbka je zmiznutá čiara, nie vypnutá vrstva.
-    "line-width": { min: 0.1, max: 40, step: 0.5, label: "hrúbka" },
-    "line-opacity": { min: 0, max: 1, step: 0.05, label: "krytie" },
-    "icon-opacity": { min: 0, max: 1, step: 0.05, label: "krytie ikony" },
-    "text-opacity": { min: 0, max: 1, step: 0.05, label: "krytie písma" }
-  };
 
   /** Jedna vrstva trasy – `layerBlock` nad jej id. */
   const trailLayerBlock = (role, typeId) =>
@@ -4008,8 +4138,7 @@ export function initDevMode({
     const rows = [];
     for (const prop of role.paint || []) {
       if ((layer.paint || {})[prop] === undefined) continue;
-      const m = PAINT_RANGES[prop];
-      rows.push(propRow(layer, prop, "paint", m));
+      rows.push(layerValueEditor(layer, prop, NUM_PROPS[prop] || { label: prop }));
     }
     // Rovnako ako v záložke Vrstiev: ponúka sa to, čo na vrstve niečo znamená,
     // nie to, čo štýl náhodou nastavil (rozpis pri `layoutPropsFor`). Bez toho
@@ -4018,7 +4147,12 @@ export function initDevMode({
     const daSa = new Set(layoutPropsFor(layer));
     for (const prop of role.layout || []) {
       if (!daSa.has(prop)) continue;
-      rows.push(propRow(layer, prop, "layout", LAYOUT_PROPS[prop]));
+      const m = LAYOUT_PROPS[prop];
+      rows.push(
+        layerValueEditor(layer, prop, {
+          where: "layout", label: m.label, min: m.min, max: m.max, step: m.step
+        })
+      );
     }
     return el("div", { class: `dev-sub${zmenene ? " changed" : ""}` }, [
       el("div", { class: "dev-row" }, [
@@ -4068,22 +4202,6 @@ export function initDevMode({
           : null
       ]),
       ...rows
-    ]);
-  }
-
-  /** Jedno číslo vrstvy: pevná hodnota + krivka/pásma pod ňou. */
-  function propRow(layer, prop, where, medze) {
-    const m = medze || { min: 0, max: 100, step: 1, label: prop };
-    return el("div", { class: "dev-prop" }, [
-      el("span", { class: "dev-propname", text: m.label }),
-      paintNumber({
-        layer, prop, where, label: "",
-        min: m.min, max: m.max, step: m.step
-      }),
-      zoomStopsEditor({
-        layer, prop, where, kind: "number",
-        min: m.min, max: m.max, step: m.step
-      })
     ]);
   }
 
@@ -4379,14 +4497,14 @@ export function initDevMode({
           ? el("div", { class: "dev-details" }, [
               el("div", { class: "dev-h5" }, [
                 el("span", { text: "Od akého zoomu a ako" }),
-                el("small", { text: "krivka = plynulý prechod, pásma = na každom intervale iná hodnota" })
+                el("small", { text: "„% štýlu\" drží pomer na všetkých zoomoch, „pevná\" nastaví číslo" })
               ]),
               ...TRAIL_LAYER_ROLES.map((role) => trailLayerBlock(role, type.id)),
               el("div", { class: "dev-bulk on" }, [
                 el("button", {
                   type: "button",
                   class: "dev-btn danger",
-                  text: "Späť na pôvodné zoomy a pásma",
+                  text: "Späť na pôvodné zoomy a hodnoty",
                   title: "Zahodí zoomy, hrúbky, veľkosti a rozostupy VŠETKÝCH vrstiev tejto trasy",
                   onclick: () => {
                     for (const r of TRAIL_LAYER_ROLES) resetLayer(`trail-${type.id}${r.suffix}`);

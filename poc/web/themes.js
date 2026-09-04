@@ -1687,6 +1687,29 @@ export const LAYOUT_PROPS = {
 export const LAYOUT_PROP_IDS = Object.keys(LAYOUT_PROPS);
 
 /**
+ * PREDVOĽBY MAPLIBRE pre `paint` čísla – to isté, čo `def` pri `LAYOUT_PROPS`,
+ * len pre druhú policu.
+ *
+ * Vlastnosť, ktorú štýl nenastavil, NIE JE „nič": `line-opacity` bez zápisu
+ * je 1, `text-halo-width` je 0. Kým sa to tu nepísalo, percento nad takou
+ * vlastnosťou nemalo čo násobiť a `overrideValue` vrátil `undefined` – teda
+ * úprava, ktorá sa uložila, v paneli svietila ako zmena a v mape nespravila
+ * NIČ. Tichý omyl v čistej podobe. Čísla sú zo style-spec.
+ */
+export const PAINT_DEFAULTS = {
+  "line-width": 1,
+  "line-opacity": 1,
+  "fill-opacity": 1,
+  "fill-extrusion-opacity": 1,
+  "text-opacity": 1,
+  "icon-opacity": 1,
+  "text-halo-width": 0,
+  "icon-halo-width": 0,
+  "circle-stroke-width": 0,
+  "hillshade-exaggeration": 0.5
+};
+
+/**
  * Zoradí zoomové zlomy podľa zoomu. JEDNA funkcia pre všetky tri cesty, ktoré
  * ich vyrábajú (import súboru, developer mode, skladanie štýlu) – poradie je
  * jedna otázka a musí mať jednu odpoveď.
@@ -1749,6 +1772,134 @@ export const isRelative = (v) =>
 const REL_LIMITS = { scale: [0.1, 10], add: [-20, 40] };
 
 /**
+ * PERCENTO V PÁSME – „na z15–z20 nech je to 110 % toho, čo počíta štýl".
+ *
+ * Prečo to je vlastný tvar a nie ďalšia možnosť navyše: dovtedy sa dalo
+ * povedať buď „preškáluj to VŠADE rovnako" (`{scale}` nad celou krivkou),
+ * alebo „na týchto zoomoch je hodnota PRESNE takáto" (pásma s číslom).
+ * To prvé nevie „až od z15", to druhé zahodí krivku zo štýlu – a odpoveď na
+ * „na z19 chcem prvok o desatinu väčší" nebola ani jedna z nich. Pásmo
+ * s relatívnou hodnotou je obe naraz: rozsah zoomov + mierka nad tým, čo
+ * v štýle už je.
+ */
+export const hasRelativeBand = (list) =>
+  isBandList(list) && list.some((row) => isRelative(row[2]));
+
+/** Je to hodnota, ktorú formát úprav unesie ako skalár? */
+export const isScalarValue = (v) =>
+  typeof v === "number" || (typeof v === "string" && v.startsWith("#")) || v === NO_FILL;
+
+/**
+ * HODNOTA VLASTNOSTI NA DANOM ZOOME.
+ *
+ * Pozná to, čo štýl naozaj vyrába: číslo, `interpolate` podľa zoomu (lineárny
+ * aj exponenciálny), `step` podľa zoomu a oba tvary zo súboru úprav – krivku
+ * `[[zoom, hodnota], …]` aj pásma `[[od, do, hodnota], …]`. Na čokoľvek iné
+ * (výraz podľa atribútu prvku) vráti `null` – „to sa jedným číslom povedať
+ * nedá" je poctivejšia odpoveď než vymyslený priemer.
+ *
+ * Farbu neinterpoluje: medzi dvoma zlomami vráti tú spodnú. Miešať hex
+ * v sRGB by dalo inú farbu, než akú kreslí MapLibre (ten mieša inak), a tu
+ * ide o to, S ČÍM ZAČAŤ, nie o presnú predlohu.
+ *
+ * BÝVALO TO V `layer-style.js`. Presunulo sa sem, lebo tú istú odpoveď
+ * potrebuje aj skladanie štýlu (percento v pásme sa počíta z toho, čo je na
+ * tom zoome v štýle) – a dve kópie tej istej aritmetiky by sa raz rozišli.
+ */
+export function valueAtZoom(value, zoom) {
+  if (isScalarValue(value)) return value;
+  if (!Array.isArray(value)) return null;
+
+  // Zoomové PÁSMA z úprav: `[[od, do, hodnota], …]` – hodnota pásma, v ktorom
+  // ten zoom leží; pod prvým a nad posledným krajné pásmo.
+  if (isBandList(value)) return bandAt(sortBands(value), zoom);
+
+  // Zoomové zlomy z úprav: `[[zoom, hodnota], …]`.
+  if (Array.isArray(value[0])) {
+    const stops = sortStops(value.filter((s) => Array.isArray(s) && s.length === 2));
+    if (!stops.length) return null;
+    return stopsAt(stops, zoom);
+  }
+
+  // `step` podľa zoomu – to, čo zo zoomových pásiem vyrobí `paintValue`.
+  if (value[0] === "step") {
+    const bands = stepToBands(value);
+    return bands ? bandAt(bands, zoom) : null;
+  }
+
+  if (value[0] !== "interpolate") return null;
+  const [, curve, input, ...rest] = value;
+  // Interpolácia podľa niečoho iného než zoomu (napr. podľa atribútu) sa
+  // jedným zoomom nezodpovie.
+  if (!Array.isArray(input) || input[0] !== "zoom") return null;
+  const stops = [];
+  for (let i = 0; i + 1 < rest.length; i += 2) {
+    if (typeof rest[i] !== "number" || !isScalarValue(rest[i + 1])) return null;
+    stops.push([rest[i], rest[i + 1]]);
+  }
+  if (!stops.length) return null;
+  const base = Array.isArray(curve) && curve[0] === "exponential" ? Number(curve[1]) || 1 : 1;
+  return stopsAt(stops, zoom, base);
+}
+
+/** Hodnota pásma, v ktorom daný zoom leží (krajné pásma platia aj za okraj). */
+function bandAt(bands, zoom) {
+  if (!bands.length) return null;
+  for (const [od, doZ, v] of bands) if (zoom >= od && zoom < doZ + 1) return v;
+  return zoom < bands[0][0] ? bands[0][2] : bands[bands.length - 1][2];
+}
+
+/**
+ * `["step", ["zoom"], v0, z1, v1, …]` → pásma `[[od, do, hodnota], …]`.
+ *
+ * Prvý výstup `step` platí od z0 (pod prvým zlomom nie je nič nižšie) a
+ * posledný až po strop zobrazenia – pásma preto pokrývajú celý rozsah, tak
+ * ako to `cleanPaintBands` vyžaduje. `null` = nie je to schodisko podľa zoomu.
+ */
+export function stepToBands(value) {
+  const [, input, base, ...rest] = value;
+  if (!Array.isArray(input) || input[0] !== "zoom") return null;
+  if (!isScalarValue(base)) return null;
+  const hranice = [];
+  for (let i = 0; i + 1 < rest.length; i += 2) {
+    if (typeof rest[i] !== "number" || !isScalarValue(rest[i + 1])) return null;
+    hranice.push([rest[i], rest[i + 1]]);
+  }
+  const bands = [];
+  let od = 0;
+  let v = base;
+  for (const [z, next] of hranice) {
+    if (z <= od) return null;
+    bands.push([od, z - 1, v]);
+    od = z;
+    v = next;
+  }
+  bands.push([od, Math.max(od, MAX_DISPLAY_Z), v]);
+  return bands;
+}
+
+/** Hodnota medzi zlomami; farby sa nemiešajú (vráti sa spodný zlom). */
+function stopsAt(stops, zoom, base = 1) {
+  if (zoom <= stops[0][0]) return stops[0][1];
+  const last = stops[stops.length - 1];
+  if (zoom >= last[0]) return last[1];
+  for (let i = 0; i + 1 < stops.length; i += 1) {
+    const [z0, v0] = stops[i];
+    const [z1, v1] = stops[i + 1];
+    if (zoom < z0 || zoom > z1) continue;
+    if (typeof v0 !== "number" || typeof v1 !== "number") return v0;
+    // Rovnaký vzorec, aký používa MapLibre pre `exponential` (a pre base 1
+    // z neho vyjde lineárna interpolácia).
+    const t =
+      base === 1
+        ? (zoom - z0) / (z1 - z0)
+        : (base ** (zoom - z0) - 1) / (base ** (z1 - z0) - 1);
+    return Math.round((v0 + (v1 - v0) * t) * 100) / 100;
+  }
+  return last[1];
+}
+
+/**
  * Hodnota z úprav → to, čo ide do štýlu.
  *
  * Skalár ostane skalárom, `none` sa zmení na priehľadnú farbu, POLE ZLOMOV
@@ -1769,6 +1920,11 @@ export function paintValue(value) {
   // na hranici skok. Jediné pásmo nie je schodisko, takže z neho vyjde
   // obyčajná hodnota (`step` s jediným výstupom by nemal na čom skočiť).
   if (isBandList(value)) {
+    // Percento v pásme potrebuje ZÁKLAD (čo štýl na tom zoome počíta) a ten
+    // pozná až `overrideValue`. Sem sa taká hodnota dostať nemá; keby sa
+    // dostala, `undefined` je jediná bezpečná odpoveď – objekt v `paint`
+    // by MapLibre odmietol aj s celým štýlom.
+    if (hasRelativeBand(value)) return undefined;
     const bands = sortBands(value);
     if (bands.length === 1) return paintValue(bands[0][2]);
     return [
@@ -1800,10 +1956,66 @@ export function paintValue(value) {
  * nemalo z čoho počítať a ticho by nespravilo nič.
  */
 export function overrideValue(base, value, fallback) {
+  if (hasRelativeBand(value)) return bandsOverBase(base, value, fallback);
   if (!isRelative(value)) return paintValue(value);
   const z = base === undefined ? fallback : base;
   if (z === undefined) return undefined;
   return scaleExpr(z, value);
+}
+
+/**
+ * PÁSMA S PERCENTOM → jedna krivka podľa zoomu.
+ *
+ * Percento v pásme je „to, čo počíta štýl, krát toľkoto – ale len na týchto
+ * zoomoch", a to sa jedným `step` ani jedným `interpolate` nad pôvodnou
+ * krivkou povedať nedá: `["zoom"]` smie byť len priamym vstupom najvrchnejšieho
+ * výrazu (rozpis pri `zw`), takže sa nedá obaliť ani vnoriť. Preto sa hodnota
+ * VYČÍSLI na každom celom zoome a výsledok je nová krivka.
+ *
+ * `collapse` z nej vyhodí zlomy, ktoré ležia na spojnici susedov, takže
+ * z nezmeneného úseku ostanú dva body a nie dvadsaťjeden. Na hranici pásiem
+ * z toho vyjde prechod cez jeden zoom namiesto skoku – to je zámer: pásmo
+ * s percentom drží tvar krivky zo štýlu a skok o desatinu šírky uprostred
+ * plynulého priblíženia by bol vidieť viac než tá desatina sama.
+ *
+ * Dátami riadenú hodnotu (`match` podľa atribútu) vyčísliť nemožno – vtedy
+ * sa vráti `undefined` a vlastnosť ostane taká, akú ju spravil štýl.
+ */
+function bandsOverBase(base, bands, fallback, apply = relApply) {
+  const zaklad = base === undefined ? fallback : base;
+  if (zaklad === undefined) return undefined;
+  const zoradene = sortBands(bands);
+  const stops = [];
+  for (let z = 0; z <= MAX_DISPLAY_Z; z += 1) {
+    const raw = valueAtZoom(zaklad, z);
+    if (typeof raw !== "number") return undefined;
+    const band = zoradene.find(([od, doZ]) => z >= od && z <= doZ);
+    const v = band ? apply(raw, band[2]) : raw;
+    if (!Number.isFinite(v)) return undefined;
+    stops.push([z, Math.round(v * 1000) / 1000]);
+  }
+  const zlomy = collapseStops(stops);
+  if (zlomy.length === 1) return zlomy[0][1];
+  return ["interpolate", ["linear"], ["zoom"], ...zlomy.flatMap(([z, v]) => [z, v])];
+}
+
+/** Čo pásmo robí s hodnotou zo štýlu: percento ju škáluje, číslo ju nahradí. */
+const relApply = (raw, v) =>
+  isRelative(v) ? raw * (v.scale ?? 1) + (v.add ?? 0) : v;
+
+/** Vyhodí zlomy, ktoré ležia na spojnici susedov – rovná časť nepotrebuje tretí bod. */
+function collapseStops(stops) {
+  if (stops.every(([, v]) => Math.abs(v - stops[0][1]) <= 0.001)) return [stops[0]];
+  const out = [stops[0]];
+  for (let i = 1; i + 1 < stops.length; i += 1) {
+    const [z0, v0] = out[out.length - 1];
+    const [z1, v1] = stops[i];
+    const [z2, v2] = stops[i + 1];
+    const na = v0 + ((v2 - v0) * (z1 - z0)) / (z2 - z0);
+    if (Math.abs(na - v1) > 0.001) out.push(stops[i]);
+  }
+  out.push(stops[stops.length - 1]);
+  return out;
 }
 
 /**
@@ -1940,7 +2152,7 @@ function outlineWidthScalar(prop, value, id, problems, where, atZoom = "") {
  * ale „šírka okraja", a hláška o vlastnosti, ktorú v súbore úprav nikto
  * nenapísal, by hľadanie chyby predĺžila, nie skrátila.
  */
-function cleanRelative(prop, value, id, problems, where, popis = prop) {
+function cleanRelative(prop, value, id, problems, where, popis = prop, allowNoop = false) {
   const kde = `${where}Vrstva "${id}": ${popis}`;
   if (prop.endsWith("-color")) {
     problems.push(`${kde} sa nedá zadať ako "scale"/"add" – preškálovať sa `
@@ -1959,7 +2171,14 @@ function cleanRelative(prop, value, id, problems, where, popis = prop) {
   }
   // `{scale: 1}` ani `{add: 0}` nie sú úprava – uložené by boli len šumom
   // v súbore a v paneli by svietilo „zmenené" nad vrstvou, ktorá sa nezmenila.
+  //
+  // V PÁSME TO PLATÍ NAOPAK (`allowNoop`). Pásma pokrývajú celý rozsah zoomov,
+  // takže „na z0–z14 ako v štýle, na z15–z20 o desatinu viac" sa inak povedať
+  // nedá – prvé pásmo JE tá stovka percent. Bez nej by sa dolná polovica
+  // rozsahu musela prepísať pevnými číslami, čo je presne to, čomu sa
+  // relatívna hodnota vyhýba.
   if ((out.scale ?? 1) === 1 && (out.add ?? 0) === 0) {
+    if (allowNoop) return { scale: 1 };
     problems.push(`${kde}: "scale" 1 a "add" 0 nič nemenia – vynechávam.`);
     return undefined;
   }
@@ -2042,7 +2261,14 @@ function cleanPaintBands(prop, list, id, problems, where, scalar = cleanPaintSca
       problems.push(`${kde}: pásmo od z${od} do z${doZ} je naopak – "do" nesmie byť menšie než "od".`);
       return undefined;
     }
-    const v = scalar(prop, hodnota, id, problems, where, ` v pásme z${od}–z${doZ}`);
+    // PERCENTO V PÁSME. `{scale, add}` tu neznamená to, čo skalár („hodnota JE
+    // takáto"), ale „to, čo počíta štýl, krát toľkoto" – a práve to je
+    // odpoveď na „na z19 nech je prvok o desatinu väčší" (rozpis pri
+    // `hasRelativeBand`).
+    const v = isRelative(hodnota)
+      ? cleanRelative(prop, hodnota, id, problems, where,
+                      `${prop} v pásme z${od}–z${doZ}`, true)
+      : scalar(prop, hodnota, id, problems, where, ` v pásme z${od}–z${doZ}`);
     if (v === undefined) return undefined;
     out.push([Number(od), Number(doZ), v]);
   }
@@ -2983,6 +3209,18 @@ function outlineWidth(layer, width) {
   // Pri ploche nie je čo škálovať, takže základ relatívnej úpravy je 1 px.
   const base = layer.type === "line" ? layer.paint["line-width"] : null;
   if (isRelative(width)) return scaleExpr(base ?? 1, width);
+  // PÁSMA S PERCENTOM. Vyčíslia sa nad hrúbkou čiary rovnako ako v `paint`
+  // (rozpis pri `bandsOverBase`), len s tým istým čítaním skalára, aké platí
+  // v celom okraji: percento je „toľkokrát hrubší než čiara", číslo je
+  // „toľko px na každej strane", teda dvojnásobok na šírku.
+  if (hasRelativeBand(width)) {
+    return bandsOverBase(base ?? 1, width, 1, (raw, v) =>
+      isRelative(v)
+        ? raw * (v.scale ?? 1) + (v.add ?? 0)
+        : base == null
+          ? v
+          : raw + v * 2);
+  }
   const val = paintValue(width);
   if (base == null || typeof val !== "number") return val;
   return scaleExpr(base, { add: val * 2 });
@@ -3024,7 +3262,7 @@ function variantLayers(layer, variants, hasIcon) {
       metadata: { ...zaklad.metadata, "frico:derived": koren, "frico:variant": layer.id }
     };
     for (const [prop, value] of Object.entries(v.paint || {})) {
-      const nv = overrideValue(vrstva.paint[prop], value);
+      const nv = overrideValue(vrstva.paint[prop], value, PAINT_DEFAULTS[prop]);
       if (nv !== undefined) vrstva.paint[prop] = nv;
     }
     if (v.layout && layer.type === "symbol") {
@@ -3164,9 +3402,11 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true, theme)
     if (o.paint) {
       layer.paint = { ...(layer.paint || {}) };
       for (const [prop, value] of Object.entries(o.paint)) {
-        const v = overrideValue(layer.paint[prop], value);
-        // Percento nad vlastnosťou, ktorú vrstva nemá, nemá z čoho počítať –
-        // `undefined` v `paint` by MapLibre odmietol aj s celým štýlom.
+        // Vlastnosť, ktorú štýl nenastavil, má predvoľbu MapLibre
+        // (`PAINT_DEFAULTS`) – bez nej by percento nad ňou ticho nespravilo
+        // nič. `undefined` v `paint` by MapLibre odmietol aj s celým štýlom,
+        // takže sa nezapisuje.
+        const v = overrideValue(layer.paint[prop], value, PAINT_DEFAULTS[prop]);
         if (v !== undefined) layer.paint[prop] = v;
       }
     }
@@ -3753,10 +3993,18 @@ export function buildStyle({
    * @param {object} layer  vrstva podľa MapLibre style-spec
    * @param {[string,string,string,object?,string[]?,object?]} meta
    *        [skupina, popis, druh, {paintProp: kľúč palety},
-   *         [kľúče palety vo výrazoch], {id,color,size,weight,opacity}]
+   *         [kľúče palety vo výrazoch], {id,color,size,weight,opacity},
+   *         id vrstvy, ktorú táto OBŤAHUJE]
+   *
+   * Posledná položka je „toto je OBRYS tamtej vrstvy" (`frico:border-of`).
+   * Obrys je v štýle vlastná vrstva – cesta a jej obrys sú dve čiary pod
+   * sebou –, ale nie je to samostatná vec: jeho hrúbka aj to, či je vôbec
+   * vidieť, sa čítajú od tej čiary, ktorú obťahuje. Bez tohto odkazu ho
+   * developer mode vypisoval ako hocijakú inú čiaru a „o kúsok širší obrys"
+   * sa muselo naklikať ako absolútne číslo zvlášť pre každý zoom.
    */
   const add = (layer, meta) => {
-    const [group, label, kind, palette, paletteExtra, pattern] = meta;
+    const [group, label, kind, palette, paletteExtra, pattern, borderOf] = meta;
     const l = { ...layer };
     if (l.type !== "background" && !l.source) l.source = "omt";
     const pat = pattern ? patternDef(pattern) : null;
@@ -3781,7 +4029,8 @@ export function buildStyle({
       ...(pat ? { "frico:pattern": pat } : {}),
       ...(Array.isArray(dashBuiltin)
         ? { "frico:dash": dashIdOf(dashBuiltin) || dashBuiltin }
-        : {})
+        : {}),
+      ...(borderOf ? { "frico:border-of": borderOf } : {})
     };
     L.push(l);
     if (pat) {
@@ -4536,7 +4785,8 @@ export function buildStyle({
             ...(opts.dash ? { "line-dasharray": opts.dash } : {})
           }
         },
-        ["cesty", `${label} – obrys${passLabel}`, "line", { "line-color": casingKey }]
+        ["cesty", `${label} – obrys${passLabel}`, "line", { "line-color": casingKey },
+         null, null, `road-${id}${suffix}`]
       );
     }
     for (const [id, label, classes, colorKey, , stops, , mz] of odNajmenejDolezitej) {

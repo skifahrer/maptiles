@@ -25,15 +25,22 @@
  */
 import {
   MAX_PAINT_STOPS,
-  MAX_DISPLAY_Z,
   NO_FILL,
   sortStops,
   sortBands,
-  isBandList
+  isBandList,
+  isScalarValue,
+  stepToBands,
+  valueAtZoom
 } from "./themes.js";
 import { dashIdOf } from "./patterns.js";
 
 export { dashIdOf };
+
+// `valueAtZoom` býval tu; presunul sa do `themes.js`, lebo tú istú odpoveď
+// potrebuje aj skladanie štýlu (percento v pásme). Vyváža sa ďalej odtiaľto,
+// aby volajúci nemuseli vedieť, kde presne leží.
+export { valueAtZoom };
 
 /** Vlastnosti, ktoré formát úprav vôbec pozná (`cleanPaintScalar`). */
 const SUFFIXES = ["-color", "-opacity", "-width", "-exaggeration"];
@@ -81,116 +88,6 @@ const PREFIX = {
 export const canDecorate = (layer) =>
   layer?.type === "fill" || layer?.type === "line" || layer?.type === "fill-extrusion";
 
-/** Je to hodnota, ktorú formát úprav unesie ako skalár? */
-const isScalar = (v) =>
-  typeof v === "number" || (typeof v === "string" && v.startsWith("#")) || v === NO_FILL;
-
-/**
- * Hodnota vlastnosti na danom zoome.
- *
- * Pozná to, čo štýl naozaj vyrába: číslo, `interpolate` podľa zoomu (lineárny
- * aj exponenciálny), `step` podľa zoomu a oba tvary zo súboru úprav – krivku
- * `[[zoom, hodnota], …]` aj pásma `[[od, do, hodnota], …]`. Na čokoľvek iné
- * (výraz podľa atribútu prvku) vráti `null` – „to sa jedným číslom povedať
- * nedá" je poctivejšia odpoveď než vymyslený priemer.
- *
- * Farbu neinterpoluje: medzi dvoma zlomami vráti tú spodnú. Miešať hex
- * v sRGB by dalo inú farbu, než akú kreslí MapLibre (ten mieša inak), a tu
- * ide o to, S ČÍM ZAČAŤ, nie o presnú predlohu.
- */
-export function valueAtZoom(value, zoom) {
-  if (isScalar(value)) return value;
-  if (!Array.isArray(value)) return null;
-
-  // Zoomové PÁSMA z úprav: `[[od, do, hodnota], …]` – hodnota pásma, v ktorom
-  // ten zoom leží; pod prvým a nad posledným krajné pásmo.
-  if (isBandList(value)) return bandAt(sortBands(value), zoom);
-
-  // Zoomové zlomy z úprav: `[[zoom, hodnota], …]`.
-  if (Array.isArray(value[0])) {
-    const stops = sortStops(value.filter((s) => Array.isArray(s) && s.length === 2));
-    if (!stops.length) return null;
-    return stopsAt(stops, zoom);
-  }
-
-  // `step` podľa zoomu – to, čo zo zoomových pásiem vyrobí `paintValue`.
-  if (value[0] === "step") {
-    const bands = stepToBands(value);
-    return bands ? bandAt(bands, zoom) : null;
-  }
-
-  if (value[0] !== "interpolate") return null;
-  const [, curve, input, ...rest] = value;
-  // Interpolácia podľa niečoho iného než zoomu (napr. podľa atribútu) sa
-  // jedným zoomom nezodpovie.
-  if (!Array.isArray(input) || input[0] !== "zoom") return null;
-  const stops = [];
-  for (let i = 0; i + 1 < rest.length; i += 2) {
-    if (typeof rest[i] !== "number" || !isScalar(rest[i + 1])) return null;
-    stops.push([rest[i], rest[i + 1]]);
-  }
-  if (!stops.length) return null;
-  const base = Array.isArray(curve) && curve[0] === "exponential" ? Number(curve[1]) || 1 : 1;
-  return stopsAt(stops, zoom, base);
-}
-
-/** Hodnota pásma, v ktorom daný zoom leží (krajné pásma platia aj za okraj). */
-function bandAt(bands, zoom) {
-  if (!bands.length) return null;
-  for (const [od, doZ, v] of bands) if (zoom >= od && zoom < doZ + 1) return v;
-  return zoom < bands[0][0] ? bands[0][2] : bands[bands.length - 1][2];
-}
-
-/**
- * `["step", ["zoom"], v0, z1, v1, …]` → pásma `[[od, do, hodnota], …]`.
- *
- * Prvý výstup `step` platí od z0 (pod prvým zlomom nie je nič nižšie) a
- * posledný až po strop zobrazenia – pásma preto pokrývajú celý rozsah, tak
- * ako to `cleanPaintBands` vyžaduje. `null` = nie je to schodisko podľa zoomu.
- */
-function stepToBands(value) {
-  const [, input, base, ...rest] = value;
-  if (!Array.isArray(input) || input[0] !== "zoom") return null;
-  if (!isScalar(base)) return null;
-  const hranice = [];
-  for (let i = 0; i + 1 < rest.length; i += 2) {
-    if (typeof rest[i] !== "number" || !isScalar(rest[i + 1])) return null;
-    hranice.push([rest[i], rest[i + 1]]);
-  }
-  const bands = [];
-  let od = 0;
-  let v = base;
-  for (const [z, next] of hranice) {
-    if (z <= od) return null;
-    bands.push([od, z - 1, v]);
-    od = z;
-    v = next;
-  }
-  bands.push([od, Math.max(od, MAX_DISPLAY_Z), v]);
-  return bands;
-}
-
-/** Hodnota medzi zlomami; farby sa nemiešajú (vráti sa spodný zlom). */
-function stopsAt(stops, zoom, base = 1) {
-  if (zoom <= stops[0][0]) return stops[0][1];
-  const last = stops[stops.length - 1];
-  if (zoom >= last[0]) return last[1];
-  for (let i = 0; i + 1 < stops.length; i += 1) {
-    const [z0, v0] = stops[i];
-    const [z1, v1] = stops[i + 1];
-    if (zoom < z0 || zoom > z1) continue;
-    if (typeof v0 !== "number" || typeof v1 !== "number") return v0;
-    // Rovnaký vzorec, aký používa MapLibre pre `exponential` (a pre base 1
-    // z neho vyjde lineárna interpolácia).
-    const t =
-      base === 1
-        ? (zoom - z0) / (z1 - z0)
-        : (base ** (zoom - z0) - 1) / (base ** (z1 - z0) - 1);
-    return Math.round((v0 + (v1 - v0) * t) * 100) / 100;
-  }
-  return last[1];
-}
-
 /**
  * Hodnota z hotového štýlu → hodnota, akú unesie súbor úprav.
  * Krivka podľa zoomu sa zapíše ako zoomové zlomy a `step` ako zoomové pásma –
@@ -199,7 +96,7 @@ function stopsAt(stops, zoom, base = 1) {
  * bez toho by `normalizeOverrides` celú vlastnosť zahodil.
  */
 function snapValue(value) {
-  if (isScalar(value)) return value;
+  if (isScalarValue(value)) return value;
   if (!Array.isArray(value)) return null;
   if (isBandList(value)) return thinBands(sortBands(value));
   if (Array.isArray(value[0])) {
@@ -218,7 +115,7 @@ function snapValue(value) {
   if (!Array.isArray(input) || input[0] !== "zoom") return null;
   const stops = [];
   for (let i = 0; i + 1 < rest.length; i += 2) {
-    if (typeof rest[i] !== "number" || !isScalar(rest[i + 1])) return null;
+    if (typeof rest[i] !== "number" || !isScalarValue(rest[i + 1])) return null;
     stops.push([rest[i], rest[i + 1]]);
   }
   return stops.length ? thin(stops) : null;
