@@ -1,34 +1,15 @@
 name: Mapa · Build wiki
 
-# Ku každému objektu v regióne, ktorý má v OSM `wikipedia` alebo `wikidata`
-# tag, stiahne článok – po anglicky a v jazyku krajiny – a publikuje ho na
-# Drive vedľa máp toho istého regiónu:
+# Ku každému objektu v regióne s tagom `wikipedia`/`wikidata` stiahne článok
+# (anglicky a v jazyku krajiny), zabalí ho ako `<región>-wikipedia.zip` na Drive
+# a odkaz zapíše do `maps.json`.
 #
-#     <koreň>/slovensko/bratislavsky/
-#         bratislavsky.zip                    celá mapa      ← Build map
-#         bratislavsky-vrstevnice-skaly.zip
-#         bratislavsky-tienovanie.zip
-#         bratislavsky-wikipedia.zip          články         ← TENTO workflow
+# Vlastná pipeline, nie job v Build map: iná sieť (cudzí server, ktorý nemá
+# zhodiť hodinový build), iná životnosť (články si žijú vlastným tempom)
+# a iný výstup (text vedľa mapy, do `_site` nejde nič).
 #
-# …a odkaz zapíše do `maps.json` medzi ostatné balíky toho regiónu.
-#
-# PREČO VLASTNÁ PIPELINE A NIE JOB V BUILD MAP (kde to predtým bolo). Sú to
-# tri rôzne veci naraz a každá stačí sama o sebe:
-#
-#   * INÁ SIEŤ. Chodí sa na cudzí server (Wikipédia), ktorý sa nemá čím
-#     nahradiť a od ktorého si nič nevynucujeme. Keď nepustí, nemá to zhodiť
-#     hodinový build mapy, ktorý s ním nemá nič spoločné.
-#   * INÁ ŽIVOTNOSŤ. Mapa sa prerába, keď sa zmenia dáta alebo štýl; články si
-#     žijú vlastným tempom a ťahať ich pri každom builde znamená tisíce
-#     požiadaviek na cudzí server za nič.
-#   * INÝ VÝSTUP. Nie sú to dlaždice ani vrstva v štýle – je to text vedľa
-#     mapy. Do `_site` nejde nič a na Pages sa nenasadzuje.
-#
-# JEDEN PACKER A JEDEN ZÁPIS DO KATALÓGU TO NERUŠÍ. Balík aj zápis do
-# `maps.json` robí ďalej `workers/deploy/publish-map.py`, len s `--only=
-# wikipedia`: vtedy publikuje jediný balík a do katalógu ho DOPLNÍ, namiesto
-# aby položku regiónu prepísal (inak by zmazal odkazy na mapu, o ktorej nič
-# nevie). Druhý packer by bol druhá pravda o tom istom.
+# Balík aj katalóg robí ďalej `workers/deploy/publish-map.py`, len
+# s `--only=wikipedia`: publikuje jediný balík a položku regiónu doplní.
 
 on:
   workflow_dispatch:
@@ -83,9 +64,7 @@ on:
         required: false
         default: true
         type: boolean
-      # Ten istý balík ešte raz ako `.aar` (Apple Archive) – rovnako ako pri
-      # Build map. Robí to job na macOS, lebo nástroj `aa` je súčasť macOS;
-      # keď ho nechceš platiť pri každom behu, odškrtni.
+      # ten istý balík ešte raz ako `.aar`; robí to job na macOS (nástroj `aa`)
       apple_archive:
         description: "Nahrať balík aj ako .aar (Apple Archive, job na macOS)"
         required: false
@@ -106,9 +85,7 @@ permissions:
   contents: read
 
 env:
-  # Prihlásenie na Drive: číta sa z neho cache článkov a nahráva balík. Stojí
-  # pri celom workflowe ako v Build map – keby sa naň dalo zabudnúť pri jednom
-  # kroku, ten by sa ticho vrátil k sťahovaniu všetkého odznova.
+      # prihlásenie na Drive stojí pri celom workflowe ako v Build map
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
   DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
@@ -119,8 +96,7 @@ jobs:
   wiki:
     name: Články z Wikipédie
     runs-on: ubuntu-latest
-    # Katalóg `maps.json` je súbor v repozitári a dopisuje ho beh – rovnako
-    # ako pri Build map. Bez tohto práva by sa zapísal na runner a stratil.
+      # katalóg `maps.json` je súbor v repozitári a dopisuje ho beh
     permissions:
       contents: write
     outputs:
@@ -134,9 +110,8 @@ jobs:
       - name: Priprav priečinky
         run: mkdir -p steps-out data
 
-      # PBF sťahuje TEN ISTÝ skript ako Build map. „Ktorý súbor je región" je
-      # jedna otázka a odpoveď na ňu má jedno miesto (pravidlo 1 v CLAUDE.md);
-      # druhá kópia by sa raz rozišla v tom, ktorý export sa berie.
+      # PBF sťahuje ten istý skript ako Build map – „ktorý súbor je región"
+      # je jedna otázka a odpoveď na ňu má jedno miesto
       - name: Stiahni PBF iba daného regiónu
         id: region
         env:
@@ -161,20 +136,16 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
-          # Do kľúča ide všetko, čo mení OBSAH balíka: región, krajina (z nej
-          # je domáci jazyk), jazyky navyše a podoba článku. Na konci je číslo
-          # behu, lebo existujúci kľúč sa neprepisuje – nový záznam tak vždy
-          # vznikne a predpona vyberie najnovší.
+          # do kľúča ide všetko, čo mení obsah balíka. Na konci je číslo behu,
+          # lebo existujúci kľúč sa neprepisuje – predpona vyberie najnovší.
           S=$(printf '%s|%s|%s|%s' "$REGION" "$COUNTRY" "$LANGS" "$FMT" \
               | tr -c 'a-zA-Z0-9._-' '_')
           echo "prefix=wiki-v2-$S-" >> "$GITHUB_OUTPUT"
           echo "key=wiki-v2-$S-$RUN_ID" >> "$GITHUB_OUTPUT"
 
-      # Obnovuje sa cez PREDPONU – berie sa najnovší záznam toho istého
-      # regiónu. Šetria sa tým bajty a čas prevodu, nie počet požiadaviek:
-      # `collect.py` sa dávkovo spýta na `lastrevid` a stiahne len to, čo sa
-      # zmenilo. `rebuild` restore preskočí, nech sa neťahá niečo, čo sa má
-      # aj tak zahodiť.
+      # obnovuje sa cez predponu (najnovší záznam toho regiónu). Šetria sa tým
+      # bajty a čas prevodu, nie požiadavky: `collect.py` sa dávkovo spýta na
+      # `lastrevid`. `rebuild` restore preskočí.
       - name: Cache článkov (restore)
         id: cache
         if: ${{ !inputs.rebuild }}
@@ -188,8 +159,7 @@ jobs:
         id: wiki
         env:
           REGION_KEY: ${{ steps.region.outputs.key }}
-          # Krajinu vie číselník regiónov; input ju len prebije (vlastný PBF
-          # v `regions.json` nie je, tak si ju treba povedať).
+          # krajinu vie číselník regiónov; input ju len prebije
           WIKI_COUNTRY: ${{ inputs.country }}
           OPT_WIKI_LANGS: ${{ inputs.wiki_langs }}
           OPT_WIKI_FORMAT: ${{ inputs.wiki_format }}
@@ -205,9 +175,8 @@ jobs:
           echo "Krajina pre domáci jazyk: ${WIKI_COUNTRY:-(nepoznám)}"
           workers/wiki/build.sh
 
-      # Ukladá sa HNEĎ, ako články vzniknú, nie v post-kroku – zrušený beh tak
-      # nezahodí to, čo sa už stiahlo. `always()`, lebo aj čiastočný výsledok
-      # je ďalšiemu behu na osoh.
+      # ukladá sa hneď, ako články vzniknú; `always()`, lebo aj čiastočný
+      # výsledok je ďalšiemu behu na osoh
       - name: Cache článkov (save)
         if: ${{ always() && hashFiles('wiki-cache/articles.ndjson') != '' }}
         continue-on-error: true
@@ -216,9 +185,8 @@ jobs:
           path: wiki-cache
           key: ${{ steps.key.outputs.key }}
 
-      # Balí a do katalógu zapisuje ten istý skript ako pri mape, len s
-      # `--only=wikipedia`: publikuje jediný balík a položku regiónu DOPLNÍ,
-      # nie prepíše.
+      # ten istý skript ako pri mape, len s `--only=wikipedia`: publikuje
+      # jediný balík a položku regiónu doplní, nie prepíše
       - name: Publikuj na Drive a zapíš do maps.json
         id: publish
         if: ${{ inputs.publish && steps.wiki.outputs.enabled == 'true' }}
@@ -234,8 +202,7 @@ jobs:
             --wiki=wiki-out --maps=maps.json \
             --summary="$GITHUB_STEP_SUMMARY"
 
-      # Ten istý skript, akým katalóg commituje Build map – vrátane rebasu,
-      # keď medzitým pushol iný beh.
+      # ten istý skript, akým katalóg commituje Build map – vrátane rebasu
       - name: Commitni maps.json
         if: ${{ inputs.publish && steps.publish.outcome == 'success' }}
         env:
@@ -244,8 +211,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: workers/deploy/catalog.sh
 
-      # Aby si `.aar` mohol vyrobiť job na macOS, musia sa k nemu články
-      # dostať – v tom istom behu a bez druhého sťahovania z Wikipédie.
+      # aby si `.aar` mohol vyrobiť job na macOS, musia sa k nemu články dostať
       - name: Odlož články pre Apple Archive
         if: ${{ inputs.publish && steps.publish.outcome == 'success' }}
         uses: actions/upload-artifact@v7
@@ -255,8 +221,8 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-      # Bez publikovania (alebo keď zlyhalo) sa dá aspoň pozrieť, čo vzniklo.
-      # Deň retencie: je to prepravka, nie uložený výsledok – ten je na Drive.
+      # bez publikovania sa dá aspoň pozrieť, čo vzniklo; deň retencie – je to
+      # prepravka, nie uložený výsledok
       - name: Odlož články na pozretie
         if: ${{ always() && hashFiles('wiki-out/index.json') != '' }}
         uses: actions/upload-artifact@v7
@@ -291,19 +257,10 @@ jobs:
             echo "píšu samy v tagu. Text je z Wikipédie (CC BY-SA)."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ---------- Apple Archive ----------
-  # Ten istý balík ešte raz ako `.aar` – iOS a macOS ho rozbalia systémovo
-  # (framework AppleArchive), bez tretej knižnice v aplikácii. Články sú z toho
-  # najvďačnejšie: je to text, takže LZFSE stlačí 14 MB na 5.
-  #
-  # Vlastný job a na macOS preto, že nástroj `aa` je súčasť macOS a inde
-  # neexistuje – rovnako ako pri Build map. Skript je ten istý
-  # (`workers/deploy/apple-archive.sh`), len s `ONLY=wikipedia`: „ako sa vyrobí
-  # .aar a nahrá na Drive" je jedna otázka a dve kópie by sa raz rozišli.
-  #
-  # Beží AŽ PO tom, čo sa nahral ZIP: `--only` položku katalógu DOPĹŇA, takže
-  # ZIP musí byť zapísaný prvý. Keď spadne, články tým netrpia – na Drive sú
-  # a v katalógu tiež, chýba len druhá podoba balíka.
+  # ten istý balík ešte raz ako `.aar`; články sú z toho najvďačnejšie (text).
+  # Vlastný job na macOS (nástroj `aa`), ten istý skript s `ONLY=wikipedia`.
+  # Beží až po nahratí ZIPu – `--only` položku katalógu dopĺňa.
+  # Keď spadne, články tým netrpia.
   apple-archive:
     name: Balík ako Apple Archive (.aar)
     needs: wiki
@@ -329,8 +286,7 @@ jobs:
           TEST_KM2: "0"
           CUSTOM_PBF_URL: ${{ inputs.custom_pbf_url }}
           CUSTOM_NAME: ${{ inputs.custom_name }}
-          # Z ktorej vetvy si vypýtať čerstvý `maps.json` – ten predošlý
-          # job doň práve zapísal a checkout má stav spred toho.
+          # z ktorej vetvy si vypýtať čerstvý `maps.json`
           BRANCH: ${{ github.ref_name }}
         run: workers/deploy/apple-archive.sh
       - name: Commitni maps.json

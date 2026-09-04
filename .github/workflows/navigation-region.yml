@@ -1,36 +1,16 @@
 name: Mapa · navigačný graf kraja
 
-# NAVIGAČNÝ GRAF (Valhalla) PRE JEDEN KRAJ – cestná a chodníková sieť z OSM,
-# a od tejto verzie má VLASTNÝ BALÍK `<kraj>-navigacia.zip` vedľa mapy toho
-# kraja. Balil sa dovnútra mapy s tým istým argumentom ako vyhľadávací index
-# („pár MB proti stovkám za dlaždice“), lenže namerané to tak nie je: graf
-# kraja váži 170 až 190 MB a mapa s ním 283 MB, čiže dve tretiny „základnej
-# mapy" bola sieť, po ktorej sa jazdí. Že sa o balíku dá dozvedieť, drží
-# katalóg – `maps.json` ho nesie vedľa `cesty` a `body`, takže je v appke
-# v tom istom zozname na stiahnutie. Rozpis je v hlavičke
-# `workers/deploy/publish-map.py` a v `docs/navigation.md`.
+# NAVIGAČNÝ GRAF (Valhalla) PRE JEDEN KRAJ, s vlastným balíkom
+# `<kraj>-navigacia.zip`. Dovnútra mapy sa nebalí: graf kraja váži 170–190 MB
+# a mapa s ním 283 MB. Že sa o ňom dá dozvedieť, drží katalóg.
 #
-# TRASA V ŇOM KONČÍ NA HRANICI KRAJA – a od prechodu na presnú hranicu z OSM
-# (`workers/plan/boundary.py`) je to hranica kraja, nie „hranica plus dva až
-# štyri kilometre susedného kraja", ako to bolo s rozšíreným `.poly` z osm.fr.
-# PBF je rezaný na ňu (mapa je mapa kraja) a hrana, ktorej chýba druhý koniec,
-# je slepá ulica. Je to ZÁMER, nie opomenutie, a `graf.json` v balíku to
-# o sebe hovorí (`rozsah: "region"`,
-# `hranica: …`) – mlčanie by sa dalo čítať ako pokazená trasa. Kto potrebuje
-# prejsť hranicu, má na to CELOŠTÁTNY graf z vlastnej pipeline („Mapa · Build
-# navigácia“, `navigation.yml`): tá stavia z celých štátnych extraktov, má
-# vlastný balík na Drive a vlastný uzol v katalógu. Rozpis oboch je
-# v `docs/navigation.md`.
+# Trasa v ňom končí na hranici kraja – PBF je rezaný presnou hranicou z OSM
+# a hrana bez druhého konca je slepá ulica. Je to zámer a `graf.json` to
+# o sebe hovorí. Cez hranicu vedie celoštátny graf z `navigation.yml`.
 #
-# PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map-region.yml`: ten je pri strope
-# 128 KiB, nad ktorým GitHub workflow TICHO NEPRIJME (dôvod aj čísla sú
-# v hlavičke `transport.yml`). Ten istý vzor, tá istá cena – vstupy sa píšu
-# dvakrát a `workflow_call` nededí `env` volajúceho.
-#
-# JEDEN SKRIPT PRE OBA ROZSAHY. Graf stavia `workers/routing/graph.sh`, to
-# isté, čo púšťa celoštátna pipeline; líši sa len tým, čo dostane (`REGION_KEY`
-# a rezaný PBF namiesto `AREA` a štátnych extraktov). Dva skripty by boli dve
-# pravdy o tom, ako sa graf stavia a čo sa v ňom kontroluje (pravidlo 1).
+# Samostatný súbor preto, že `build-map-region.yml` je pri strope 128 KiB.
+# Graf stavia `workers/routing/graph.sh`, to isté, čo púšťa celoštátna
+# pipeline – líši sa len tým, čo dostane.
 
 on:
   workflow_call:
@@ -65,17 +45,15 @@ jobs:
       - name: Priprav priečinok na meranie
         run: mkdir -p steps-out
 
-      # To isté PBF, z akého je mapa – job `plan` ho už stiahol a orezal
-      # PRESNE na hranicu kraja. Nič vlastné sa tu nesťahuje: druhý extrakt by
-      # bola druhá pravda o tom, za aké územie navigácia je, a graf by ticho
-      # pokrýval viac než mapa nad ním (stráži to `workers/lint/navigation.py`).
+      # to isté PBF, z akého je mapa – druhý extrakt by bola druhá pravda
+      # o tom, za aké územie navigácia je (stráži `workers/lint/navigation.py`)
       - name: Stiahni PBF z prípravy
         uses: actions/download-artifact@v8
         with:
           name: pbf
           path: data
 
-      # Docker je na `ubuntu-latest` k dispozícii, takže sa nič neinštaluje.
+      # Docker je na `ubuntu-latest` k dispozícii
       - name: Graf Valhally z PBF kraja
         id: graph
         env:
@@ -84,11 +62,9 @@ jobs:
           VALHALLA_IMAGE: ${{ inputs.valhalla_image }}
         run: workers/routing/graph.sh
 
-      # ARTEFAKT SA NEVOLÁ `site-…` ZÁMERNE. Kusy `site-*` zlieva `deploy` do
-      # `_site` PRED nahratím na Pages a graf na Pages nemá čo robiť – nie je
-      # čo kresliť a zjedol by rozpočet stránky. Balenie si ho preto stiahne
-      # menom, až za tým krokom, a `publish-map.py` z neho spraví vlastný
-      # balík (`_site/routing/` → `<kraj>-navigacia.zip`).
+      # artefakt sa nevolá `site-…` zámerne: `deploy` zlieva `site-*` do `_site`
+      # pred nahratím na Pages a graf tam nemá čo robiť. Balenie si ho stiahne
+      # menom, až za tým krokom.
       - name: Odlož graf pre balenie
         if: ${{ always() && hashFiles('_site/routing/*') != '' }}
         uses: actions/upload-artifact@v7

@@ -1,25 +1,15 @@
 name: Mapa · hranice území
 
 # HRANICE ÚZEMÍ A ICH NÁZVY z OSM do vlastného `.pmtiles`: štát, kraj, okres
-# a obec ako plochy aj ako čiary, s menom a úrovňou, plus body sídel. Rozpis,
-# čo to je a prečo to nestačí brať zo základnej mapy, je v hlavičke
-# `workers/boundaries/boundaries.yml`; krátko – hranica vo vrstve `boundary`
-# OpenMapTiles je ČIARA BEZ MENA územia, ktoré ohraničuje, takže sa z nej nedá
-# povedať, v ktorej obci alebo v ktorom okrese je nejaký bod. Táto vrstva je
-# balík `hranice`.
+# a obec ako plochy aj čiary, s menom a úrovňou, plus body sídel. Vrstva
+# `boundary` OpenMapTiles je čiara BEZ MENA územia, ktoré ohraničuje – rozpis
+# v hlavičke `workers/boundaries/boundaries.yml`. Je to balík `hranice`.
 #
-# JEDEN ROZDIEL OPROTI OSTATNÝM VRSTVÁM: predfilter musí doťahovať aj ČLENOV
-# RELÁCIÍ (`osmium tags-filter` ich berie sám), lebo hranica obce je relácia,
-# ktorej členovia `boundary=administrative` nemajú – a bez nich by Planetiler
-# nemal z čoho zložiť polygón. Robí to `workers/boundaries/build.sh`.
+# Jeden rozdiel oproti ostatným vrstvám: predfilter musí doťahovať aj členov
+# relácií, lebo hranica obce je relácia, ktorej členovia
+# `boundary=administrative` nemajú.
 #
-# PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map-region.yml`. Ten súbor je pri
-# strope 128 KiB a nad ním GitHub workflow TICHO NEPRIJME: vznikne beh bez
-# jobov, s červeným krížikom a prázdnym logom (pravidlo 3 v CLAUDE.md).
-#
-# Cena za to je, že vstupy sa píšu dvakrát (v `inputs:` tu a vo `with:` tam)
-# a že `workflow_call` NEDEDÍ ani `env`, ani `secrets` volajúceho – oboje sa
-# musí podať.
+# Samostatný súbor preto, že `build-map-region.yml` je pri strope 128 KiB.
 on:
   workflow_call:
     inputs:
@@ -66,13 +56,8 @@ on:
       size_mb:
         description: "Veľkosť vrstvy v MB"
         value: ${{ jobs.boundaries.outputs.size_mb }}
-    # `workflow_call` nededí secrets sám, takže ich volajúci musí podať
-    # (`secrets: inherit`) a tento workflow prijať. Bez nich sa cache na Drive
-    # nemá ako otvoriť a Planetiler (93 MB) sa ťahá pri každom behu. Dva tvary
-    # toho istého: všetko v jednom secrete, alebo po dvoch – rozpis vo
-    # `workers/drive/auth.py`. `DRIVE_CLIENT` medzi nimi nie je: je to
-    # repository variable, nie tajný údaj, a `vars.*` sa v tom istom
-    # repozitári čítajú priamo.
+    # `workflow_call` nededí secrets sám. Bez nich sa cache na Drive nemá ako
+    # otvoriť a Planetiler (93 MB) sa ťahá pri každom behu.
     secrets:
       GDRIVE_CREDENTIALS:
         required: false
@@ -81,10 +66,8 @@ on:
       DRIVE_REFRESH:
         required: false
 
-# Prihlásenie na Drive pre celý workflow, nie po kroku: cache-restore
-# a cache-save sú dva kroky a keby token stál pri jednom z nich, druhý by sa
-# ticho vrátil k sťahovaniu všetkého odznova. Stráži to „Kontrola · lint
-# workflowov".
+# prihlásenie na Drive pre celý workflow, nie po kroku: `cache-restore`
+# a `cache-save` sú dva kroky a jeden bez tokenu by ťahal všetko odznova
 env:
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
@@ -111,9 +94,8 @@ jobs:
           name: pbf
           path: data
 
-      # Polygón regiónu z prípravy – z neho je `--polygon` pre Planetiler.
-      # `continue-on-error` preto, že aj bez neho sa beh dokončiť dá: skript
-      # to povie nahlas a dlaždice budú na obdĺžniku bboxu.
+      # polygón regiónu je `--polygon` pre Planetiler; `continue-on-error`,
+      # lebo aj bez neho sa beh dokončiť dá (dlaždice budú na bboxe)
       - name: Stiahni polygón regiónu
         continue-on-error: true
         uses: actions/download-artifact@v8
@@ -144,15 +126,12 @@ jobs:
           path: planetiler.jar
           key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
 
-      # TESTY SCHÉMY PRED STAVBOU. Sú v nej ako `examples` a je to jediná vec,
-      # ktorá o schéme povie pravdu bez celého behu – vrátane toho, že mestská
-      # časť ani chránené územie medzi administratívne hranice nepatria.
-      # Beží ako prvé, nech to spadne za sekundy a nie po predfiltri.
+      # testy schémy pred stavbou (`examples`) – jediná vec, ktorá o schéme
+      # povie pravdu bez celého behu. Beží ako prvé.
       - name: Testy schémy hraníc
         run: java -jar planetiler.jar verify workers/boundaries/boundaries.yml
 
-      # Rozpis je vo `workers/boundaries/build.sh` (pravidlo 3: veľký `run:`
-      # blok patrí do `workers/`, nie do YAMLu).
+      # rozpis je vo `workers/boundaries/build.sh`
       - name: Hranice území z OSM → PMTiles
         id: boundaries
         env:
