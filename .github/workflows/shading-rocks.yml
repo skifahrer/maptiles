@@ -1,47 +1,21 @@
 name: Dáta · tieňované skaly
 
-# POKUSNÁ druhá cesta k skalám: nepočíta sa sklon z DEM, ale hľadajú sa TMAVÉ
-# PLOCHY v hotovom hillshade z freemap.sk. Výstup je ten istý formát ako
-# u skál z DEM – vrstva `rock` v GeoPackage, EPSG:4326 – takže si ho
-# „Build map" vie vypýtať namiesto vlastného výpočtu:
+# POKUSNÁ druhá cesta k skalám: nepočíta sa sklon z DEM, ale hľadajú sa tmavé
+# plochy v hotovom hillshade z freemap.sk. Výstup je ten istý formát ako u skál
+# z DEM, takže si ho Build map vie vypýtať cez `rock_source: tienovanie`.
 #
-#   „Dáta · tieňované skaly"  ─►  sklad `dem-rocks-img` na Drive
-#                                    (rockimg-{výrez}-z{zoom}-…gpkg.zst)
-#                                        ▼
-#   Build map  s  výberom  rock_source: tienovanie    ─►  vrstva `rock` v mape
+# Celý výpočet je vo workers/rocks-shading/build.py. Tri joby: `dlazdice`,
+# `vektor`, `skaly` – strop času platí na job a na všetko naraz nemusí stačiť.
 #
-# Celý výpočet je vo workers/rocks-shading/build.py – tam je aj vysvetlené, ako sa
-# rozhoduje, čo je tmavé, a prečo sa vektorizuje po blokoch.
+# Hillshade je obraz sklonu osvetleného z jednej strany, takže juhovýchodné
+# steny táto cesta systematicky prehliadne. Zato má rozlíšenie ~0,8 m/px (z17).
 #
-# Sú tu TRI joby: `dlazdice` stiahne obrázky, `vektor` z nich spraví obrysy
-# a `skaly` ich zlepí a vyfiltruje. Dôvod je pri jobe `dlazdice` – v skratke:
-# strop času platí na job a na všetko naraz nemusí stačiť.
+# Najtenšie vlákna siete sa zahadzujú (`options: open=…`) – inak je z nich pri
+# z14 rovnomerná sivá deka. Výstupom je jedno pásmo (jedna trieda) a diery
+# v plochách ostávajú: sú to medzery medzi vláknami žliabkov.
 #
-# ČO OD TOHO ČAKAŤ: hillshade je obraz sklonu, ale osvetleného z jednej
-# strany. Severozápadné steny sú na ňom najtmavšie, juhovýchodné najsvetlejšie
-# – tie druhé teda táto cesta systematicky prehliadne. Zato má rozlíšenie,
-# na aké si sami sklon nespočítame (z17 ≈ 0,8 m na pixel).
-#
-# NAJTENŠIE VLÁKNA SIETE SA ZAHADZUJÚ (`options: open=…`, default 3 m). Prah
-# nad hillshade nájde aj vlásočnicové ryhy a mikrotiene cez celý svah; z tých
-# je po vektorizácii jeden prepojený polygón cez celý výrez a v mape pri z14
-# a nižšie rovnomerná sivá deka. Otvorenie ich maže podľa ŠÍRKY – stena
-# ostane stenou. Namerané pri Gerlachu: 21,6 % plochy bez neho, 9,5 % s ním.
-#
-# JEDNA TRIEDA: výstupom je jedno pásmo, teda žiadna plocha vnútri inej.
-# V mape sa kreslí jednou sivou bez priehľadnosti, takže sa prekryv nikde
-# neprejaví a plochy sa nemusia ani zlepovať. `options: plne=0` vráti pôvodné
-# dve pásma (`steep` a `cliff`).
-#
-# DIERY V PLOCHÁCH OSTÁVAJÚ. Sú to medzery medzi vláknami siete žliabkov –
-# čiže presne tá štruktúra, pre ktorú sa skaly z tieňovania robia. Krátko sa
-# zapĺňali a bola to chyba: z pol pohoria bola jedna súvislá plocha bez
-# detailu. `options: zapln_diery=1` to vráti, ak by to niekto chcel.
-#
-# PRVÝ BEH JE LADIACI. Predvolené prahy sú kvalifikovaný odhad, nie nameraná
-# hodnota. Artefakt `nahlad-…` obsahuje PNG „mozaika vedľa nájdených plôch"
-# a histogram odtieňov – podľa nich sa `dark`, `dark_always` a `rel` doladia
-# za jeden pohľad.
+# Prvý beh je ladiaci – prahy sú kvalifikovaný odhad. Artefakt `nahlad-…` má
+# PNG „mozaika vedľa nájdených plôch" a histogram odtieňov.
 
 on:
   workflow_dispatch:
@@ -67,10 +41,8 @@ on:
           - vihorlat
           - strazovske_vrchy
           - male_karpaty
-      # `auto` = najvyšší, ktorý sa zmestí do stropu na počet dlaždíc aj do
-      # rozpočtu času. z17 je strop zámerne: na z18 sú to 4× dlaždice a obrysy
-      # rastú ešte rýchlejšie, pričom mapa z toho nemá nič – plochy sa
-      # zobrazujú do maximálneho zoomu tak či tak.
+      # `auto` = najvyšší, čo sa zmestí do stropu na dlaždice aj do rozpočtu
+      # času. z17 je strop: na z18 sú to 4× dlaždice a mapa z toho nemá nič.
       zoom:
         description: "Zoom dlaždíc, z ktorých sa skaly počítajú (auto = najvyšší možný)"
         required: false
@@ -81,8 +53,7 @@ on:
           - "17"
           - "16"
           - "15"
-      # Na doladenie prahov: z desiatok minút sú minúty. Beh navyše vypíše
-      # obrázok s okolím, kde presne ten štvorec leží.
+      # na doladenie prahov: z desiatok minút sú minúty
       test:
         description: "Rýchly test: počítať len malý štvorec (km²) zo stredu výrezu"
         required: false
@@ -115,35 +86,28 @@ on:
         required: false
         default: "25"
         type: string
-      # Menšie plochy sú zrno JPEGu. Nízka hodnota je zámer: tmavé miesta
-      # nie sú súvislé steny, ale jemná sieť žliabkov, a práve tá je to,
-      # čo z hillshade chceme. 7 m² je ~11 pixelov na z17.
+      # menšie plochy sú zrno JPEGu. Nízka hodnota je zámer – tmavé miesta nie
+      # sú súvislé steny, ale jemná sieť žliabkov. 7 m² je ~11 pixelov na z17.
       min_area:
         description: "Najmenšia skalná plocha v m²"
         required: false
         default: "7"
         type: string
-      # Napr. `local=2000 smooth=2 jobs=8`. Čo sa hodí najčastejšie:
-      #   open=0           nechať aj najtenšie vlákna (sivá deka pri z14)
-      #   open=6           len výrazné steny, drobné bralá preč
+      # napr. `local=2000 smooth=2 jobs=8`. Čo sa hodí najčastejšie:
+      #   open=0/6         nechať aj najtenšie vlákna / len výrazné steny
       #   fill=40          súvislé plochy namiesto jemnej siete
       #   plne=0           aj trieda `cliff` ako kedysi
-      #   zapln_diery=1    zaplniť diery (zožerie detail – viď hlavičku)
-      #   zlepit=1         zlepiť plochy na hraniciach blokov
-      #   log_every=1      riadok na každú dlaždicu
-      #   budget_min=150   zastaviť obrysy po 150 min (0 = bez stropu, predvolené)
+      #   zapln_diery=1    zaplniť diery (zožerie detail)
+      #   budget_min=150   zastaviť obrysy po 150 min (0 = bez stropu)
       #   fresh=1          nepokračovať v rozrobenom
-      #   block_tiles=3    menšie bloky pri obrysoch
       # Celý zoznam je vo workers/rocks-shading/build.py; neznámy kľúč je chyba.
       options:
         description: "Zriedka menené prepínače ako kľúč=hodnota (viď workers/rocks-shading/build.py)"
         required: false
         default: ""
         type: string
-  # Volá ho aj „Build map", keď má `rock_source: tienovanie`. Netreba teda
-  # pustiť najprv toto a potom build – rovnako ako pri výškových modeloch je
-  # `Build map` jediné, čo spúšťaš. `workflow_call` nepozná `type: choice`,
-  # tak sem chodia tie isté hodnoty ako holé reťazce.
+  # volá ho aj Build map pri `rock_source: tienovanie` – netreba teda púšťať
+  # najprv toto. `workflow_call` nepozná `type: choice`, tak chodia holé reťazce.
   workflow_call:
     inputs:
       area:
@@ -153,8 +117,7 @@ on:
         required: false
         default: auto
         type: string
-      # Build map sem posiela rovno bbox testovacieho štvorca (výpočet toho
-      # istého na dvoch miestach sa raz rozíde), takže odtiaľ chodí `nie`.
+      # Build map sem posiela rovno bbox testovacieho štvorca, takže `nie`
       test:
         required: false
         default: nie
@@ -184,8 +147,8 @@ on:
         default: ""
         type: string
     outputs:
-      # Meno súboru v sklade – build si podľa neho vypýta presne tie skaly,
-      # ktoré tento beh vyrobil, a nie „najnovšie pre výrez".
+      # meno súboru v sklade – build si podľa neho vypýta presne tie skaly,
+      # ktoré tento beh vyrobil, nie „najnovšie pre výrez"
       asset:
         description: "Meno súboru so skalami v sklade dem-rocks-img"
         value: ${{ jobs.skaly.outputs.asset }}
@@ -195,13 +158,8 @@ on:
       count:
         description: "Počet nájdených skalných plôch"
         value: ${{ jobs.skaly.outputs.count }}
-    # `workflow_call` nededí secrets sám, takže ich volajúci musí podať
-    # (`secrets: inherit`) a tento workflow prijať. Bez nich by sa cache na
-    # Drive nemala ako otvoriť a gigabajty dlaždíc by sa ťahali z freemap.sk
-    # pri každom behu. Dva tvary toho istého: všetko v jednom secrete, alebo
-    # po dvoch – rozpis vo `workers/drive/auth.py`. `client_id` (DRIVE_CLIENT)
-    # medzi secrets nie je: je to repository variable, nie tajný údaj, a
-    # `vars.DRIVE_CLIENT` sa v tomto istom repozitári číta priamo nižšie.
+    # `workflow_call` nededí secrets sám. Bez nich by sa cache na Drive nemala
+    # ako otvoriť a gigabajty dlaždíc by sa ťahali pri každom behu.
     secrets:
       GDRIVE_CREDENTIALS:
         required: false
@@ -210,56 +168,37 @@ on:
       DRIVE_REFRESH:
         required: false
 
-# `contents: read` stačí: hotové polygóny idú do skladu na Drive, nie do
-# releasu, takže tento workflow do repozitára nezapisuje nič.
+# `contents: read` stačí: polygóny idú do skladu na Drive, nie do releasu
 permissions:
   contents: read
 
 concurrency:
-  # Dva behy na to isté pohorie by z dobrovoľníckeho servera freemap.sk
-  # ťahali dvojnásobok dlaždíc a prepisovali si ten istý súbor v sklade.
+  # dva behy na to isté pohorie by z freemap.sk ťahali dvojnásobok dlaždíc
   group: shading-rocks-${{ inputs.area }}
   cancel-in-progress: false
 
 env:
-  # Cache tejto podpipeline leží na Google Drive (`workers/drive/cache.py`) –
-  # sú to gigabajty JPG dlaždíc a v GitHubovej cache s 10 GB na repozitár
-  # vyhadzovali všetko ostatné. Preto sem musí prísť token vlastníka; keď sa
-  # tento workflow volá z „Build map", podáva sa cez `secrets: inherit`.
+  # cache tejto podpipeline leží na Drive – sú to gigabajty JPG a v GitHubovej
+  # cache s 10 GB vyhadzovali všetko ostatné
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
   DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
   DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
-  # Vysoké rozlíšenie tieňovania (LiDAR) z freemap.sk. Je to XYZ šablóna,
-  # žiadne metadáta – najvyšší zoom sa preto zisťuje skúšobnou dlaždicou.
+  # XYZ šablóna bez metadát – najvyšší zoom sa zisťuje skúšobnou dlaždicou
   SHADING_URL: "https://sk-hires-shading.tiles.freemap.sk/{z}/{x}/{y}.jpg"
-  # Sklad s hotovými polygónmi. Zámerne NIE `dem-rocks`: tie sú z DEM
-  # a tieto z obrázka, takže sa nesmú pomiešať ani omylom.
+  # zámerne nie `dem-rocks`: tie sú z DEM a tieto z obrázka
   ROCK_IMG_STORE: dem-rocks-img
-  # Verzia algoritmu v mene súboru. Zmena algoritmu = iné skaly.
-  # v2: diery v plochách ostávajú (v1 ich zapĺňal a zožral tým detail)
-  # v3: pásmo POD prahom (pozadie) sa zahadzuje – dovtedy prešlo do výsledku
-  #     a v mape z neho bola sivá plocha cez celý výrez
+  # verzia algoritmu v mene súboru: zmena algoritmu = iné skaly
   ROCK_IMG_ALGO: v3
-  # Bbox Slovenska – `resolve-area.py` pretína výrez s „regiónom", a tu je
-  # regiónom celé územie, na ktorom tá dlaždicová vrstva vôbec existuje.
+  # regiónom je tu celé územie, na ktorom tá dlaždicová vrstva existuje
   SK_BBOX: "16.79,47.71,22.58,49.63"
-  # Strop na počet dlaždíc jedného behu. `zoom: auto` zíde pod neho sám.
-  # 60 000 dlaždíc je ~1,5 GB stiahnutých dát a ~4 mld. pixelov mozaiky.
+  # strop na počet dlaždíc behu; 60 000 je ~1,5 GB dát a ~4 mld. pixelov
   MAX_TILES: "60000"
 
 jobs:
-  # ---------- 1. stiahnuť dlaždice ----------
-  # Tri joby, nie jeden: strop času platí na JOB. Sťahovanie z dobrovoľníckeho
-  # servera je desiatky minút, obrysy ďalšiu hodinu a dokopy sa to do jedného
-  # rozpočtu zmestiť nemusí – a keď čas dôjde, padne aj to, čo už bolo hotové.
-  # Takto má každá časť celý svoj rozpočet a v Actions je zároveň vidieť, na
-  # ktorej z nich beh práve je:
-  #
-  #   Stiahnuť dlaždice  →  Obrysy po blokoch  →  Skaly (spojenie a filter)
-  #        cache               cache               sklad na Drive
-  #
-  # GDAL tu netreba – sťahujú sa obrázky, nič sa nepočíta.
+  # tri joby, nie jeden: strop času platí na job. Sťahovanie je desiatky minút,
+  # obrysy ďalšiu hodinu – a keď čas dôjde, padne aj to, čo bolo hotové.
+  # GDAL tu netreba, sťahujú sa obrázky.
   dlazdice:
     name: Stiahnuť dlaždice
     runs-on: ubuntu-latest
@@ -268,8 +207,8 @@ jobs:
       name: ${{ steps.area.outputs.name }}
       bbox: ${{ steps.area.outputs.bbox }}
       km2: ${{ steps.area.outputs.km2 }}
-      # Pri `zoom: auto` ho vyberá sonda a rozpočet. Ide von, aby ho ďalšie
-      # joby nemuseli hádať znova.
+      # pri `zoom: auto` ho vyberá sonda a rozpočet – ide von, nech ho ďalšie
+      # joby nemusia hádať znova
       zoom: ${{ steps.dl.outputs.zoom }}
     steps:
       - name: Checkout
@@ -278,9 +217,8 @@ jobs:
       - name: Nástroje
         run: python3 -m pip install --quiet numpy pillow
 
-      # `test` nie je iný algoritmus, len menší bbox – celý testovací režim je
-      # tu. Kľúč dostane príponu `_test<km²>`, takže si testovací beh nesadne do
-      # tej istej cache ani na ten istý asset ako ostrý.
+      # `test` nie je iný algoritmus, len menší bbox. Kľúč dostane príponu
+      # `_test<km²>`, takže si nesadne do cache ani na asset ostrého behu.
       - name: Výrez → bbox
         id: area
         run: |
@@ -293,9 +231,8 @@ jobs:
             --test-km2="$TEST" \
             --out="$GITHUB_OUTPUT"
 
-      # Kde ten štvorec vlastne je. Bez toho je „nenašlo ani jednu skalu"
-      # nečitateľné: nevie sa, či sú prísne prahy, alebo len testovací štvorec
-      # padol na lúku. `continue-on-error`: diagnostika nesmie zhodiť beh.
+      # bez toho je „nenašlo ani jednu skalu" nečitateľné: nevie sa, či sú
+      # prísne prahy, alebo štvorec padol na lúku
       - name: Kde je testovací výrez
         if: ${{ inputs.test != 'nie' }}
         continue-on-error: true
@@ -309,9 +246,8 @@ jobs:
             --png=out/kde-to-je.png --md=out/kde-to-je.md
           cat out/kde-to-je.md >> "$GITHUB_STEP_SUMMARY"
 
-      # Do skladu `vysledky` na Drive, nie ako artefakt behu: do GitHubu sa
-      # nepublikuje nič. Balenie, pomenovanie a hlásenie robí jeden skript –
-      # `workers/deploy/publish-results.sh`.
+      # do skladu `vysledky` na Drive, nie ako artefakt behu
+      # (`workers/deploy/publish-results.sh`)
       - name: Odlož obrázok testovacieho výrezu
         if: ${{ always() && hashFiles('out/kde-to-je.png') != '' }}
         continue-on-error: true
@@ -321,12 +257,9 @@ jobs:
           POPIS: Kde v regióne leží testovací výrez (skaly z tieňovania)
         run: workers/deploy/publish-results.sh
 
-      # Dlaždice sa ťahajú z dobrovoľníckej služby – čo sa raz stiahlo, sa
-      # nemá sťahovať znova len preto, že sa ladí prah. Kľúč na uloženie má
-      # v sebe číslo behu, aby sa dal doplniť aj neúplný obsah: existujúci
-      # kľúč sa neprepisuje (na Drive rovnako ako kedysi v GitHube), takže bez
-      # toho by prvý (hoc aj prerušený) beh zamkol obsah navždy. Hľadá sa cez
-      # `restore-keys` po predpone.
+      # čo sa raz stiahlo, sa nemá sťahovať znova len preto, že sa ladí prah.
+      # Kľúč na uloženie má v sebe číslo behu, nech sa dá doplniť aj neúplný
+      # obsah – existujúci kľúč sa neprepisuje. Hľadá sa cez `restore-keys`.
       - name: Cache dlaždíc (restore)
         id: tiles-cache
         uses: ./.github/actions/cache-restore
@@ -359,9 +292,8 @@ jobs:
           path: tiles-cache
           key: shading-tiles-${{ steps.area.outputs.key }}-z${{ inputs.zoom }}-${{ github.run_id }}
 
-      # Samotné obrázky, z ktorých sa skaly hľadajú – do skladu `vysledky`.
-      # Medzivýsledky (pásy rastra, obrysy) v cache byť majú, v archíve
-      # s obrázkami nie, preto sa `_rozrobene` odloží nabok.
+      # samotné obrázky do skladu `vysledky`; medzivýsledky patria do cache,
+      # nie do archívu s obrázkami, preto sa `_rozrobene` odloží nabok
       - name: Odlož stiahnuté dlaždice do skladu
         if: ${{ always() && hashFiles('tiles-cache/**') != '' }}
         continue-on-error: true
@@ -374,10 +306,8 @@ jobs:
           SUBORY=tiles-cache workers/deploy/publish-results.sh
           mv "$RUNNER_TEMP/_rozrobene" tiles-cache/_rozrobene 2>/dev/null || true
 
-  # ---------- 2. obrysy po blokoch ----------
-  # Najdrahšia časť: raster tmavosti a `gdal_contour` po blokoch. Hodiny.
-  # Vlastný job preto, aby hotové bloky prežili, keď sa to do stropu nezmestí
-  # – a aby bolo v Actions vidieť, že beh je práve TU a nie v zlepovaní.
+      # najdrahšia časť (raster tmavosti a `gdal_contour` po blokoch, hodiny).
+      # Vlastný job, nech hotové bloky prežijú, keď sa to do stropu nezmestí.
   vektor:
     name: Obrysy po blokoch
     needs: dlazdice
@@ -393,15 +323,11 @@ jobs:
           sudo apt-get install -y -qq gdal-bin
           python3 -m pip install --quiet numpy pillow
           # `gdalinfo --version`, nie `gdal_contour --version`: contour nemá
-          # prepínač na verziu, argumenty si prečíta ako bežný beh a skončí
-          # na „Neither -i nor -fl nor -e are specified" s kódom 1. Pri
-          # `set -e` to zhodí celý job v 30. sekunde – ešte pred stiahnutím
-          # prvej dlaždice. (Presne to sa stalo v behu 31215692174.)
+          # prepínač na verziu a pri `set -e` by zhodil celý job v 30. sekunde
           gdalinfo --version
 
-      # Kľúč je ten istý ako v prvom jobe vrátane čísla behu, takže sa trafí
-      # presne to, čo práve uložil. `restore-keys` je poistka na prípad, keď
-      # sa uloženie nepodarilo – vtedy sa siahne po staršej cache výrezu.
+      # kľúč je ten istý ako v prvom jobe vrátane čísla behu; `restore-keys`
+      # je poistka, keď sa uloženie nepodarilo
       - name: Cache dlaždíc (restore)
         uses: ./.github/actions/cache-restore
         with:
@@ -410,7 +336,7 @@ jobs:
           restore-keys: |
             shading-tiles-${{ needs.dlazdice.outputs.key }}-z${{ inputs.zoom }}-
 
-      # Rozrobené z predošlých BEHOV – hotové bloky sa nepočítajú znova.
+      # rozrobené z predošlých behov – hotové bloky sa nepočítajú znova
       - name: Cache rozrobeného (restore)
         uses: ./.github/actions/cache-restore
         with:
@@ -441,9 +367,8 @@ jobs:
             --options='${{ inputs.options }}' \
             --out=data/rock.gpkg
 
-      # Ukladá sa aj po páde a po timeoute – v tom je celý zmysel delenia.
-      # Iba `_rozrobene` a čísla o sťahovaní, NIE obrázky: tie už v cache sú
-      # pod vlastným kľúčom a druhýkrát by to boli zbytočné gigabajty.
+      # ukladá sa aj po páde a po timeoute – v tom je celý zmysel delenia.
+      # Iba `_rozrobene`, nie obrázky: tie sú v cache pod vlastným kľúčom.
       - name: Cache rozrobeného (save)
         if: ${{ always() && hashFiles('tiles-cache/_rozrobene/**') != '' }}
         continue-on-error: true
@@ -454,9 +379,8 @@ jobs:
             tiles-cache/_stiahnute.txt
           key: shading-vektor-${{ needs.dlazdice.outputs.key }}-z${{ inputs.zoom }}-${{ github.run_id }}
 
-      # Náhľad vzniká pri rastri tmavosti, nie z hotových polygónov – patrí
-      # teda sem. A práve podľa neho sa ladia prahy, takže má byť po ruke aj
-      # vtedy, keď zlepovanie za tým ešte nedobehlo.
+      # náhľad vzniká pri rastri tmavosti, nie z polygónov – a práve podľa
+      # neho sa ladia prahy, tak má byť po ruke aj bez zlepovania
       - name: Odlož náhľad
         if: ${{ always() && hashFiles('out/preview.png') != '' }}
         continue-on-error: true
@@ -466,11 +390,9 @@ jobs:
           POPIS: Raster tmavosti ako náhľad – podľa neho sa ladia prahy
         run: workers/deploy/publish-results.sh
 
-  # ---------- 3. spojenie, filter, výstup ----------
-  # Minúty, nie hodiny: bloky sa zlepia, plochy rozseknuté hranicou bloku sa
-  # spoja cez ST_Union, prejde filter a vyhladenie. Vlastný job preto, aby sa
-  # dalo opakovať samo o sebe – zmena `min_area` nie je dôvod počítať obrysy
-  # znova a v jednom veľkom jobe by sa im nedalo vyhnúť.
+      # minúty, nie hodiny: bloky sa zlepia, plochy rozseknuté hranicou sa
+      # spoja cez ST_Union, prejde filter a vyhladenie. Vlastný job, nech sa dá
+      # opakovať samo – zmena `min_area` nie je dôvod počítať obrysy znova.
   skaly:
     name: Skaly z tieňovania
     needs: [dlazdice, vektor]
@@ -486,16 +408,14 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          # spatialite: `ST_Union` v SQLite dialekte, ktorým sa zlepujú
-          # plochy rozseknuté hranicou bloku. Bez neho beh pokračuje, len
-          # s rovnými rezmi v skalách – viď `zlep_svy` v skripte.
+          # spatialite: `ST_Union` na zlepenie plôch rozseknutých hranicou bloku.
+          # Bez neho beh pokračuje, len s rovnými rezmi v skalách.
           sudo apt-get install -y -qq gdal-bin zstd libsqlite3-mod-spatialite
           python3 -m pip install --quiet numpy pillow
           gdalinfo --version
 
-      # Obrázky sa tu nesťahujú a nečítajú – zlepovanie pracuje nad obrysmi.
-      # Preto sa neobnovuje celá cache dlaždíc (gigabajty JPEGov), ale len
-      # rozrobené a čísla o sťahovaní do štatistiky.
+      # zlepovanie pracuje nad obrysmi, nie nad obrázkami – neobnovuje sa
+      # celá cache dlaždíc (gigabajty JPEGov)
       - name: Cache rozrobeného (restore)
         uses: ./.github/actions/cache-restore
         with:
@@ -527,9 +447,8 @@ jobs:
             --options='${{ inputs.options }}' \
             --out=data/rock.gpkg
 
-          # Meno assetu nesie výrez aj VŠETKY nastavenia, takže sa dva behy
-          # s rôznymi prahmi nikdy neprepíšu. Zoom sa berie zo štatistiky,
-          # nie zo vstupu – pri `auto` je až tam.
+          # meno assetu nesie výrez aj všetky nastavenia, takže sa dva behy
+          # s rôznymi prahmi neprepíšu. Zoom zo štatistiky – pri `auto` je až tam.
           . out/rock-img-stats.txt
           ASSET="rockimg-${{ needs.dlazdice.outputs.key }}-z${zoom}-d${dark}-a${dark_always}-r${rel}-c${cliff_delta}-${ROCK_IMG_ALGO}.gpkg.zst"
           {
@@ -539,11 +458,9 @@ jobs:
             echo "total_km2=$total_km2"
           } >> "$GITHUB_OUTPUT"
 
-      # Keď zlepovanie spadne, rozrobené prežije a ďalší beh nadviaže. Kľúč má
-      # na konci `-s`: pod kľúčom bez neho leží to, čo uložil job `vektor`,
-      # a existujúci kľúč sa prepísať nedá – uloženie by ticho
-      # neurobilo nič. `restore-keys` hľadá po predpone, takže sa ďalší beh
-      # trafí na tento (novší) záznam aj tak.
+      # keď zlepovanie spadne, rozrobené prežije. Kľúč má na konci `-s`: pod
+      # kľúčom bez neho leží to, čo uložil job `vektor`, a existujúci sa
+      # prepísať nedá. `restore-keys` hľadá po predpone.
       - name: Cache rozrobeného (save)
         if: ${{ failure() && hashFiles('tiles-cache/_rozrobene/**') != '' }}
         continue-on-error: true
@@ -561,10 +478,8 @@ jobs:
             -lco COORDINATE_PRECISION=6 -lco RFC7946=YES
           ls -lh data/rock.gpkg out/rock.geojson
 
-      # Iba polygóny – to je celý zmysel tohto balíka. Náhľad a čísla sú
-      # vedľa, v samostatnom, aby sa dali polygóny vziať samé. (Ten istý GPKG
-      # ide o krok nižšie aj do skladu `dem-rocks-img`, odkiaľ si ho berie
-      # Build map; tu je s GeoJSONom navyše, na pozretie v QGISe.)
+      # iba polygóny – náhľad a čísla sú vedľa, nech sa dajú vziať samé.
+      # Ten istý GPKG ide nižšie aj do skladu `dem-rocks-img` pre Build map.
       - name: Odlož polygóny do skladu
         continue-on-error: true
         env:
@@ -575,8 +490,8 @@ jobs:
           POPIS: Skalné polygóny z tieňovania – GPKG aj GeoJSON
         run: workers/deploy/publish-results.sh
 
-      # Dlaždice odložil job `dlazdice` a náhľad job `vektor` – oboje hneď,
-      # ako vzniknú, teda aj vtedy, keď to, čo je za nimi, nedobehne.
+      # dlaždice odložil job `dlazdice` a náhľad job `vektor` – oboje hneď,
+      # ako vzniknú
       - name: Odlož čísla
         if: ${{ always() && hashFiles('out/rock-img-stats.txt') != '' }}
         continue-on-error: true
@@ -586,11 +501,9 @@ jobs:
           POPIS: Čísla behu – koľko plôch, aké prahy, koľko dlaždíc
         run: workers/deploy/publish-results.sh
 
-      # Aby si ich vedel vypýtať build mapy. Artefakt behu sa z iného
-      # workflowu dostáva ťažko (treba číslo behu), súbor v sklade ľahko –
-      # rovnako to robia skaly z DEM v sklade `dem-rocks`. Toto NIE JE to isté
-      # ako krok „Odlož polygóny do skladu" vyššie: ten ukladá vec na pozretie
-      # do `vysledky`, toto je vstup pre Build map pod menom, ktoré si vypýta.
+      # vstup pre Build map pod menom, ktoré si vypýta. Artefakt behu sa
+      # z iného workflowu dostáva ťažko, súbor v sklade ľahko. Nie je to to
+      # isté ako „Odlož polygóny do skladu" vyššie (tá vec je na pozretie).
       - name: Ulož do skladu na Drive
         run: |
           set -euo pipefail

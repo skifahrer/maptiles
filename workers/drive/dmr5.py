@@ -1,107 +1,18 @@
 #!/usr/bin/env python3
-"""
-DMR 5.0 (ETRS89) z Google Drive → výškový model do releasu.
+"""DMR 5.0 (ETRS89) z Google Drive → výškový model do releasu.
 
-ČO JE ZDROJ. Dva súbory v jednom priečinku na Drive (`FOLDER_ID` nižšie), oba
-čítané cez HTTP Range, nič sa nesťahuje celé:
+Dva BigTIFFy v priečinku `FOLDER_ID`, čítané cez HTTP Range a prihlásené ako
+vlastník. Drive vracia `content-length: 0`, hlavičku opravuje `serve.py`; drahá
+je latencia, tak sa okno krája na bloky čítané súbežne; výšky sú elipsoidické,
+tak sa odčíta geoid EGM2008.
 
-    dmr5_etrs89.tif       145,39 GiB   423 518 × 207 589 px, mriežka 1 m
-    dmr5_etrs89.tif.ovr    43,35 GiB   pyramídy: 2, 4, 8, 16, 32, 64, 128, 256 m
-
-Oba sú BigTIFF, dlaždicované 128×128, Float32, nodata 3,4e38 (hlavný LZW,
-pyramídy deflate). Georeferencia je v hlavnom súbore:
-
-    CRS      EPSG:3046 – ETRS89 / TM zone N34 (cm 21° E, k₀ 0,9996, FE 500 000)
-    origin   X 191 148,0   Y 5 497 220,0   (ľavý horný ROH, nie stred pixela)
-    bunka    1,0 × 1,0 m
-
-PREČO TO NIE JE `dmr5-raster.py`. Ten číta archív ÚGKK cez
-`/vsizip//vsicurl/`, kde je raster zabalený jedným deflate prúdom – v ňom sa
-nedá skočiť dopredu, takže celý ten script je postavený na pravidle „čítaj
-raz a sekvenčne". Tu to pravidlo neplatí: súbory sú holé, každá dlaždica má
-vlastnú kompresiu a Range funguje na ľubovoľnom offsete (overené na 20 GB aj
-145 GB). Náhodný prístup je zadarmo, a tým sa mení celý návrh – výrez sa
-neplatí vzdialenosťou od začiatku súboru, ale počtom dlaždíc, ktoré ho
-pretínajú.
-
-ČÍTA SA PRIHLÁSENÝ AKO VLASTNÍK, a inak sa nečíta vôbec. Kým tu stáli pevné
-file id, dal sa model ťahať aj verejným odkazom – s denným limitom sťahovania,
-ktorý zdieľajú všetci, kto naň siahnu (beh 31315890474). Odkedy je zdrojom
-PRIEČINOK, tá cesta neexistuje: čo v priečinku je, povie len Drive API a to
-anonymné požiadavky neobsluhuje. Token vlastníka zo secretu
-`GDRIVE_CREDENTIALS` (alebo trojice `DRIVE_*`) drží `workers/drive/auth.py`
-a `--auth-check` povie, ktorým účtom beh číta a či na súbory vidí. Bez neho
-beh spadne hneď a s návodom – nie po hodine na tom, že Drive prestal púšťať.
-
-TRI VECI, KTORÉ TENTO SÚBOR RIEŠI:
-
-  1. DRIVE KLAME O VEĽKOSTI. Na HEAD vracia `content-length: 0`, takže GDAL
-     súbor odmietne. Obchádza to `workers/drive/serve.py` – malý HTTP server
-     na localhoste, ktorý tú jednu hlavičku opraví. Podáva OBA súbory pod
-     jedným menom (`dmr5_etrs89.tif` a `dmr5_etrs89.tif.ovr`), takže si GDAL
-     nájde pyramídy ako sidecar sám a pri hrubšom cieli číta z nich. Overené:
-     `gdalinfo` vypíše všetkých 8 úrovní, otvorenie 145 GiB trvá 8 s a stojí
-     9 požiadaviek / 0,3 MB.
-
-  2. LATENCIA, NIE ŠÍRKA PÁSMA. Jeden Range request na Drive trvá rádovo
-     0,1–1 s bez ohľadu na to, koľko bajtov nesie. Výrez 6×6 km pri 1 m
-     (243 požiadaviek, 103 MB) trval jedným procesom 90 s, čo je 1,1 MB/s –
-     pritom to isté pásmo utiahne 75 MB/s. Zmerané na 48 náhodných výrezoch:
-     1 vlákno 1 143 ms/req, 8 vlákien 147 ms/req, 24 vlákien 68 ms/req.
-     Preto sa okno KRÁJA NA BLOKY a tie sa čítajú súbežne (`--jobs`).
-     GDAL je vnútri jedného `gdal_translate` v čítaní jednovláknový, takže
-     súbežnosť musí prísť zvonku, z viacerých procesov.
-
-  3. VÝŠKY SÚ ELIPSOIDICKÉ, NIE Bpv. Toto je ETRS89 verzia a nesie výšky nad
-     elipsoidom GRS80. Vidno to na štatistike v súbore: maximum 2 697,03 m,
-     kým Gerlachovský štít má 2 654,4 m n. m. Bpv – rozdiel +42,6 m je
-     geoidová undulácia. Na SKALY to nevadí (geoid sa mení plynulo, sklon
-     ostáva ten istý), ale vrstevnice by z toho vyšli popísané o 42 m vyššie
-     než z ostatných zdrojov v pipeline. Preto sa predvolene odčíta geoid
-     EGM2008 (`--geoid=egm2008`). Kontrola na Gerlachu: 2 697,03 m
-     elipsoidicky → 2 654,37 m po prevode, oficiálne 2 654,4 m. Sedí na 3 cm.
-
-VÝSTUP JE TEN ISTÝ AKO DOTERAZ, aby `workers/dem/fetch.sh` nemusel vedieť,
-odkiaľ dáta prišli:
-
-    pohorie          out/ugkk-<area>.tif      jeden COG vo WGS84 → dem-ugkk
-    celé Slovensko   out/N49E019.tif …        dlaždice 1°×1°     → dem-dmr5
-    výrez + --tiles  out/N49E019.tif …        len dotknuté stupne → dem-dmr5
-
-Tretí riadok je to, čo si Build map dopĺňa sám: tieňovanie chce dlaždicovú
-podobu (na celý región 1 m neexistuje), ale nepotrebuje kvôli nej celú
-krajinu – stačia stupne, ktoré jeho bbox pretína. Okno sa pri `--tiles`
-rozširuje na celé stupne, lebo meno `N49E020.tif` je sľub o celej dlaždici
-a polovičná by v ďalšom behu prešla kontrolou ako hotová.
-
-`--area` BERIE AJ BBOX, a to je pri výreze to podstatné. Build map ho tak aj
-volá: čo sa má prečítať, je územie, ktoré si beh naozaj vypýtal (výrez pretnutý
-s regiónom, pri rýchlom teste štvorec na pár km²) – nie celý obdĺžnik pohoria
-z `areas.json`. Meno výsledku sa vtedy podá zvlášť cez `--asset`, lebo
-`ugkk-20,49,21,50.tif` si build vypýtať nevie. Kým sa podával len kľúč
-pohoria, prečítal sa vždy celý obdĺžnik z `areas.json` a rýchly test na pár km²
-čítal z Drive 541 km² Vysokých Tatier.
-
-ROZDELENÉ NA FÁZY (`--stage`), aby dlhé čakanie nebolo jeden nemý krok:
-
-    plan     otvor zdroj, spočítaj okno a bloky, povedz, čo to bude stáť
-    read     prečítaj bloky z Drive (jediná fáza, ktorá siaha na sieť)
-    finish   mozaika → COG alebo 1° dlaždice (už len nad diskom)
-    all      všetko za sebou, ako predtým (predvolené pri ručnom spustení)
-
-Fázy si podávajú stav cez `<work>/dmr5-drive-stav.json` a rozčítané bloky
-cez `<work>/blok-*.tif`, takže sa dajú spustiť ako samostatné kroky workflowu
-– každý s vlastným nadpisom v logu a vlastným postupom.
+Fázy (`--stage`): `plan`, `read` (jediná siaha na sieť), `finish`, `all`.
+Pri `--tiles` sa okno rozširuje na celé stupne – meno je sľub o dlaždici.
 
 Použitie:
     python3 workers/drive/dmr5.py --area=vysoke_tatry --grid-m=1 \\
         --out=out --asset=ugkk-vysoke_tatry.tif
-    python3 workers/drive/dmr5.py --area=20.0,49.1,20.1,49.2 --grid-m=1 \\
-        --out=out --asset=ugkk-vysoke_tatry_test4.tif
-    python3 workers/drive/dmr5.py --area=cele_slovensko --grid-m=5 --out=out
     python3 workers/drive/dmr5.py --area=20,49,21,50 --grid-m=5 --tiles --out=out
-    python3 workers/drive/dmr5.py --stage=plan --area=vysoke_tatry --grid-m=1
-    python3 workers/drive/dmr5.py --probe-only
     python3 workers/drive/dmr5.py --auth-check
 """
 import argparse
@@ -113,39 +24,21 @@ import sys
 import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-# Priečinok = job, súbor = krok; spoločné veci ležia o úroveň vyššie.
-_WORKERS = os.path.dirname(_HERE)          # workers/
-_DATA = os.path.join(_WORKERS, "data")     # číselníky (areas, regions, zdroje)
+_WORKERS = os.path.dirname(_HERE)
+_DATA = os.path.join(_WORKERS, "data")
 
-# KDE DMR 5.0 LEŽÍ – jedno číslo, a je ním PRIEČINOK, nie dva súbory.
-#
-# Kým tu stáli pevné file id, presun modelu na iný účet alebo do iného
-# priečinka znamenal prepísať dve id na štyroch miestach v hláškach a dúfať,
-# že sa na žiadne nezabudlo. Priečinok je pritom to, čo človek naozaj presúva
-# a zdieľa; súbory v ňom sa hľadajú podľa mena (a keď sa aj to zmení, podľa
-# veľkosti – najväčší `.tif` v priečinku JE model).
-#
-# Tajomstvo to nie je: id priečinka chodí v zdieľanom odkaze. Tajomstvom je
-# token vlastníka v secrete GDRIVE_CREDENTIALS (viď `drive-auth.py`).
+# kde DMR 5.0 leží – priečinok, nie dve file id: priečinok je to, čo sa naozaj
+# presúva a zdieľa. Tajomstvom je token vlastníka, nie toto id.
 FOLDER_ID = "1H62op_LMUYDqKeFf-_sXS-46PLEmxDyd"
 TIF_NAME = "dmr5_etrs89.tif"
 OVR_NAME = TIF_NAME + ".ovr"
 
 
-# Stav medzi fázami. Leží v `--work`, ktorý medzi krokmi jobu prežije.
+# stav medzi fázami; `--work` medzi krokmi jobu prežije
 STATE = "dmr5-drive-stav.json"
 
-# Odhad ceny čítania, NA PIXEL ZDROJA. Namerané, nie odhadnuté od stola:
-# výrez 5,2 × 5,6 km pri 1 m (29 km² = 29 mil. px na plnom rozlíšení) trval
-# 1,2 min a stiahol 0,11 GB v 697 požiadavkách, pri `--jobs=12`.
-#
-# Na pixel ZDROJA, a nie cieľa, preto, že hrubšiu mriežku číta GDAL z pyramíd
-# a tie majú vlastné rozlíšenie: cieľ 5 m sa berie z úrovne 4 m, čiže sa
-# prečíta (5/4)² = 1,6× viac pixelov, než má výstup. Kontrola na inom konci
-# rozsahu: jeden 1° stupeň na 5 m = 8 065 km² z pyramídy 4 m = 504 mil. px,
-# čiže ~21 min a ~1,9 GB. Sedí s tým, čo o cene stupňa hovorí check-dem.sh.
-#
-# Je to rádový odhad – má povedať „minúty alebo hodiny", nie predpovedať minútu.
+# odhad ceny čítania, na pixel ZDROJA – hrubšiu mriežku číta GDAL z pyramíd,
+# ktoré majú vlastné rozlíšenie. Rádový odhad: minúty alebo hodiny.
 PX_PER_MIN = 24e6         # pri --jobs=12
 BYTES_PER_PX = 3.8
 
@@ -153,9 +46,7 @@ BYTES_PER_PX = 3.8
 def load(name, path):
     """workers/*.py sa kvôli pomlčke v mene nedajú `import`-núť normálne.
 
-    Cez `sys.modules` preto, aby ten istý modul nevznikol dvakrát:
-    `drive-auth.py` si `drive-serve.py` vypýta tiež (berie si odtiaľ spojenia)
-    a dve kópie shimu by boli dva nezávislé bazény spojení.
+    Cez `sys.modules`, nech ten istý modul nevznikne dvakrát (dva bazény spojení).
     """
     if name in sys.modules:
         return sys.modules[name]
@@ -167,19 +58,12 @@ def load(name, path):
 
 
 drive = load("drive_serve", "serve.py")
-auth = load("drive_auth", "auth.py")       # kto sme na Drive
-folder = load("drive_folder", "folder.py")  # čo je v priečinku
-raster = load("dmr5_raster", "dmr5-raster.py")   # Heartbeat, run_live, pomocníci
+auth = load("drive_auth", "auth.py")
+folder = load("drive_folder", "folder.py")
+raster = load("dmr5_raster", "dmr5-raster.py")
 
-# VÝREZ JE VEDĽA. `dmr5-cut.py` vie z bboxu spočítať okno v projekcii zdroja,
-# rozkrájať ho na bloky, prečítať ich súbežne z Drive a zapísať buď jeden COG,
-# alebo 1° dlaždice. Tento súbor sa pýta na niečo iné: ako sa k tým dátam
-# dostať, čo to bude stáť a v akých fázach to spraviť. (Rozdelené preto, že
-# spolu to malo 888 riadkov – pravidlo 5 v CLAUDE.md.)
-#
-# `LOG`, `log()` a `run()` prišli s výrezom a berú sa ODTIAĽ, nie sa píšu
-# druhýkrát: `LOG` je jeden denník a dve kópie by znamenali súhrn s polovicou
-# riadkov (pravidlo 1).
+# výrez je vedľa, v `dmr5-cut.py`; tento súbor sa pýta, ako sa k dátam dostať,
+# čo to bude stáť a v akých fázach. `LOG` je jeden denník, preto sa berie odtiaľ.
 cut = load("dmr5_cut", "dmr5-cut.py")
 LOG, log, run = cut.LOG, cut.log, cut.run
 src_window, blocks, read_blocks = cut.src_window, cut.blocks, cut.read_blocks
@@ -188,17 +72,11 @@ to_wgs84, country_tiles = cut.to_wgs84, cut.country_tiles
 SRC_EPSG = cut.SRC_EPSG
 
 
-
-
-
-# ---------- stav medzi fázami ----------
-
 def state_path(work):
     return os.path.join(work, STATE)
 
 
-# Koľko riadkov LOGu už v stave je. Fázy sú samostatné procesy, takže bez
-# tohto by v súhrne na konci ostal len log poslednej z nich.
+# fázy sú samostatné procesy – bez tohto by v súhrne ostal log poslednej
 _LOG_SAVED = 0
 
 
@@ -212,9 +90,7 @@ def save_state(work, state):
 
 
 def load_state(work):
-    """Stav z fázy `plan`. Keď chýba, volajúci spustil fázy v zlom poradí –
-    a to je chyba zadania, nie niečo, čo sa dá dopočítať: `read` bez plánu by
-    prečítal iné okno, než na aké sa pýtal `plan`."""
+    """Stav z fázy `plan`; keď chýba, fázy bežali v zlom poradí."""
     p = state_path(work)
     if not os.path.exists(p):
         raise SystemExit(
@@ -224,52 +100,37 @@ def load_state(work):
 
 
 def credentials():
-    """Prihlásenie na Drive z prostredia, alebo None (a to už ďaleko nedôjde:
-    `resolve_ids` bez neho priečinok nevypíše).
+    """Prihlásenie na Drive z prostredia, alebo None.
 
-    Chybu prekladá na `::error::` a pád: kto secret nastavil, čaká prihlásený
-    beh, a ticho spadnúť na verejný denný limit sa pozná až vtedy, keď Drive
-    po pol dni prestane púšťať. Rozpis vo `workers/drive/auth.py`.
+    Chyba je `::error::` a pád: ticho prejsť na verejný denný limit sa pozná
+    až vtedy, keď Drive po pol dni prestane púšťať.
     """
     try:
         creds = auth.from_env()
         if creds is None:
             return None
-        # Token si vypýtaj HNEĎ: keď ho Drive nedá, povie sa to tu a nie po
-        # hodine čítania. Toto je tvrdá chyba – s pokazeným prihlásením sa
-        # nedá čítať a ticho prejsť na verejný limit je zakázané.
+        # token hneď: keď ho Drive nedá, povie sa to tu a nie po hodine
         creds.token()
     except auth.AuthError as exc:
         raise SystemExit(f"::error::{exc}")
     try:
         auth.whoami(creds)
     except auth.AuthError as exc:
-        # Toto je len na výpis „ktorým účtom čítame". Keď zlyhá práve táto
-        # jedna metadátová požiadavka, čítanie tým nekončí – token platí
-        # a bloky si prípadnú chybu ohlásia samy a presnejšie.
+        # len na výpis „ktorým účtom čítame“; čítanie tým nekončí
         log(f"::warning::Účet sa nepodarilo zistiť ({exc}). Čítanie beží "
             f"prihlásené, len sa v logu nebude vedieť ktorým účtom.")
     return creds
 
 
-# Raz vyriešené id sa v procese nehľadajú druhýkrát: fázy `plan` a `read`
-# otvárajú zdroj každá raz, ale `slope-chunks.py` si shim pýta v tom istom
-# procese pri každom pokuse o časť.
+# raz vyriešené id sa v procese nehľadajú druhýkrát
 _IDS = None
 
 
 def resolve_ids(creds):
     """Priečinok na Drive → (id modelu, id pyramíd). Vypíše, čo našiel.
 
-    HĽADÁ SA PODĽA MENA, NIE PODĽA PORADIA. `dmr5_etrs89.tif` je meno, ktoré
-    má model dnes; keby sa premenoval, berie sa najväčší `.tif` v priečinku –
-    145 GiB raster sa s ničím iným pomýliť nedá. Pyramídy sú `<meno>.ovr`
-    vedľa neho.
-
-    BEZ PRIHLÁSENIA TO NEJDE a nemá zmysel to zakrývať: obsah priečinka
-    povie len Drive API a to anonymné požiadavky neobsluhuje. Kým tu stáli
-    pevné file id, dal sa model čítať aj verejným odkazom (s denným limitom);
-    priečinok, v ktorom teraz leží, verejný nie je.
+    Hľadá sa podľa mena; keby sa model premenoval, berie sa najväčší `.tif`.
+    Bez prihlásenia to nejde – obsah priečinka povie len Drive API.
     """
     global _IDS
     if _IDS is not None:
@@ -303,8 +164,7 @@ def resolve_ids(creds):
                 + ("" if f["owned"] else "  (tento účet ho NEVLASTNÍ – platí "
                                          "naň denný limit sťahovania)"))
     if ovr is None:
-        # Nie je to chyba, ale je to drahé: bez pyramíd sa hrubšie mriežky
-        # počítajú z plného 1 m rastra.
+        # nie je to chyba, ale je to drahé: hrubšie mriežky z plného 1 m rastra
         log(f"::warning::V priečinku nie je `{OVR_NAME}` (pyramídy). Hrubšie "
             f"mriežky sa budú čítať z plného 1 m rastra a potrvá to násobne "
             f"dlhšie.")
@@ -313,15 +173,10 @@ def resolve_ids(creds):
 
 
 def serve_drive(port=0):
-    """Shim nad OBOMA súbormi DMR 5.0. Vracia (base, sizes, stats, creds).
+    """Shim nad oboma súbormi DMR 5.0. Vracia (base, sizes, stats, creds).
 
-    Jediné miesto, kde je napísané, odkiaľ sa berú dáta a s akým prihlásením
-    – `open_source` aj `slope-chunks.py` si to volajú odtiaľto, nech sa zdroj
-    dá vymeniť na jednom mieste.
-
-    Shim ich podáva pod KANONICKÝMI menami (`dmr5_etrs89.tif` a `.tif.ovr`) aj
-    vtedy, keď sa na Drive volajú inak: GDAL si pyramídy hľadá ako sidecar
-    podľa mena vedľa hlavného súboru a to meno musí sedieť.
+    Podáva ich pod kanonickými menami – GDAL si pyramídy hľadá ako sidecar
+    podľa mena vedľa hlavného súboru.
     """
     creds = credentials()
     tif_id, ovr_id = resolve_ids(creds)
@@ -333,12 +188,7 @@ def serve_drive(port=0):
 
 
 def auth_check():
-    """Povedz, ktorým účtom sa bude čítať, a či na oba súbory vidí.
-
-    Vlastný krok workflowu preto, že je LACNÝ (token + výpis priečinka)
-    a odpovedá na to, čo sa inak zistí až vtedy, keď Drive prestane dávať
-    dáta: vidí ten účet na priečinok s modelom, a vlastní ho?
-    """
+    """Povedz, ktorým účtom sa bude čítať, a či na oba súbory vidí."""
     print("Prístup k DMR 5.0 na Google Drive:")
     try:
         creds = auth.from_env()
@@ -352,9 +202,7 @@ def auth_check():
 def open_source(args):
     """Shim nad Drive + otvorený raster.
 
-    Vracia (src, env, info, native_m, stats, creds). Robia to fázy `plan`
-    a `read`; `finish` už na sieť nesiaha vôbec, počíta nad blokmi na disku –
-    a práve preto je oddelená.
+    Vracia (src, env, info, native_m, stats, creds). `finish` na sieť nesiaha.
     """
     log("Otváram DMR 5.0 (ETRS89) na Drive cez lokálny shim…")
     base, sizes, stats, creds = serve_drive(args.port)
@@ -364,7 +212,7 @@ def open_source(args):
     src = f"/vsicurl/{base}/{TIF_NAME}"
     env = drive.gdal_env()
     if args.geoid == "egm2008":
-        # Mriežku geoidu si PROJ stiahne z CDN, keď ju nemá lokálne.
+        # mriežku geoidu si PROJ stiahne z CDN, keď ju nemá lokálne
         env["PROJ_NETWORK"] = "ON"
 
     t0 = time.time()
@@ -380,11 +228,7 @@ def open_source(args):
 
 
 def drive_totals(state, stats):
-    """Prirátaj, čo z Drive prišlo v tejto fáze, k tomu, čo prišlo v predošlých.
-
-    Fázy sú samostatné procesy, takže počítadlo shimu začína v každej od nuly –
-    bez tohto by súhrn na konci tvrdil, že sa stiahlo len to z poslednej.
-    """
+    """Prirátaj, čo z Drive prišlo v tejto fáze, k tomu z predošlých."""
     if stats is None:
         return state.get("drive_bytes", 0), state.get("drive_requests", 0)
     with stats["lock"]:
@@ -394,15 +238,11 @@ def drive_totals(state, stats):
     return state["drive_bytes"], state["drive_requests"]
 
 
-# ---------- fáza 1: plán ----------
-
 def stage_plan(args):
     """Otvor zdroj, spočítaj okno a bloky a povedz, čo to bude stáť.
 
-    Vlastná fáza preto, že je LACNÁ (otvorenie stojí 9 požiadaviek a 0,3 MB)
-    a odpovedá na jedinú otázku, ktorá pred hodinovým čítaním zaujíma: koľko
-    toho bude. Trojhodinový krok, ktorý spadne na timeout, je najhorší možný
-    výsledok – minie celý rozpočet a nevyrobí nič.
+    Vlastná fáza preto, že je lacná a odpovedá na jedinú otázku pred hodinovým
+    čítaním: koľko toho bude.
     """
     src, env, info, native_m, stats, creds = open_source(args)
     os.makedirs(args.out, exist_ok=True)
@@ -413,12 +253,8 @@ def stage_plan(args):
 
     area_name, bbox = raster.resolve_area(args.area, os.path.join(_DATA, "areas.json"))
 
-    # DLAŽDICOVÝ REŽIM S VÝREZOM. Build mapy si dlaždice hľadá podľa mena
-    # (`N49E020.tif`) a to meno je sľub: „tento celý stupeň je tu". Keby sa
-    # pod ním v release ocitol len prienik s bboxom, ďalší beh by kontrolou
-    # prešiel („dlaždica tam je“) a tieňovanie by ticho končilo v polovici
-    # mapy. Okno sa preto rozširuje na celé stupne – čítať sa musí celá
-    # dlaždica, nie len to, čo dnes treba.
+    # okno sa pri `--tiles` rozširuje na celé stupne: meno `N49E020.tif` je
+    # sľub a polovičná dlaždica by v ďalšom behu prešla kontrolou ako hotová
     tiles_out = bbox is None or args.tiles
     if bbox is not None and args.tiles:
         w, s, e, n = bbox
@@ -443,21 +279,13 @@ def stage_plan(args):
     area_m2 = (box[2] - box[0]) * (box[3] - box[1])
     cells = area_m2 / args.grid_m ** 2
 
-    # ČO SA BUDE ČÍTAŤ, NIE ČO VYPADNE. Cena je počet pixelov, ktoré prídu
-    # z Drive, a tie nie sú bunky cieľa: číta sa z najhrubšej pyramídy, ktorá
-    # je ešte jemnejšia než cieľ. Pri cieli 5 m to je úroveň 4 m, čiže
-    # (5/4)² = 1,6× viac pixelov, než má výstup – a to je presne ten rozdiel
-    # medzi „13 minút" a „21 minút na stupeň".
-    #
-    # ODPOVEDÁ NA TO `cut.pyramid_level`, NIE TENTO RIADOK. Z tej istej úrovne
-    # totiž vyplýva aj POMER pixel/bunka, a ten rozhoduje, ktorým resamplingom
-    # sa smie čítať; kým to boli dve miesta, plán hovoril „4 m" a čítanie
-    # priemerovalo, akoby bol pomer poctivý (rozpis pri `cut.pyramid_level`).
+    # cena je počet pixelov, ktoré prídu z Drive, nie buniek cieľa – číta sa
+    # z najhrubšej pyramídy, ktorá je ešte jemnejšia. Hovorí to `cut.pyramid_level`,
+    # lebo z tej istej úrovne vyplýva aj pomer pixel/bunka a teda resampling.
     ovr_level, read_m = pyramid_level(info, native_m, args.grid_m)
     src_px = area_m2 / read_m ** 2
 
-    # Rýchlosť je meraná pri `--jobs=12`; pri inom počte vlákien sa škáluje,
-    # ale nie donekonečna – nad ~16 vláknami Drive začne odpovedať 403.
+    # merané pri `--jobs=12`; nad ~16 vláknami Drive začne odpovedať 403
     rate = PX_PER_MIN * min(args.jobs, 16) / 12.0
     est_min = src_px / max(rate, 1.0)
     est_gb = src_px * BYTES_PER_PX / 1e9
@@ -472,8 +300,7 @@ def stage_plan(args):
           + ("(plné rozlíšenie)" if read_m == native_m else
              f"(pyramída, úroveň {ovr_level})")
           + f" → {src_px / 1e6:.1f} mil. px")
-    # ČÍM sa to prevzorkuje, patrí do plánu rovnako ako to, z čoho: práve
-    # tento riadok je rozdiel medzi mriežkou v tieni a hladkým reliéfom.
+    # čím sa to prevzorkuje: rozdiel medzi mriežkou v tieni a hladkým reliéfom
     print(f"  prevzorkovanie  {cut.read_args(args.grid_m, read_m, ovr_level)[1]}")
     print(f"  blokov          {len(parts)} ({nx}×{ny}), {args.jobs} naraz")
     print(f"  odhad           ~{est_min:.0f} min, ~{est_gb:.2f} GB z Drive")
@@ -489,19 +316,14 @@ def stage_plan(args):
     state = {
         "area": args.area,
         "area_name": area_name,
-        # Ako sa k dátam pristupovalo, patrí do súhrnu – prepnutie na verejný
-        # odkaz (zmazaný secret) sa inak nemá kde ukázať a zistilo by sa až
-        # tým, že Drive prestane púšťať. Rovnaký dôvod ako `dem-source.txt`:
-        # nesie sa, čo sa NAOZAJ použilo.
+        # ako sa k dátam pristupovalo – nesie sa, čo sa naozaj použilo
         "drive_auth": auth.describe(creds),
         "bbox": list(bbox) if bbox is not None else None,
         "box": list(box),
         "blocks": [list(p) for p in parts],
         "grid_m": args.grid_m,
         "native_m": native_m,
-        # Z ČOHO SA ČÍTA – vyrátané v pláne, použité vo fáze `read`. Fázy sú
-        # samostatné procesy, takže sa to musí preniesť; prepočítať to druhýkrát
-        # by znamenalo dve odpovede na jednu otázku.
+        # z čoho sa číta: vyrátané v pláne, použité vo fáze `read`
         "read_m": read_m,
         "ovr_level": ovr_level,
         "tiles": tiles_out,
@@ -512,11 +334,8 @@ def stage_plan(args):
         "est_min": est_min,
     }
 
-    # ROZČÍTANÉ BLOKY SÚ DOBRÉ, LEN KEĎ SEDIA NA TENTO PLÁN. Fáza `read`
-    # pozná blok podľa poradového čísla v mene (`blok-0007.tif`), takže po
-    # zmene územia či mriežky by pod tým istým menom ležal úplne iný kus zeme
-    # a mozaika by bola poskladaná z dvoch rôznych zadaní. Rovnaký plán =
-    # opakovaný krok dopočíta zvyšok; iný plán = začína sa odznova.
+    # rozčítané bloky sedia len na ten istý plán: blok sa pozná podľa poradového
+    # čísla v mene, takže po zmene územia by mozaika bola z dvoch zadaní
     old = None
     if os.path.exists(state_path(args.work)):
         with open(state_path(args.work)) as f:
@@ -545,8 +364,6 @@ def stage_plan(args):
     return state
 
 
-# ---------- fáza 2: čítanie ----------
-
 def stage_read(args, state):
     """Bloky z Drive na disk. Jediná fáza, ktorá siaha na sieť – a tá dlhá."""
     src, env, _info, _native, stats, creds = open_source(args)
@@ -562,13 +379,8 @@ def stage_read(args, state):
     return state
 
 
-# ---------- fáza 3: zloženie výstupu ----------
-
 def stage_finish(args, state):
-    """Bloky na disku → COG alebo 1° dlaždice. Na sieť sa už nesiaha.
-
-    Výnimka je mriežka geoidu, ktorú si PROJ stiahne z CDN – pár MB, nie Drive.
-    """
+    """Bloky na disku → COG alebo 1° dlaždice. Na sieť sa už nesiaha."""
     env = drive.gdal_env()
     if state["geoid"] == "egm2008":
         env["PROJ_NETWORK"] = "ON"
@@ -587,9 +399,8 @@ def stage_finish(args, state):
         f"{sum(os.path.getsize(p) for p in parts) / 1048576:.0f} MB na disku")
 
     if state["tiles"]:
-        # Okno je to, čo si fáza `plan` rozšírila na celé stupne – a podáva sa
-        # ďalej, aby sa pod menom dlaždice neuložil presah prevodu do WGS84
-        # (rozpis pri `country_tiles`). `None` = celé Slovensko.
+        # okno rozšírené na celé stupne, nech sa pod menom dlaždice neuloží
+        # presah prevodu do WGS84. `None` = celé Slovensko.
         country_tiles(parts, args.out, args.work, env, state["geoid"],
                       window=state["bbox"], grid_m=state["grid_m"])
         made = sorted(f for f in os.listdir(args.out) if f.endswith(".tif"))
@@ -600,8 +411,7 @@ def stage_finish(args, state):
                         state["geoid"])
         made = [os.path.basename(dest)]
 
-    # Bloky až teraz: kým výstup nie je hotový, sú to jediné prečítané dáta
-    # a opakovaný `read` by ich musel stiahnuť znova.
+    # bloky až teraz: dovtedy sú to jediné prečítané dáta
     for p in parts:
         os.remove(p)
     state["made"] = made
@@ -633,8 +443,6 @@ def write_summary(path, state):
                 + "\n".join(state.get("log", []) + LOG[_LOG_SAVED:])
                 + "\n```\n\n</details>\n")
 
-
-# ---------- beh ----------
 
 def main():
     ap = argparse.ArgumentParser(
@@ -681,7 +489,7 @@ def main():
                 f"{native_m * info['size'][0] / w:.0f} m")
         return 0
 
-    # Fázy sa reťazia zhora nadol; `all` je všetky tri v jednom procese.
+    # fázy sa reťazia zhora nadol; `all` je všetky tri v jednom procese
     state = None
     if args.stage in ("all", "plan"):
         state = stage_plan(args)

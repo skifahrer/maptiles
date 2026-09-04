@@ -1,57 +1,25 @@
 name: Mapa · Build svet
 
-# Základná mapa CELÉHO SVETA – vodstvo, hranice štátov a regióny, na aké kusy
-# je OSM rozdelené na sťahovanie. Publikuje sa na Drive vedľa ostatných máp:
+# Základná mapa celého sveta – vodstvo, hranice štátov a regióny, na aké kusy
+# je OSM rozdelené na sťahovanie. Publikuje sa na Drive do `<koreň>/svet/`
+# (resp. `svet_basic/`) a zapisuje do `maps.json` ako vlastný uzol.
 #
-#     <koreň>/svet/
-#         svet.zip     celá mapa (dlaždice, štýly, glyfy, manifest)
-#         svet.aar     to isté ako Apple Archive – iOS a macOS ho rozbalia
-#                      systémovo, bez tretej knižnice v aplikácii
-#     <koreň>/svet_basic/
-#         svet_basic.zip   podoba `basic`: iba hranice štátov a regióny
-#         svet_basic.aar   sťahovania, bez vodstva a jazier
-#
-# …a zapíše sa do `maps.json` ako vlastný uzol `svet` (hlavný kľúč katalógu je
-# krajina; svet je nad nimi, tak je uzlom sám).
-#
-# DVE PODOBY, DVE MENÁ, DVA UZLY (input `variant`). `basic` NESMIE sadnúť na
-# `svet.zip` ani na jeho položku v katalógu – kto si podľa neho stiahne „mapu
-# sveta", nesmie dostať mapu bez morí. Meno je sľub o rozsahu (pravidlo 2
-# v CLAUDE.md), tak má vlastný kľúč regiónu; čo je v ktorej podobe, hovorí
+# Dve podoby, dve mená, dva uzly (input `variant`): `basic` nesmie sadnúť na
+# `svet.zip` – meno je sľub o rozsahu. Čo je v ktorej, hovorí
 # `workers/data/world-variants.json`.
 #
-# PREČO VLASTNÁ PIPELINE A NIE JOB V BUILD MAP. Rovnaké tri dôvody, pre aké má
-# vlastnú pipeline aj Build wiki:
-#
-#   * INÉ DÁTA. Neberie sa regionálne PBF, ale pobrežné čiary OSM, Natural
-#     Earth a index Geofabriku (prečo práve tie a prečo NIE `planet.osm.pbf`,
-#     je rozpísané vo `workers/world/sources.py`). Build map by o týchto
-#     zdrojoch nemal ako vedieť a jeho vstup (`region`) tu nedáva zmysel.
-#   * INÁ ŽIVOTNOSŤ. Hranice štátov a delenie exportov sa menia raz za dlho;
-#     mapa kraja sa prerába pri každej zmene štýlu. Prepočítavať pri každom
-#     builde svet by boli desiatky minút za nič.
-#   * INÝ VÝSTUP. Nejde na Pages a nie je to mapa na chodenie – je to podklad
-#     pod výber „ktorý kus si stiahnuť". Preto v nej NIE SÚ cesty, sídla,
-#     vrstevnice ani terén, a nemá zmysel ju miešať do rozpočtu stránky.
-#
-# JEDEN PACKER A JEDEN ZÁPIS DO KATALÓGU TO NERUŠÍ. Balík aj `maps.json` robí
-# ďalej `workers/deploy/publish-map.py` a `.aar` `workers/deploy/apple-archive
-# .sh` – to isté, čo robí Build map. Druhý packer by bol druhá pravda o tom
-# istom (pravidlo 1 v CLAUDE.md).
+# Vlastná pipeline preto, že berie iné dáta (pobrežné čiary, Natural Earth,
+# index Geofabriku – viď `workers/world/sources.py`), má inú životnosť
+# a iný výstup: nejde na Pages a nie sú v nej cesty, sídla ani terén.
+# Balík aj katalóg robí ďalej `workers/deploy/publish-map.py`.
 
 on:
   workflow_dispatch:
     inputs:
-      # ČO Z TEJ MAPY POSTAVIŤ. `plna` je doterajšia mapa; `basic` je z nej iba
-      # to, čo drží tvar výberu – hranice štátov a regióny sťahovania, bez
-      # vodstva a jazier. Vodstvo je v tej mape to drahé (rastie ~3× na zoom),
-      # takže basic vyjde na jednotky MB proti desiatkam.
-      #
-      # Podoby sú v `workers/data/world-variants.json` a nie tu: to isté
-      # rozhodnutie potrebuje schéma pre Planetiler, štýl aj publikovanie,
-      # takže je na jednom mieste a formulár doň len ukazuje. Keď tam pribudne
-      # ďalšia, dopíš ju aj sem – zoznam v `choice` GitHub nevie prečítať zo
-      # súboru a `workers/lint/world.py` to porovná.
+      # `plna` je doterajšia mapa, `basic` len hranice štátov a regióny
+      # sťahovania – vodstvo je to drahé (rastie ~3× na zoom).
+      # Podoby sú v `workers/data/world-variants.json`; `choice` GitHub zo
+      # súboru prečítať nevie, tak sa zoznam píše aj sem a lint to porovná.
       variant:
         description: "Podoba mapy (basic = iba hranice štátov a regiónov, do 15 MB)"
         required: false
@@ -86,9 +54,7 @@ on:
         required: false
         default: true
         type: boolean
-      # Ten istý balík ešte raz ako `.aar` (Apple Archive) – rovnako ako pri
-      # Build map. Robí to job na macOS, lebo nástroj `aa` je súčasť macOS;
-      # keď ho nechceš platiť pri každom behu, odškrtni.
+      # ten istý balík ešte raz ako `.aar`; robí to job na macOS (nástroj `aa`)
       apple_archive:
         description: "Nahrať balík aj ako .aar (Apple Archive, job na macOS)"
         required: false
@@ -99,63 +65,46 @@ permissions:
   contents: read
 
 env:
-  # Prihlásenie na Drive: číta sa z neho cache podkladov a nahráva balík.
-  # Stojí pri celom workflowe ako v Build map – keby sa naň dalo zabudnúť pri
-  # jednom kroku, ten by sa ticho vrátil k sťahovaniu všetkého odznova.
+      # prihlásenie na Drive stojí pri celom workflowe ako v Build map
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
   DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
   DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
-  # Ten istý balík glyfov, aký sťahuje Build map (`workers/assets/glyphs.sh`).
+      # ten istý balík glyfov, aký sťahuje Build map
   GLYPHS_ZIP: https://github.com/openmaptiles/fonts/releases/download/v2.0/noto-sans.zip
 
 jobs:
   world:
     name: Mapa sveta
     runs-on: ubuntu-latest
-    # Katalóg `maps.json` je súbor v repozitári a dopisuje ho beh – rovnako
-    # ako pri Build map. Bez tohto práva by sa zapísal na runner a stratil.
+      # katalóg `maps.json` je súbor v repozitári a dopisuje ho beh
     permissions:
       contents: write
     outputs:
       maxzoom: ${{ steps.build.outputs.maxzoom }}
       size_mb: ${{ steps.build.outputs.size_mb }}
       published: ${{ steps.publish.outcome }}
-      # KĽÚČ REGIÓNU A VRSTVY DO KATALÓGU VYPADNÚ Z PODOBY, takže ich pozná až
-      # build. Idú výstupom aj do jobu s `.aar`: ten prepisuje položku katalógu
-      # navrch, takže inou hodnotou by prebil to, čo napísal ZIP – a mapa by
-      # v katalógu tvrdila vrstvy, ktoré v nej nie sú.
+      # kľúč regiónu a vrstvy vypadnú z podoby, takže ich pozná až build.
+      # Idú výstupom aj do jobu s `.aar`, ktorý položku katalógu prepisuje navrch.
       region_key: ${{ steps.build.outputs.region_key }}
       map_layers: ${{ steps.build.outputs.map_layers }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Dlaždice robí Planetiler a ten je preložený pre Javu 21, kým runner má
-      # predvolene 17. Bez tohto kroku sa `java -jar` nespustí vôbec
-      # (`UnsupportedClassVersionError`) – a spadne to až za sťahovaním
-      # podkladov, teda po tom, čo beh minútu pracoval. Tú istú vec má päť
-      # jobov v `build-map-region.yml`; ktoré číslo to je, hovorí `JAVA_MIN`
-      # vo `workers/lib/planetiler.sh` a stráži `workers/lint/planetiler.py`.
+      # Planetiler je preložený pre Javu 21, runner má predvolene 17 – bez
+      # tohto kroku spadne `UnsupportedClassVersionError` až za sťahovaním
       - name: Setup Java 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
-      # SŤAHUJE SA LEN SUROVÉ, NIE HOTOVÉ. V cache je ~95 MB stiahnutých
-      # súborov z troch cudzích serverov; prevod (ogr2ogr) sa robí zakaždým –
-      # trvá minúty a jeho výsledok by cache nafúkol na stovky MB.
-      #
-      # BEZ `restore-keys`, teda len PRESNÁ zhoda. V kľúči je týždeň, takže
-      # sa podklady raz za týždeň stiahnu čerstvé; predpona by vrátila
-      # najnovší starší záznam a tá čerstvosť by ticho prestala platiť.
-      # V KĽÚČI JE AJ PODOBA, a to nie je zbytočnosť: `basic` sťahuje tri
-      # podklady z piatich, takže by uložil NEÚPLNÝ záznam – a existujúci kľúč
-      # sa NEPREPISUJE, takže by plná mapa už do konca týždňa nemala ako
-      # zapísať vodstvo a sťahovala by 60 MB pri každom behu. Tiché, lebo
-      # build je zelený, len trvá dlhšie (to isté, čo raz spravila GitHubová
-      # cache – viď „Cache je na Drive" v CLAUDE.md).
+      # v cache je len surové stiahnuté (~95 MB), prevod sa robí zakaždým.
+      # Bez `restore-keys`: v kľúči je týždeň, takže sa raz za týždeň stiahne
+      # čerstvé, a predpona by tú čerstvosť ticho zrušila. V kľúči je aj podoba –
+      # `basic` sťahuje tri podklady z piatich a existujúci kľúč sa neprepisuje,
+      # takže by neúplný záznam zablokoval plnú mapu na celý týždeň.
       - name: Kľúč podkladov
         id: key
         env:
@@ -181,8 +130,7 @@ jobs:
           OPT_LIMIT_MB: ${{ inputs.limit_mb }}
         run: workers/world/build.sh
 
-      # Ukladá sa HNEĎ, ako sa stiahne, nie v post-kroku – zrušený beh tak
-      # nezahodí to, čo už na disku je.
+      # ukladá sa hneď, ako sa stiahne, nie v post-kroku
       - name: Cache podkladov (save)
         if: ${{ always() && hashFiles('data/world/zdroje/*') != '' }}
         continue-on-error: true
@@ -191,10 +139,8 @@ jobs:
           path: data/world/zdroje
           key: ${{ steps.key.outputs.key }}
 
-      # Balí a do katalógu zapisuje ten istý skript ako pri mape kraja. Balíky
-      # vrstiev (`-vrstevnice-skaly`, `-tienovanie`) tu nevzniknú – svet ich
-      # nemá – a to je v poriadku: publikovanie ich vtedy nenahrá a starý
-      # súbor toho mena by zmazalo, keby nejaký bol.
+      # balí a do katalógu zapisuje ten istý skript ako pri mape kraja;
+      # balíky vrstiev tu nevzniknú, svet ich nemá
       - name: Publikuj mapu sveta na Drive a zapíš do maps.json
         id: publish
         if: ${{ inputs.publish }}
@@ -209,8 +155,7 @@ jobs:
           python3 workers/deploy/publish-map.py --site=_site --maps=maps.json \
             --summary="$GITHUB_STEP_SUMMARY"
 
-      # Ten istý skript, akým katalóg commituje Build map – vrátane rebasu,
-      # keď medzitým pushol iný beh.
+      # ten istý skript, akým katalóg commituje Build map – vrátane rebasu
       - name: Commitni maps.json
         if: ${{ inputs.publish && steps.publish.outcome == 'success' }}
         env:
@@ -219,9 +164,8 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: workers/deploy/catalog.sh
 
-      # Aby si `.aar` mohol vyrobiť job na macOS, musí sa k nemu mapa dostať –
-      # v tom istom behu a bez druhého behu Planetilera. Deň retencie: je to
-      # prepravka medzi jobmi, nie uložený výsledok (ten je na Drive).
+      # aby si `.aar` mohol vyrobiť job na macOS, musí sa k nemu mapa dostať.
+      # Deň retencie: je to prepravka medzi jobmi, nie uložený výsledok.
       - name: Odlož mapu pre Apple Archive
         if: ${{ always() && hashFiles('_site/tiles/manifest.json') != '' }}
         uses: actions/upload-artifact@v7
@@ -259,15 +203,10 @@ jobs:
             echo "pod výber, ktorý kus mapy si stiahnuť."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ---------- Apple Archive ----------
-  # Ten istý balík ešte raz ako `.aar` – iOS a macOS ho rozbalia systémovo
-  # (framework AppleArchive), bez tretej knižnice v aplikácii. Vlastný job a na
-  # macOS preto, že nástroj `aa` je súčasť macOS a inde neexistuje.
-  #
-  # Beží AŽ PO tom, čo sa nahral ZIP a commitol katalóg: `publish-map.py` si
-  # pri `.aar` číta `maps.json` z vetvy a k tomu, čo tam je, sa PRIDÁ (inak by
-  # katalóg o ZIPe prestal vedieť). Keď tento job spadne, mapa tým netrpí – na
-  # Drive je a v katalógu tiež, chýba len druhá podoba balíka.
+  # ten istý balík ešte raz ako `.aar`; vlastný job na macOS (nástroj `aa`).
+  # Beží až po nahratí ZIPu a commite katalógu – `publish-map.py` si pri `.aar`
+  # číta `maps.json` z vetvy a k tomu, čo tam je, sa pridá.
+  # Keď spadne, mapa tým netrpí.
   apple-archive:
     name: Balík ako Apple Archive (.aar)
     needs: world
@@ -289,12 +228,10 @@ jobs:
           AREA_KEY: cely
           TEST_KM2: "0"
           TILES_MAXZOOM: ${{ needs.world.outputs.maxzoom }}
-          # To isté, čo dostal ZIP – z výstupu prvého jobu, nie druhý raz
-          # napísané tu (položku katalógu prepisuje `.aar` navrch).
+          # to isté, čo dostal ZIP – z výstupu prvého jobu
           REGION_KEY: ${{ needs.world.outputs.region_key }}
           MAP_LAYERS: ${{ needs.world.outputs.map_layers }}
-          # Z ktorej vetvy si vypýtať čerstvý `maps.json` – ten predošlý job
-          # doň práve zapísal a checkout má stav spred toho.
+          # z ktorej vetvy si vypýtať čerstvý `maps.json`
           BRANCH: ${{ github.ref_name }}
         run: workers/deploy/apple-archive.sh
       - name: Commitni maps.json

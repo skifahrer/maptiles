@@ -1,57 +1,18 @@
 name: Dáta · DMR 5.0
 
-# Výškový model z DMR 5.0 v ETRS89, ktorý leží na Google Drive ako dva holé
-# BigTIFFy. Toto je JEDINÁ cesta k DMR 5.0:
+# Výškový model z DMR 5.0 (ETRS89), ktorý leží na Drive ako dva holé BigTIFFy.
+# Jediná cesta k DMR 5.0:
 #
-#   area: <pohorie>       →  ugkk-<pohorie>.tif  →  sklad `dem-ugkk`
-#                            Build map: rock_source: dmr5 + rovnaké `rock_area`
+#   area: <pohorie>       →  ugkk-<pohorie>.tif   →  sklad `dem-ugkk`
 #   area: cele_slovensko  →  dlaždice N49E019.tif →  sklad `dem-dmr5-v2`
-#                            Build map: rock_source: dmr5 bez výrezu
 #
-# V Build map je to jedna voľba `dmr5` a podobu si vyberá podľa rozsahu:
-# s výrezom plné 1 m, bez neho dlaždice na 5 m. Dva výbery to boli dovtedy,
-# kým sa dalo zadať 1 m na celý kraj – a to je 16 miliárd buniek.
+# Build map ju volá dvakrát – obe podoby môžu chýbať naraz. Skladá sú priečinky
+# na Drive (`workers/drive/store.py`), nie GitHub releasy.
 #
-# TOTO JE TÁ PIPELINE, KTORÚ VOLÁ BUILD MAP. Volá ju DVAKRÁT, lebo DMR 5.0 má
-# dve podoby a chýbať môžu naraz (`mirror-dmr5-area` = výrez do `dem-ugkk`,
-# `mirror-dmr5-tiles` = 1° dlaždice do `dem-dmr5-v2`). Sú to dva joby nad JEDNÝM
-# workflowom, nie dve pipeline.
+# Číta sa prihlásený ako vlastník dát: čo je v priečinku, povie len Drive API.
+# Keď Drive nepustí, `serve.py` vráti 502 a beh spadne v sekundách.
 #
-# SKLADY SÚ PRIEČINKY NA DRIVE, nie GitHub releasy – do releasov sa nepublikuje
-# nič. Celý formát skladu je vo `workers/drive/store.py`; mená súborov ostali
-# tie isté, aké mali assety, lebo meno je sľub o rozsahu.
-#
-# PREČO UŽ NIE JE ZÁLOHA. Ten istý model sa dal brať aj z archívu ÚGKK
-# (`dmr5.yml`) – 198 GB ZIP, v ktorom je raster jedným deflate prúdom, takže
-# sa v ňom nedá skočiť dopredu: platilo tam „čítaj raz a sekvenčne" a výrez na
-# juhu Slovenska stál prechod celým súborom. Tu sú súbory holé, každá dlaždica
-# má vlastnú kompresiu a Range funguje na ľubovoľnom offsete, takže sa číta len
-# to, čo výrez pretína – rádovo minúty namiesto hodín. Odkedy Drive púšťa
-# spoľahlivo, tá druhá cesta sa neoplácala udržiavať a bola zrušená.
-#
-# ČÍTA SA PRIHLÁSENÝ AKO VLASTNÍK DÁT, a inak sa nečíta vôbec. Model leží
-# v PRIEČINKU na Drive (`FOLDER_ID` vo `workers/drive/dmr5.py`) a čo v ňom je,
-# povie len Drive API – to anonymné požiadavky neobsluhuje. Token vlastníka zo
-# secretu `GDRIVE_CREDENTIALS` vyrobí `workers/drive/auth.py --login` a krok
-# „Prihlásenie na Drive" v každom behu vypíše, ktorým účtom sa čítalo a či na
-# súbory vidí. Bez neho beh spadne hneď a s návodom.
-#
-# ČO TO ZNAMENÁ, KEĎ DRIVE NEPUSTÍ: DMR 5.0 sa v tom behu nedoplní vôbec.
-# Nie je to tichý stav – `drive-serve.py` vráti 502 s vysvetlením a beh spadne
-# v sekundách; so zapnutým `ugkk_fallback` prejde na hrubší model (sonny)
-# a atribúcia to povie. Prvá vec, čo s tým: prihlásiť sa ako vlastník
-# (`GDRIVE_CREDENTIALS`). Až potom nahrať kópiu modelu do iného priečinka
-# a prepísať `FOLDER_ID` vo `workers/drive/dmr5.py`.
-#
-# ZDROJ (namerané, nie odhad):
-#   dmr5_etrs89.tif      145,39 GiB  423 518 × 207 589 px, 1 m, LZW, dlaždice 128²
-#   dmr5_etrs89.tif.ovr   43,35 GiB  pyramídy 2 … 256 m, deflate
-#   CRS EPSG:3046 (ETRS89 / TM zone N34), origin X 191 148, Y 5 497 220
-#
-# VÝŠKY SÚ ELIPSOIDICKÉ. Maximum v súbore je 2 697,03 m, kým Gerlach má
-# 2 654,4 m n. m. Bpv – tých +42,6 m je geoid. Predvolene sa odčíta EGM2008
-# (kontrola na Gerlachu: 2 653,92 m po prevode, čiže rozdiel 0,5 m na 1 m
-# mriežke). Na skaly by to bolo jedno, na vrstevnice nie.
+# Výšky sú elipsoidické (+42,6 m geoid), predvolene sa odčíta EGM2008.
 
 on:
   workflow_dispatch:
@@ -106,11 +67,8 @@ on:
         options:
           - "model do releasu"
           - "len sonda – čo je v zdroji, nič sa nereže"
-      # Podoba výstupu. Pri `cele_slovensko` je to dlaždice tak či tak; toto
-      # je na to, aby sa dali doplniť dlaždice aj pre menšie územie – okno sa
-      # rozšíri na celé stupne a vypadnú `N49E020.tif` do `dem-dmr5-v2`. Presne
-      # to si Build map dopĺňa pre tieňovanie, ktoré výrezovú podobu použiť
-      # nevie (robí sa na celý región, kde 1 m verzia neexistuje).
+      # dlaždicová podoba aj pre menšie územie: okno sa rozšíri na celé stupne.
+      # Presne to si Build map dopĺňa pre tieňovanie, ktoré výrez použiť nevie.
       tiles:
         description: "Vyrobiť 1° dlaždice do dem-dmr5-v2 aj pre pohorie (inak je z pohoria jeden výrez)"
         required: false
@@ -121,32 +79,19 @@ on:
         required: false
         default: "12"
         type: string
-      # Meno výsledku pri výreze. Ručne sa nevypĺňa – je tu preto, že
-      # `inputs.asset` musí byť deklarovaný pre OBA spúšťače, inak je to
-      # výraz nad neexistujúcim vstupom (to isté ako `mode` nižšie).
+      # `inputs.asset` musí byť deklarovaný pre oba spúšťače, inak je to výraz
+      # nad neexistujúcim vstupom
       asset:
         description: "Meno súboru pri výreze (prázdne = ugkk-<area>.tif)"
         required: false
         default: ""
         type: string
 
-  # Volá ho aj „Build map", keď mu v sklade chýba výškový model. Doteraz to
-  # nešlo a bola to tá diera, cez ktorú padali behy: `check-dem` povedal
-  # „dmr5 treba doplniť", poslal to do update-dem.yml – a ten na `dmr5` len
-  # vypísal, kam ísť ručne, a skončil úspechom. Nič sa nestiahlo a build spadol
-  # o desať jobov neskôr na tom, že v sklade nie je ani jedna dlaždica
-  # (beh 31307163093).
-  #
-  # `workflow_call` nepozná `type: choice`, tak sem chodia holé hodnoty:
-  # `area` je kľúč pohoria, `cele_slovensko`, ALEBO bbox `W,S,E,N`, `grid_m`
-  # je číslo v metroch a `tiles` hovorí, ktorá z dvoch podôb sa má vyrobiť.
-  #
-  # BUILD MAP PODÁVA BBOX, NIE KĽÚČ POHORIA – a to je to podstatné. Čo sa má
-  # prečítať, vie len on: výrez pretnutý s regiónom, pri rýchlom teste štvorec
-  # na pár km². Keby sa sem podal kľúč, táto pipeline by si ho vyriešila
-  # z `areas.json` druhýkrát a prečítala celý obdĺžnik pohoria – rýchly test
-  # na 2 km² tak čítal z Drive 541 km² Vysokých Tatier (hodiny namiesto minút).
-  # Je to tá istá chyba ako beh 31307163093: dve odpovede na jednu otázku.
+  # volá ho aj Build map, keď mu v sklade chýba model. `workflow_call` nepozná
+  # `type: choice`, tak sem chodia holé hodnoty.
+  # Build map podáva BBOX, nie kľúč pohoria: čo sa má prečítať, vie len on
+  # (výrez pretnutý s regiónom, pri teste pár km²). Kľúč by si táto pipeline
+  # vyriešila z `areas.json` druhýkrát a prečítala celý obdĺžnik.
   # Meno výsledku preto chodí zvlášť v `asset`.
   workflow_call:
     inputs:
@@ -154,20 +99,17 @@ on:
         required: true
         type: string
       asset:
-        # Meno výrezového assetu. Pri bboxe v `area` je POVINNÉ: build si
-        # súbor hľadá podľa mena (`ugkk-vysoke_tatry.tif`) a
-        # `ugkk-20.1,49.1,20.2,49.2.tif` si vypýtať nevie.
+        # pri bboxe v `area` povinné: build si súbor hľadá podľa mena
         required: false
         default: ""
         type: string
       grid_m:
-        # Prázdne = podľa rozsahu (1 m na výrez, 5 m na dlaždice).
+        # prázdne = podľa rozsahu (1 m na výrez, 5 m na dlaždice)
         required: false
         default: ""
         type: string
       tiles:
-        # true = 1° dlaždice do dem-dmr5-v2 (aj z výrezu – okno sa rozšíri na
-        # celé stupne). false = jeden COG ugkk-<area>.tif do dem-ugkk.
+        # true = 1° dlaždice do dem-dmr5-v2, false = jeden COG do dem-ugkk
         required: false
         default: false
         type: boolean
@@ -179,23 +121,16 @@ on:
         required: false
         default: "12"
         type: string
-      # Volajúci ju nemá prečo meniť; je tu preto, aby `inputs.mode` v jobe
-      # bol deklarovaný pre OBA spúšťače a nebol to výraz nad neexistujúcim
-      # vstupom.
+      # je tu preto, aby `inputs.mode` bol deklarovaný pre oba spúšťače
       mode:
         required: false
         default: "model do releasu"
         type: string
     secrets:
-      # Prihlásenie vlastníka dát na Drive, dvomi možnými tvarmi: buď všetko
-      # v jednom (GDRIVE_CREDENTIALS), alebo po dvoch – to druhé preto, že
-      # `client_secret` Google druhýkrát neukáže, takže keď už raz v secrets
-      # leží, nemá sa prepisovať. `client_id` (DRIVE_CLIENT) medzi secrets
-      # nie je: nie je to tajné, je to repository variable a v tomto istom
-      # repozitári sa `vars.DRIVE_CLIENT` číta priamo nižšie, bez podávania
-      # cez `workflow_call`. Všetko `required: false`: bez prihlásenia sa
-      # číta verejným odkazom ako predtým, len s denným limitom, ktorý zdieľajú
-      # všetci klienti. Volajúci to podávajú cez `secrets: inherit`.
+      # prihlásenie vlastníka dát, dvomi tvarmi (`client_secret` Google
+      # druhýkrát neukáže, tak sa raz uložený neprepisuje). `DRIVE_CLIENT` je
+      # repository variable, nie secret. Bez prihlásenia sa číta verejným
+      # odkazom s denným limitom.
       GDRIVE_CREDENTIALS:
         required: false
       DRIVE_SECRET:
@@ -203,18 +138,13 @@ on:
       DRIVE_REFRESH:
         required: false
 
-# `contents: read` stačí: publikuje sa na Drive, nie do releasov, takže tento
-# workflow do repozitára nezapisuje nič. Kým tu bolo `write`, bolo to práve
-# na `gh release create`.
+# `contents: read` stačí: publikuje sa na Drive, nie do releasov
 permissions:
   contents: read
 
 concurrency:
-  # Dva behy naraz by z Drive ťahali dvojnásobok a prepisovali ten istý asset.
-  # Podoba je v kľúči zvlášť: odkedy sa výrez zadáva bboxom (a nie menom
-  # pohoria), sú obe podoby „nejaký bbox" a na rozlíšenie sa spoľahnúť nedá.
-  # Build map si ich pritom dopĺňa SÚBEŽNE – keby si sadli do jednej skupiny,
-  # jedna by zbytočne čakala na druhú.
+  # dva behy naraz by ťahali dvojnásobok a prepisovali ten istý asset. Podoba
+  # je v kľúči zvlášť – obe sú „nejaký bbox" a Build map si ich dopĺňa súbežne.
   group: dmr5-drive-${{ inputs.tiles }}-${{ inputs.area }}
   cancel-in-progress: false
 
@@ -222,34 +152,14 @@ jobs:
   model:
     name: Výškový model z Drive
     runs-on: ubuntu-latest
-    # ROZDELENÉ NA KROKY, KTORÝCH JE ČO NAJVIAC. Kým to boli tri („Nastavenia",
-    # „Vyrež model", „Nahraj do releasu"), bol z hodinového behu v Actions
-    # jeden riadok bez konca a z padnutého behu sa nedalo povedať, či nesedelo
-    # zadanie, či nešlo otvoriť zdroj, či došiel čas pri čítaní, alebo sa
-    # nepodaril upload. Každý krok teraz hovorí, ČO ROBÍ a AKO ĎALEKO je:
-    #
-    #   1. príprava       runner, GDAL, miesto na disku
-    #   2. Nastavenia     z formulára konkrétne čísla a mená (jediné miesto)
-    #   3. Prihlásenie    ktorým účtom sa z Drive číta (vlastník vs. verejne)
-    #   4. Sonda          otvor zdroj – 8 s, 9 požiadaviek, 0,3 MB
-    #   5. Plán čítania   okno, počet blokov, odhad času a objemu
-    #   6. Čítanie        bloky z Drive, postup `[i/N]` po každom bloku
-    #   7. Zloženie       mozaika → COG alebo 1° dlaždice (už len nad diskom)
-    #   8. Kontrola       veľkosť assetov proti stropu 2 GB
-    #   9. Metadáta       meta-*.json vedľa modelu
-    #  10. Nahranie       do skladu na Drive
-    #  11. Súhrn          tabuľka do prehľadu behu
-    #
-    # Kroky 5–7 sú fázy jedného scriptu (`--stage`), ktoré si stav podávajú
-    # cez `drive-work/`. Vedľajší zisk: prečítané bloky sa v ňom zachovajú,
-    # takže opakovaný krok `Čítanie` dopočíta len zvyšok.
+    # rozdelené na čo najviac krokov: z hodinového behu bol inak v Actions
+    # jeden riadok bez konca a z padnutého sa nedalo povedať, kde to spadlo.
+    # Kroky 5–7 (plán, čítanie, zloženie) sú fázy jedného scriptu (`--stage`),
+    # ktoré si stav podávajú cez `drive-work/` – opakovaný krok tak dopočíta
+    # len zvyšok.
     env:
-      # Prihlásenie na Drive ako vlastník dát – dvíha limit sťahovania.
-      # Podávané celému jobu, lebo naň siaha aj sonda, aj plán, aj čítanie.
-      # Dva tvary: všetko v jednom, alebo po troch (`client_secret` Google
-      # druhýkrát neukáže, tak sa raz uložené nemá prepisovať). `client_id`
-      # (DRIVE_CLIENT) je repository variable, nie secret – nie je to tajné.
-      # Bez oboch sa číta verejným odkazom. Viď workers/drive/auth.py.
+      # prihlásenie ako vlastník dvíha limit sťahovania; podáva sa celému jobu,
+      # lebo naň siaha sonda, plán aj čítanie. Viď workers/drive/auth.py.
       GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
       DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
       DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
@@ -276,32 +186,21 @@ jobs:
           echo "Voľné miesto po upratovaní:"
           df -h / | tail -1
 
-      # Jediné miesto, kde sa z formulára stanú konkrétne čísla a mená.
+      # jediné miesto, kde sa z formulára stanú konkrétne čísla a mená
       - name: Nastavenia
         id: cfg
         run: |
           set -euo pipefail
           AREA='${{ inputs.area }}'
-          # PODOBA. Dve sú a rozhoduje rozsah, nie druhý výber vo formulári:
-          #
-          #   dlaždice  N49E019.tif … → dem-dmr5-v2  celé Slovensko, alebo
-          #                                        `tiles: true` na výrez
-          #   výrez     ugkk-<area>.tif → dem-ugkk plné 1 m rozlíšenie
-          #
+          # podoba: dlaždice (`dem-dmr5-v2`) alebo výrez (`dem-ugkk`).
           # `cele_slovensko` je dlaždicová vždy – jeden COG na krajinu by mal
-          # pri akejkoľvek použiteľnej mriežke desiatky GB. `tiles: true`
-          # existuje kvôli Build map: tieňovanie chce dlaždicovú podobu, ale
-          # nepotrebuje kvôli nej celú krajinu, stačia dotknuté stupne.
+          # desiatky GB. `tiles: true` je kvôli tieňovaniu v Build map.
           TILES=false
           if [ '${{ inputs.tiles }}' = 'true' ] || [ "$AREA" = cele_slovensko ]; then
             TILES=true
           fi
-          # DO KTORÉHO SKLADU – pýta sa to `workers/dem/target.py`, teda toho
-          # istého, koho sa pýta `check-dem` aj `workers/dem/fetch.sh`. Kým tu
-          # stáli mená natvrdo, boli to dve odpovede na jednu otázku: `dem-dmr5`
-          # sa pri oprave resamplingu premenoval na `dem-dmr5-v2` (staré
-          # dlaždice majú mriežku zapečenú v sebe) a tento riadok by ticho
-          # napĺňal sklad, do ktorého sa už nikto nepozerá.
+          # do ktorého skladu, sa pýta `workers/dem/target.py` – toho istého
+          # ako `check-dem` aj `fetch.sh`. Mená natvrdo by boli druhá odpoveď.
           KEY=cely
           [ "$TILES" = true ] || KEY="$AREA"
           REL=$(python3 workers/dem/target.py --source=dmr5 --area-key="$KEY" \
@@ -312,16 +211,9 @@ jobs:
           fi
           SRC=dmr5
 
-          # MENO VÝREZOVÉHO ASSETU. Robí sa z `area`, lenže `area` môže byť aj
-          # bbox – a `ugkk-20,49,21,50.tif` si Build map vypýtať nevie, lebo
-          # hľadá `ugkk-<kľúč výrezu>.tif`. Preto sa meno dá podať zvlášť
-          # v `asset` a pri bboxe je povinné.
-          #
-          # Bbox tu nie je okrajový prípad, ale to bežné: Build map ním hovorí,
-          # ČO SA MÁ NAOZAJ PREČÍTAŤ (výrez pretnutý s regiónom, pri rýchlom
-          # teste štvorec na pár km²). Kým sa sem podával kľúč pohoria, táto
-          # pipeline si ho vyriešila z `areas.json` druhýkrát a prečítala celý
-          # obdĺžnik – test na 2 km² tak čítal 541 km² Vysokých Tatier.
+          # meno výrezového assetu: `area` môže byť aj bbox a
+          # `ugkk-20,49,21,50.tif` si Build map vypýtať nevie. Preto sa meno dá
+          # podať zvlášť v `asset` a pri bboxe je povinné.
           ASSET='${{ inputs.asset }}'
           case "$AREA" in
             *,*) if [ "$TILES" != true ] && [ -z "$ASSET" ]; then
@@ -338,13 +230,8 @@ jobs:
             GRID=$([ "$TILES" = true ] && echo 5 || echo 1)
           fi
 
-          # Strážca, ktorý ušetrí hodiny počítania: 1°×1° dlaždica pri 1 m má
-          # v metri ~48 GB surových buniek (vyše 5 GB skomprimovaná) a runner
-          # má voľných ~60 GB, takže sa nemá kde ani vyrobiť, nieto zlepiť do
-          # mozaiky. Platí pre KAŽDÚ dlaždicu, nie len pre celú krajinu – aj
-          # jeden stupeň z výrezu je celý stupeň. (Kým sa ukladalo do releasov,
-          # hranicu držal ich 2 GB strop na asset; sklad na Drive taký strop
-          # nemá, runner ostal ten istý.)
+          # 1°×1° dlaždica pri 1 m má ~48 GB surových buniek a runner má voľných
+          # ~60 GB. Platí pre každú dlaždicu, nie len pre celú krajinu.
           if [ "$TILES" = true ] && [ "$GRID" -lt 3 ]; then
             echo "::error::Dlaždice pri mriežke ${GRID} m sa na runner nezmestia (jedna 1° dlaždica má v metri ~48 GB buniek, voľných je ~60 GB). Zvoľ 5 m, alebo si vyber pohorie s vypnutým tiles."
             exit 1
@@ -377,34 +264,26 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "── $AREA, mriežka ${GRID} m, výšky $GEOID, podoba $([ "$TILES" = true ] && echo dlaždice || echo "výrez $ASSET") → sklad $REL"
 
-      # Lacná otázka s drahou odpoveďou: čítame ako VLASTNÍK dát, alebo
-      # verejným odkazom? Verejný má denný limit sťahovania, ktorý zdieľajú
-      # všetci klienti, a keď sa vyčerpá, DMR 5.0 sa v behu nedoplní vôbec
-      # (beh 31315890474 na tom visel 2 h 16 min). Stojí to token a dve
-      # metadátové požiadavky – a povie sa to TU, nie po hodine čítania.
-      # Vlastný krok preto, že padnutý krok s týmto menom je sám o sebe
-      # diagnóza: nesedí secret, nie dáta ani sieť.
+      # lacná otázka s drahou odpoveďou: čítame ako vlastník, alebo verejným
+      # odkazom s denným limitom? Vlastný krok preto, že padnutý krok s týmto
+      # menom je sám o sebe diagnóza – nesedí secret, nie dáta ani sieť.
       - name: Prihlásenie na Drive (vlastník dát)
         run: python3 workers/drive/dmr5.py --auth-check
 
-      # Otvorenie zdroja stojí 8 s, 9 požiadaviek a 0,3 MB, tak sa robí VŽDY
-      # a nie len v režime sondy: keď Drive zmení odkaz alebo shim prestane
+      # otvorenie zdroja stojí 8 s a 0,3 MB, tak sa robí vždy: keď shim prestane
       # opravovať `content-length`, má sa to povedať tu a nie po hodine
-      # čítania. `mode: len sonda` je potom už len „a tu skonči".
       - name: Sonda – čo je v zdroji na Drive
         run: python3 workers/drive/dmr5.py --probe-only
 
-      # Lacný krok, ktorý odpovie na jedinú otázku, čo pred hodinovým čítaním
-      # zaujíma: koľko toho bude. Trojhodinový krok, ktorý spadne na timeout,
-      # je najhorší možný výsledok – minie celý rozpočet a nevyrobí nič.
+      # lacný krok, ktorý odpovie na jedinú otázku pred hodinovým čítaním:
+      # koľko toho bude
       - name: Plán čítania (okno, bloky, odhad)
         id: plan
         if: ${{ !startsWith(inputs.mode, 'len sonda') }}
         run: |
           set -euo pipefail
-          # Prepínač sa skladá do poľa, nie do reťazca: prázdny reťazec by sa
-          # pri rozvinutí stal prázdnym argumentom a argparse ho vezme ako
-          # hodnotu predchádzajúcej voľby.
+          # prepínač sa skladá do poľa, nie reťazca: prázdny reťazec by
+          # argparse vzal ako hodnotu predchádzajúcej voľby
           ARGS=()
           if [ '${{ steps.cfg.outputs.tiles }}' = 'true' ]; then
             ARGS+=(--tiles)
@@ -419,9 +298,8 @@ jobs:
             "${ARGS[@]}" \
             --out=out --work=drive-work
 
-      # TOTO JE TÁ DLHÁ ČASŤ a jediná, ktorá siaha na sieť. Postup sa vypisuje
-      # po každom bloku (`[i/N]`, prečítané MB, odhad zvyšku), takže sa
-      # napredujúci beh dá odlíšiť od takého, čo visí na jednom bloku.
+      # dlhá časť a jediná, ktorá siaha na sieť; postup sa vypisuje po každom
+      # bloku, nech sa napredujúci beh dá odlíšiť od zaseknutého
       - name: Čítanie blokov z Drive
         if: ${{ !startsWith(inputs.mode, 'len sonda') }}
         run: |
@@ -431,9 +309,8 @@ jobs:
             --jobs='${{ inputs.jobs }}' \
             --out=out --work=drive-work
 
-      # Už len nad diskom – na Drive sa nesiaha. Preto je to vlastný krok:
-      # keď zlyhá tu, nie je to sieť ani zdroj, ale prevod výšok alebo miesto
-      # na disku, a to sa hľadá úplne inde.
+      # už len nad diskom. Vlastný krok: keď zlyhá tu, nie je to sieť ani zdroj,
+      # ale prevod výšok alebo miesto na disku
       - name: Zloženie výstupu (mozaika, výšky, COG/dlaždice)
         if: ${{ !startsWith(inputs.mode, 'len sonda') }}
         run: |
@@ -445,9 +322,7 @@ jobs:
           echo "Vzniklo:"
           ls -lh out/*.tif
 
-      # Vlastný krok, lebo je to zamietnutie zadania a nie zlyhanie výpočtu:
-      # model je hotový, len sa doň nezmestí. Nech je to v Actions vidieť ako
-      # „Kontrola veľkosti" a nie ako „Nahraj do releasu".
+      # vlastný krok, lebo je to zamietnutie zadania, nie zlyhanie výpočtu
       - name: Kontrola veľkosti assetov (strop 2 GB)
         if: ${{ !startsWith(inputs.mode, 'len sonda') }}
         run: |
@@ -459,9 +334,8 @@ jobs:
           for f in "${FILES[@]}"; do
             SZ=$(stat -c%s "$f")
             printf '  %-24s %6s MB\n' "$(basename "$f")" "$(( SZ / 1048576 ))"
-            # 2 GB strop assetu releasu tu už nie je – sklad na Drive ho
-            # nemá. Ostáva varovanie: veľký súbor platí každý build, ktorý si
-            # ho vypýta, a runner má voľných ~60 GB.
+            # sklad na Drive strop nemá; veľký súbor ale platí každý build,
+            # ktorý si ho vypýta
             if [ "$SZ" -gt $((4 * 1024 * 1024 * 1024)) ]; then
               echo "::warning::$f má $(( SZ / 1048576 )) MB. Nahrá sa, ale každý build ho bude celý sťahovať – ak to nie je zámer, zvoľ hrubšiu mriežku alebo menšie územie."
               BIG=$(( BIG + 1 ))
@@ -469,10 +343,8 @@ jobs:
           done
           echo "${#FILES[@]} súborov, $BIG z nich nad 4 GB"
 
-      # Meno metadát nesie územie. Dlaždicová podoba sa dopĺňa po stupňoch
-      # (Build map si vypýta len tie, čo jeho bbox pretína), takže jedno
-      # spoločné `meta-dmr5-drive.json` by po každom behu tvrdilo, že
-      # v sklade je len to, čo vzniklo naposledy.
+      # meno metadát nesie územie: dlaždicová podoba sa dopĺňa po stupňoch,
+      # takže jedno spoločné meta by tvrdilo, že v sklade je len posledný beh
       - name: Metadáta modelu
         id: meta
         if: ${{ !startsWith(inputs.mode, 'len sonda') }}
@@ -507,8 +379,7 @@ jobs:
             --note="Z DMR 5.0 v ETRS89, čítaného cez HTTP Range. Zdroj: ÚGKK SR, voľné použitie pri uvedení zdroja."
           echo "V sklade $STORE: ${#FILES[@]} súborov ✓"
 
-      # Výstup tohto workflowu je vstup pre Build map – nech je z behu jasné,
-      # čo tam nastaviť, aby z toho boli skaly.
+      # výstup tohto workflowu je vstup pre Build map
       - name: Súhrn
         if: ${{ always() }}
         run: |

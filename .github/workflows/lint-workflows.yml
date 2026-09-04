@@ -1,19 +1,14 @@
 name: Kontrola · lint workflowov
 
-# Chytá chyby, ktoré sa inak prejavia až tým, že beh skončí ako „failure"
-# s nula jobmi – GitHub vtedy workflow ani neprijme a v logu nie je nič.
-#
-# Presne to sa stalo v behu 31012911958: `workflow_dispatch` dovolí najviac
-# 10 inputov, mali sme ich 26. Bez tohto sa to zistí až pri merge do master,
-# keď je neskoro. actionlint to povie do dvoch sekúnd.
+# Chytá chyby, po ktorých GitHub workflow ani neprijme – beh skončí ako
+# „failure" s nula jobmi a v logu nie je nič (napr. viac než 10 inputov).
 
 on:
   push:
     paths:
       - ".github/workflows/**"
       - "workers/**"
-      # Aj štýl: `fill` vrstva nad zmiešanou geometriou je tichý omyl, ktorý
-      # sa inak nájde až v hotovej mape (viď `workers/lint/style.mjs`).
+      # aj štýl: `fill` nad zmiešanou geometriou je tichý omyl
       - "poc/web/**"
   pull_request:
     paths:
@@ -35,18 +30,9 @@ jobs:
 
       - name: actionlint
         env:
-          # shellcheck nevie o `${{ }}` – GitHub výrazy mu vyzerajú ako
-          # rozbitá syntax (SC1083/1073/1072/1009/1089) a slovenské „úvodzovky"
-          # v hláškach ako preklep (SC1111). To sú falošné poplachy, nie chyby;
-          # skutočnú syntax kontroluje `bash -n` v ďalšom kroku, ktorý výrazy
-          # najprv nahradí. SC2129 a SC2015 sú štýlové názory na `>>` a `&&`.
-          #
-          # SC2153 („ROCK_RES may not be assigned. Did you mean ROCK_DEM?")
-          # je tu preto, že shellcheck nevidí `env:` workflowu. Do skriptov
-          # ich chodí pätnásť (ROCK_RES, ROCK_ALGO, DEM_STORE…), takže
-          # každá lokálna premenná s podobným menom vyrobí falošný poplach –
-          # a prepisovať mená premenných podľa toho, čo sa shellchecku zdá,
-          # je horšie než tento check nepoužívať.
+          # shellcheck nevie o `${{ }}` a hlási falošné poplachy; skutočnú
+          # syntax kontroluje `bash -n` nižšie. SC2153 preto, že nevidí `env:`
+          # workflowu – do skriptov ich chodí pätnásť.
           SHELLCHECK_OPTS: "-e SC1083,SC1073,SC1072,SC1009,SC1089,SC1111,SC2129,SC2015,SC2153"
         run: |
           set -euo pipefail
@@ -56,9 +42,7 @@ jobs:
             | tar xz actionlint
           ./actionlint -color
 
-      # Skutočná kontrola syntaxe: `${{ }}` sa nahradí zástupným textom
-      # a `run:` blok sa dá bashu. Toto chytí naozajstný preklep tam, kde
-      # shellcheck len nerozumel GitHub výrazu.
+      # skutočná kontrola syntaxe: `${{ }}` sa nahradí zástupným textom
       - name: Syntax run blokov
         run: |
           set -euo pipefail
@@ -81,15 +65,9 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
-      # Strop na veľkosť súboru s workflowom je 128 KiB. Nad ním ho GitHub
-      # NEPRIJME – a nepovie to: po pushi vznikne beh bez jobov, pomenovaný
-      # cestou k súboru, s červeným krížikom, aj keď má workflow len
-      # `workflow_dispatch`. Vyzerá to, že sa spustil sám po mergi.
-      #
-      # `build-map-region.yml` cez ten strop prešiel o 122 bajtov (beh 33) a stálo
-      # to šesť kôl sond, kým sa to našlo: actionlint ani JSON schéma
-      # o veľkosti nevedia. Preto radšej varovanie už od 120 KiB – veľký
-      # `run:` blok patrí do `workers/`, nie do YAMLu.
+      # workflow nad 128 KiB GitHub neprijme a nepovie to: vznikne beh bez
+      # jobov s červeným krížikom. Varovanie už od 120 KiB – veľký `run:` blok
+      # patrí do `workers/`.
       - name: Veľkosť súborov workflowov
         run: |
           set -euo pipefail
@@ -113,28 +91,17 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
-      # `}}` v shellovom skripte bez `${{` pred ním. GitHub taký súbor
-      # NEPRIJME: po pushnutí vznikne beh bez jobov, pomenovaný cestou
-      # k súboru, s červeným krížikom – a to aj vtedy, keď má workflow len
-      # `workflow_dispatch`, takže to vyzerá, že sa spustil sám po mergi.
-      # V logu nie je nič, actionlint 1.7.7 ani oficiálna JSON schéma to
-      # nezachytia.
-      #
-      # Vyrobí to celkom nevinná bashová vec – vnorená expanzia:
-      #     echo "${A:-${B:-}}"      ← končí na `}}`
-      # Stálo to štyri kolá sond po pushnutí, kým sa to našlo (behy 33–39).
-      # Rozpis: `${{ … }}` sa vyhodí (aj s `{{z}}` vnútri reťazcov, ktoré
-      # `format()` používa na escapovanie), a čo z `}}` ostane, je chyba.
+      # `}}` v shellovom skripte bez `${{` pred ním GitHub tiež neprijme, a to
+      # ani actionlint, ani JSON schéma nezachytia. Vyrobí to vnorená expanzia
+      # (`echo "${A:-${B:-}}"`). `${{ … }}` sa vyhodí a čo z `}}` ostane, je chyba.
       - name: Zátvorky výrazov v run blokoch
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import glob, sys, yaml
 
-          # Otvárací a zatvárací token sa SKLADAJÚ, nepíšu. Keby tu stáli
-          # doslova, mal by tento súbor presne tú chybu, ktorú hľadá – a
-          # kontrola by zhodila samu seba (aj actionlint, ktorý by ich skúsil
-          # prečítať ako výraz).
+          # tokeny sa skladajú, nepíšu – inak by mal tento súbor presne tú
+          # chybu, ktorú hľadá
           OPEN = "$" + "{" * 2
           CLOSE = "}" * 2
 
@@ -148,8 +115,7 @@ jobs:
                   out.append(s[i:j])
                   k, in_str = j + len(OPEN), False
                   while k < len(s):
-                      # V reťazci vnútri výrazu môžu byť zdvojené zátvorky ako
-                      # text – tak si ich escapuje `format()`.
+                      # `format()` si zdvojené zátvorky escapuje ako text
                       if s[k] == "'":
                           in_str = not in_str; k += 1
                       elif not in_str and s.startswith(CLOSE, k):
@@ -183,12 +149,8 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
-      # Popis inputu je vo formulári GitHubu jednoriadková nápoveda pod
-      # poľom. Keď z neho spravíš odsek, formulár sa stane nečitateľným –
-      # a práve to sa tu stalo: `options` v shading-rocks.yml mal 474 znakov,
-      # čiže šesť riadkov textu pod jedným políčkom. Detail patrí do
-      # komentára nad input (ten číta ten, kto workflow upravuje) alebo do
-      # docs/pipeline.md, nie do formulára.
+      # popis inputu je vo formulári jednoriadková nápoveda; odsek z neho
+      # spraví nečitateľný formulár. Detail patrí do komentára nad input.
       - name: Popisy inputov sú jednoriadkové
         run: |
           set -euo pipefail
@@ -216,9 +178,8 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
-      # Výber pohorí vo formulári musí sedieť s workers/data/areas.json. Choice
-      # options musia byť v YAML doslovne, takže sa to nedá generovať – ale
-      # dá sa to strážiť, aby zoznam nezostarol.
+      # choice options musia byť v YAML doslovne, takže sa nedajú generovať –
+      # ale dá sa strážiť, aby zoznam nezostarol
       - name: Výber pohorí sedí s areas.json
         run: |
           set -euo pipefail
@@ -238,10 +199,8 @@ jobs:
           print(f"výber pohorí sedí ({len(opts)} položiek)")
           PY
 
-      # A to isté pre workflow, ktorý robí výškový model z DMR 5.0. Robí ho
-      # práve pre tie územia, na ktoré potom Build map počíta skaly – keby sa
-      # zoznamy rozišli, dá sa vyrobiť model pre pohorie, ktoré si build nevie
-      # vypýtať (alebo naopak).
+      # to isté pre workflow, čo robí model z DMR 5.0: keby sa zoznamy rozišli,
+      # dal by sa vyrobiť model pre pohorie, ktoré si build nevie vypýtať
       - name: Výber pohorí v dmr5-drive.yml sedí s areas.json
         run: |
           set -euo pipefail
@@ -265,11 +224,8 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
-      # A to isté pre „Dáta · tieňované skaly". Ten hľadá skaly na tom
-      # istom výreze, aký si potom Build map vypýta cez `rock_source: tienovanie`
-      # – keby sa zoznamy rozišli, dali by sa vyrobiť polygóny pre pohorie,
-      # ktoré build nevie zadať (alebo naopak). „Celý región" tu chýba
-      # zámerne: bez výrezu nie je čo sťahovať, dlaždice sú konečné.
+      # to isté pre „Dáta · tieňované skaly". „Celý región" tu chýba zámerne:
+      # bez výrezu nie je čo sťahovať.
       - name: Výber pohorí v shading-rocks.yml sedí s areas.json
         run: |
           set -euo pipefail
@@ -288,36 +244,25 @@ jobs:
           print(f"výber pohorí v shading-rocks.yml sedí ({len(opts)} položiek)")
           PY
 
-      # KTORÁ VRSTVA PODÁVA KĽÚČ VÝREZU. Na tomto sa build už raz rozbil
-      # (beh 31307163093) a je to tichý druh chyby, lebo obe strany vyzerajú
-      # správne samy o sebe.
-      #
-      # `dmr5` má dve podoby a prepína medzi nimi kľúč výrezu, ktorý vrstva
-      # podá do `fetch-dem.sh`: s kľúčom výrez z `dem-ugkk`, bez neho dlaždice
-      # z `dem-dmr5`. Kontrola v `workers/dem/check.sh` musí o každej vrstve
-      # predpokladať presne to, čo tá vrstva naozaj robí – inak build kontroluje
-      # jeden release a sťahuje z druhého.
-      #
-      # Tabuľka `layer_area_key` v check-dem.sh hovorí, ktorá vrstva kľúč podáva.
-      # Tu sa porovná s tým, koľko argumentov naozaj dáva každé volanie
+      # ktorá vrstva podáva kľúč výrezu: `dmr5` má dve podoby a prepína medzi
+      # nimi práve ten kľúč, takže kontrola v `workers/dem/check.sh` musí
+      # predpokladať presne to, čo vrstva robí – inak build kontroluje jeden
+      # sklad a sťahuje z druhého. Porovnáva sa s počtom argumentov volania
       # `fetch-dem.sh`: 5 = s kľúčom výrezu, 4 = bez neho.
       - name: Vrstvy podávajú kľúč výrezu tak, ako to čaká kontrola
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import os, re, sys
-          # Kde je volanie a ktorej vrstve patrí. Keď pribudne ďalšie, pridaj
-          # ho sem aj do `layer_area_key` v workers/dem/check.sh.
-          # Cesta sa mení, keď sa `run:` blok presunie do workers/ (a to sa
-          # deje – build-map-region.yml má strop 128 KiB). Preto sa každá vrstva
-          # hľadá vo VIACERÝCH kandidátoch a stačí, že ju nájde jeden;
-          # keby sa hľadalo len na jednom mieste, presun by kontrolu umlčal.
+          # keď pribudne volanie, pridaj ho sem aj do `layer_area_key`.
+          # Každá vrstva sa hľadá vo viacerých kandidátoch – `run:` bloky sa
+          # sťahujú do workers/ a presun by kontrolu inak umlčal.
           CALLS = {
               ("workers/contours-rocks/build.sh",): ("contours", "rocks"),
               ("workers/terrain/build.sh",
                ".github/workflows/build-map-region.yml"): ("terrain",),
           }
-          # Vrstvy, o ktorých check-dem.sh tvrdí, že kľúč NEpodávajú.
+          # vrstvy, o ktorých check.sh tvrdí, že kľúč nepodávajú
           src = open("workers/dem/check.sh").read()
           m = re.search(r"layer_area_key\(\)\s*\{(.*?)\n\}", src, re.S)
           if not m:
@@ -333,10 +278,9 @@ jobs:
               for cand in paths:
                   if not os.path.exists(cand):
                       continue
-                  # Komentáre preč – tieto súbory samy o `fetch-dem.sh` píšu
-                  # a bez toho by sa veta z komentára počítala ako argumenty.
+                  # komentáre preč – tieto súbory samy o `fetch-dem.sh` píšu
                   txt = re.sub(r"^[ \t]*#.*$", "", open(cand).read(), flags=re.M)
-                  # Riadok s volaním aj s prípadným pokračovaním cez `\`.
+                  # riadok s volaním aj s pokračovaním cez `\`
                   found = [c for c in re.findall(
                       r"workers/dem/fetch\.sh((?:[^\n\\]|\\\n)*)", txt) if c.strip()]
                   if found:
@@ -368,47 +312,27 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
-      # Cesta k DMR 5.0 musí ostať celá: oba doplňovacie joby, volanie
-      # `dmr5-drive.yml`, bbox aj meno assetu z `check-dem`, a `update-dem.yml`
-      # na `dmr5` padá. Kým tam bol rozcestník, doplnenie bolo tiché nič
-      # (beh 31307163093). Rozpis: `workers/lint/dmr5-pipeline.py`.
+      # cesta k DMR 5.0 musí ostať celá; kým tam bol rozcestník, doplnenie bolo
+      # tiché nič. Rozpis: `workers/lint/dmr5-pipeline.py`.
       - name: DMR 5.0 sa dopĺňa vlastnou pipeline
         run: python3 workers/lint/dmr5-pipeline.py
 
-      # Token vlastníka Drive musí prísť na každé miesto, kde sa z Drive číta
-      # alebo do cache/skladu zapisuje – z oboch strán, lebo `workflow_call`
-      # nededí secrets sám. Bez neho nič nespadne, len sa počíta hodiny
-      # odznova. Rozpis: `workers/lint/drive-token.py`.
+      # token vlastníka Drive musí prísť všade, kde sa z Drive číta alebo do
+      # cache zapisuje – bez neho nič nespadne, len sa počíta hodiny odznova
       - name: Token vlastníka Drive sa dostane všade, kde sa z Drive číta
         run: python3 workers/lint/drive-token.py
 
-      # „Ktoré sklady existujú" hovoria tri miesta: `KNOWN` vo
-      # `workers/drive/store.py`, `store`/`store_area` v `data/dem-sources.json`
-      # a `…_STORE:` v `env:` workflowov. Keď sa rozídu, padne to AŽ PO PRÁCI:
-      # `dem-sonny1` v `KNOWN` chýbal, doplnenie stiahlo z Drive 12 dlaždíc,
-      # rozuzlilo skratky, prevzorkovalo ich – a spadlo na poslednom kroku,
-      # nahratí do skladu. Hotová práca sa zahodila a joby, ktoré ten sklad
-      # čakali, spadli za ňou (beh 31533988137, štyri padnuté joby).
-      # Rozpis: `workers/lint/stores.py`.
+      # „ktoré sklady existujú" hovoria tri miesta a keď sa rozídu, padne to
+      # až po práci – na poslednom kroku, nahratí do skladu
       - name: Sklady sedia s tým, čo pipeline pozná
         run: python3 workers/lint/stores.py
-      # HRANICA REGIÓNU JE PRESNÁ Z OSM A UŽ SA NENAFUKUJE – a uložené vrstvy
-      # to musia niesť. Kým sa mapa orezávala rozšíreným `.poly` z osm.fr
-      # a polygón sa nad tým ešte nafukoval o `BORDER_BUFFER_M`, siahala mapa
-      # aj vrstvy z DEM kilometre do susedného kraja a za štátnu hranicu.
-      # Tieňovanie a skaly sa pritom berú zo skladu PODĽA MENA, takže kým to
-      # číslo v mene nebolo, vrátil sklad po jeho zmene vrstvu orezanú ešte po
-      # starom (namerané na balíku Trnavského kraja: mapa siahala za hranicu,
-      # reliéf pod ňou nie). Rozpis: `workers/lint/border-overlap.py`.
+      # hranica regiónu je presná z OSM a už sa nenafukuje; uložené vrstvy to
+      # musia niesť v mene, inak sklad vráti vrstvu orezanú po starom
       - name: Hranica regiónu je presná a uložené vrstvy ju nesú
         run: python3 workers/lint/border-overlap.py
-      # CACHE PATRÍ NA DRIVE. GitHubová má na repozitár 10 GB a keď sa naplní,
-      # NIČ NEPOVIE – ticho vyhodí najstaršie záznamy. Jeden výrez do nej
-      # ukladal desiatky GB (DEM dlaždice, sklad častí sklonu, vrstevnice,
-      # tieňovanie, dlaždice tieňovania), takže si záznamy vyhadzovali
-      # navzájom a hodinové výpočty sa rátali odznova bez toho, aby bolo na
-      # čom to vidieť. Jedno vrátené `uses: actions/cache` by ten stav vrátilo
-      # a poznalo by sa to len na tom, že build zase trvá dlho.
+      # cache patrí na Drive: GitHubová má na repozitár 10 GB a keď sa naplní,
+      # ticho vyhodí najstaršie záznamy – a poznať to len na tom, že build
+      # zase trvá dlho
       - name: Cache je na Drive, nie v GitHube
         run: |
           set -euo pipefail
@@ -434,8 +358,7 @@ jobs:
                                 f"najstaršie záznamy – použi "
                                 f"`{CACHE}restore` / `{CACHE}save`.")
                           bad += 1
-                      # Lokálna akcia, ktorá nemá súbor, je beh bez cache
-                      # a chybová hláška až na runneri.
+                      # lokálna akcia bez súboru je beh bez cache
                       if uses.startswith("./") and not os.path.exists(
                               os.path.join(uses[2:], "action.yml")):
                           print(f"::error file={path}::krok "
@@ -444,13 +367,8 @@ jobs:
                                 f"neexistuje.")
                           bad += 1
 
-          # Mazanie GitHub cache sa už nemá čoho chytiť: pri pregenerovaní
-          # treba zmazať záznam na Drive, inak sa nový pod ten istý kľúč
-          # neuloží a ďalší beh dostane ten starý.
-          #
-          # Hľadaný príkaz sa SKLADÁ, nepíše: keby tu stál celý, našla by táto
-          # kontrola samu seba a hlásila by chybu navždy (tak ako pri `OPEN`
-          # nižšie).
+          # pri pregenerovaní treba zmazať záznam na Drive, nie v GitHube.
+          # Hľadaný príkaz sa skladá, nepíše – inak by kontrola našla samu seba.
           NEEDLE = "gh cache" + " delete"
           for path in sorted(glob.glob(".github/workflows/*.yml")):
               txt = open(path).read()
@@ -460,8 +378,7 @@ jobs:
                         f"Drive: `python3 {WORKER} --delete --key=…`.")
                   bad += 1
 
-          # A druhá strana toho istého: obe akcie musia existovať a volať
-          # tento worker – bez neho by boli prázdnym krokom, ktorý zazelená.
+          # druhá strana: obe akcie musia existovať a volať tento worker
           for smer in ("restore", "save"):
               akcia = f".github/actions/cache-{smer}/action.yml"
               if not os.path.exists(akcia):
@@ -474,8 +391,7 @@ jobs:
                   bad += 1
               d = yaml.safe_load(text) or {}
               if smer == "restore":
-                  # Bez týchto výstupov by `steps.<id>.outputs.cache-hit` bolo
-                  # ticho prázdne a všetko by sa počítalo znova.
+                  # bez nich by `steps.<id>.outputs.cache-hit` bolo ticho prázdne
                   for out in ("cache-hit", "cache-primary-key"):
                       if out not in (d.get("outputs") or {}):
                           print(f"::error file={akcia}::nemá výstup `{out}`, "
@@ -485,336 +401,185 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
-      # PUBLIKUJE SA LEN NA DRIVE. Do GitHubu nesmie ísť ani release, ani
-      # artefakt, ktorý má prežiť beh – celý sklad je vo `workers/drive/store.py`.
-      #
-      # Prečo kontrola a nie len dohoda: `gh release upload` je jeden riadok
-      # a keby sa vrátil, poznalo by sa to len tým, že v Releases pribúdajú
-      # gigabajty, ktoré nikto nečíta, a že tá istá vec leží na dvoch miestach
-      # (pravidlo 1). Rovnako `retention-days: 90` – artefakt s ním je uložený
-      # výsledok, nie prepravka medzi jobmi jedného behu.
-      #
-      # Rozpis je vo `workers/lint/publishing.py`, nie tu: tento súbor je nad
-      # stropom 800 riadkov, ktorý si sám kontroluje o pár krokov vyššie, a
-      # ďalší storiadkový heredoc doň nepatrí (pravidlo 3). Skript sa dá
-      # spustiť aj lokálne: `python3 workers/lint/publishing.py`.
+      # publikuje sa len na Drive: do GitHubu nesmie ísť ani release, ani
+      # artefakt, ktorý má prežiť beh. Rozpis je vo `workers/lint/publishing.py`.
       - name: Publikuje sa len na Drive, nie do releasov a artefaktov
         run: python3 workers/lint/publishing.py
 
-      # Viewer sa musí na Pages nasadiť CELÝ. `layer-style.js` pribudol do
-      # `poc/web/`, ale `site.sh` mal vymenovaný zoznam súborov a ten sa
-      # s priečinkom rozišiel: `devmode.js` si ho importuje, prehliadač na 404
-      # zahodí celý modulový graf, nespustí sa ani `app.js` a na stránke ostane
-      # biela plocha. Build je pritom zelený a smoke test tiež – kontroluje
-      # manifest, sprite a `.pmtiles`, ktoré nasadené naozaj sú.
+      # viewer musí ísť na Pages celý: prehliadač na 404 zahodí celý modulový
+      # graf a ostane biela plocha, kým build aj smoke test sú zelené
       - name: "Viewer: na Pages ide všetko, čo si importuje"
         run: python3 workers/lint/viewer.py
 
-      # `curl … | grep -q` je pasca: `grep -q` po prvej zhode zavrie rúru,
-      # producent dostane EPIPE a `pipefail` z toho spraví pád, HOCI SA ZHODA
-      # NAŠLA. Sú to preteky, takže to prechádza roky a vyskočí, keď za zhodou
-      # pribudne pár kB (beh 32144952677: 13 kontrol ✓ a spadlo práve toto).
+      # `curl … | grep -q` je pasca: `grep -q` zavrie rúru, producent dostane
+      # EPIPE a `pipefail` z toho spraví pád, hoci sa zhoda našla
       - name: "Rúry: predčasný čitateľ nevisí na živom producentovi"
         run: python3 workers/lint/pipes.py
 
-      # Dve tiché veci v hotovom štýle naraz (rozpis vo `workers/lint/style.mjs`):
-      #
-      # 1. `fill` vrstva nad vrstvou so ZMIEŠANOU geometriou musí vedieť, že
-      #    chce len plochy. MapLibre jej čiaru nepreskočí – earcutom z nej
-      #    vyrobí sebaprekrývajúci sa mnohouholník, mapa sa načíta a nikto nič
-      #    nepovie. Presne tak vznikli tie „prerezané" útvary od zoomu 13
-      #    (pedestrian-area nad `transportation`, kde sú chodníky čiary).
-      # 2. Vzor nad plochou je VLASTNÁ vrstva (`rock-area__pattern`), takže ju
-      #    profil typu mapy musí vypnúť spolu s predlohou. Inak ostane vzor
-      #    visieť nad prázdnym podkladom – zase bez jediného slova.
-      # 3. MapLibre kreslí vrstvy v poradí zo štýlu, takže navrchu je tá
-      #    POSLEDNÁ. Kým sa cesty pridávali od diaľnice nadol, kreslila sa
-      #    účelová cesta CEZ diaľnicu a na každej križovatke ju prerušil
-      #    prúžok v jej farbe. Poradie dôležitosti hovorí `ROAD_DEFS`.
+      # tri tiché veci v hotovom štýle (rozpis vo `workers/lint/style.mjs`):
+      # `fill` nad zmiešanou geometriou (MapLibre z čiary earcutom vyrobí
+      # nezmysel), vzor ako vlastná vrstva (profil ju musí vypnúť s predlohou)
+      # a poradie ciest (navrchu je posledná, takže účelová kreslila cez diaľnicu)
       - name: "Štýl: výplne chcú plochy, vzory držia s predlohou, cesty poradie"
         run: node workers/lint/style.mjs
 
-      # Tieňovanie reliéfu je PREKRYVNÁ vrstva: krytie, ktorým prekrýva mapu
-      # pod sebou, rastie so sklonom, takže s nepriehľadnou farbou je nad ~20°
-      # sklonu 0,97–1,0 – a pod tieňovaním potom nie je vidieť mapu, ale farbu
-      # tieňovania. Kým bola `hillHighlight` `#ffffff`, bola z lesa na svahu
-      # privrátenom k svetlu BIELA PLOCHA; najviac na severných svahoch, lebo
-      # predvolené svetlo MapLibre (335°) je 25° od severu. Štýl je pri tom
-      # platný a nikto nepovie nič. Rozpis: `workers/lint/hillshade.mjs`.
+      # tieňovanie mapu prekrýva krytím podľa sklonu, takže s nepriehľadnou
+      # farbou nad ~20° mapu nevidno. Štýl je pri tom platný a nikto nepovie nič.
       - name: "Tieňovanie reliéfu neprekryje mapu pod sebou"
         run: node workers/lint/hillshade.mjs
 
-      # Výškový model (balík `tienovanie`) má dve použitia: tieňovanie reliéfu
-      # a 3D terén. To druhé je jediný riadok v štýle (`terrain`) a všetko na
-      # ňom je ticho: keď chýba, klient nakreslí plochú mapu a nikto nepovie
-      # nič; keď ukazuje na zdroj, ktorý v štýle nie je, MapLibre odmietne celý
-      # štýl. Rozpis: `workers/lint/terrain3d.mjs`.
+      # výškový model má dve použitia: tieňovanie a 3D terén. To druhé je jediný
+      # riadok v štýle a všetko na ňom je ticho – keď chýba, klient nakreslí
+      # plochú mapu; keď ukazuje na zdroj, čo v štýle nie je, MapLibre odmietne
+      # celý štýl.
       - name: 3D terén je v štýle a ukazuje na výškové dlaždice
         run: node workers/lint/terrain3d.mjs
 
-      # `maps.json` je zoznam hotových máp, ktorý dopisuje BEH – a to je presne
-      # ten druh veci, čo sa rozíde ticho: mená v katalógu prestanú sedieť s
-      # menami balíkov, katalóg sa zapíše aj po neúspešnom nahratí, alebo build
-      # stratí právo zapisovať a zoznam sa prestane dopĺňať. Rozpis:
-      # `workers/lint/catalog.py`.
+      # `maps.json` dopisuje beh, takže sa rozíde ticho: mená prestanú sedieť
+      # s balíkmi, alebo sa katalóg zapíše aj po neúspešnom nahratí
       - name: Katalóg máp drží tvar a nikto ho neobchádza
         run: python3 workers/lint/catalog.py
 
-      # Dávka „Build map state" je formulár pred formulárom: zdroje výšok,
-      # prah skál aj `options` cez ňu len prechádzajú do behov jednotlivých
-      # krajov. Rozíde sa to ticho – vstup, ktorý dávka pýta a `relay.sh`
-      # nepodá ďalej, znamená CELÚ KRAJINU postavenú s predvolenými hodnotami,
-      # a beh je pritom zelený. Rozpis: `workers/lint/state.py`.
+      # dávka „Build map state" je formulár pred formulárom – vstup, ktorý
+      # `relay.sh` nepodá ďalej, znamená celú krajinu s predvolenými hodnotami
       - name: Dávka krajiny stavia to isté, čo jeden kraj ručne
         run: python3 workers/lint/state.py
 
-      # Dávka „Regenerate state" je to isté o stupeň zložitejšie: okrem
-      # nastavení, ktoré cez ňu prechádzajú, si vyberá aj to, ČO sa má
-      # pregenerovať – a podľa toho spúšťa dve rôzne pipeline (číselník je
-      # `workers/state/jobs.py`). Voľba, ktorú číselník nepozná, pole, ktoré
-      # cieľový formulár nemá, alebo balík, ktorý `publish-map.py` nepozná, sa
-      # inak zistia až po tom, čo dávka spustila osem behov. Rozpis:
-      # `workers/lint/regenerate.py`.
+      # dávka „Regenerate state" si navyše vyberá, čo sa má pregenerovať;
+      # zlá voľba sa inak zistí až po tom, čo spustila osem behov
       - name: Dávka pregenerovania pregeneruje to, čo sľubuje
         run: python3 workers/lint/regenerate.py
 
-      # Glyfy ani webový viewer sa do balíkov nebalia: viewer je na Pages,
-      # glyfy si nesie appka v sebe. Vynechať súbor z balíka je pritom
-      # jednoriadková zmena, ktorá sa dá spraviť aj tam, kde ho nie je odkiaľ
-      # vziať: mapa bez glyfov nespadne, len nemá jediné písmeno. Rozpis:
-      # `workers/lint/packaging.py`.
+      # glyfy ani viewer sa do balíkov nebalia; mapa bez glyfov nespadne,
+      # len nemá jediné písmeno
       - name: Glyfy a viewer sú mimo balíka, ale majú kde byť
         run: python3 workers/lint/packaging.py
 
-      # `rebuild` je jediná páka, ktorou sa dá povedať „cache nepoužívaj". Keď
-      # sľúbi vrstvu a tá sa aj tak vráti z cache, beh je ZELENÝ a výsledok
-      # starý. Rozísť sa to vie ticho troma spôsobmi: hodnota vo formulári,
-      # ktorú `plan/options.py` nepozná (alebo naopak), príznak, ktorý `plan`
-      # nevydá ako výstup, a `rebuild: skaly` pri `rock_source: tienovanie`,
-      # kde obrysy robí podpipeline a bez `fresh=1` nadviaže na tie rozrobené.
-      # Rozpis: `workers/lint/rebuild.py`.
+      # `rebuild` je jediná páka na „cache nepoužívaj"; keď sľúbi vrstvu a tá
+      # sa aj tak vráti z cache, beh je zelený a výsledok starý
       - name: Výber `rebuild` prepočíta to, čo sľubuje
         run: python3 workers/lint/rebuild.py
 
-      # Job `features` číta PBF dvakrát: hrubým sitom (`filter.txt`) a potom
-      # schémou (`features.yml`). To isté rozhodnutie je tým na dvoch miestach
-      # a keď sa rozídu, je to tiché – Planetiler dostane PBF bez tých objektov
-      # a vyrobí dlaždice, v ktorých tá trieda jednoducho nie je. Beh zelený,
-      # v mape nič. Rozpis: `workers/lint/features.py`.
+      # job `features` číta PBF dvakrát (predfilter + schéma) – keď sa rozídu,
+      # Planetiler vyrobí dlaždice, v ktorých tá trieda nie je
       - name: Predfilter pustí všetko, čo si schéma prvkov vyžiada
         run: python3 workers/lint/features.py
 
-      # Pásik značenej trasy sa skladá z troch miest naraz (routes.py rozhodne
-      # stranu a poradie, trails.yml to pustí do dlaždíc, themes.js z toho
-      # spočíta `line-offset`). Keď sa ktorékoľvek dve rozídu, nič nespadne –
-      # len sú cyklotrasy na tej istej strane ako turistické, alebo sú pásiky
-      # odlepené od cesty. Rozpis: `workers/lint/trails.mjs`.
+      # pásik trasy sa skladá z troch miest naraz; keď sa dve rozídu, nič
+      # nespadne – len sú pásiky odlepené alebo na zlej strane
       - name: "Trasy: strana, odstup a atribúty držia spolu"
         run: node workers/lint/trails.mjs
 
-      # Turistická značka (biely či žltý štvorec s farebným pásom) je jediná
-      # vec v mape, ktorej MENO OBRÁZKA sa skladá až z dát: tags.py napíše tvar,
-      # podklad a farbu, štýl z nich `concat`-om zloží meno a marks.mjs ho musí
-      # mať v sprite. Keď sa tie tri rozídu, MapLibre neznámy obrázok TICHO
-      # preskočí a po trase nie je nič. Rozpis: `workers/lint/marks.mjs`.
+      # meno obrázka značky sa skladá až z dát; keď sa tie tri rozídu,
+      # MapLibre neznámy obrázok ticho preskočí
       - name: "Značky trás: tvar, dvojica farieb a meno obrázka sedia"
         run: node workers/lint/marks.mjs
 
-      # Vlastná ikona (obrázok nahratý v paneli) a vlastná sada ikoniek sa
-      # dajú pridať v developer móde – ale platné sú až vtedy, keď ich pipeline
-      # naozaj dopečie do spritu a stiahne. Keď sa niektorý z tých krokov
-      # stratí, ikona sa dá vybrať a v mape po nej ostane prázdno; a `layout`
-      # úprava na inej než symbolovej vrstve by zhodila CELÝ štýl.
-      # Rozpis: `workers/lint/icons.mjs`.
+      # vlastná ikona a sada sú platné až vtedy, keď ich pipeline dopečie do
+      # spritu; `layout` na inej než symbolovej vrstve zhodí celý štýl
       - name: "Ikony: vlastné obrázky a sady sa naozaj dostanú do mapy"
         run: node workers/lint/icons.mjs
 
-      # Developer mode zapisuje úpravy, ktoré potom pipeline zapečie do mapy –
-      # a keď ich `normalizeOverrides` pri zápise do repozitára odmietne, je to
-      # tiché: v prehliadači to platí, na Pages nie. Dve veci naraz (rozpis vo
-      # `workers/lint/overrides.mjs`): nulová hrúbka čiary je zmiznutá vrstva,
-      # nie vypnutá (šípka na prázdnom políčku ju vyrobila jedným ťuknutím),
-      # a kopírovanie štýlu z vrstvy do vrstvy musí vyrobiť úpravu, ktorú
-      # normalizácia prijme celú – nie polovicu. K tomu tretia: čo developer
-      # mode nastaví, to sa musí aj ULOŽIŤ – `overrides.mjs` skladá súbor pre
-      # repozitár po kľúčoch a na `trails` raz zabudol, takže z nastavení trás
-      # do neho neprišlo nič. A štvrtá: prerušovanie, ktoré má vrstva ZO ŠTÝLU
-      # (železnica), musí byť vo výbere vidieť a „Plná" ho musí vedieť zrušiť –
-      # kým sa zahadzovala ako predvolená, čiarkovanie železnice sa nedalo ani
-      # zmeniť, ani vypnúť.
+      # úpravy z developer módu musia prejsť `normalizeOverrides` celé – inak
+      # platia v prehliadači a na Pages nie (nulová hrúbka, kopírovanie štýlu,
+      # zabudnutý kľúč pri zápise, prerušovanie zo štýlu)
       - name: "Úpravy štýlu prejdú normalizáciou celé"
         run: node workers/lint/overrides.mjs
 
-      # Štítok s číslom cesty („D1") stojí na obrázku zo spritu, ktorý sa
-      # ROZŤAHUJE podľa dĺžky čísla. Všetky tri veci, ktoré sa na ňom dajú
-      # pokaziť, sú tiché (rozpis vo `workers/lint/shields.mjs`): premenovaný
-      # obrázok nechá číslo bez podkladu, stratené `stretchX`/`content` pri
-      # preskladaní spritu ho natiahnu aj s rohmi, a keby sa vrstva dostala až
-      # za `road-name`, číslo by na hustej sieti prehrávalo s menom ulice.
+      # štítok stojí na rozťahovanom obrázku zo spritu: premenovaný obrázok,
+      # stratené `stretchX`/`content` aj poradie za `road-name` sú tiché chyby
       - name: "Štítky ciest: obrázok, rozťahovanie a poradie"
         run: node workers/lint/shields.mjs
 
-      # „V tomto stupni terén nie je" je doživotná odpoveď – kým prázdna
-      # dlaždica leží v sklade, ten stupeň už nikto neprečíta. Keď ju vysloví
-      # vzorkovaná štatistika, je beh zelený a v mape chýba pol kraja: presne
-      # tak zmizli vrstevnice, skaly aj tieňovanie západne od 17. poludníka
-      # v Bratislavskom kraji (beh 31526268289). Rozpis:
-      # `workers/lint/dem-empty.py`.
+      # „v tomto stupni terén nie je" je doživotná odpoveď – keď ju vysloví
+      # vzorkovaná štatistika, je beh zelený a v mape chýba pol kraja
       - name: Prázdny stupeň sa overuje presne a podpisuje sa
         run: python3 workers/lint/dem-empty.py
 
-      # Dno zoomu vrstevníc a skál je napísané dvakrát a inak to nejde: schéma
-      # Planetilera rozhoduje, čo sa VYROBÍ, štýl, čo sa NAKRESLÍ. Keď sa tie
-      # čísla rozídu, nikto nič nepovie – buď platíme dlaždice, ktoré nikto
-      # nevidí, alebo je v mape diera. Rozpis: `workers/lint/zoom-floor.py`.
+      # dno zoomu je napísané dvakrát (schéma vyrába, štýl kreslí); keď sa
+      # rozídu, platíme dlaždice, ktoré nikto nevidí, alebo je v mape diera
       - name: "Štýl: vrstevnice a skaly majú v schéme a v štýle to isté dno"
         run: python3 workers/lint/zoom-floor.py
 
-      # Tieňovanie roky vyzeralo správne a nebolo: výška zaokrúhlená na celé
-      # metre a `-r average` pri ZVÄČŠOVANÍ DEM spravili z hillshadu (ktorý je
-      # derivácia výšky) pravidelnú tkaninu cez celú mapu. Nič nespadlo – to je
-      # pravidlo 8 v čistej podobe. Rozpis: `workers/lint/terrain.py`.
+      # zaokrúhlená výška a `-r average` pri zväčšovaní DEM spravili z hillshadu
+      # pravidelnú tkaninu cez celú mapu – a nič nespadlo
       - name: Tieňovanie nestráca presnosť, ktorou stojí a padá
         run: python3 workers/lint/terrain.py
 
-      # A druhá vec o tom istom kódovaní: čo sa zapíše tam, kde model dáta
-      # NEMÁ. `-dstnodata 0` z toho spravilo hladinu mora, takže na hranici
-      # dát stála stena (nameraných 668 m na 407 m/px = 59°), za ňou bola
-      # plocha bez tieňovania a `.pmtiles` sa tými dlaždicami vykázal ako
-      # rozsahom – hlavička sľubovala 11,25–22,50° nad mapou 0,027° širokou.
-      # Nespadlo nič. Rozpis: `workers/lint/terrain-nodata.py`.
+      # čo sa zapíše tam, kde model dáta nemá: `-dstnodata 0` z toho spravilo
+      # hladinu mora, takže na hranici dát stála stena
       - name: Tieňovanie nevyrába terén tam, kde model nie je
         run: python3 workers/lint/terrain-nodata.py
 
-      # A to isté o jeden krok skôr, v samotnom MODELI. Tieňovanie sa opravilo
-      # dvakrát a mriežka v mape ostala – lebo nevznikala pri robení dlaždíc,
-      # ale už pri čítaní DMR 5.0 z Drive: zo 4 m pyramídy na 5 m bunky
-      # príkazom `-r average`, teda pri pomere 1,25, kde GDAL každú štvrtú
-      # zdrojovú bunku preskočí. Vrstevnice sa trasujú z toho istého modelu,
-      # takže boli zubaté s tým istým rastrom. Nič nespadlo a spoznať sa to
-      # dalo len okom na hotovej mape, po hodinách čítania z Drive.
-      # Rozpis: `workers/lint/dem-resampling.py`, čísla:
-      # `workers/dem/measure-resampling.py`.
+      # a to isté o krok skôr, v modeli: mriežka vznikala už pri čítaní DMR 5.0
+      # z Drive (`-r average` pri pomere 1,25). Vrstevnice sa trasujú z toho
+      # istého modelu, takže boli zubaté s tým istým rastrom.
       - name: "Výškový model: resampling si nikto nevyberá sám"
         run: python3 workers/lint/dem-resampling.py
 
-      # Vrstevnice boli „vyhladené, ale v pravidelných intervaloch zubaté":
-      # dva prechody Chaikina z rohu spravia menší roh, nie oblúk, a keďže
-      # rohy ostanú tam, kde ich nechal Douglas–Peucker, sú tie zvyšky
-      # pravidelne rozostupené. Build bol pritom zelený a dlaždice správne
-      # veľké – zase pravidlo 8. Odvtedy sa zaobľuje limitnou krivkou
-      # vzorkovanou podľa mriežky dlaždice a strážia sa miesta, na ktorých sa
-      # to dá nebadane rozbiť (cesta k skriptu z iného priečinka, chýbajúci
-      # `--maxzoom`, priehyb nad krok mriežky, posunuté konce čiary).
-      # Rozpis: `workers/lint/smoothing.py`.
+      # dva prechody Chaikina z rohu spravia menší roh, nie oblúk – a keďže
+      # rohy ostanú tam, kde ich nechal Douglas–Peucker, sú pravidelné.
+      # Odvtedy sa zaobľuje limitnou krivkou podľa mriežky dlaždice.
       - name: "Zaoblenie obrysu: každé volanie vie svoju mriežku"
         run: python3 workers/lint/smoothing.py
 
-      # Ovládač GeoJSON prepočítava do WGS84 vždy, keď vrstva vie, v čom je –
-      # takže `-a_srs EPSG:3035` nad takým výstupom metre neoznačí, ale ich
-      # ZMENÍ NA STUPNE, a ogr2ogr pri tom skončí úspechom. Pipeline na to
-      # doplatila dvakrát: raz mala každá skala rádovo 1e-9 m² a filter ich
-      # vyhodil všetky (31245134321, 31426542010), raz vyšla únia švov
-      # v stupňoch, prepočítala sa ako 0,00 km² z 3570,56 a zahodila sa ako
-      # „stratená" – s varovaním, ktoré posielalo hľadať `TopologyException`
-      # v GEOSe, hoci v logu ani jedna nebola (32300347626). Rozpis:
-      # `workers/lint/geojson-srs.py`.
+      # ovládač GeoJSON prepočítava do WGS84 vždy, keď vrstva vie, v čom je –
+      # `-a_srs EPSG:3035` nad takým výstupom metre zmení na stupne a ogr2ogr
+      # pri tom skončí úspechom
       - name: "GeoJSON výstup nedostane SRS – metre by z neho boli stupne"
         run: python3 workers/lint/geojson-srs.py
 
-      # To isté o krok ďalej pri mape sveta: okrem dna zoomu sa tam dá pomýliť
-      # aj v MENE vrstvy (`source-layer: downloads` proti vrstve `download`)
-      # a MapLibre na to nepovie nič – regióny sťahovania v mape jednoducho
-      # nebudú. Kontrola štýl aj SPUSTÍ, takže chyba v `style.mjs` sa nájde tu
-      # a nie až v behu, ktorý predtým počítal dlaždice. Rozpis:
-      # `workers/lint/world.py`.
+      # pri mape sveta sa dá pomýliť aj v mene vrstvy a MapLibre nepovie nič.
+      # Kontrola štýl aj spustí, nech sa chyba nájde tu.
       - name: "Mapa sveta: štýl kreslí to, čo schéma vyrába"
         run: python3 workers/lint/world.py
 
-      # Costing motora je slovník a NEZNÁMY KĽÚČ SA V ŇOM TICHO IGNORUJE:
-      # `top_speeed` namiesto `top_speed` vráti platnú trasu, len nie tú, ktorú
-      # si človek vypýtal. Kontrola preto drží kľúče Valhally proti zoznamu
-      # vyzobranému z jej zdrojáku, výrazy GraphHoppera proti jeho zakódovaným
-      # hodnotám, a hlavne to, že KAŽDÁ voľba má pre KAŽDÝ motor odpoveď –
-      # mapovanie alebo `unsupported` s dôvodom. Ticho zahodená voľba je tá
-      # istá trieda chyby ako neznámy `fill-pattern` (pravidlo 8).
-      # Rozpis: `workers/lint/routing.py`.
+      # costing motora je slovník a neznámy kľúč sa v ňom ticho ignoruje –
+      # `top_speeed` vráti platnú trasu, len nie tú, ktorú si človek vypýtal
       - name: "Navigácia: profil prejde do motora celý, alebo o sebe povie"
         run: python3 workers/lint/routing.py
 
-      # Navigačný graf: dva rozsahy pod jedným `country` si položku v katalógu
-      # navzájom prepíšu (`admin_level: 2` z krajiny robí uzol), rezaný PBF má
-      # na hranici slepé ulice a bez `admins.sqlite` nefunguje ani prechod
-      # hranice, ani strana jazdy – a nič z toho nespadne.
-      # Rozpis: `workers/lint/navigation.py`.
+      # dva rozsahy pod jedným `country` si položku v katalógu prepíšu, rezaný
+      # PBF má na hranici slepé ulice, bez `admins.sqlite` nefunguje prechod
+      # hranice – a nič z toho nespadne
       - name: "Navigácia: rozsah, uzol v katalógu a celý graf"
         run: python3 workers/lint/navigation.py
 
-      # DOPRAVNÁ SIEŤ SA DÁ OKLIEŠTIŤ POTICHU. Vrstva sľubuje „všetko, po čom
-      # sa dá cestovať“ – keď z nej vypadnú železnice alebo trajekty, balík
-      # `-cesty.zip` sa volá rovnako, váži menej a nikto sa nedozvie, že v ňom
-      # chýba celý spôsob dopravy. To isté platí opačne: predfilter, ktorý
-      # nepustí, na čo sa schéma pýta, spraví z vrstvy prázdno pri zelenom
-      # behu.
-      #
-      # A SÚ V NEJ AJ OBMEDZENIA NA CESTE – výška podjazdu, hmotnosť,
-      # rýchlosť. Mali vlastnú vrstvu, ale sú to atribúty tých istých ciest,
-      # takže keď odtiaľto vypadnú, nie sú NIKDE a sieť sa nakreslí rovnako.
-      # Hodnota s jednotkou (`3.8 m`, `12'6"`) sa navyše NESMIE zmeniť na
-      # číslo: Planetiler parsuje `NumberFormat.parse`, ktorý vezme číslo zo
-      # začiatku a jednotku zahodí – z 3,8 m by bolo 12 m, potichu.
-      # Rozpis: `workers/lint/transport.py`.
+      # dopravnú sieť sa dá okliešniť potichu: balík sa volá rovnako a váži
+      # menej. Sú v nej aj obmedzenia na ceste – keď odtiaľto vypadnú, nie sú
+      # nikde. Hodnota s jednotkou sa nesmie zmeniť na číslo: Planetiler vezme
+      # číslo zo začiatku a jednotku zahodí.
       - name: "Dopravná sieť: filter, rodiny, obmedzenia a `class`/`druh`"
         run: python3 workers/lint/transport.py
 
-      # HRANICA BEZ MENA JE ZASE LEN ČIARA a presne kvôli menu ten balík je –
-      # vrstva `boundary` OpenMapTiles meno územia nenesie. A je to jediná
-      # vrstva, ktorá stojí na tom, že predfilter doťahuje ČLENOV RELÁCIÍ
-      # (`osmium tags-filter` ich berie sám): hranica obce je relácia, ktorej
-      # cesty samy `boundary=administrative` nemajú, takže s `-R` je vrstva
-      # prázdna pri zelenom behu. Rozpis: `workers/lint/boundaries.py`.
+      # hranica bez mena je zase len čiara a práve kvôli menu ten balík je.
+      # Stojí na tom, že predfilter doťahuje členov relácií – bez `-R` je
+      # vrstva prázdna pri zelenom behu.
       - name: "Hranice: filter, členovia relácií, meno a všetky úrovne"
         run: python3 workers/lint/boundaries.py
 
-      # VODA V OPENMAPTILES MÁ MENO V INEJ VRSTVE než geometriu – tu je na tom
-      # istom prvku a to je celý dôvod balíka. Druhá vec je more: plocha
-      # oceánu v OSM neexistuje (skladá sa z pobrežných čiar celej planéty),
-      # takže `natural=coastline` musí ísť ako ČIARA – ako plocha by z rezaného
-      # PBF vzniklo more, ktoré končí na hranici výrezu.
-      # Rozpis: `workers/lint/water.py`.
+      # voda má v OpenMapTiles meno v inej vrstve než geometriu. More musí ísť
+      # ako čiara (`natural=coastline`) – ako plocha by z rezaného PBF vzniklo
+      # more končiace na hranici výrezu.
       - name: "Vodstvo: filter, členovia relácií, meno a pobrežie ako čiara"
         run: python3 workers/lint/water.py
 
-      # Kraj má na osm.fr vlastný súbor rezaný po jeho administratívnej
-      # hranici, takže sa sťahuje priamo ten – nie 373 MB Slovenska, z ktorého
-      # by sa kraj ešte raz vyrezával (pravidlo 7). Kontrola stráži, že sa tá
-      # obchádzka nevráti a že v číselníku neostane mŕtvy `osmfr.parent`.
-      # Rozpis: `workers/lint/pbf-source.py`.
+      # kraj má na osm.fr vlastný súbor rezaný po jeho hranici, tak sa sťahuje
+      # priamo ten – nie 373 MB Slovenska
       - name: PBF regiónu sa sťahuje priamo z osm.fr
         run: python3 workers/lint/pbf-source.py
 
-      # `actions/setup-java` je AKCIA, takže sa – na rozdiel od sťahovania
-      # jaru – do `workers/lib/planetiler.sh` presunúť nedá a musí stáť pri
-      # každom jobe zvlášť. Je to jedna veta zapísaná na šiestich miestach
-      # a šiesty (mapa sveta) na ňu zabudol: beh 31948543768 stiahol 100 MB
-      # podkladov a padol až za nimi na `UnsupportedClassVersionError`.
-      # Rozpis: `workers/lint/planetiler.py`.
+      # `actions/setup-java` je akcia, takže sa do `workers/lib/planetiler.sh`
+      # presunúť nedá a musí stáť pri každom jobe zvlášť
       - name: Kto púšťa Planetiler, má aj Javu, na ktorej sa spustí
         run: python3 workers/lint/planetiler.py
 
-      # Shim nad Drive musí zniesť nápor súbežných gdalwarpov a GDAL sa musí
-      # vedieť spamätať z jedného stratného spojenia. Oboje je tiché a beh
-      # 31338803278 na tom padol dve časti pred koncom. Rozpis:
-      # `workers/lint/drive-shim.py`.
+      # shim nad Drive musí zniesť nápor súbežných gdalwarpov a GDAL sa musí
+      # vedieť spamätať z jedného stratného spojenia
       - name: Shim nad Drive znesie nápor a GDAL to skúsi znova
         run: python3 workers/lint/drive-shim.py
-      # To isté pre tri výbery výškového zdroja (`contour_source`,
-      # `rock_source`, `shading_source`): musia sedieť s kľúčmi
-      # v workers/data/dem-sources.json a s tým, pre ktoré vrstvy sa zdroj ponúka
-      # (kľúč `for`). Bez toho sa dá pridať zdroj do JSONu a zabudnúť naň vo
-      # formulári (alebo naopak) – a zistí sa to až tým, že build vezme
-      # nesprávny release. Alebo sa `ugkk` objaví v tieňovaní, kde 1 m LiDAR
-      # nie je (máme ho len na výrez, tieňovanie chce celý región).
+      # tri výbery zdroja musia sedieť s kľúčmi v `dem-sources.json` a s tým,
+      # pre ktoré vrstvy sa zdroj ponúka (kľúč `for`)
       - name: Výbery výšok sedia s dem-sources.json
         run: |
           set -euo pipefail
@@ -829,7 +594,7 @@ jobs:
           # (input, ktoré vrstvy, čo je vo výbere navyše k modelom)
           want = {
               "contour_source": ("contours", []),
-              # Skaly majú okrem modelov ešte hotové polygóny z tieňovania.
+              # skaly majú okrem modelov ešte hotové polygóny z tieňovania
               "rock_source": ("rocks", ["tienovanie"]),
               "shading_source": ("shading", []),
           }
@@ -844,82 +609,43 @@ jobs:
                   bad += 1
                   continue
               print(f"{name}: {len(opts)} možností ✓")
-          # `ziadne` je hodnota, ktorou sa vrstva vypína – keby vypadla
-          # z niektorého výberu, nedala by sa tá vrstva vôbec nezapnúť.
+          # `ziadne` je hodnota, ktorou sa vrstva vypína
           sys.exit(1 if bad else 0)
           PY
 
-      # Skript vo `workers/`, ktorý si volá `run:` jedným riadkom, musí od
-      # kroku dostať env, ktoré naozaj číta – inak beží s prázdnym reťazcom
-      # a NESPADNE. A `steps.<id>.outputs` musí mať svoj krok, inak job ticho
-      # vráti prázdno. Rozpis oboch chýb: `workers/lint/worker-env.py`.
+      # skript vo `workers/` musí od kroku dostať env, ktoré naozaj číta –
+      # inak beží s prázdnym reťazcom a nespadne
       - name: Skripty vo workers dostávajú svoje env
         run: python3 workers/lint/worker-env.py
 
-      # PRIEČINOK JE JOB, SÚBOR JE KROK. Ide to pred ostatné kontroly ciest
-      # zámerne: keď sa `workers/` presúvalo z plochého zoznamu do priečinkov,
-      # vzory `workers/*.sh` a `workers/[\w.-]+\.sh` prestali chytať čokoľvek
-      # (ani jeden nepozná lomku) a kontroly zozelenali nad prázdnym zoznamom.
-      # Táto stráži, že sa plochá štruktúra nevráti a nevypne ich znova.
-      # Rozpis: `workers/lint/layout.py`.
+      # priečinok je job, súbor je krok. Ide to pred ostatné kontroly ciest:
+      # pri presune do priečinkov prestali vzory `workers/*.sh` chytať čokoľvek
+      # a kontroly zozelenali nad prázdnym zoznamom.
       - name: Workery ležia v priečinku podľa jobu
         run: python3 workers/lint/layout.py
 
-      # A cesta MEDZI workermi musí ukazovať na existujúci súbor – aj tá, ktorú
-      # si skript skladá až za behu (`$HERE/…`). Práve tá prežila presun do
-      # priečinkov: prepísali sa cesty napísané celé, `$HERE/…` nie, a beh
-      # 31412152523 spadol na štyroch joboch naraz. `bash -n` vidí syntax, nie
-      # cesty. Rozpis: `workers/lint/worker-paths.py`.
+      # aj cesta, ktorú si skript skladá až za behu (`$HERE/…`) – `bash -n`
+      # vidí syntax, nie cesty
       - name: Cesty medzi workermi ukazujú na existujúce súbory
         run: python3 workers/lint/worker-paths.py
 
-      # Výpis priečinka na Drive musí rozuzliť SKRATKY, nie ich preskočiť.
-      # `listing` zahadzovala všetko bez `size` – správne na Google-natívne
-      # dokumenty, lenže skratka `size` tiež nemá a ozajstný súbor za ňou JE.
-      # Sonnyho 1″ priečinok je z nich celý (15 dlaždíc = 15 skratiek), takže
-      # by z neho vypadli dva obrázky a ani jedna dlaždica – a hláška by pritom
-      # vinila zdieľanie priečinka, ktoré je v poriadku. Staticky sa to overiť
-      # nedá (odpovedá až Drive), preto sa `listing` pustí nad napodobeninou.
-      # Rozpis: `workers/lint/drive-shortcuts.py`.
+      # výpis priečinka musí rozuzliť skratky, nie ich preskočiť: skratka nemá
+      # `size`, ale súbor za ňou je. Staticky sa to overiť nedá, tak sa
+      # `listing` pustí nad napodobeninou.
       - name: Skratky na Drive sa rozuzľujú na cieľ
         run: python3 workers/lint/drive-shortcuts.py
-      # actionlint kontroluje schému a výrazy, ale nie to, či `needs.X.outputs.Y`
-      # naozaj existuje ako výstup jobu X. To je vlastná kontrola – práve na
-      # tomto sa dá po rozdelení na joby ticho pomýliť.
-      # Neexistujúci výstup nie je chyba behu – GitHub ho vyhodnotí ako PRÁZDNY
-      # REŤAZEC, takže `if:` na ňom vyjde nepravdivo, vrstva sa nepridá a beh
-      # zazelená. Kontrola hľadá výstupy na dvoch miestach: pri obyčajnom jobe
-      # v jeho `outputs:`, pri jobe s `uses:` v `on.workflow_call.outputs`
-      # volaného súboru. Rozpis: `workers/lint/job-refs.py`.
+      # actionlint nekontroluje, či `needs.X.outputs.Y` naozaj existuje.
+      # Neexistujúci výstup nie je chyba behu – GitHub ho vyhodnotí ako prázdny
+      # reťazec, takže `if:` vyjde nepravdivo a beh zazelená.
       - name: Odkazy medzi jobmi
         run: python3 workers/lint/job-refs.py
 
-      # DĹŽKA SÚBORU. Dlhý súbor sa nedá naraz prehliadnuť: ďalšia zmena v ňom
-      # nevidí, čo tam už je, a pridáva vedľa namiesto toho, aby to použila
-      # (pravidlo 1 v CLAUDE.md). Preto strop 800 riadkov a rozdelenie na viac
-      # súborov (pravidlo 5).
-      #
-      # PRE WORKERY JE TO CHYBA, PRE WORKFLOWY VAROVANIE – a nie je to zľava,
-      # je to iná jednotka. Skript sa čítá zhora nadol, takže sa dá rozdeliť na
-      # moduly (a `shading-rocks.py` 2023 → 715, `drive-auth.py` 894 → 752,
-      # `dmr5-drive.py` 888 → 684, `dmr5-raster.py` 853 → 419 sa aj rozdelilo).
-      # Workflow je GRAF JOBOV a `build-map-region.yml` má 2013 riadkov, z ktorých je
-      # 598 komentár a 197 vnútro `run:` blokov – **holej YAML štruktúry je
-      # 1100 na 17 jobov**. Aj keby sa zmazal každý komentár a každý `run:`
-      # blok, ostane 1218 riadkov. Pod 800 sa teda dostať nedá presunutím
-      # ničoho, len rozrezaním na ďalšie `workflow_call` súbory – a tam sa
-      # zoznam ~20 inputov na job musí napísať DVAKRÁT (v `inputs:` volaného
-      # aj v `with:` volajúceho). To by pridalo viac riadkov, než by ubralo,
-      # a zdvojilo by presne to, na čom sa už raz rozišla kontrola so
-      # sťahovaním (pravidlo 1, beh 31307163093).
-      #
-      # Čo workflow naozaj zabije, je strop 128 KiB – GitHub nad ním súbor
-      # ticho neprijme – a ten stráži kontrola „Veľkosť súborov workflowov"
-      # vyššie, v bajtoch. Riadky sú tu ako varovanie, aby rast bolo vidieť.
-      #
-      # POSLEDNÝ V JOBE ZÁMERNE: kým bol tretí a padal, všetkých pätnásť
-      # kontrol za ním sa preskočilo – teda celý zmysel tohto workflowu
-      # (beh 31377123600, kde sa o štýle ani o publikovaní nedozvedelo nič).
+      # dĺžka súboru: strop 800 riadkov, pre workery chyba, pre workflowy
+      # varovanie. Workflow je graf jobov a pod 800 sa nedá dostať inak než
+      # rozrezaním na ďalšie `workflow_call` súbory – tam sa ale zoznam inputov
+      # musí napísať dvakrát. Workflow naozaj zabije strop 128 KiB, ktorý stráži
+      # kontrola vyššie; riadky sú tu ako varovanie, aby rast bolo vidieť.
+      # Posledný v jobe zámerne: kým padal skôr, preskočili sa všetky za ním.
       - name: Súbory pod 801 riadkov
         run: |
           set -euo pipefail
