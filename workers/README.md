@@ -49,7 +49,7 @@ Mapa · Build map state       CELÁ KRAJINA na jedno kliknutie: spustí
 Mapa · Regenerate state      JEDNA VRSTVA v celej krajine: body, línie,
 (manuálne, výber vrstvy)     navigačné dáta, vrstevnice, skaly, tieňovanie
                              ─► tá istá štafeta, kraj po kraji
-                             ▲ body, línie a navigácia sú MINÚTY na kraj:
+                             ▲ body a línie sú MINÚTY na kraj:
                                majú vlastný balík, takže sa dá prepísať len
                                on („Mapa · Pregeneruj vrstvu kraja")
                              ▲ vrstvy z výškového modelu idú celým buildom
@@ -58,9 +58,9 @@ Mapa · Regenerate state      JEDNA VRSTVA v celej krajine: body, línie,
 
 Mapa · Pregeneruj vrstvu     JEDNA VRSTVA JEDNÉHO KRAJA nanovo, bez toho,
 kraja (manuálne, jeden kraj) aby sa prestavala mapa:
-                               body     ─► {kraj}-body.zip
-                               línie    ─► {kraj}-linie.zip
-                               navigácia ─► {kraj}-navigacia.zip
+                               body   ─► {kraj}-body.zip
+                               línie  ─► {kraj}-linie.zip
+                                          (trasy, obmedzenia AJ graf)
                              ▲ na Drive sa prepíše LEN ten balík a v
                                `maps.json` sa položka DOPLNÍ, nie prepíše
                              ▲ na Pages NEJDE – je to jedna vrstva, nie mapa
@@ -3469,8 +3469,7 @@ nad krajom nespúšťa celý build, ale to jedno, čo si vyberieš (`co`):
 | voľba | čo sa prepíše | ako a čo to stojí |
 |---|---|---|
 | `body` | `{kraj}-body.zip` | vlastná pipeline, **minúty** na kraj |
-| `linie` | `{kraj}-linie.zip` | vlastná pipeline, **minúty** na kraj |
-| `navigacia` | `{kraj}-navigacia.zip` | vlastná pipeline, **minúty** na kraj |
+| `linie` | `{kraj}-linie.zip` (trasy, obmedzenia **aj graf**) | vlastná pipeline, **minúty** na kraj |
 | `vrstevnice` | `{kraj}-vrstevnice-skaly.zip` | celý build kraja, `rebuild: vrstevnice` |
 | `skaly` | `{kraj}-vrstevnice-skaly.zip` | celý build kraja, `rebuild: skaly` |
 | `tienovanie` | `{kraj}-tienovanie.zip` | celý build kraja, `rebuild: tienovanie` |
@@ -3485,11 +3484,16 @@ niečo iné, než si vybral, a beh by bol zelený. Stráži to
 
 ### Dve cesty, dve ceny — a prečo
 
-Body, línie a navigácia sa počítajú z **toho istého OSM PBF** ako mapa a nič
-iné z buildu nepotrebujú. A hlavne: každá z nich má **vlastný balík** na
-Drive, takže sa dá postaviť len tá vrstva a prepísať len jej súbor. Robí to
-**Mapa · Pregeneruj vrstvu kraja** (`regenerate-region.yml`) — príprava PBF,
-jeden job vrstvy a `publish-map.py --only=<balík>`.
+Body a línie sa počítajú z **toho istého OSM PBF** ako mapa a nič iné
+z buildu nepotrebujú. A hlavne: obe majú **vlastný balík** na Drive, takže sa
+dá postaviť len tá vrstva a prepísať len jej súbor. Robí to **Mapa ·
+Pregeneruj vrstvu kraja** (`regenerate-region.yml`) — príprava PBF, joby tej
+vrstvy a `publish-map.py --only=<balík>`.
+
+`linie` je pritom **trojica** (značené trasy, obmedzenia na ceste a navigačný
+graf), lebo je to jeden balík. Samostatná voľba „navigácia" by znamenala
+`--only=linie` s balíkom, v ktorom je len graf — trasy a obmedzenia by z neho
+ticho vypadli, lebo `--only` prepisuje balík **celý**.
 
 Vrstevnice, skaly a tieňovanie takú cestu nemajú a je to zámer. Potrebujú
 sklad výškového modelu, jeho doplnenie (`check-dem` a päť jobov `mirror-*`),
@@ -3502,7 +3506,7 @@ tom, ako vrstevnice vznikajú.
 
 ### Čo sa na Drive stane a čo nie
 
-Pri `body`, `linie` a `navigacia` sa nahrá **jeden** balík (ZIP aj `.aar`),
+Pri `body` a `linie` sa nahrá **jeden** balík (ZIP aj `.aar`),
 starý súbor toho mena sa prepíše a položka v `maps.json` sa **doplní, nie
 prepíše**. Ostatné balíky kraja sa nedotknú — a to je celý rozdiel oproti
 buildu mapy: tam „vrstva v builde nie je" znamená „nemá tam čo robiť", tu len

@@ -13,11 +13,13 @@ name: Mapa · Regenerate state
 # pregenerovať a čím sa to nad krajom spustí). Sú v ňom dve skupiny a líšia
 # sa cenou, nie tvarom formulára:
 #
-#   body, linie, navigacia        MINÚTY na kraj. Počítajú sa z toho istého
+#   body, linie                   MINÚTY na kraj. Počítajú sa z toho istého
 #                                 OSM PBF ako mapa a majú VLASTNÝ balík na
 #                                 Drive, takže sa dá postaviť len tá vrstva
 #                                 a prepísať len jej balík. Robí to „Mapa ·
-#                                 Pregeneruj vrstvu kraja".
+#                                 Pregeneruj vrstvu kraja". `linie` je pritom
+#                                 trojica trasy + obmedzenia + navigačný graf:
+#                                 je to jeden balík, tak je to jedna voľba.
 #   vrstevnice, skaly, tienovanie HODINY na kraj. Potrebujú sklad výškového
 #                                 modelu, jeho doplnenie aj kľúče cache –
 #                                 idú preto celým buildom kraja s `rebuild`,
@@ -69,7 +71,6 @@ on:
         options:
           - body
           - linie
-          - navigacia
           - vrstevnice
           - skaly
           - tienovanie

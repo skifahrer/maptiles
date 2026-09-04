@@ -12,9 +12,9 @@ name: Mapa · Pregeneruj vrstvu kraja
 #
 # Tento workflow postaví LEN TÚ VRSTVU a na Drive prepíše LEN JEJ BALÍK:
 #
-#     co: body        `{kraj}-body.zip`        body z OSM (points.yml)
-#     co: linie       `{kraj}-linie.zip`       značené trasy + obmedzenia ciest
-#     co: navigacia   `{kraj}-navigacia.zip`   graf Valhally
+#     co: body        `{kraj}-body.zip`   body z OSM (points.yml)
+#     co: linie       `{kraj}-linie.zip`  značené trasy, obmedzenia na ceste
+#                                         a navigačný graf (Valhalla)
 #
 # ── PREČO PRÁVE TIETO TRI ─────────────────────────────────────────────────
 # Sú to vrstvy, ktoré sa počítajú z toho istého OSM PBF ako mapa a nič iné
@@ -76,6 +76,11 @@ on:
       # `workers/lint/regenerate.py`: voľba, ktorá je v dávke a nie tu, by
       # znamenala, že dávka spustí beh s hodnotou, ktorú tento formulár
       # nepozná – a ten spadne hneď na vstupe, osemkrát za sebou.
+      # LÍNIE A NAVIGÁCIA SÚ JEDNA VOĽBA, lebo sú jeden balík: trasy,
+      # obmedzenia na ceste a graf Valhally je tá istá sieť z toho istého PBF,
+      # raz nakreslená a raz zjazdná. Samostatná „navigácia" by znamenala
+      # balík, v ktorom sú len tie zjazdné dáta – trasy a obmedzenia by z neho
+      # ticho vypadli, lebo `--only` prepisuje balík CELÝ.
       co:
         description: "Ktorá vrstva sa má pregenerovať"
         required: true
@@ -84,7 +89,6 @@ on:
         options:
           - body
           - linie
-          - navigacia
       test:
         description: "Rýchly test: len 4 km² zo stredu kraja (skúška pipeline)"
         required: false
@@ -472,14 +476,14 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_roads_pct }}
       day: ${{ needs.plan.outputs.day }}
 
-  # ---------- navigačný graf ----------
-  # Opäť ten istý workflow, aký volá build mapy. Graf odloží ako artefakt
-  # `navigacia-graf` (nie `site-…`, lebo na Pages nemá čo robiť) a balenie si
-  # ho stiahne menom – presne ako v builde.
+  # ---------- línie z OSM: navigačný graf ----------
+  # TRETIA časť balíka `linie` a opäť ten istý workflow, aký volá build mapy.
+  # Graf odloží ako artefakt `navigacia-graf` (nie `site-…`, lebo na Pages
+  # nemá čo robiť) a balenie si ho stiahne menom – presne ako v builde.
   navigacia:
     name: Navigačný graf (Valhalla)
     needs: plan
-    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'navigacia' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'linie' }}
     uses: ./.github/workflows/navigation-region.yml
     with:
       region_key: ${{ needs.plan.outputs.key }}
@@ -515,11 +519,7 @@ jobs:
       # (trasy a obmedzenia) a pri `body` jeden, takže menami by sa to muselo
       # napísať pre každú vrstvu zvlášť.
       #
-      # PRI `navigacia` SA TENTO KROK PRESKAKUJE. Graf sa zámerne nevolá
-      # `site-…` (na Pages nemá čo robiť), takže by vzor nesadol na nič –
-      # a `download-artifact` s prázdnym výsledkom padá, nie mlčí.
       - name: Pozbieraj vrstvu
-        if: ${{ inputs.co != 'navigacia' }}
         uses: actions/download-artifact@v8
         with:
           pattern: site-*
@@ -528,11 +528,11 @@ jobs:
 
       # Graf sa nevolá `site-…` (na Pages nemá čo robiť), takže sa sťahuje
       # menom. BEZ `continue-on-error` – na rozdiel od buildu mapy, kde je
-      # mapa bez navigácie stále mapa, je tu graf JEDINÝ obsah balíka. Keby
-      # artefakt nebol, `publish-map.py` by spadol o krok nižšie na „balík
-      # nemá ani jeden súbor" a nebolo by z toho vidieť, že chýba práve graf.
+      # mapa bez navigácie stále mapa, je tu graf TRETINOU balíka a ten sa
+      # prepisuje celý. Keby artefakt nebol, `-linie.zip` by prišiel o graf
+      # a na ničom by to nebolo vidieť; radšej spadnúť tu.
       - name: Stiahni navigačný graf
-        if: ${{ inputs.co == 'navigacia' }}
+        if: ${{ inputs.co == 'linie' }}
         uses: actions/download-artifact@v8
         with:
           name: navigacia-graf
