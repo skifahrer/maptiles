@@ -579,6 +579,32 @@ takže 3D reliéf nedvíha koruny stromov, kým vrstevnice vedú po zemi.
   ich vynúti prepočítať nanovo.
 - Keď sa nevyrobia, štýl padá späť na AWS Terrain Tiles.
 
+#### Balík je JEDEN a volá sa výškový model
+
+Tieňovanie reliéfu a 3D terén sú **dve použitia tých istých dlaždíc**, nie dve
+vrstvy: hillshade aj `terrain` čítajú z toho istého zdroja `dem`. Preto je
+balík jeden (`tienovanie`, kľúč ostáva kvôli menám na Drive) a v katalógu sa
+volá **„Výškový model" / „Height model"** – meno je sľub o rozsahu a
+„tieňovanie" bolo meno jedného z tých dvoch použití.
+
+**3D sa zapína v ŠTÝLE, nie v klientovi.** `terrain: { source, exaggeration }`
+je súčasť špecifikácie, takže si ho každý klient zapne sám – web aj iOS cez
+MapLibre Native. Kým to štýl nenosil, zapínal si ho za behu len web
+(`map.setTerrain` v `poc/web/app.js`) a všetko ostatné dostávalo plochú mapu,
+hoci dlaždice v štýle boli. Rozhoduje `terrain_3d` vo formulári: `auto` (a `1`)
+znamená „zapni, ak máme VLASTNÉ dlaždice" – na globálne AWS Terrain Tiles sa
+3D nezapne ani na výslovnú žiadosť, lebo sú hrubé a spravili by z hôr mydlové
+kopce.
+
+**Manifest to povie nahlas.** `_site/tiles/manifest.json` nesie `terrain_3d`
+a `terrain_exaggeration` a **číta ich z hotového štýlu** (`workers/deploy/site.sh`
+sa pozrie do `_site/styles/*.json`), nie z prepínača: prepínač je `auto`, takže
+sám o výsledku nehovorí. Appka podľa toho poľa ponúka vrstvu „3D terén" práve
+pre región, ktorý ju má – inak by ju musela hádať zo `dem` (dlaždice sú, ale 3D
+mohlo byť vypnuté). Celý ten reťazec – štýl, zdroj, prevýšenie, manifest –
+kontroluje [`workers/lint/terrain3d.mjs`](lint/terrain3d.mjs); bez neho je
+chýbajúce 3D plochá mapa, ktorú nikto neohlási.
+
 ### Skaly (najstrmšie úseky terénu)
 
 Kde sú vrstevnice husté, je stena. Hustota čiar je ale len **obraz sklonu** –
@@ -1959,7 +1985,10 @@ Priečinok hovorí, čoho sa mapa týka, a čo chýba, sa vyrobí:
                                                   ale SO ZNAČENÝMI TRASAMI
                                                   a s hľadaním; bez glyfov
                                                   a viewera (tie sú na Pages)
-    presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice (.pmtiles)
+    presovsky-vysoke_tatry-tienovanie.zip         VÝŠKOVÝ MODEL – terrarium
+                                                  dlaždice (.pmtiles); klient si
+                                                  z nich kreslí tieňovanie
+                                                  reliéfu AJ 3D terén
     presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy (.pmtiles)
     presovsky-vysoke_tatry-cesty.zip              CELÁ DOPRAVNÁ SIEŤ (cesty od
                                                   diaľnice po schody, železnice,
@@ -2178,7 +2207,9 @@ km² nedala pomýliť s ostrou, a aby ju **neprepísala**.
 
 Robí to [`workers/deploy/publish-map.py`](deploy/publish-map.py), vypnúť sa to dá
 voľbou `publish=false` v poli `options` a pozrieť si balíky lokálne ide bez
-Drive:
+Drive. **Ako sa balík volá a kam patrí** je vedľa, vo
+[`workers/deploy/mena.py`](deploy/mena.py) — meno na Drive je stále, takže je
+to sľub, a sľuby sú na jednom mieste:
 
 ```bash
 REGION_KEY=presovsky AREA_KEY=cely TILES_MAXZOOM=14 \
@@ -3666,7 +3697,7 @@ nad krajom nespúšťa celý build, ale to jedno, čo si vyberieš (`co`):
 | `navigacia` | `{kraj}-navigacia.zip` (graf Valhally) | **minúty** – z toho istého PBF ako mapa |
 | `vrstevnice` | `{kraj}-vrstevnice-skaly.zip` | desiatky minút až hodiny – z výškového modelu |
 | `skaly` | `{kraj}-vrstevnice-skaly.zip` | desiatky minút až hodiny – z výškového modelu |
-| `tienovanie` | `{kraj}-tienovanie.zip` | desiatky minút až hodiny – z výškového modelu |
+| `tienovanie` | `{kraj}-tienovanie.zip` (výškový model – tieňovanie aj 3D terén) | desiatky minút až hodiny – z výškového modelu |
 
 Nad krajom to **vždy** robí „Mapa · Pregeneruj vrstvu kraja" – aj pri vrstvách
 z výškového modelu. Prepíše sa preto vždy len ten jeden balík.
