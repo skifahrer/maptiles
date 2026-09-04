@@ -14,11 +14,14 @@ name: Mapa · Regenerate state
 # robí „Mapa · Pregeneruj vrstvu kraja" – tá postaví len tú jednu vec
 # a prepíše len jej balík na Drive. Ceny sa ale líšia rádovo:
 #
-#   body, linie                   MINÚTY na kraj – počítajú sa z toho istého
+#   body, linie, navigacia        MINÚTY na kraj – počítajú sa z toho istého
 #                                 OSM PBF ako mapa a nič iné nepotrebujú.
-#                                 `linie` je pritom trojica trasy + obmedzenia
-#                                 + navigačný graf: je to jeden balík, tak je
-#                                 to jedna voľba.
+#                                 `linie` je pritom trojica dopravná sieť +
+#                                 značené trasy + obmedzenia na ceste: je to
+#                                 jeden balík, tak je to jedna voľba.
+#                                 `navigacia` je vlastná voľba, lebo je vlastný
+#                                 balík – graf váži rádovo viac než tie tri
+#                                 kreslené vrstvy dokopy.
 #   vrstevnice, skaly, tienovanie DESIATKY MINÚT AŽ HODINY – treba sklad
 #                                 výškového modelu, prípadne ho doplniť,
 #                                 prečítať a nad ním trasovať. Robí to
@@ -75,6 +78,7 @@ on:
         options:
           - body
           - linie
+          - navigacia
           - vrstevnice
           - skaly
           - tienovanie

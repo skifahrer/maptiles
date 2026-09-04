@@ -90,19 +90,32 @@ JOBS = {
         "workflow": "regenerate-region.yml",
         "inputs": {"co": "body"},
     },
-    # LÍNIE A NAVIGÁCIA SÚ JEDNA VOĽBA, lebo sú JEDEN BALÍK. Značené trasy,
-    # obmedzenia na ceste a graf Valhally je tá istá cestná a chodníková sieť
-    # z toho istého PBF – raz nakreslená a raz zjazdná – a `-linie.zip` nesie
-    # všetky tri. Samostatná voľba „navigácia" by znamenala `--only=linie`
-    # s balíkom, v ktorom je len graf: trasy a obmedzenia by z neho ticho
-    # vypadli. Rozpis je v hlavičke `workers/deploy/subory.py`.
+    # LÍNIE SÚ TRI VRSTVY V JEDNOM BALÍKU: celá dopravná sieť (cesty od
+    # diaľnice po schody, železnice, trajekty, lanovky), značené trasy
+    # a obmedzenia na ceste. Pregenerujú sa VŠETKY TRI naraz, lebo `--only`
+    # prepisuje balík CELÝ – jedna nová vrstva a dve chýbajúce by z neho
+    # spravili balík, ktorý sľubuje, čo nenesie.
     "linie": {
-        "meno": "Línie z OSM",
-        "popis": "značené trasy, obmedzenia na ceste a navigačný graf "
-                 "(Valhalla) – balík `-linie.zip`",
+        "meno": "Dopravná sieť a línie z OSM",
+        "popis": "cesty, železnice, trajekty a lanovky, značené trasy "
+                 "a obmedzenia na ceste – balík `-linie.zip`",
         "balik": "linie",
         "workflow": "regenerate-region.yml",
         "inputs": {"co": "linie"},
+    },
+    # NAVIGÁCIA JE VLASTNÁ VOĽBA, lebo je VLASTNÝ BALÍK. Chvíľu bola časťou
+    # `linie` (tá istá sieť, raz nakreslená a raz zjazdná), ale graf kraja
+    # váži 170 až 190 MB proti desiatkam za tie tri kreslené vrstvy – v jednom
+    # balíku by z neho bolo deväť desatín. Rozpis je v hlavičke
+    # `workers/deploy/subory.py`. Je to zároveň jediná vec, ktorá sa mení pri
+    # zdvihnutí verzie Valhally, a prestavovať kvôli nej dopravnú sieť by bolo
+    # zbytočné.
+    "navigacia": {
+        "meno": "Navigačný graf (Valhalla)",
+        "popis": "graf pre trasovanie v tomto kraji – balík `-navigacia.zip`",
+        "balik": "navigacia",
+        "workflow": "regenerate-region.yml",
+        "inputs": {"co": "navigacia"},
     },
     # Ďalej vrstvy z výškového modelu. Sú drahšie (sklad DEM, čítanie
     # a trasovanie), ale cesta je tá istá – `dem-layers.yml`, čiže ten istý

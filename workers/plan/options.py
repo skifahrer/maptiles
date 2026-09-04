@@ -145,6 +145,21 @@ DEFAULTS = {
     # `min_zoom` 12 a 14, takže na tichú stratu (min_zoom nad maxzoomom) tu
     # miesto nie je; build.sh to aj tak porovná a spadne.
     "roads_maxzoom": ("15", "max zoom dlaždíc s obmedzeniami na ceste"),
+    # DOPRAVNÁ SIEŤ (workers/transport/transport.yml): všetko, po čom sa dá
+    # cestovať – cesty od diaľnice po schody, železnice, trajekty, lanovky.
+    # Je to JADRO BALÍKA `linie`: cestná sieť v základnej mape je vrstva
+    # OpenMapTiles stavaná na kreslenie a leží v jednom archíve so zvyškom
+    # mapy, takže „chcem len siete, po ktorých sa dá cestovať" dnes znamená
+    # stiahnuť stovky MB. Zapínač je tu a nie vo formulári, lebo
+    # `workflow_dispatch` má strop 10 inputov a ten je vyčerpaný.
+    "transport": ("true", "generovať dopravnú sieť (cesty, trate, trajekty, "
+                          "lanovky) do balíka `linie`"),
+    # 14, nie 15: najvyšší `min_zoom` v schéme je 14 (`service` cesty), takže
+    # vyššie už nepribúda, čo by sa ukázalo – pribúdajú len bajty, a je ich
+    # veľa: je to najhustejšia vrstva, akú táto pipeline stavia vlastnou
+    # schémou. Na tichú stratu (min_zoom nad maxzoomom) tu miesto nie je,
+    # build.sh to aj tak porovná a spadne.
+    "transport_maxzoom": ("14", "max zoom dlaždíc s dopravnou sieťou"),
     # INTERVAL VRSTEVNÍC. Bol to input vo formulári a presťahoval sa sem, keď
     # si miesto vzal switch `wikipedia` (ten sa medzitým odsťahoval do
     # `wiki.yml`) – `workflow_dispatch` dovolí najviac 10 inputov. Je to ten
@@ -460,6 +475,12 @@ def main():
         print(f"::error::Voľba „roads“ musí byť true alebo false, "
               f"nie „{values['roads']}“.", file=sys.stderr)
         return 1
+    # To isté pre dopravnú sieť – `transport=1` by ju ticho vyplo a zistilo
+    # by sa to až tým, že v balíku `linie` nie je ani jedna cesta.
+    if values["transport"] not in ("true", "false"):
+        print(f"::error::Voľba „transport“ musí byť true alebo false, "
+              f"nie „{values['transport']}“.", file=sys.stderr)
+        return 1
     # To isté pre vyhľadávací index – `search=0` by ho ticho vyplo
     # a v aplikácii by chýbalo offline hľadávanie.
     if values["search"] not in ("true", "false"):
@@ -592,7 +613,8 @@ def main():
     print(f"\nVrstevnice: {contour_src}   Skaly: {rock_src}   "
           f"Tieňovanie: {shading_src}   Trasy: {values['trails']}   "
           f"Krajinné prvky: {values['features']}   "
-          f"Obmedzenia na ceste: {values['roads']}")
+          f"Obmedzenia na ceste: {values['roads']}   "
+          f"Dopravná sieť: {values['transport']}")
     print("Rýchly test: " + (f"ZAPNUTÝ, terén (vrstevnice, skaly, tieňovanie) "
                              f"len na {values['test_km2']} km² zo stredu "
                              f"výrezu; mapa ostáva celý región a otvorí sa tam"

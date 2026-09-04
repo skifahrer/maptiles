@@ -13,8 +13,10 @@ name: Mapa · Pregeneruj vrstvu kraja
 # Tento workflow postaví LEN TÚ VRSTVU a na Drive prepíše LEN JEJ BALÍK:
 #
 #     co: body        `{kraj}-body.zip`             body z OSM (points.yml)
-#     co: linie       `{kraj}-linie.zip`            trasy, obmedzenia na ceste
-#                                                   a navigačný graf (Valhalla)
+#     co: linie       `{kraj}-linie.zip`            CELÁ dopravná sieť (cesty,
+#                                                   trate, trajekty, lanovky),
+#                                                   trasy, obmedzenia na ceste
+#     co: navigacia   `{kraj}-navigacia.zip`        graf Valhally pre tento kraj
 #     co: vrstevnice  `{kraj}-vrstevnice-skaly.zip` izolínie z modelu terénu
 #     co: skaly       `{kraj}-vrstevnice-skaly.zip` plochy zo sklonu modelu
 #     co: tienovanie  `{kraj}-tienovanie.zip`       výškové dlaždice
@@ -24,10 +26,14 @@ name: Mapa · Pregeneruj vrstvu kraja
 # nepotrebujú – stačí im príprava (`workers/plan/pbf.sh`) a vlastný Planetiler
 # (resp. Docker s Valhallou). Sú to MINÚTY.
 #
-# `linie` sú pritom TRI KUSY NARAZ (trasy, obmedzenia na ceste a graf), lebo
-# je to jeden balík: samostatná voľba „navigácia" by znamenala `--only=linie`
-# s balíkom, v ktorom je len graf – trasy a obmedzenia by z neho ticho
-# vypadli, lebo `--only` prepisuje balík CELÝ.
+# `linie` sú pritom TRI KUSY NARAZ (dopravná sieť, značené trasy a obmedzenia
+# na ceste), lebo je to jeden balík a `--only` prepisuje balík CELÝ: jedna nová
+# vrstva a dve chýbajúce by z neho spravili balík, ktorý sľubuje, čo nenesie.
+#
+# `navigacia` je NAOPAK VLASTNÁ VOĽBA, lebo je vlastný balík – graf kraja váži
+# 170 až 190 MB proti desiatkam za tie tri kreslené vrstvy (rozpis v hlavičke
+# `workers/deploy/subory.py`). Je to zároveň jediné, čo sa mení pri zdvihnutí
+# verzie Valhally, a prestavovať kvôli tomu dopravnú sieť by bolo zbytočné.
 #
 # `vrstevnice`, `skaly` a `tienovanie` potrebujú sklad výškového modelu,
 # prípadne ho doplniť, prečítať a nad ním trasovať – desiatky minút až hodiny.
@@ -93,11 +99,9 @@ on:
       # `workers/lint/regenerate.py`: voľba, ktorá je v dávke a nie tu, by
       # znamenala, že dávka spustí beh s hodnotou, ktorú tento formulár
       # nepozná – a ten spadne hneď na vstupe, osemkrát za sebou.
-      # LÍNIE A NAVIGÁCIA SÚ JEDNA VOĽBA, lebo sú jeden balík: trasy,
-      # obmedzenia na ceste a graf Valhally je tá istá sieť z toho istého PBF,
-      # raz nakreslená a raz zjazdná. Samostatná „navigácia" by znamenala
-      # balík, v ktorom sú len tie zjazdné dáta – trasy a obmedzenia by z neho
-      # ticho vypadli, lebo `--only` prepisuje balík CELÝ.
+      # `linie` sú TRI VRSTVY naraz (dopravná sieť, značené trasy, obmedzenia
+      # na ceste), lebo sú jeden balík a `--only` ho prepisuje CELÝ.
+      # `navigacia` je vlastná voľba, lebo je vlastný balík – rozpis v hlavičke.
       co:
         description: "Ktorá vrstva sa má pregenerovať"
         required: true
@@ -106,6 +110,7 @@ on:
         options:
           - body
           - linie
+          - navigacia
           - vrstevnice
           - skaly
           - tienovanie
@@ -197,6 +202,7 @@ env:
   BUDGET_TRAILS_PCT: "3"
   BUDGET_FEATURES_PCT: "4"
   BUDGET_ROADS_PCT: "2"
+  BUDGET_TRANSPORT_PCT: "8"
   # A to isté pre vrstvy z výškového modelu – `dem-layers.yml` ich dostáva
   # inputom, lebo `env` sa cez `workflow_call` nededí ani od jedného volajúceho.
   BUDGET_CONTOURS_PCT: "25"
@@ -226,10 +232,12 @@ jobs:
       opt_trails_maxzoom: ${{ steps.opts.outputs.opt_trails_maxzoom }}
       opt_features_maxzoom: ${{ steps.opts.outputs.opt_features_maxzoom }}
       opt_roads_maxzoom: ${{ steps.opts.outputs.opt_roads_maxzoom }}
+      opt_transport_maxzoom: ${{ steps.opts.outputs.opt_transport_maxzoom }}
       opt_valhalla_image: ${{ steps.opts.outputs.opt_valhalla_image }}
       opt_custom_pbf_url: ${{ steps.opts.outputs.opt_custom_pbf_url }}
       opt_custom_name: ${{ steps.opts.outputs.opt_custom_name }}
       budget_roads_pct: ${{ env.BUDGET_ROADS_PCT }}
+      budget_transport_pct: ${{ env.BUDGET_TRANSPORT_PCT }}
       # ---------- pre vrstvy z výškového modelu (`dem-layers.yml`) ----------
       # Podiely rozpočtu idú cez výstup a nie z `env:` preto, že `env` sa vo
       # `with:` volaného workflowu čítať nesmie – to isté a z toho istého
@@ -492,10 +500,11 @@ jobs:
           if-no-files-found: ignore
 
   # ---------- línie z OSM: značené trasy ----------
-  # Balík `linie` sú DVE vrstvy (trasy a obmedzenia na ceste) a obe musia
-  # vzniknúť – balík sa prepisuje celý, takže polovica nového a polovica
-  # starého by z neho spravila balík, ktorý o sebe klame. Preto sú to dva
-  # joby a publikovanie beží, len keď ani jeden z nich nespadol.
+  # Balík `linie` sú TRI vrstvy (dopravná sieť, značené trasy a obmedzenia na
+  # ceste) a všetky tri musia vzniknúť – balík sa prepisuje celý, takže
+  # polovica nového a polovica starého by z neho spravila balík, ktorý o sebe
+  # klame. Preto sú to tri joby a publikovanie beží, len keď ani jeden z nich
+  # nespadol.
   trasy:
     name: Značené trasy
     needs: plan
@@ -602,14 +611,35 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_roads_pct }}
       day: ${{ needs.plan.outputs.day }}
 
-  # ---------- línie z OSM: navigačný graf ----------
-  # TRETIA časť balíka `linie` a opäť ten istý workflow, aký volá build mapy.
-  # Graf odloží ako artefakt `navigacia-graf` (nie `site-…`, lebo na Pages
-  # nemá čo robiť) a balenie si ho stiahne menom – presne ako v builde.
+  # ---------- línie z OSM: CELÁ dopravná sieť ----------
+  # TRETIA časť balíka `linie` a jeho jadro: cesty od diaľnice po schody,
+  # železnice, električky a metro, trajekty a lanovky. Ten istý workflow, aký
+  # volá build mapy – rozpis, čo v tej vrstve je, je v hlavičke
+  # `workers/transport/transport.yml`.
+  doprava:
+    name: Dopravná sieť
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'linie' }}
+    uses: ./.github/workflows/transport.yml
+    secrets: inherit                      # cache na Drive; `env` sa nededí
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      region_bbox: ${{ needs.plan.outputs.bbox }}
+      maxzoom: ${{ needs.plan.outputs.opt_transport_maxzoom }}
+      region_clip: ${{ needs.plan.outputs.opt_region_clip }}
+      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      budget_pct: ${{ needs.plan.outputs.budget_transport_pct }}
+      day: ${{ needs.plan.outputs.day }}
+
+  # ---------- navigačný graf ----------
+  # VLASTNÝ BALÍK, teda vlastná voľba (`co: navigacia`) – rozpis v hlavičke.
+  # Ten istý workflow, aký volá build mapy. Graf odloží ako artefakt
+  # `navigacia-graf` (nie `site-…`, lebo na Pages nemá čo robiť) a balenie si
+  # ho stiahne menom – presne ako v builde.
   navigacia:
     name: Navigačný graf (Valhalla)
     needs: plan
-    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'linie' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'navigacia' }}
     uses: ./.github/workflows/navigation-region.yml
     with:
       region_key: ${{ needs.plan.outputs.key }}
@@ -685,7 +715,7 @@ jobs:
   # ---------- balík na Drive a katalóg ----------
   publish:
     name: Balík na Drive a katalóg
-    needs: [plan, body, trasy, cesty, navigacia, dem]
+    needs: [plan, body, trasy, cesty, doprava, navigacia, dem]
     # Ani jeden z jobov vrstvy nesmie spadnúť. `skipped` je v poriadku (beží
     # vždy len tá vrstva, ktorá je vo formulári), `failure` nie – balík sa
     # prepisuje celý a z polovice novej a polovice starej vrstvy by vznikol
@@ -695,6 +725,7 @@ jobs:
           && needs.body.result != 'failure'
           && needs.trasy.result != 'failure'
           && needs.cesty.result != 'failure'
+          && needs.doprava.result != 'failure'
           && needs.navigacia.result != 'failure'
           && needs.dem.result != 'failure'
           && needs.plan.outputs.opt_publish == 'true' }}
@@ -709,9 +740,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Kusy vrstvy. Vzor `site-*`, nie mená: pri `linie` sú to dva artefakty
-      # (trasy a obmedzenia) a pri `body` jeden, takže menami by sa to muselo
-      # napísať pre každú vrstvu zvlášť.
+      # Kusy vrstvy. Vzor `site-*`, nie mená: pri `linie` sú to tri artefakty
+      # (dopravná sieť, trasy a obmedzenia) a pri `body` jeden, takže menami by
+      # sa to muselo napísať pre každú vrstvu zvlášť.
       #
       - name: Pozbieraj vrstvu
         uses: actions/download-artifact@v8
@@ -722,11 +753,11 @@ jobs:
 
       # Graf sa nevolá `site-…` (na Pages nemá čo robiť), takže sa sťahuje
       # menom. BEZ `continue-on-error` – na rozdiel od buildu mapy, kde je
-      # mapa bez navigácie stále mapa, je tu graf TRETINOU balíka a ten sa
-      # prepisuje celý. Keby artefakt nebol, `-linie.zip` by prišiel o graf
-      # a na ničom by to nebolo vidieť; radšej spadnúť tu.
+      # mapa bez navigácie stále mapa, je tu graf CELÝM balíkom. Keby artefakt
+      # nebol, nahral by sa prázdny `-navigacia.zip` a na ničom by to nebolo
+      # vidieť; radšej spadnúť tu.
       - name: Stiahni navigačný graf
-        if: ${{ inputs.co == 'linie' }}
+        if: ${{ inputs.co == 'navigacia' }}
         uses: actions/download-artifact@v8
         with:
           name: navigacia-graf
@@ -735,7 +766,7 @@ jobs:
       - name: Čo prišlo od jobov vrstvy
         run: |
           set -uo pipefail
-          echo "body=${{ needs.body.result }}, trasy=${{ needs.trasy.result }}, cesty=${{ needs.cesty.result }}, navigácia=${{ needs.navigacia.result }}, vrstvy z DEM=${{ needs.dem.result }} (vrstevnice=${{ needs.dem.outputs.res_contours }}, tieňovanie=${{ needs.dem.outputs.res_terrain }})"
+          echo "body=${{ needs.body.result }}, trasy=${{ needs.trasy.result }}, cesty=${{ needs.cesty.result }}, doprava=${{ needs.doprava.result }}, navigácia=${{ needs.navigacia.result }}, vrstvy z DEM=${{ needs.dem.result }} (vrstevnice=${{ needs.dem.outputs.res_contours }}, tieňovanie=${{ needs.dem.outputs.res_terrain }})"
           find _site -type f -printf '%10s  %p\n' 2>/dev/null || true
 
       # TEN ISTÝ packer a ten istý zápis do katalógu ako pri builde mapy, len

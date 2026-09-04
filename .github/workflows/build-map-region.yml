@@ -248,6 +248,13 @@ env:
   # Obmedzenia na ceste: číta to job `tiles` (koľko mu zostalo) aj `roads.yml`,
   # ktorý ho dostane inputom – `workflow_call` `env` nededí.
   BUDGET_ROADS_PCT: "2"
+  # Dopravná sieť (workers/transport/transport.yml) je NAJHUSTEJŠIA vrstva,
+  # akú táto pipeline stavia vlastnou schémou – je to celá cestná, koľajová
+  # a chodníková sieť kraja, teda tá istá hustota, akú má vrstva
+  # `transportation` v základnej mape. 8 % z 900 MB je 72 MB, čo je nad
+  # očakávanou veľkosťou pri maxzoome 14; keď to raz prestane stačiť, povie to
+  # `workers/transport/build.sh`.
+  BUDGET_TRANSPORT_PCT: "8"
   BUDGET_ASSETS_MB: "40"
 
 # ŽIADNY JOB TU NEMÁ `timeout-minutes` A JE TO ZÁMER.
@@ -442,6 +449,9 @@ jobs:
       opt_roads: ${{ steps.opts.outputs.opt_roads }}
       opt_roads_maxzoom: ${{ steps.opts.outputs.opt_roads_maxzoom }}
       budget_roads_pct: ${{ env.BUDGET_ROADS_PCT }}
+      opt_transport: ${{ steps.opts.outputs.opt_transport }}
+      opt_transport_maxzoom: ${{ steps.opts.outputs.opt_transport_maxzoom }}
+      budget_transport_pct: ${{ env.BUDGET_TRANSPORT_PCT }}
       # To isté pre vrstvy z výškového modelu (`dem-layers.yml`) a z toho
       # istého dôvodu: `env` sa vo `with:` volaného workflowu nesmie čítať,
       # tak ide cez výstup prípravy. Definované sú RAZ, v `env:` nižšie, lebo
@@ -910,6 +920,27 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_roads_pct }}
       day: ${{ needs.plan.outputs.day }}
 
+  # ---------- celá dopravná sieť ----------
+  # Vo vlastnom súbore, lebo tento je pri strope 128 KiB – dôvod v `roads.yml`.
+  # Rozpis, čo v tej vrstve je a prečo nestačí cestná sieť zo základnej mapy,
+  # je v hlavičke `workers/transport/transport.yml`. Je to jadro balíka
+  # `linie`: kto chce len siete, po ktorých sa dá cestovať, si ich stiahne bez
+  # zvyšku mapy.
+  transport:
+    name: Dopravná sieť
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.opt_transport == 'true' }}
+    uses: ./.github/workflows/transport.yml
+    secrets: inherit                      # cache na Drive; `env` sa nededí
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      region_bbox: ${{ needs.plan.outputs.bbox }}
+      maxzoom: ${{ needs.plan.outputs.opt_transport_maxzoom }}
+      region_clip: ${{ needs.plan.outputs.opt_region_clip }}
+      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      budget_pct: ${{ needs.plan.outputs.budget_transport_pct }}
+      day: ${{ needs.plan.outputs.day }}
+
   # ---------- vyhľadávací index ----------
   # Beží súbežne s inými jobami. Čítame predfiltrovaný PBF a budujeme
   # SQLite FTS5 index na offline vyhľadávanie. Index sa balí do mapa kusa
@@ -1171,7 +1202,7 @@ jobs:
   # bez nich, ale nasadiť.
   deploy:
     name: Zloženie a nasadenie
-    needs: [plan, dem, trails, features, roads, search, navigacia, tiles, assets]
+    needs: [plan, dem, trails, features, roads, transport, search, navigacia, tiles, assets]
     if: ${{ !cancelled() && needs.tiles.result == 'success' && needs.assets.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -1212,7 +1243,7 @@ jobs:
       - name: Čo prišlo od ostatných jobov
         run: |
           set -uo pipefail
-          echo "Výsledky jobov: vrstevnice=${{ needs.dem.outputs.res_contours }}, trasy=${{ needs.trails.result }}, prvky=${{ needs.features.result }}, obmedzenia=${{ needs.roads.result }}, hľadanie=${{ needs.search.result }}, navigácia=${{ needs.navigacia.result }}, terén=${{ needs.dem.outputs.res_terrain }}, dlaždice=${{ needs.tiles.result }}, ikonky=${{ needs.assets.result }}"
+          echo "Výsledky jobov: vrstevnice=${{ needs.dem.outputs.res_contours }}, trasy=${{ needs.trails.result }}, prvky=${{ needs.features.result }}, obmedzenia=${{ needs.roads.result }}, doprava=${{ needs.transport.result }}, hľadanie=${{ needs.search.result }}, navigácia=${{ needs.navigacia.result }}, terén=${{ needs.dem.outputs.res_terrain }}, dlaždice=${{ needs.tiles.result }}, ikonky=${{ needs.assets.result }}"
           find _site -maxdepth 2 -mindepth 1 -type d -exec du -sh {} \; 2>/dev/null || true
           du -sm _site | cut -f1 | xargs -I{} echo "_site spolu: {} MB"
 
@@ -1303,6 +1334,8 @@ jobs:
           POINTS_ENABLED: ${{ needs.features.outputs.points_enabled || 'false' }}
           ROADS_ENABLED: ${{ needs.roads.outputs.enabled || 'false' }}
           ROADS_MAXZOOM: ${{ needs.roads.outputs.maxzoom || '15' }}
+          TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
+          TRANSPORT_MAXZOOM: ${{ needs.transport.outputs.maxzoom || '14' }}
           ICONS_AVAILABLE: ${{ needs.assets.outputs.available }}
           ICONS_NAME: ${{ needs.assets.outputs.name }}
           REGION_BBOX: ${{ needs.plan.outputs.bbox }}
@@ -1406,6 +1439,7 @@ jobs:
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           FEATURES_ENABLED: ${{ needs.features.outputs.enabled || 'false' }}
           ROADS_ENABLED: ${{ needs.roads.outputs.enabled || 'false' }}
+          TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
           REGION_KEY: ${{ needs.plan.outputs.key }}
           ROCKS_ENABLED: ${{ needs.dem.outputs.rocks_enabled || 'false' }}
           ROCKS_SOURCE: ${{ needs.dem.outputs.rock_source }}
@@ -1507,7 +1541,7 @@ jobs:
   # `needs` niekoho ďalšieho.
   apple-archive:
     name: Balíky ako Apple Archive (.aar)
-    needs: [plan, deploy, dem, trails, features, roads, tiles]
+    needs: [plan, deploy, dem, trails, features, roads, transport, tiles]
     if: ${{ !cancelled() && needs.deploy.result == 'success' && needs.plan.outputs.opt_publish == 'true' && needs.plan.outputs.opt_apple_archive == 'true' }}
     runs-on: macos-latest
     permissions:
@@ -1560,6 +1594,7 @@ jobs:
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           FEATURES_ENABLED: ${{ needs.features.outputs.enabled || 'false' }}
           ROADS_ENABLED: ${{ needs.roads.outputs.enabled || 'false' }}
+          TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
           REGION_KEY: ${{ needs.plan.outputs.key }}
           ROCKS_ENABLED: ${{ needs.dem.outputs.rocks_enabled || 'false' }}
           ROCKS_SOURCE: ${{ needs.dem.outputs.rock_source }}

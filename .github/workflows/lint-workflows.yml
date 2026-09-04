@@ -751,6 +751,15 @@ jobs:
       - name: "Obmedzenia na ceste: filter, jednotky a výlučnosť blokov"
         run: python3 workers/lint/roads.py
 
+      # DOPRAVNÁ SIEŤ SA DÁ OKLIEŠTIŤ POTICHU. Vrstva sľubuje „všetko, po čom
+      # sa dá cestovať“ – keď z nej vypadnú železnice alebo trajekty, balík
+      # `-linie.zip` sa volá rovnako, váži menej a nikto sa nedozvie, že v ňom
+      # chýba celý spôsob dopravy. To isté platí opačne: predfilter, ktorý
+      # nepustí, na čo sa schéma pýta, spraví z vrstvy prázdno pri zelenom
+      # behu. Rozpis: `workers/lint/transport.py`.
+      - name: "Dopravná sieť: filter, všetky rodiny a `class`/`druh`"
+        run: python3 workers/lint/transport.py
+
       # Kraj má na osm.fr vlastný súbor rezaný po jeho administratívnej
       # hranici, takže sa sťahuje priamo ten – nie 373 MB Slovenska, z ktorého
       # by sa kraj ešte raz vyrezával (pravidlo 7). Kontrola stráži, že sa tá

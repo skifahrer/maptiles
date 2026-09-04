@@ -88,12 +88,14 @@ vrátila staré (širšie) fonty. Preto je skript teraz v `hashFiles(...)`.
 > spôsobom sa do mapy dostal aj navigačný graf Valhally – a **pri ňom to
 > neplatí a je to zmerané**: graf kraja váži 170–190 MB a mapa s ním 283 MB,
 > čiže dve tretiny „základnej mapy". To nie sú percentá, to je ten istý
-> prípad ako vrstevnice a tieňovanie, takže je zo základnej mapy VON. Vlastný
-> balík `-navigacia.zip` mal chvíľu a vrátilo sa to späť – ale do `linie`, nie
-> do mapy: trasy, obmedzenia a graf sú tá istá sieť z toho istého PBF, raz
-> nakreslená a raz zjazdná, takže dva balíky boli delenie bez odberateľa.
-> Veľkosť je preto v katalógu pod `maps.linie`, nie pod `casti`. Rozdiel
-> oproti indexu je práve to číslo, nie iná úvaha – `docs/navigation.md` §7a.
+> prípad ako vrstevnice a tieňovanie, takže je zo základnej mapy VON. Chvíľu
+> cestoval v balíku `linie` (trasy, obmedzenia a graf sú tá istá sieť z toho
+> istého PBF, raz nakreslená a raz zjazdná), lenže odkedy je v `linie` CELÁ
+> dopravná sieť, vážia tie tri kreslené vrstvy desiatky MB proti 170–190 za
+> graf – deväť desatín balíka by bol graf. Má preto zase VLASTNÝ
+> `-navigacia.zip` a veľkosť je v katalógu pod `maps.navigacia`, nie pod
+> `casti`. Rozdiel oproti indexu je práve to číslo, nie iná úvaha –
+> `docs/navigation.md` §7a.
 >
 > Dôvod je v poslednom odseku tejto sekcie a v čísle: úspora 4–6,5 MB na
 > balíku, ktorý má 65–152 MB, je 4–8 %. Za to sa kúpila mapa, v ktorej
