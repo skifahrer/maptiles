@@ -544,6 +544,14 @@ jobs:
       - name: "Tieňovanie reliéfu neprekryje mapu pod sebou"
         run: node workers/lint/hillshade.mjs
 
+      # Výškový model (balík `tienovanie`) má dve použitia: tieňovanie reliéfu
+      # a 3D terén. To druhé je jediný riadok v štýle (`terrain`) a všetko na
+      # ňom je ticho: keď chýba, klient nakreslí plochú mapu a nikto nepovie
+      # nič; keď ukazuje na zdroj, ktorý v štýle nie je, MapLibre odmietne celý
+      # štýl. Rozpis: `workers/lint/terrain3d.mjs`.
+      - name: 3D terén je v štýle a ukazuje na výškové dlaždice
+        run: node workers/lint/terrain3d.mjs
+
       # `maps.json` je zoznam hotových máp, ktorý dopisuje BEH – a to je presne
       # ten druh veci, čo sa rozíde ticho: mená v katalógu prestanú sedieť s
       # menami balíkov, katalóg sa zapíše aj po neúspešnom nahratí, alebo build

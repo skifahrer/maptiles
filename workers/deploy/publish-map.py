@@ -433,6 +433,11 @@ def obsah(kind, man, fmt="zip", casti=None):
         "manifest": {"dem": man.get("dem"),
                      "dem_maxzoom": man.get("dem_maxzoom"),
                      "dem_source": man.get("dem_source"),
+                     # Kreslí sa z tých dlaždíc 3D terén? Je to tu preto, že
+                     # appka podľa toho ponúka vrstvu „3D terén" – a `dem` na
+                     # to nestačí: dlaždice môžu byť a 3D vypnuté.
+                     "terrain_3d": man.get("terrain_3d"),
+                     "terrain_exaggeration": man.get("terrain_exaggeration"),
                      "region": reg},
     }
 
