@@ -1,21 +1,13 @@
 name: Mapa · úpravy štýlu
 
-# Protikus k developer módu vo viewri (tlačidlo 🛠 v paneli).
+# Protikus k developer módu vo vieweri (tlačidlo 🛠 v paneli):
 #
-#   mapa na Pages ─► developer mode ─► „Stiahnuť style-overrides.json"
-#                                       │
-#                                       ▼
-#                        tento workflow (vlož obsah súboru)
-#                                       │
-#                     workers/styles/overrides.mjs (kontrola + prečistenie)
-#                                       │
-#                        poc/web/style-overrides.json v repozitári
-#                                       │
-#                     ďalší „Build map" ─► mapa (web aj iOS) s úpravami
+#   developer mode → „Stiahnuť style-overrides.json" → tento workflow →
+#   workers/styles/overrides.mjs (kontrola) → poc/web/style-overrides.json →
+#   ďalší Build map → mapa (web aj iOS) s úpravami
 #
-# Vstup sa nepreberá naslepo: prejde tou istou validáciou ako v prehliadači,
-# takže do zdrojáku sa nedostane neznáma farba, neplatný hex, prepis
-# vlastnosti, ktorú štýl nepodporuje, ani nezmyselný rozsah zoomu.
+# Vstup prejde tou istou validáciou ako v prehliadači, takže sa do zdrojáku
+# nedostane neznáma farba, neplatný hex ani nezmyselný rozsah zoomu.
 
 on:
   workflow_dispatch:
@@ -87,7 +79,7 @@ jobs:
             exit 1
           fi
 
-          # Zrozumiteľná chyba hneď tu, nech sa nehádže až v Node.
+          # zrozumiteľná chyba hneď tu, nech sa nehádže až v Node
           if ! jq empty overrides-input.json 2>/dev/null; then
             echo "::error::Vstup nie je platný JSON. Skontroluj, či si vložil celý obsah súboru style-overrides.json."
             exit 1
@@ -107,8 +99,8 @@ jobs:
       - name: Over, že sa štýl s úpravami vygeneruje
         run: |
           set -euo pipefail
-          # Bez base-url skript nebeží; použije sa fiktívna, ide len o to,
-          # či sa štýl so zapečenými úpravami dá zložiť.
+          # bez base-url skript nebeží; ide len o to, či sa štýl so zapečenými
+          # úpravami dá zložiť
           node workers/styles/build.mjs \
             --base-url=https://example.invalid/fricomaps \
             --region=slovensko \

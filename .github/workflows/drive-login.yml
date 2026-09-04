@@ -1,57 +1,29 @@
 name: Údržba · prihlásenie Drive
 
-# Vyrobí refresh token vlastníka dát na Google Drive a ULOŽÍ HO PRIAMO DO
-# SECRETU. Spúšťa sa raz – potom už len keby účet prístup odvolal.
+# Vyrobí refresh token vlastníka dát na Google Drive a uloží ho priamo do
+# secretu. Spúšťa sa raz – potom už len keby účet prístup odvolal.
 #
-# PREČO EXISTUJE: `workers/drive/auth.py --login` potrebuje prehliadač
-# a loopback server na tom istom stroji, čiže z telefónu sa spustiť nedá.
-# Tento workflow tú rolu rozdelí: prehliadač je telefón, shell je runner.
+# `workers/drive/auth.py --login` potrebuje prehliadač aj loopback server na
+# tom istom stroji; tento workflow tú rolu rozdelí (prehliadač je telefón,
+# shell je runner).
 #
-# ROZSAH PRÁV JE ODTERAZ AJ ZÁPIS (`drive`, nie `drive.readonly`). Nie je to
-# rozmar: cache buildu leží na Drive (`workers/drive/cache.py` – tá GitHubová
-# má 10 GB na repozitár a ticho vyhadzovala najstaršie záznamy), takže sa tam
-# musí dať ukladať a prerieďovať. Starý readonly token ostáva platný na
-# čítanie DMR 5.0, len pod ním cache nič neuloží – posledný krok tohto
-# workflowu to overí a povie.
+# Rozsah práv je aj zápis (`drive`, nie `drive.readonly`): cache buildu leží
+# na Drive, takže sa tam musí dať ukladať.
 #
-# PREČO SA TOKEN NIKDE NEVYPISUJE. Tento repozitár je PUBLIC, takže log behu,
-# súhrn aj artefakty vidí ktokoľvek na internete – a refresh token je prístup
-# na CELÝ Drive vlastníka. Preto sa token z `drive-auth.py` nikdy
-# nedostane na výstup: zapíše sa do súboru s právami 600 a z neho rovno do
-# secretu cez `gh secret set`. V logu ostane len e-mail účtu a či na oba
-# súbory vidí. Ani ty ho neuvidíš – netreba ho vidieť.
+# Token sa nikde nevypisuje – repozitár je public a refresh token je prístup
+# na celý Drive. Zapíše sa do súboru s právami 600 a z neho do secretu.
 #
-# TO POSLEDNÉ SI ŽIADA JEDNO PRÁVO, ČO `GITHUB_TOKEN` NEMÁ: zapísať secret.
-# `secrets: write` nie je v jeho rozsahu (a ani sa doň pridať nedá), takže
-# treba dočasný fine-grained PAT v secrete `DRIVE_PAT`:
+# Zápis secretu `GITHUB_TOKEN` nevie, tak treba dočasný fine-grained PAT
+# v secrete `DRIVE_PAT` (Repository permissions: Secrets → Read and write).
+# Po úspešnom behu ho zmaž.
 #
-#   GitHub → Settings → Developer settings → Personal access tokens
-#     → Fine-grained tokens → Generate new token
-#     Repository access:      Only select repositories → fricomaps
-#     Repository permissions: Secrets → Read and write   (nič iné netreba)
-#     Expiration:             7 dní stačí
-#   → hodnotu vlož ako repository secret DRIVE_PAT
+# Ďalej treba `DRIVE_CLIENT` (repository VARIABLE, nie secret) a `DRIVE_SECRET`.
 #
-# Po úspešnom behu DRIVE_PAT zmaž – workflow to na konci aj pripomenie.
-#
-# ČO TREBA MAŤ PRIPRAVENÉ (jedno aj druhé sa dá spraviť z telefónu):
-#   DRIVE_CLIENT   client_id  OAuth klienta typu „Desktop app" – NIE secret,
-#                             ale repository VARIABLE (Settings → Secrets
-#                             and variables → Actions → Variables): nie je to
-#                             tajné, chodí v každej adrese prihlásenia.
-#   DRIVE_SECRET   client_secret toho istého klienta – toto UŽ secret je
-#   DRIVE_PAT      ten PAT vyššie
-#
-# AKO TO IDE (dva behy tohto workflowu):
-#   1. spusti bez vyplneného `code` → v súhrne behu je odkaz na prihlásenie
-#   2. odkaz otvor v telefóne, prihlás sa účtom, ktorý DMR 5.0 VLASTNÍ, povoľ
-#   3. prehliadač skončí na `http://127.0.0.1:8731/?code=…` a nemá to kde
-#      otvoriť („Safari nemôže otvoriť stránku") – to je v poriadku, tá adresa
-#      je celý zmysel kroku. Skopíruj ju z adresného riadku celú.
-#   4. spusti tento workflow znova a tú adresu vlož do `code`
-#
-# Kód z Google platí pár minút a je JEDNORAZOVÝ: keď druhý beh spadne na
-# `invalid_grant`, nie je to chyba nastavenia – len začni znova od kroku 1.
+# Ako to ide: spusti bez `code` → v súhrne je odkaz → otvor ho v telefóne
+# a prihlás sa účtom, ktorý DMR 5.0 vlastní → prehliadač skončí na
+# `http://127.0.0.1:8731/?code=…` a nemá to kde otvoriť (to je v poriadku,
+# tá adresa je celý zmysel kroku) → spusti znova a adresu vlož do `code`.
+# Kód platí pár minút a je jednorazový.
 
 on:
   workflow_dispatch:
@@ -71,7 +43,7 @@ permissions:
   contents: read
 
 concurrency:
-  # Dva behy naraz by si vymieňali kód, ktorý je jednorazový.
+  # dva behy naraz by si vymieňali kód, ktorý je jednorazový
   group: drive-login
   cancel-in-progress: false
 
@@ -86,15 +58,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # PRVÝ BEH SKONČÍ TU. Odkaz sa skladá z `client_id` v secrete, aby sa
-      # nič neprepisovalo ručne.
-      #
-      # VYPISUJE SA NA DVE MIESTA, a to naschvál: v súhrne behu sa dá kliknúť,
-      # ale **mobilná appka GitHubu súhrny nezobrazuje** – tam je vidieť len
-      # log kroku. Tak je odkaz aj v logu, na vlastnom riadku a bez ozdôb, aby
-      # sa dal označiť a skopírovať. Tajné na ňom nie je nič: `client_id` je
-      # verejná časť OAuth klienta (chodí v každej adrese prihlásenia)
-      # a bez `client_secret` sa z kódu token vymeniť nedá.
+      # prvý beh skončí tu. Odkaz sa vypisuje na dve miesta naschvál: mobilná
+      # appka GitHubu súhrny nezobrazuje, tam je vidieť len log kroku.
+      # Tajné na ňom nie je nič – `client_id` je verejná časť OAuth klienta.
       - name: Odkaz na prihlásenie
         if: ${{ inputs.code == '' }}
         run: |
@@ -122,9 +88,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Odkaz je v súhrne behu (Summary)."
 
-      # Bez práva zapísať secret by beh token vyrobil a nemal ho kam dať –
-      # a vypísať ho v public repozitári nesmie. Nech to padne TU, pred
-      # výmenou kódu, kým je kód ešte použiteľný na ďalší pokus.
+      # bez práva zapísať secret by beh token vyrobil a nemal ho kam dať.
+      # Nech to padne tu, kým je kód ešte použiteľný na ďalší pokus.
       - name: Skontroluj právo zapísať secret
         if: ${{ inputs.code != '' }}
         env:
@@ -141,8 +106,8 @@ jobs:
       - name: Vymeň kód za refresh token
         if: ${{ inputs.code != '' }}
         env:
-          # Cez `env`, nie rozvinuté do príkazu: v tom, čo sa vloží do
-          # formulára, môže byť čokoľvek a v `run:` by to bol kus shellu.
+          # cez `env`, nie rozvinuté do príkazu: v tom, čo sa vloží do
+          # formulára, môže byť čokoľvek a v `run:` by to bol kus shellu
           CODE: ${{ inputs.code }}
         run: |
           set -euo pipefail
@@ -157,14 +122,13 @@ jobs:
           NAME: ${{ inputs.secret_name }}
         run: |
           set -euo pipefail
-          # Hodnota ide do `gh` po stdine zo súboru – nie cez argument ani
-          # `echo`, aby sa neocitla ani v `set -x`, ani v zozname procesov.
+          # po stdine zo súboru – nie cez argument ani `echo`, nech sa hodnota
+          # neocitne v `set -x` ani v zozname procesov
           gh secret set "$NAME" --repo "$GITHUB_REPOSITORY" < refresh-token.txt
           echo "Secret $NAME je nastavený ✓"
 
-      # Overenie tým istým kódom, ktorým sa potom prihlasuje celá pipeline –
-      # nie druhou implementáciou toho istého. Token sa podáva z toho súboru
-      # a nie zo secretu: ten sa v už bežiacom behu ešte neprejaví.
+      # overenie tým istým kódom, ktorým sa prihlasuje celá pipeline. Token sa
+      # podáva zo súboru – secret sa v už bežiacom behu ešte neprejaví.
       - name: Over, že tým účtom sa dá čítať
         if: ${{ inputs.code != '' }}
         env:
@@ -174,10 +138,9 @@ jobs:
           DRIVE_REFRESH="$(cat refresh-token.txt)" \
             python3 workers/drive/dmr5.py --auth-check
 
-      # A druhá polovica: cache buildu sa na Drive UKLADÁ, takže tam token
-      # musí vedieť aj zapisovať. Readonly token vyzerá úplne rovnako a rozdiel
-      # by sa ukázal až tým, že sa cache prestane ukladať – preto sa to overí
-      # hneď tu, kým je čerstvé.
+      # a druhá polovica: cache sa na Drive ukladá, takže tam token musí vedieť
+      # aj zapisovať. Readonly token vyzerá rovnako a rozdiel by sa ukázal až
+      # tým, že sa cache prestane ukladať.
       - name: Over, že tým účtom sa dá aj zapisovať (cache)
         if: ${{ inputs.code != '' }}
         env:
@@ -192,10 +155,7 @@ jobs:
         run: |
           set -uo pipefail
           shred -u refresh-token.txt 2>/dev/null || rm -f refresh-token.txt
-          # Súhrn musí povedať PRAVDU o tom, či token niekde je. Kým tu stálo
-          # „token je v secrete" nastvrdo, tvrdil to aj beh, v ktorom sa nič
-          # neuložilo – a to je ten istý druh tichého omylu, aký táto pipeline
-          # inde stráži.
+          # súhrn musí povedať pravdu o tom, či token niekde je
           {
             echo "## Čo ešte spraviť"
             echo

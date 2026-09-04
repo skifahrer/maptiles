@@ -1,23 +1,13 @@
 name: Mapa · vodstvo
 
 # VODSTVO z OSM do vlastného `.pmtiles`: rieky, potoky, kanály, jazerá,
-# priehrady, rybníky, zálivy a pobrežná čiara – každý prvok AJ S MENOM.
-# Rozpis, čo to je a prečo to nestačí brať zo základnej mapy, je v hlavičke
-# `workers/water/water.yml`; krátko – voda je v OpenMapTiles rozdelená do
-# troch vrstiev (`water`, `waterway`, `water_name`), meno leží v inej vrstve
-# než geometria a potoky vypadávajú podľa zoomu. Táto vrstva je balík
-# `vodstvo`.
+# priehrady, zálivy a pobrežná čiara – každý prvok aj s menom. V OpenMapTiles
+# je voda v troch vrstvách a meno leží mimo geometrie (rozpis v hlavičke
+# `workers/water/water.yml`). Je to balík `vodstvo`.
 #
-# Ten istý vzor ako značené trasy, krajinné prvky a dopravná sieť: to isté PBF
-# sa číta druhýkrát vlastnou schémou.
-#
-# PREČO SAMOSTATNÝ SÚBOR A NIE JOB V `build-map-region.yml`. Ten súbor je pri
-# strope 128 KiB a nad ním GitHub workflow TICHO NEPRIJME: vznikne beh bez
-# jobov, s červeným krížikom a prázdnym logom (pravidlo 3 v CLAUDE.md).
-#
-# Cena za to je, že vstupy sa píšu dvakrát (v `inputs:` tu a vo `with:` tam)
-# a že `workflow_call` NEDEDÍ ani `env`, ani `secrets` volajúceho – oboje sa
-# musí podať.
+# Ten istý vzor ako trasy a dopravná sieť: to isté PBF sa číta druhýkrát
+# vlastnou schémou. Samostatný súbor preto, že `build-map-region.yml` je pri
+# strope 128 KiB.
 on:
   workflow_call:
     inputs:
@@ -64,13 +54,8 @@ on:
       size_mb:
         description: "Veľkosť vrstvy v MB"
         value: ${{ jobs.water.outputs.size_mb }}
-    # `workflow_call` nededí secrets sám, takže ich volajúci musí podať
-    # (`secrets: inherit`) a tento workflow prijať. Bez nich sa cache na Drive
-    # nemá ako otvoriť a Planetiler (93 MB) sa ťahá pri každom behu. Dva tvary
-    # toho istého: všetko v jednom secrete, alebo po dvoch – rozpis vo
-    # `workers/drive/auth.py`. `DRIVE_CLIENT` medzi nimi nie je: je to
-    # repository variable, nie tajný údaj, a `vars.*` sa v tom istom
-    # repozitári čítajú priamo.
+    # `workflow_call` nededí secrets sám. Bez nich sa cache na Drive nemá ako
+    # otvoriť a Planetiler (93 MB) sa ťahá pri každom behu.
     secrets:
       GDRIVE_CREDENTIALS:
         required: false
@@ -109,9 +94,8 @@ jobs:
           name: pbf
           path: data
 
-      # Polygón regiónu z prípravy – z neho je `--polygon` pre Planetiler.
-      # `continue-on-error` preto, že aj bez neho sa beh dokončiť dá: skript
-      # to povie nahlas a dlaždice budú na obdĺžniku bboxu.
+      # polygón regiónu je `--polygon` pre Planetiler; `continue-on-error`,
+      # lebo aj bez neho sa beh dokončiť dá (dlaždice budú na bboxe)
       - name: Stiahni polygón regiónu
         continue-on-error: true
         uses: actions/download-artifact@v8
@@ -142,15 +126,12 @@ jobs:
           path: planetiler.jar
           key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
 
-      # TESTY SCHÉMY PRED STAVBOU. Sú v nej ako `examples` a je to jediná vec,
-      # ktorá o schéme povie pravdu bez celého behu – vrátane toho, že bazén
-      # ani cesta pri rieke vo vodstve nie sú a že pobrežie ide ako ČIARA.
-      # Beží ako prvé, nech to spadne za sekundy a nie po predfiltri.
+      # testy schémy pred stavbou (`examples`) – jediná vec, ktorá o schéme
+      # povie pravdu bez celého behu. Beží ako prvé.
       - name: Testy schémy vodstva
         run: java -jar planetiler.jar verify workers/water/water.yml
 
-      # Rozpis je vo `workers/water/build.sh` (pravidlo 3: veľký `run:`
-      # blok patrí do `workers/`, nie do YAMLu).
+      # rozpis je vo `workers/water/build.sh`
       - name: Vodstvo z OSM → PMTiles
         id: water
         env:

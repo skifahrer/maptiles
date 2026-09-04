@@ -1,50 +1,24 @@
 name: Údržba · týždenné upratovanie
 
-# Jediný upratovací workflow. Vznikol z dvoch (`cleanup-actions.yml`
-# a `cleanup-cache.yml`), ktoré robili tú istú prácu na dvoch miestach: raz za
-# týždeň zmazať to, čo po behoch ostalo. Dva riadky v zozname Actions, dva
-# plány (03:20 a 03:50, posunuté len preto, aby si nelezli do cesty) a dva
-# formuláre s tým istým `dry_run`. Teraz je to jeden workflow s dvoma jobmi –
-# `github` a `drive` – a tie sú oddelené preto, že sa líšia právami aj tým,
-# čo ich vie zhodiť (GitHub API vs. Drive API).
+# Jediný upratovací workflow: raz za týždeň zmaže to, čo po behoch ostalo.
+# Dva joby (`github` a `drive`), lebo sa líšia právami aj tým, čo ich vie zhodiť.
 #
-# PREČO WORKFLOW A NIE PULL REQUEST: behy, vetvy, releasy, artefakty ani cache
-# nie sú súbory v repozitári, takže sa nedajú zmazať zmenou kódu. Token mimo
-# Actions na to nemá právo (`Resource not accessible by integration`), vnútri
-# behu ho `GITHUB_TOKEN` má – keď mu to workflow dovolí nižšie v `permissions`.
+# Workflow a nie pull request preto, že behy, vetvy, releasy, artefakty ani
+# cache nie sú súbory v repozitári – zmazať ich vie len `GITHUB_TOKEN` vnútri
+# behu.
 #
-# ČO MAŽE NA GITHUBE:
-#   • behy zrušených workflowov – po zmazanom súbore ostane položka v zozname
-#     Actions navždy, zmizne až keď má nula behov (sem patria sondy `zz-*`);
-#   • behy odmietnutých súborov – keď je súbor workflowu neplatný, GitHub pri
-#     pushi vyrobí beh BEZ JOBOV, pomenovaný cestou k súboru, a vyzerá to, že
-#     sa workflow spustil sám po mergi;
-#   • voliteľne vetvy `claude/*`, ktoré sú celé v hlavnej vetve;
-#   • releasy (`dem-sonny`, `dem-dmr5`, `dem-terrain`, …), ich assety a tagy;
-#   • artefakty všetkých behov;
-#   • GitHub cache – tá sa už nepoužíva (všetko je na Drive), takže tam len
-#     zaberá miesto.
+# Na GitHube maže behy zrušených workflowov a odmietnutých súborov, releasy
+# aj ich assety, artefakty, GitHub cache (tá sa už nepoužíva) a voliteľne
+# vetvy `claude/*`. Nič sa tým nestratí – všetko publikované leží v sklade na
+# Drive (`workers/drive/store.py`).
 #
-# NIČ SA TÝM NESTRATÍ. Výškové modely, skaly, tieňovanie aj medzivýsledky na
-# pozretie ležia v sklade na Google Drive (`workers/drive/store.py`) – to je
-# JEDINÉ miesto, kam pipeline publikuje. Že sa `gh release` ani dlhodobý
-# artefakt nevrátia, stráži `Kontrola · lint workflowov`.
+# Na Drive prerieďuje cache dvoma rýchlosťami: hotové vrstvy z výškového modelu
+# 180 dní (sú to hodiny výpočtu na kraj), zvyšok 30. Sklad `vysledky` 90 dní,
+# presne tá retencia, ktorú mal artefakt. Sklady s výškovým modelom sa
+# neprerieďujú – to sú drahé zrkadlá.
 #
-# ČO PRERIEĎUJE NA DRIVE. GitHub si staré záznamy vyhadzoval sám (7 dní bez
-# použitia, 10 GB na repozitár), Drive nie – bez toho by priečinok rástol
-# donekonečna a raz by zaplnil účet, ktorý drží aj DMR 5.0. Cache sa
-# prerieďuje DVOMA rýchlosťami: hotové vrstvy z výškového modelu (vrstevnice,
-# skaly, tieňovanie) sú hodiny výpočtu na kraj a držia sa 180 dní, zvyšok 30 –
-# rozpis je vo `workers/drive/cache.py`. To isté platí pre
-# sklad `vysledky`: odkedy sa nepublikuje do artefaktov, padá doňho jeden
-# archív medzivýsledkov na beh, teda niečo, čo len rastie. Prerieďuje sa na
-# 90 dní, presne tá retencia, ktorú mal artefakt. Sklady s výškovým modelom sa
-# NEPRERIEĎUJÚ: to sú drahé zrkadlá (jeden stupeň DMR 5.0 je pol hodiny
-# čítania z Drive) a majú tam ležať, kým ich niekto ručne nezmaže.
-#
-# TÝŽDENNE beží `tyzdenne`: releasy, artefakty a obe cache. Behy a vetvy sa
-# z plánu NEMAŽÚ – to je história a patrí do rúk človeku. „Len vypísať"
-# nemaže nič.
+# Z plánu beží `tyzdenne`: releasy, artefakty a obe cache. Behy a vetvy sa
+# z plánu nemažú – to je história a patrí do rúk človeku.
 
 on:
   workflow_dispatch:
@@ -87,50 +61,43 @@ on:
         default: "90"
         type: string
   schedule:
-    # Nedeľa 03:20 UTC – mimo času, keď sa buildy spúšťajú ručne. Kým to boli
-    # dva workflowy, museli mať dva časy; jeden workflow s dvoma jobmi si do
-    # cesty nelezie, tak stačí jeden.
+    # nedeľa 03:20 UTC – mimo času, keď sa buildy spúšťajú ručne
     - cron: "20 3 * * 0"
 
 permissions:
   contents: read
 
 concurrency:
-  # Dva behy naraz by si navzájom mazali to isté a hádzali 404.
+  # dva behy naraz by si navzájom mazali to isté a hádzali 404
   group: cleanup
   cancel-in-progress: false
 
 jobs:
-  # ---------- GitHub: behy, vetvy, releasy, artefakty, cache ----------
   github:
     name: Upratať GitHub
-    # Pri behu z plánu je `inputs.co` prázdne – vtedy platí `tyzdenne`, teda
-    # releasy a artefakty. Samotná cache sa upratuje v druhom kroku.
+    # pri behu z plánu je `inputs.co` prázdne – vtedy platí `tyzdenne`
     if: ${{ inputs.co != 'cache' }}
     runs-on: ubuntu-latest
     permissions:
       actions: write    # mazanie behov, artefaktov a cache
       contents: write   # mazanie vetiev a releasov aj s ich tagmi
     steps:
-      # Checkout je tu kvôli jedinej veci: skript sa pozerá, či súbor
-      # workflowu ešte existuje. Bez neho by mu všetky vyšli ako zrušené.
+      # checkout je tu kvôli jedinej veci: skript sa pozerá, či súbor workflowu
+      # ešte existuje. Bez neho by mu všetky vyšli ako zrušené.
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Behy, vetvy, releasy a artefakty
         env:
           GH_TOKEN: ${{ github.token }}
-          # `tyzdenne` (aj beh z plánu, kde je `inputs.co` prázdne) = releasy
-          # a artefakty. Behy a vetvy sú história a tú maže človek.
+          # `tyzdenne` = releasy a artefakty; behy a vetvy sú história
           MODE: ${{ (inputs.co == '' || inputs.co == 'tyzdenne') && 'releasy_a_artefakty' || inputs.co }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: python3 workers/tools/cleanup-actions.py
 
-      # GitHubová cache má na repozitár strop 10 GB a keď sa naplní, nič
-      # nepovie – ticho vyhodí najstaršie záznamy. Práve preto sa cache
-      # presťahovala na Drive (`workers/drive/cache.py`) a to, čo v GitHube
-      # ostalo, už nikto nehľadá. Keďže build tam nič nové neukladá, po
-      # zmazaní to ostane prázdne.
+      # GitHubová cache má strop 10 GB a keď sa naplní, ticho vyhodí najstaršie
+      # záznamy – preto sa presťahovala na Drive. To, čo v GitHube ostalo, už
+      # nikto nehľadá.
       - name: Zmaž GitHub cache
         if: ${{ inputs.co == '' || inputs.co == 'tyzdenne' || inputs.co == 'cache' || inputs.co == 'vsetko' }}
         env:
@@ -138,7 +105,6 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
         run: python3 workers/tools/cleanup-cache.py
 
-  # ---------- Drive: cache buildu a sklad medzivýsledkov ----------
   drive:
     name: Prerieď Drive
     if: ${{ inputs.co == '' || inputs.co == 'tyzdenne' || inputs.co == 'cache' || inputs.co == 'vsetko' }}
@@ -146,8 +112,8 @@ jobs:
     permissions:
       contents: read
     env:
-      # Prerieďovanie na Drive maže súbory, takže potrebuje token vlastníka
-      # – a s rozsahom na zápis. Readonly token to povie hneď a s návodom.
+      # prerieďovanie maže súbory, takže potrebuje token vlastníka s rozsahom
+      # na zápis; readonly to povie hneď a s návodom
       GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
       DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
       DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
@@ -156,19 +122,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Lacná otázka na začiatok: vie tento beh na Drive vôbec zapisovať?
-      # Odpoveď sa inak dozvieme až tým, že mazanie vráti 403.
+      # lacná otázka na začiatok – inak sa odpoveď dozvieme až z 403 pri mazaní
       - name: Prístup k cache na Drive
         continue-on-error: true
         run: python3 workers/drive/cache.py --check
 
-      # DVE RÝCHLOSTI, JEDNO PRERIEĎOVANIE. Hotové vrstvy z výškového modelu
-      # (vrstevnice, skaly, tieňovanie) sú hodiny výpočtu na kraj a build sa
-      # na ne vie spýtať aj o mesiace – dávka nad krajinou ich berie hotové,
-      # keď sedia nastavenia. Tridsať dní na ne teda znamenalo, že dávka
-      # spustená o mesiac počíta celé Slovensko odznova, hoci výsledok
-      # v priečinku ležal. Zvyšok (stiahnuté DEM dlaždice, Planetiler, PBF) sa
-      # dá zohnať znova, tak mu tridsať dní stačí.
+      # dve rýchlosti: hotové vrstvy z výškového modelu sú hodiny výpočtu na
+      # kraj a dávka ich berie hotové aj o mesiace. Zvyšok (DEM dlaždice,
+      # Planetiler, PBF) sa dá zohnať znova, tak mu 30 dní stačí.
       - name: Prerieď cache na Drive
         env:
           KEEP_DAYS: ${{ inputs.keep_days }}
@@ -186,9 +147,8 @@ jobs:
             "${ARGS[@]}" \
             --summary="$GITHUB_STEP_SUMMARY"
 
-      # Sklad `vysledky` je to, čo nahradilo dlhodobé artefakty behov –
-      # a rovnako ako ony sa má sám prerieďovať. Ostatné sklady nie: výškový
-      # model je drahé zrkadlo, nie odpad po behu.
+      # sklad `vysledky` nahradil dlhodobé artefakty a rovnako ako ony sa má
+      # sám prerieďovať; ostatné sklady nie – výškový model je drahé zrkadlo
       - name: Prerieď sklad medzivýsledkov
         continue-on-error: true
         env:

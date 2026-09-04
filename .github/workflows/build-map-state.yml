@@ -1,71 +1,27 @@
 name: Mapa · Build map state
 
-# CELÁ KRAJINA NA JEDNO KLIKNUTIE. Kraj sa stavia pipeline „Mapa · Build map
-# region"; táto ju spustí pre KAŽDÝ kraj krajiny, jeden po druhom, a nechá
-# ťa tak. Zadáš `slovensko` a o deň sú na Drive všetky kraje – bez toho, aby
-# si musel osemkrát otvoriť formulár a osemkrát trafiť tie isté nastavenia.
+# CELÁ KRAJINA NA JEDNO KLIKNUTIE: spustí „Build map region" pre každý kraj,
+# jeden po druhom, a nechá ťa tak.
 #
-# ── PREČO TO NIE JE JEDEN DLHÝ JOB ────────────────────────────────────────
-# Kraj trvá aj tri hodiny, krajov je osem – celá dávka je zhruba deň. Job na
-# GitHube má strop ŠESŤ HODÍN a po ňom ho GitHub zabije, takže dispečer, čo
-# by čakal na všetky kraje, by umrel v polovici: pár krajov postavených,
-# zvyšok nikdy, a v behu nič, čo by povedalo, že zvyšok nepríde.
+# Beží ako ŠTAFETA, nie jeden dlhý job: kraj trvá aj tri hodiny, krajov je osem
+# a job má strop šesť hodín. Jeden beh = jeden úsek (počkaj – spusti – odovzdaj
+# ďalšiemu svojmu behu). Rozpis vo `workers/state/relay.sh`.
 #
-# Beží to preto ako ŠTAFETA. Jeden beh tohto workflowu = jeden úsek: počká
-# na kraj, ktorý beží, spustí ďalší a spustí si ĎALŠÍ SVOJ BEH, ktorý
-# pokračuje. Reťaz behov strop nemá – každý článok je nový job s vlastnými
-# šiestimi hodinami. Rozpis je vo `workers/state/relay.sh`; sem sa nezmestí
-# a ani nemá (`build-map-region.yml` je 883 bajtov pod stropom 128 KiB, nad
-# ktorým GitHub workflow ticho neprijme).
+# Proti jednému kraju sa líši v troch veciach:
+#   area          natvrdo `cely_region`
+#   publish_pages natvrdo vypnuté – na Pages je jedna mapa a osem behov by ju
+#                 osemkrát prepísalo
+#   reuse_layers  dopĺňa sa ako `true`: vrstvy, ktoré s týmito nastaveniami už
+#                 raz vznikli, sa neprepočítavajú (to je väčšina toho dňa)
 #
-# ── V ČOM SA LÍŠI OD JEDNÉHO KRAJA ────────────────────────────────────────
-# V troch veciach a všetky sú dôsledok toho, že ide o celú krajinu:
-#
-#   area          natvrdo `cely_region`. Výrez je pohorie a vyberať jedno
-#                 pohorie pre osem krajov nedáva zmysel.
-#   publish_pages natvrdo VYPNUTÉ. Na Pages je JEDNA mapa, takže osem behov
-#                 za sebou by stránku osemkrát prepísalo a nechalo na nej
-#                 posledný kraj. Kraje idú na Drive a do `maps.json`; koho
-#                 zaujíma stránka, pustí si ten kraj zvlášť.
-#   reuse_layers  dopĺňa sa do `options` ako `true`. Vrstevnice, skaly
-#                 a tieňovanie, ktoré s TÝMITO nastaveniami už raz vznikli, sa
-#                 neprepočítavajú – a to je väčšina toho dňa, ktorý dávka
-#                 trvá. Kto chce prepočet, povie to: `rebuild` (jedna vrstva
-#                 nanovo) alebo `options: reuse_layers=false` (celá dávka
-#                 prísne, ako jeden kraj). Rozpis vo `workers/state/relay.sh`.
-#
-# Všetko ostatné je to isté a podáva sa to ďalej nezmenené – zdroje výšok,
-# prah skál, `rebuild`, rýchly test aj `options`.
-#
-# ── ČO TO STOJÍ ───────────────────────────────────────────────────────────
-# Úsek, ktorý čaká na kraj, drží jedného bežca a nič nerobí. Repozitár je
-# public, takže minúty sú zadarmo; z dvadsiatich súbežných jobov si berie
-# JEDEN a beh kraja ich v špičke potrebuje asi desať, čiže si nezavadzajú.
-# Je to cena za to, že sa nečaká v jednom dlhom jobe, ktorý by GitHub zabil.
-#
-# Beh kraja má `concurrency: pages`, takže naraz beží JEDEN – to sem sadá,
-# lebo dávka aj tak spúšťa kraje po jednom. Kto medzitým spustí kraj ručne,
-# nech to spraví najviac raz: pri TROCH behoch v jednej skupine GitHub ten
-# prostredný ZRUŠÍ – a zrušený kraj dávku zastaví (viď nižšie), lebo zrušenie
-# ručné a zrušenie GitHubom sa v API nedajú rozoznať. Dávka to napíše do
-# súhrnu aj s kolíkom, ktorým sa dá pokračovať tam, kde skončila.
-#
-# ── SPADNUTÝ KRAJ DÁVKU NEZASTAVÍ, ZRUŠENÝ ÁNO ────────────────────────────
-# Zmysel dávky je „postav Slovensko a nechaj ma tak", takže sa po SPADNUTOM
-# kraji pokračuje ďalším. POSLEDNÝ úsek na tom spadne – dávka nesmie skončiť
-# zelená s dierou v mape.
-#
-# ZRUŠENIE je ale opak poruchy: je to jediný spôsob, ako bežiacej dávke
-# povedať „dosť". Zrušený beh kraja preto reťaz ZASTAVÍ (ďalší kraj sa
-# nespustí a ďalší článok nevznikne) a zrušený beh dávky zruší aj kraj, na
-# ktorý čakal. Zastaviť sa to teda dá z ktorejkoľvek strany a jedným
-# kliknutím; rozpis je vo `workers/state/estafeta.sh`.
+# Spadnutý kraj dávku nezastaví (posledný úsek na tom spadne, nech nekončí
+# zelená s dierou v mape); ZRUŠENIE áno – je to jediný spôsob, ako bežiacej
+# dávke povedať „dosť". Rozpis vo `workers/state/estafeta.sh`.
 
 on:
   workflow_dispatch:
     inputs:
-      # Krajiny, ktoré nejaké kraje majú. Zoznam drží workers/data/regions.json
-      # (stráži to „Kontrola · lint workflowov").
+      # zoznam drží workers/data/regions.json (stráži lint workflowov)
       country:
         description: "Krajina – postaví sa každý jej kraj"
         required: true
@@ -73,10 +29,8 @@ on:
         type: choice
         options:
           - slovensko
-      # Ďalej to isté, čo má formulár jedného kraja, a s tými istými
-      # predvolenými hodnotami. Kto ich vypisuje: `workers/state/relay.sh` ich
-      # podáva každému behu kraja – a podáva ich CELÉ a zakaždým, lebo články
-      # štafety sú samostatné behy a beh bez nich by postavil inú mapu.
+      # ďalej to isté, čo má formulár jedného kraja. `relay.sh` ich podáva
+      # každému behu celé a zakaždým – články štafety sú samostatné behy
       contour_source:
         description: "Vrstevnice – z ktorého modelu terénu (ziadne = negenerovať)"
         required: false
@@ -127,9 +81,8 @@ on:
           - skaly
           - tienovanie
           - vsetko
-      # Pri dávke to je skúška samotnej dávky, nie mapy: osem krajov po pár
-      # minútach namiesto osem krajov po hodinách. Presne na to, či reťaz
-      # dobehne celá, sa to hodí.
+      # pri dávke je to skúška samotnej dávky, nie mapy: osem krajov po pár
+      # minútach namiesto po hodinách
       test:
         description: "Rýchly test: každý kraj len na 4 km² zo stredu (skúška dávky)"
         required: false
@@ -140,35 +93,30 @@ on:
         required: false
         default: ""
         type: string
-      # ŠTAFETOVÝ KOLÍK, NIE POLE PRE ČLOVEKA. Vypĺňa si ho dávka sama, keď si
-      # spúšťa ďalší svoj beh; pri ručnom spustení ostáva prázdne. Je to vstup
-      # a nie súbor v repozitári preto, že stav dávky je tak vidieť priamo na
-      # behu a nevznikajú z neho commity, ktoré by sa bili s `maps.json` od
-      # práve bežiaceho kraja. Tvar je rozpísaný vo workers/state/relay.sh.
+      # štafetový kolík, nie pole pre človeka – dávka si ho vypĺňa sama.
+      # Vstup a nie súbor v repozitári: stav je vidieť priamo na behu
+      # a nevznikajú commity, ktoré by sa bili s `maps.json`.
       pokracovanie:
         description: "Nevypĺňaj – kolík štafety, dávka si ho podáva sama"
         required: false
         default: ""
         type: string
 
-# `actions: write` je to jediné, čo tento workflow naozaj robí: spúšťa iné
-# behy. Nič nečíta z Drive, nič necommituje – to všetko je vecou behov kraja.
+# `actions: write` je to jediné, čo tento workflow robí: spúšťa iné behy
 permissions:
   contents: read
   actions: write
 
-# ZÁMERNE BEZ `concurrency`. Články štafety sú samostatné behy toho istého
-# workflowu, takže by si v jednej skupine liezli do cesty – a horšie: keď sú
-# v skupine tri behy, GitHub ten prostredný ZRUŠÍ, čiže by si dávka sama
-# odhryzla článok a ticho skončila. Jeden kraj naraz drží samotná štafeta
-# (ďalší sa spustí až po tom, čo predošlý dobehol), nie GitHub.
+# zámerne bez `concurrency`: články štafety sú samostatné behy toho istého
+# workflowu a pri troch v jednej skupine GitHub prostredný zruší – dávka by si
+# tak sama odhryzla článok. Jeden kraj naraz drží samotná štafeta.
 
 jobs:
   estafeta:
     name: Úsek štafety
     runs-on: ubuntu-latest
-    # Pod stropom šiestich hodín, a s rezervou: samotné čakanie na kraj má
-    # v skripte strop 5 h, takže na spustenie ďalšieho článku ostáva hodina.
+    # pod stropom šiestich hodín s rezervou: čakanie na kraj má v skripte
+    # strop 5 h, takže na spustenie ďalšieho článku ostáva hodina
     timeout-minutes: 350
     steps:
       - name: Checkout

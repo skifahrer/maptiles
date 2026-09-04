@@ -1,39 +1,21 @@
 name: Mapa · Build navigácia
 
-# NAVIGAČNÝ GRAF (Valhalla) – to, po čom sa dá viesť trasa. Nie je to mapa
-# a nie je to ani vrstva v mape: dlaždica je kreslený obraz s orezanou
-# a zjednodušenou geometriou, bez odbočovacích zákazov, takže sa z nej routovať
-# nedá. Rozpis celého zadania (auto, pešo, bicykel, autobus, vlak; obchádzanie
-# tried ciest, mýta, maximálna rýchlosť, diaľničná známka po krajinách) je
-# v `docs/navigation.md`.
+# NAVIGAČNÝ GRAF (Valhalla) – to, po čom sa dá viesť trasa. Z dlaždice sa
+# routovať nedá: je to kreslený obraz s orezanou geometriou a bez odbočovacích
+# zákazov. Celé zadanie je v `docs/navigation.md`.
 #
-# VLASTNÁ PIPELINE z tých istých troch dôvodov ako `Build wiki` a `Build svet`:
+# Vlastná pipeline: iné dáta (celé štátne extrakty – rezaný PBF by mal na
+# hranici slepé ulice), iná životnosť a iný výstup (na Pages nejde nič).
+# Balík aj `maps.json` robí ďalej `workers/deploy/publish-map.py`.
 #
-#   * INÉ DÁTA. Nie regionálne PBF kraja, ale CELÉ štátne extrakty – graf sa
-#     nedelí po krajoch (rozpis v `workers/data/routing-areas.json`), a rezaný
-#     PBF by mal na hranici slepé ulice.
-#   * INÁ ŽIVOTNOSŤ. Cestná sieť sa nemení pri každej zmene štýlu; graf je
-#     desiatky minút až hodiny stavby.
-#   * INÝ VÝSTUP. Nejde na Pages (nie je čo kresliť) a nemá čo robiť v rozpočte
-#     stránky. Ide na Drive ako ďalší balík.
-#
-# JEDEN PACKER A JEDEN ZÁPIS DO KATALÓGU TO NERUŠÍ: balík aj `maps.json` robí
-# ďalej `workers/deploy/publish-map.py`, to isté, čo robí Build map a Build
-# svet. Druhý packer by bol druhá pravda o tom istom (pravidlo 1).
-#
-# ČO V TOM GRAFE ZATIAĽ NIE JE: `multimodal`, teda autobus a vlak. Tie stoja na
-# cestovných poriadkoch (GTFS), ktoré v OSM nie sú vôbec – a kým nie je zdroj,
-# je to prázdna schránka. `graf.json` v balíku to o sebe hovorí
-# (`multimodal: false`), aby to klient nemusel hádať.
+# `multimodal` (autobus, vlak) v grafe zatiaľ nie je: stojí na GTFS, ktoré
+# v OSM nie sú. `graf.json` to o sebe hovorí.
 
 on:
   workflow_dispatch:
     inputs:
-      # NA AKÝ ROZSAH. Zoznam je vo `workers/data/routing-areas.json` a nie tu:
-      # to isté rozhodnutie potrebuje sťahovanie PBF, stavba grafu aj
-      # publikovanie. Keď tam pribudne rozsah, dopíš ho aj sem – `choice`
-      # GitHub zo súboru prečítať nevie a `workers/lint/navigation.py` to
-      # porovná.
+      # zoznam je vo `workers/data/routing-areas.json`; `choice` GitHub zo
+      # súboru prečítať nevie, tak sa píše aj sem a lint to porovná
       area:
         description: "Rozsah grafu (susedia = drahý beh, ale trasa prejde hranicu)"
         required: false
@@ -42,10 +24,7 @@ on:
         options:
           - "slovensko"
           - "slovensko_susedia"
-      # OBRAZ S TAGOM, NIE `latest`. Graf a knižnica, ktorá ho čítá v telefóne,
-      # si musia sedieť; nesúlad verzií vyzerá ako pokazená trasa. Predvolené
-      # je `latest`, lebo pripnutá verzia sa zavesí a nikto ju nedvihne – ale
-      # to, čo sa NAOZAJ použilo, ide do balíka (`graf.json`).
+      # graf a knižnica v telefóne si musia sedieť; použité ide do `graf.json`
       valhalla_image:
         description: "Docker obraz Valhally (radšej s tagom než latest)"
         required: false
@@ -57,9 +36,7 @@ on:
         default: true
         type: boolean
 
-# Drive: sem ide hotový balík. Prihlásenie pre celý workflow, nie po kroku –
-# rovnako ako v `build-map-region.yml`, a z toho istého dôvodu (stráži to
-# „Kontrola · lint workflowov").
+# Drive: sem ide hotový balík. Prihlásenie pre celý workflow, nie po kroku.
 env:
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
@@ -72,9 +49,7 @@ jobs:
     name: Navigačný graf
     runs-on: ubuntu-latest
     permissions:
-      # `write` z toho istého dôvodu ako v `deploy`: `maps.json` je jediné
-      # miesto, kde beh zapisuje do repozitára – zoznam, ktorý sa inak bez
-      # tokenu na Drive nedá zistiť.
+      # `write`: `maps.json` je jediné miesto, kde beh zapisuje do repozitára
       contents: write
     steps:
       - name: Checkout
@@ -83,22 +58,20 @@ jobs:
         run: mkdir -p steps-out
 
       # `osmium merge` treba len pri viacerých extraktoch, ale inštalácia je
-      # sekundy a podmienený krok by bol ďalšia vec, ktorá sa môže rozísť
-      # s číselníkom.
+      # sekundy a podmienený krok by bol ďalšia vec, čo sa môže rozísť
       - name: Nainštaluj osmium-tool
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq osmium-tool
 
-      # Rozpis je vo `workers/routing/pbf.sh`.
+      # rozpis je vo `workers/routing/pbf.sh`
       - name: PBF pre graf
         id: pbf
         env:
           AREA: ${{ inputs.area }}
         run: workers/routing/pbf.sh
 
-      # Rozpis je vo `workers/routing/graph.sh`. Docker je na `ubuntu-latest`
-      # k dispozícii, takže sa nič neinštaluje.
+      # rozpis je vo `workers/routing/graph.sh`; Docker je na runneri
       - name: Graf Valhally z PBF
         id: graph
         env:
@@ -106,9 +79,8 @@ jobs:
           VALHALLA_IMAGE: ${{ inputs.valhalla_image }}
         run: workers/routing/graph.sh
 
-      # Kľúč regiónu je v `routing-areas.json` vedľa rozsahu – neodvodzuje sa
-      # z mena rozsahu (pravidlo 2: meno je sľub o rozsahu a `slovensko`
-      # v číselníku rozsahov nie je to isté ako `slovensko` v `regions.json`).
+      # kľúč regiónu je v `routing-areas.json` vedľa rozsahu – neodvodzuje sa
+      # z mena rozsahu (meno je sľub o rozsahu)
       - name: Kľúč regiónu a vrstvy do katalógu
         id: kat
         env:
@@ -122,8 +94,7 @@ jobs:
           a = areas[os.environ["AREA"]]
           print(f"region_key={a['region_key']}")
           # `MAP_LAYERS` je pre pipeline, ktorá nerobí mapu kraja: bez neho by
-          # `publish-map.py` napísal „bez_vrstevnic, bez_skal, bez_tienovania“,
-          # čo pri grafe znie ako mapa s vypnutým terénom.
+          # `publish-map.py` napísal „bez_vrstevnic, bez_skal, bez_tienovania"
           print("map_layers=graf," + ",".join(a["countries"]).lower())
           PY
 
@@ -140,8 +111,7 @@ jobs:
           python3 workers/deploy/publish-map.py --site=_site --maps=maps.json \
             --summary="$GITHUB_STEP_SUMMARY"
 
-      # Ten istý skript, akým katalóg commituje Build map aj Build svet –
-      # vrátane rebasu, keď medzitým pushol iný beh.
+      # ten istý skript, akým katalóg commituje Build map – vrátane rebasu
       - name: Commitni maps.json
         if: ${{ inputs.publish && steps.publish.outcome == 'success' }}
         env:
