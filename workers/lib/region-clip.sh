@@ -80,14 +80,14 @@ POLY="${2:-data/region.poly}"
 # „nič som nenastavil" nemalo znamenať „mapa presahuje".
 CLIP_ON="${OPT_REGION_CLIP:-true}"
 
-# NAFÚKNUTÉ O PREKRYV SO SUSEDOM (`workers/plan/area.py::BORDER_BUFFER_M`) –
-# TO ISTÉ ČÍSLO, o aké `region-poly.py` nafúkol `$POLY`. Bez toho by
-# `--bounds` (vetva nižšie, `region_clip=false` = dnešný default) dal
-# Planetileru presne TESNÝ obdĺžnik okolo pôvodnej, nenafúknutej hranice – a
-# nafúknutý pás v `$POLY` aj v PBF, z ktorého sa dlaždice stavajú, by tak
-# nemal ako vzniknúť. Len v tejto vetve: keď sa `--polygon` naozaj používa
-# (nižšie), Planetiler si okno spočíta z neho a `--bounds` sa nedáva vôbec
-# (rozpis v hlavičke – oba naraz by ho ticho vypli).
+# TO ISTÉ OKNO, AKÉ DOSTANÚ VRSTVY Z DEM (`workers/plan/area.py::pad_bbox`
+# a `BORDER_BUFFER_M`, dnes 0 – režeme presne na hranicu). Ostáva tu preto,
+# že keby sa presah za hranicu raz zase zapol, musel by ho dostať aj
+# `--bounds`: inak by Planetiler v tejto vetve (`region_clip=false`) dostal
+# tesný obdĺžnik okolo hranice a presah v `$POLY` aj v PBF by nemal ako
+# vzniknúť. Len v tejto vetve: keď sa `--polygon` naozaj používa (nižšie),
+# Planetiler si okno spočíta z neho a `--bounds` sa nedáva vôbec (rozpis
+# v hlavičke – oba naraz by ho ticho vypli).
 pad_bbox() {
   python3 - "$1" <<'PY'
 import sys

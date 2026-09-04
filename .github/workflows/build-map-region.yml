@@ -515,33 +515,19 @@ jobs:
           mkdir -p steps-out
           : > steps-out/plan.tsv
 
-      # POLYGÓN KRAJA: hranica, po ktorej je náš PBF rezaný na osm.fr. Vyrába
-      # ho `plan` a ostatné joby ho dostanú ARTEFAKTOM, nie tým, že si ho
-      # stiahnu samy – keby jednému z nich zlyhalo sťahovanie, rezal by na
-      # bboxe, kým ostatní na kraji, čiže dve pravdy o jednej hranici.
+      # HRANICA KRAJA SA POČÍTA AŽ V KROKU „Stiahni PBF" A JE TO ZÁMER.
+      # Kým sa sťahovala ako `.poly` z osm.fr, dala sa spočítať pred PBF a
+      # stál tu vlastný krok. Presná hranica je ale v samotných OSM dátach
+      # (relácia `boundary=administrative` kraja), takže je poradie opačné:
+      # najprv rodičovský extrakt, z neho hranica (`workers/plan/boundary.py`
+      # a `region-poly.py`), a až ňou rez. Medzi stiahnutie a rez sa krok
+      # workflowu vložiť nedá, tak si to `workers/plan/pbf.sh` volá samo –
+      # rozpis je v jeho hlavičke. Nástroje (`osmium`, `gdal-bin`,
+      # `libsqlite3-mod-spatialite`) si tam doinštaluje tiež.
       #
-      # POTREBUJE HO UŽ SÁM PBF, preto tento krok stojí PRED ním: kraj sa
-      # podľa neho reže z rodičovského extraktu (workers/plan/pbf.sh). Keď
-      # `.poly` nie je, ten krok SPADNE – návrat k hotovému exportu kraja by
-      # znamenal mapu bez plôch, čo presahujú do susedného kraja.
-      # Tú istú hranicu chce aj `--polygon` Planetileru, `-cutline` vrstevníc,
-      # maska tieňovania a hranica pre viewer.
-      #
-      # `gdal-bin` + `libsqlite3-mod-spatialite`: polygón sa v skripte NAFÚKNE
-      # o prekryv so susedným krajom cez `ogr2ogr`/`ST_Buffer` (rozpis tam,
-      # ten istý nástroj ako `contours-rocks/build.sh`). Bez nich skript
-      # nespadne, len prekryv preskočí (`::warning::`).
-      #
-      # Krok aj ZMERIA, či na túto mapu susedná nadviaže, a povie to v súhrne
-      # behu (`--summary`) – rozpis vo `workers/plan/seam.py`.
-      - name: Polygón kraja (orez mapy aj vrstiev z DEM)
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gdal-bin libsqlite3-mod-spatialite
-          python3 workers/plan/region-poly.py --region='${{ inputs.region }}' \
-            --out=data/region.geojson --poly-out=data/region.poly \
-            --summary="$GITHUB_STEP_SUMMARY"
+      # Hranica ide potom artefaktom `region-poly` ostatným jobom, nie tak,
+      # že si ju každý spočíta sám: keby jednému z nich zlyhala, rezal by na
+      # bboxe, kým ostatní na kraji – dve pravdy o jednej hranici.
 
       # POZOR na restore/save: `actions/cache` ukladalo až v post-kroku a IBA
       # keď job dobehol úspešne. Keď build spadol o hodinu neskôr, hodiny
@@ -559,10 +545,13 @@ jobs:
           # `v5`: kraj sa zase REŽE z rodiča (pod `v4` ležia hotové exporty
           # z osm.fr, ktorým chýbajú členovia plôch – to sa práve opravuje,
           # takže sa nesmú vrátiť z cache) a test zase orezáva aj mapu.
+          # `v6`: reže sa PRESNOU hranicou z OSM relácie namiesto rozšíreného
+          # `.poly` z osm.fr, takže pod `v5` ležia PBF, v ktorých je pás
+          # susedného kraja aj cudziny – a tie by mapu vrátili po starom.
           # A PRETO JE V KĽÚČI TESTOVACÍ ŠTVOREC – tá istá chyba ako pri `v2`,
           # len naopak: uložené 4 km² by si ostrý beh v ten istý deň vzal ako
           # celý kraj. Počíta sa až v `plan/area.py`, tu sú jeho vstupy.
-          key: pbf-v5-${{ inputs.region }}-${{ steps.opts.outputs.opt_custom_pbf_url }}-${{ steps.opts.outputs.opt_crop_bbox }}-t${{ steps.opts.outputs.opt_test_km2 }}-a${{ inputs.area }}${{ steps.opts.outputs.opt_area_bbox }}-at${{ steps.opts.outputs.opt_test_at }}-${{ steps.day.outputs.d }}
+          key: pbf-v6-${{ inputs.region }}-${{ steps.opts.outputs.opt_custom_pbf_url }}-${{ steps.opts.outputs.opt_crop_bbox }}-t${{ steps.opts.outputs.opt_test_km2 }}-a${{ inputs.area }}${{ steps.opts.outputs.opt_area_bbox }}-at${{ steps.opts.outputs.opt_test_at }}-${{ steps.day.outputs.d }}
 
       # Bash je vo `workers/plan/pbf.sh` – tento súbor má strop 128 kB a nad
       # ním ho GitHub ticho neprijme (stráži Lint workflows). Sem chodia len

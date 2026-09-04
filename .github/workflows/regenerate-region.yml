@@ -312,19 +312,14 @@ jobs:
           mkdir -p steps-out
           : > steps-out/plan.tsv
 
-      # POLYGÓN KRAJA. Potrebuje ho už sám PBF (kraj sa podľa neho reže
-      # z rodičovského extraktu) a potom `--polygon` Planetileru. Ten istý
-      # skript ako v builde – dve hranice toho istého kraja by znamenali
-      # vrstvu orezanú inak než mapa pod ňou.
-      - name: Polygón kraja
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gdal-bin libsqlite3-mod-spatialite
-          python3 workers/plan/region-poly.py --region='${{ inputs.region }}' \
-            --out=data/region.geojson --poly-out=data/region.poly
+      # HRANICA KRAJA SA POČÍTA AŽ V KROKU „Stiahni PBF" – je v OSM dátach
+      # (relácia `boundary=administrative`), takže sa dá prečítať až
+      # z rodičovského extraktu. Volá si to `workers/plan/pbf.sh` samo, ten
+      # istý skript ako v builde mapy: dve hranice toho istého kraja by
+      # znamenali vrstvu orezanú inak než mapa pod ňou. Rozpis je v hlavičke
+      # `workers/plan/region-poly.py`.
 
-      # Kľúč je ten istý ako v builde mapy (`pbf-v5-…`), takže si beh vezme
+      # Kľúč je ten istý ako v builde mapy (`pbf-v6-…`), takže si beh vezme
       # PBF, ktoré dnes stiahol build – a naopak. Bola by škoda ťahať 373 MB
       # druhýkrát v ten istý deň kvôli tomu, že to spustila iná pipeline.
       - name: Cache PBF regiónu (restore)
@@ -332,7 +327,7 @@ jobs:
         uses: ./.github/actions/cache-restore
         with:
           path: data/region.osm.pbf
-          key: pbf-v5-${{ inputs.region }}-${{ steps.opts.outputs.opt_custom_pbf_url }}-${{ steps.opts.outputs.opt_crop_bbox }}-t${{ steps.opts.outputs.opt_test_km2 }}-acely_region${{ steps.opts.outputs.opt_area_bbox }}-at${{ steps.opts.outputs.opt_test_at }}-${{ steps.day.outputs.d }}
+          key: pbf-v6-${{ inputs.region }}-${{ steps.opts.outputs.opt_custom_pbf_url }}-${{ steps.opts.outputs.opt_crop_bbox }}-t${{ steps.opts.outputs.opt_test_km2 }}-acely_region${{ steps.opts.outputs.opt_area_bbox }}-at${{ steps.opts.outputs.opt_test_at }}-${{ steps.day.outputs.d }}
 
       - name: Stiahni PBF iba daného regiónu
         id: region

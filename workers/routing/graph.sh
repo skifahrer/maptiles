@@ -31,10 +31,12 @@
 # vedľa mapy toho kraja. Dva skripty by boli dve pravdy o tom, ako sa graf
 # stavia a čo sa v ňom kontroluje (pravidlo 1).
 #
-# ČO SA PRI REGIÓNE MENÍ: PBF je REZANÝ na hranicu kraja, takže hrana, ktorej
-# chýba druhý koniec, je slepá ulica – trasa v takom grafe KONČÍ NA HRANICI
-# REGIÓNU. Je to zámer (mapa, hľadanie aj navigácia sú za ten istý región),
-# nie opomenutie, a `graf.json` to o sebe hovorí: `rozsah: "region"`
+# ČO SA PRI REGIÓNE MENÍ: PBF je REZANÝ na hranicu kraja – od prechodu na
+# presnú hranicu z OSM (`workers/plan/boundary.py`) naozaj na ňu, nie na ňu
+# plus pár kilometrov suseda –, takže hrana, ktorej chýba druhý koniec, je
+# slepá ulica a trasa v takom grafe KONČÍ NA HRANICI REGIÓNU. Je to zámer
+# (mapa, hľadanie aj navigácia sú za ten istý región), nie opomenutie,
+# a `graf.json` to o sebe hovorí: `rozsah: "region"`
 # a `hranica: "trasa končí na hranici regiónu"`. Kto potrebuje prejsť hranicu,
 # má na to celoštátny balík.
 #

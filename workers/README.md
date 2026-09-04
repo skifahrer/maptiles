@@ -113,14 +113,43 @@ Mapa · úpravy štýlu          style-overrides.json z developer módu
 
 - **Výber regiónu:** celé Slovensko alebo ktorýkoľvek z 8 krajov. Zdroj je
   [osm.fr](https://download.openstreetmap.fr/extracts/europe/slovakia/)
-  (rezané po skutočných administratívnych hraniciach, denne aktualizované);
-  mapovanie a presné bboxy z osm.fr rezacích polygónov sú vo
+  (denne aktualizované); mapovanie, `osm_name`, `admin_level` a bboxy sú vo
   [workers/data/regions.json](data/regions.json). **Kraj sa REŽE z rodiča** –
-  stiahne sa `slovakia-latest.osm.pbf` (373 MB) a `osmium extract -s smart
-  -S types=multipolygon,boundary --polygon` z neho vyreže kraj po jeho `.poly`
-  (~30 s; rozpis [workers/plan/pbf.sh](plan/pbf.sh), stráži
+  stiahne sa `slovakia-latest.osm.pbf` (373 MB), z neho sa prečíta **presná
+  hranica kraja** (OSM relácia `boundary=administrative`,
+  [workers/plan/boundary.py](plan/boundary.py)) a `osmium extract -s smart
+  -S types=multipolygon,boundary --polygon` ňou kraj vyreže (~1 min; rozpis
+  [workers/plan/pbf.sh](plan/pbf.sh), stráži
   [workers/lint/pbf-source.py](lint/pbf-source.py)). Cache nesie dátum, takže
   sa v rámci dňa sťahuje raz.
+
+  **Reže sa presne po hranici kraja a štátu – žiadny presah do susedov.**
+  `.poly`, ktorý osm.fr zverejňuje vedľa extraktov, hranica kraja **nie je**:
+  body má zaokrúhlené na mriežku 0,005° (≈ 550 m) a okolo hranice si ho osm.fr
+  sám rozširuje – namerané na ôsmich krajoch SR sa susedné kraje v tých
+  polygónoch prekrývajú o **2 – 4 km**. Nad tým sa polygón ešte nafukoval
+  o `BORDER_BUFFER_M` (2 500 m), aby medzi dvoma mapami neostala medzera, takže
+  mapa kraja aj vrstvy z výškového modelu siahali kilometre do susedného kraja,
+  do Poľska a na Ukrajinu. Teraz sa hranica číta **z tej istej OSM relácie,
+  z akej je mapa**, pretína sa s hranicou štátu (`ST_Intersection`) a
+  `BORDER_BUFFER_M` je **0**. Prekryv nie je potrebný: susedné kraje zdieľajú
+  v OSM tie isté cesty hranice, takže na seba nadväzujú samy od seba – a či to
+  naozaj platí, meria [`workers/plan/seam.py`](plan/seam.py) v každom behu
+  (medzeru **aj** prekryv).
+
+  **Hranica sa pred rezom zjednoduší na 10 m.** `osmium extract --polygon`
+  testuje každý uzol PBF proti každej úsečke hranice, takže čas rezu rastie
+  s počtom bodov. Namerané na relácii Prešovského kraja (388271, plná geometria
+  z api.openstreetmap.org):
+
+  | hranica | bodov | odchýlka |
+  |---|--:|--:|
+  | presná z OSM | 22 284 | 0 m |
+  | **po `ST_SimplifyPreserveTopology`** | **6 483** | **≤ 10 m** |
+  | `.poly` z osm.fr (mriežka 0,005°) | 2 753 | ~550 m + 2 – 4 km rozšírenie |
+
+  Plocha kraja sa tým zmení o 0,03 % (8 902,6 → 8 905,3 km²), čo je hlboko pod
+  hrúbkou čohokoľvek, čo sa v mape kreslí (dlaždica na z14 má 1,5 km).
 
   **Hotový `{kraj}-latest.osm.pbf` z osm.fr sa nepoužíva, hoci existuje**
   (36 MB, rezaný po tej istej hranici): nie je referenčne úplný. Ploche, ktorá
@@ -1639,13 +1668,17 @@ sklonom 90°.
 | Žilinský | 7 706 km² | 13 068 km² | 41 % |
 | Bratislavský | 2 142 km² | 3 773 km² | 43 % |
 
-**Polygón sa nekreslí ani sa neťahá z OSM – berie sa ten istý `.poly`, ktorým
-je orezaný náš PBF** (openstreetmap.fr ich zverejňuje vedľa extraktov, pri kraji
-je to ~3,5 kB a 249 bodov). Mapa a jej výškové vrstvy tak majú **rovnakú**
-hranicu; druhá definícia by sa raz rozišla s prvou. Vyrába ho
-[`workers/plan/region-poly.py`](plan/region-poly.py) v jobe `plan` a ostatné
-joby ho dostanú **artefaktom** – keby si ho ťahal každý sám a jednému by sa to
-nepodarilo, rezal by na bboxe, kým ostatní na kraji.
+**Polygón sa nekreslí – je to tá istá hranica, ktorou je orezaný náš PBF**:
+OSM relácia `boundary=administrative` kraja, pretnutá s reláciou štátu
+a zjednodušená na 10 m ([`workers/plan/boundary.py`](plan/boundary.py)). Mapa
+a jej výškové vrstvy tak majú **rovnakú** hranicu; druhá definícia by sa raz
+rozišla s prvou. Skladá ju [`workers/plan/region-poly.py`](plan/region-poly.py)
+priamo v [`workers/plan/pbf.sh`](plan/pbf.sh) (hranica je v OSM dátach, takže
+sa dá prečítať až z rodičovského extraktu – pred PBF ju spočítať nejde)
+a ostatné joby ju dostanú **artefaktom** – keby si ju robil každý sám a
+jednému by sa to nepodarilo, rezal by na bboxe, kým ostatní na kraji.
+Keď sa relácia v PBF nenájde, ostáva náhrada: `.poly` z osm.fr, a povie sa
+to `::warning::`-om, lebo taká mapa je o 2 – 4 km väčšia než kraj.
 
 **Pol dlaždice smie prečnievať.** Dlaždica tieňovania sa berie, keď sa jej okno
 zväčšené o pol svojej strany dotýka kraja
@@ -1713,44 +1746,59 @@ mriežke 2048 buniek je bunka ~100 m, kým dlaždica na z14 má ~1,5 km. Vrstevn
 a skaly dostanú polygón ako `-cutline` do gdalwarpu (bez `-crop_to_cutline` –
 okno má ostať bboxom, nech sa kľúče cache nemenia).
 
-### Nadväzuje na mapu kraja tá susedná? – meria sa to, nepredpokladá
+### Nadväzuje na mapu kraja tá susedná – a nelezie do nej? Meria sa to
 
-Kraje sa stavajú **po jednom** a každý sa oreže vlastným `.poly` z osm.fr.
-Aby medzi dvoma stiahnutými mapami neostal pás bez mapy, polygón sa pred
-orezom **nafúkne** o `BORDER_BUFFER_M` (2 500 m,
-[`workers/plan/area.py`](plan/area.py)) VON – to isté číslo nafukuje aj okno
-pre vrstvy z DEM, `--bounds` Planetileru aj masku pre viewer. Či to stačí, sa
-ale nikde nemeralo: obe mapy boli zelené a medzeru by uvidel až človek
-s telefónom v teréne (pravidlo 8).
+Kraje sa stavajú **po jednom** a každý sa oreže vlastnou hranicou. Kým sa tá
+brala z `.poly` osm.fr, boli hranice dvoch susedov dve nezávislé, zaokrúhlené
+a rozšírené čiary – takže sa medzi mapami dalo skončiť aj s dierou, aj
+s niekoľkokilometrovým prekryvom. Nemeralo sa ani jedno: obe mapy boli zelené
+a rozdiel by uvidel až človek s telefónom v teréne (pravidlo 8).
 
-**[`workers/plan/seam.py`](plan/seam.py) to meria v každom behu.** Mapa
-každého kraja siaha `BORDER_BUFFER_M` za jeho hranicu, takže medzi dvoma
-mapami ostane diera práve vtedy, keď sú od seba obe **pôvodné** hranice ďalej
-než dve nafúknutia dokopy:
+**[`workers/plan/seam.py`](plan/seam.py) meria v každom behu obe strany.** Pre
+každý bod vnútornej hranice (vzorka po 250 m):
 
-    medzera(p) = vzdialenosť bodu p na našej hranici k najbližšiemu súrodencovi
-    šev je zavretý  ⟺  medzera(p) < 2 × BORDER_BUFFER_M   pre každé vnútorné p
+    medzera(p) = ako ďaleko je od p najbližší súrodenec   (0 = dotýkame sa)
+    prekryv(p) = ako hlboko je p vnútri súrodenca         (0 = nelezieme doňho)
+    šev sedí  ⟺  obe ≤ 2 × BORDER_BUFFER_M + 2 × 10 m   pre každé vnútorné p
+
+`BORDER_BUFFER_M` je dnes **0** (režeme presne), takže limitom je len
+dvojnásobok tolerancie zjednodušenia hranice: susedia zdieľajú v OSM tie isté
+cesty hranice, ale každý si ich zjednodušuje vo svojom prstenci, takže sa
+spoločná čiara môže rozísť najviac o 20 m. Čo je nad tým, už nie je
+zaokrúhlenie, ale chyba – a povie to `::warning::`.
+
+**Hranice susedov musia byť z toho istého zdroja ako naša.** Merať presnú
+hranicu proti rozšírenému `.poly` z osm.fr by ukázalo prekryv 2 – 4 km, ktorý
+v skutočnosti nikde nie je. Preto sa berú z **toho istého PBF**: susedný kraj
+má s tým naším spoločné cesty hranice, takže `osmium extract -s smart -S
+types=multipolygon,boundary` doplní jeho reláciu celú. Sused, ktorý tam nie
+je, sa vynechá a povie sa to – chýbajúci sused nesmie znamenať „šev je
+v poriadku".
 
 Susedia sa **nikde nepíšu ručne**: súrodenec je región s tým istým
-`osmfr.parent`, ktorého bbox sa toho nášho dotýka (`regions.json`), a jeho
-hranica sa stiahne z osm.fr. Ručný číselník susedov by sa raz rozišiel
-s hranicami a chýbajúci sused by ticho znamenal „šev je v poriadku".
+`osmfr.parent`, ktorého bbox sa toho nášho dotýka (`regions.json`). Ručný
+číselník susedov by sa raz rozišiel s hranicami.
 
 **Vnútorná hranica** znamená bod aspoň 5 km vnútri polygónu rodiča (celej
-krajiny). Bez toho by kontrola hlásila štátnu hranicu: polygóny z osm.fr sú
-okolo hranice rozšírené a **každý inak** – bod 16,9510 48,2620 leží presne na
-hranici Bratislavského kraja (teda na tej rakúskej) a od obrysu Slovenska je
-2,04 km, takže pri prahu 2 km z neho vyšla „medzera 28 km" k Trnavskému kraju,
-ktorý tam nemá čo hľadať.
+krajiny). Bez toho by kontrola hlásila štátnu hranicu ako medzeru – tam
+žiadny súrodenec nie je a mapa tam právom končí.
 
-Namerané na všetkých ôsmich krajoch (`python3 workers/plan/seam.py
---region=…`): susedné kraje sa prekrývajú **už v samotných `.poly`** (osm.fr
-si ich okolo hranice rozširuje sám), takže `medzera` vychádza na celej
-vnútornej hranici **0,00 km** – šev je zavretý s rezervou 5 km. Kontrola dnes
-teda prechádza; jej zmysel je povedať to v deň, keď prestane.
+Namerané na Trnavskom kraji so **starým** zdrojom hranice (`python3
+workers/plan/region-poly.py --region=trnavsky`, teda `.poly` z osm.fr):
 
-**Uložená vrstva z DEM nesmie zmenu prekryvu prežiť.** Tieňovanie aj skaly sa
-odkladajú na Drive a nabudúce sa len stiahnu podľa mena – a to meno prekryv
+| sused | medzera | prekryv |
+|---|--:|--:|
+| Bratislavský | 0 m | **3 444 m** |
+| Trenčiansky | 0 m | **5 789 m** |
+| Nitriansky | 0 m | **5 335 m** |
+
+Medzera bola všade nulová, takže kým sa merala len ona, hlásil beh „šev
+zavretý ✓" – a mapa Trnavského kraja pritom siahala takmer 6 km do
+Trenčianskeho. S presnou hranicou z OSM vychádza medzera aj prekryv **0 m**
+(overené na dvoch susedných krajoch zdieľajúcich tie isté cesty hranice).
+
+**Uložená vrstva z DEM nesmie zmenu presahu prežiť.** Tieňovanie aj skaly sa
+odkladajú na Drive a nabudúce sa len stiahnu podľa mena – a to meno presah
 dlho nenieslo, hoci ho mení. Namerané na balíku Trnavského kraja z 3. 9. 2026
 (build 33738121698):
 
@@ -1763,9 +1811,11 @@ dlho nenieslo, hoci ho mení. Namerané na balíku Trnavského kraja z 3. 9. 202
 Mapa teda pokračovala za hranicu, reliéf pod ňou nie. Meno assetu preto nesie
 `-o<BORDER_BUFFER_M>` ([`workers/terrain/build.sh`](terrain/build.sh),
 [`workers/contours-rocks/build.sh`](contours-rocks/build.sh)) a stráži to
-kontrola [`workers/lint/border-overlap.py`](lint/border-overlap.py). Prvý beh
-po tejto zmene tieňovanie a skaly **prepočíta** – to je tá cena za to, že sa
-prekryv naozaj dostane až do stiahnutej mapy.
+kontrola [`workers/lint/border-overlap.py`](lint/border-overlap.py). Tá istá
+poistka platí aj teraz naopak: prechodom na `BORDER_BUFFER_M = 0` sa meno
+zmenilo z `-o2500` na `-o0`, takže prvý beh po tejto zmene tieňovanie a skaly
+**prepočíta** namiesto toho, aby zo skladu vrátil vrstvu orezanú ešte
+s prekryvom.
 
 ### Dlaždica DEM musí mať aj DÁTA, nie len rozsah
 
