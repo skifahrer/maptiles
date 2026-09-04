@@ -2,79 +2,22 @@ name: Mapa · Pregeneruj vrstvu kraja
 
 # JEDNA VRSTVA JEDNÉHO KRAJA NANOVO – bez toho, aby sa prestavala mapa.
 #
-# Build kraja („Mapa · Build map region") postaví VŠETKO: dlaždice, vrstevnice,
-# skaly, tieňovanie, trasy, prvky, hľadanie aj navigáciu. Trvá to hodiny a je
-# to správne vtedy, keď sa mapa naozaj celá mení. Lenže veľká časť zmien sa
-# týka JEDNEJ vrstvy – pribudne trieda do `workers/features/points.yml`, opraví
-# sa schéma obmedzení, dvihne sa verzia Valhally – a prestavať kvôli tomu celú
-# mapu znamená zaplatiť hodiny za pár minút práce a pri tom prepísať na Drive
-# aj balíky, na ktorých sa nič nezmenilo.
+# Voľby `co`: body, linie (celá dopravná sieť), navigacia, vrstevnice, skaly,
+# tienovanie. Na Drive sa prepíše len príslušný balík.
 #
-# Tento workflow postaví LEN TÚ VRSTVU a na Drive prepíše LEN JEJ BALÍK:
+# `body` a `linie` sú minúty (z toho istého PBF ako mapa), vrstvy z výškového
+# modelu desiatky minút až hodiny – počíta ich `dem-layers.yml`, ten istý
+# workflow, aký nad nimi púšťa build mapy.
 #
-#     co: body        `{kraj}-body.zip`             body z OSM (points.yml)
-#     co: linie       `{kraj}-linie.zip`            CELÁ dopravná sieť (cesty,
-#                                                   trate, trajekty, lanovky),
-#                                                   trasy, obmedzenia na ceste
-#     co: navigacia   `{kraj}-navigacia.zip`        graf Valhally pre tento kraj
-#     co: vrstevnice  `{kraj}-vrstevnice-skaly.zip` izolínie z modelu terénu
-#     co: skaly       `{kraj}-vrstevnice-skaly.zip` plochy zo sklonu modelu
-#     co: tienovanie  `{kraj}-tienovanie.zip`       výškové dlaždice
+# Vrstevnice a skaly sú jeden balík, takže sa počítajú obe (tá nevybraná príde
+# z cache): balík sa prepisuje celý a polovica by sľubovala, čo nenesie.
 #
-# ── DVE CENY, JEDNA CESTA ─────────────────────────────────────────────────
-# `body` a `linie` sa počítajú z toho istého OSM PBF ako mapa a nič iné
-# nepotrebujú – stačí im príprava (`workers/plan/pbf.sh`) a vlastný Planetiler
-# (resp. Docker s Valhallou). Sú to MINÚTY.
+# Publikuje ten istý skript ako build, len s `--only=<balík>`: položka
+# v `maps.json` sa doplní, nie prepíše, a balíky, ktoré tento beh nevyrobil,
+# sa nemažú. Na Pages nejde nič – stránka je celá mapa.
+# `.aar` sa musí prerobiť tiež, preto je tu druhý job.
 #
-# `linie` sú pritom TRI KUSY NARAZ (dopravná sieť, značené trasy a obmedzenia
-# na ceste), lebo je to jeden balík a `--only` prepisuje balík CELÝ: jedna nová
-# vrstva a dve chýbajúce by z neho spravili balík, ktorý sľubuje, čo nenesie.
-#
-# `navigacia` je NAOPAK VLASTNÁ VOĽBA, lebo je vlastný balík – graf kraja váži
-# 170 až 190 MB proti desiatkam za tie tri kreslené vrstvy (rozpis v hlavičke
-# `workers/deploy/subory.py`). Je to zároveň jediné, čo sa mení pri zdvihnutí
-# verzie Valhally, a prestavovať kvôli tomu dopravnú sieť by bolo zbytočné.
-#
-# `vrstevnice`, `skaly` a `tienovanie` potrebujú sklad výškového modelu,
-# prípadne ho doplniť, prečítať a nad ním trasovať – desiatky minút až hodiny.
-# Robí to `dem-layers.yml`, teda TEN ISTÝ workflow, aký nad nimi púšťa build
-# mapy: jedenásť jobov od kontroly skladu po hotové `.pmtiles`. Druhá kópia
-# by bola druhá pravda o tom, ako vrstevnica vzniká, a rozišla by sa presne
-# tam, kde to nikto nevidí – v kľúči cache alebo v tom, ktorý model sa doplní.
-#
-# Proti celému buildu kraja sa aj tak ušetrí všetko ostatné: mapové dlaždice
-# (Planetiler nad celým PBF), ikonky a fonty, štýl, kontrola webu, Pages
-# a hlavne prepísanie OSTATNÝCH balíkov na Drive.
-#
-# ── VRSTEVNICE A SKALY SÚ JEDEN BALÍK ─────────────────────────────────────
-# `-vrstevnice-skaly.zip` nesie obe vrstvy, takže sa pri oboch voľbách
-# počítajú OBE – len tá, ktorá sa nepregeneruje, príde z cache (sekundy).
-# Balík sa prepisuje celý a polovica nová s polovicou chýbajúcou by bola
-# balík, ktorý sľubuje vrstvu, ktorú nenesie.
-#
-# ── ČO SA NA DRIVE STANE (a čo nie) ───────────────────────────────────────
-# Balí a do katalógu zapisuje ten istý skript ako build mapy
-# (`workers/deploy/publish-map.py`), len s `--only=<balík>`. Vtedy sa:
-#   * nahrá JEDEN balík a starý súbor toho mena sa prepíše (mená sú stále),
-#   * položka v `maps.json` sa DOPLNÍ, nie prepíše – ostatné balíky, bbox,
-#     zoomy ani zdroje výšok tento beh nepozná a nesmie ich prepísať,
-#   * balíky, ktoré tento beh nevyrobil, sa NEMAŽÚ. To je celý rozdiel oproti
-#     buildu mapy: tam „vrstva v builde nie je" znamená „nemá tam čo robiť",
-#     tu znamená len „o tejto vrstve tento beh nič nevie".
-# Je to tá istá cesta, akou publikuje „Mapa · Build wiki" – jeden packer
-# a jeden zápis do katalógu pre všetky pipeline (pravidlo 1 v CLAUDE.md).
-#
-# NA PAGES NEJDE NIČ. Stránka je celá mapa a tento beh má v `_site` jednu
-# vrstvu; nahrať to na Pages by znamenalo mapu zmazať.
-#
-# `.aar` SA MUSÍ PREROBIŤ TIEŽ, a preto je tu druhý job. Balíky majú stále
-# mená a na Drive ležia obe podoby vedľa seba – keby sa prepísal len ZIP,
-# ostal by pri ňom `.aar` z predošlého behu, katalóg by ponúkal oba a kto by
-# si stiahol ten druhý, dostal by starú vrstvu. Nie chýbajúcu: STARÚ, a na
-# ničom by to nebolo vidieť.
-#
-# CELÚ KRAJINU NARAZ spustí „Mapa · Regenerate state" (regenerate-state.yml) –
-# tá istá štafeta ako pri „Build map state", len nad krajom spúšťa toto.
+# Celú krajinu naraz spustí „Mapa · Regenerate state".
 
 on:
   workflow_dispatch:
@@ -94,14 +37,9 @@ on:
           - banskobystricky
           - presovsky
           - kosicky
-      # Zoznam drží `workers/state/jobs.py` – tie isté kľúče, aké ponúka
-      # dávka nad celou krajinou. Že sa tieto dva zoznamy nerozídu, stráži
-      # `workers/lint/regenerate.py`: voľba, ktorá je v dávke a nie tu, by
-      # znamenala, že dávka spustí beh s hodnotou, ktorú tento formulár
-      # nepozná – a ten spadne hneď na vstupe, osemkrát za sebou.
-      # `linie` sú TRI VRSTVY naraz (dopravná sieť, značené trasy, obmedzenia
-      # na ceste), lebo sú jeden balík a `--only` ho prepisuje CELÝ.
-      # `navigacia` je vlastná voľba, lebo je vlastný balík – rozpis v hlavičke.
+      # zoznam drží `workers/state/jobs.py` – tie isté kľúče, aké ponúka dávka
+      # nad krajinou (stráži `workers/lint/regenerate.py`).
+      # `linie` sú tri vrstvy naraz, lebo sú jeden balík a `--only` ho prepíše celý.
       co:
         description: "Ktorá vrstva sa má pregenerovať"
         required: true
@@ -116,10 +54,8 @@ on:
           - vrstevnice
           - skaly
           - tienovanie
-      # Zdroje výšok a prah sklonu platia LEN pre vrstvy z výškového modelu.
-      # Hodnoty aj predvoľby sú TIE ISTÉ ako vo formulári kraja – iná
-      # predvoľba by znamenala vrstvu, ktorá vyjde inak než z buildu, a na
-      # ničom by to nebolo vidieť. Stráži `workers/lint/regenerate.py`.
+      # zdroje a prah platia len pre vrstvy z výškového modelu; hodnoty aj
+      # predvoľby sú tie isté ako vo formulári kraja
       contour_source:
         description: "Vrstevnice – z ktorého modelu terénu (ziadne = negenerovať)"
         required: false
@@ -164,14 +100,9 @@ on:
         required: false
         default: false
         type: boolean
-      # Napr. `publish=false` (nič nenahrávať), `apple_archive=false`
-      # (nerobiť `.aar`), `features_maxzoom=16`, `trails_maxzoom=15`.
-      # Celý zoznam aj s predvolenými hodnotami je vo workers/plan/options.py
-      # a neznámy kľúč je chyba, nie ticho ignorovaná hodnota. TEN ISTÝ súbor
-      # ako pri builde mapy zámerne: `features_maxzoom` má jednu predvolenú
-      # hodnotu a keby si ju táto pipeline držala vlastnú, pregenerovaná
-      # vrstva by mala iný strop zoomu než tá z buildu – a v katalógu by pri
-      # nej ostalo číslo z buildu, teda lož.
+      # napr. `publish=false`, `apple_archive=false`, `features_maxzoom=16`.
+      # Ten istý súbor ako pri builde mapy zámerne – vlastná predvoľba by
+      # znamenala vrstvu s iným stropom zoomu, než hovorí katalóg.
       options:
         description: "Zriedka menené nastavenia ako kľúč=hodnota (viď workers/plan/options.py)"
         required: false
@@ -181,43 +112,31 @@ on:
 permissions:
   contents: read
 
-# ZÁMERNE BEZ `concurrency: pages`. Na Pages nejde nič a s buildom mapy si
-# tento beh nekonkuruje o stránku – konkuruje si o BALÍK na Drive, a to je
-# vec toho, kto ho spustí. Skupina `pages` by naopak znamenala, že
-# pregenerovanie bodov čaká na trojhodinový build kraja.
+# zámerne bez `concurrency: pages`: na Pages nejde nič a skupina `pages` by
+# znamenala, že pregenerovanie bodov čaká na trojhodinový build kraja
 
 env:
-  # Prihlásenie na Drive pre celý workflow, nie po kroku: číta sa z neho cache
-  # (Planetiler, PBF) a nahrávajú sa naň balíky. Keby token stál pri jednom
-  # kroku, druhý by sa ticho vrátil k sťahovaniu všetkého odznova. Stráži to
-  # „Kontrola · lint workflowov".
+  # prihlásenie na Drive pre celý workflow, nie po kroku
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
   DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
   DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
   OSMFR_BASE: https://download.openstreetmap.fr/extracts
-  # PODIELY NA ROZPOČTE STRÁNKY. Tie isté čísla ako v `build-map-region.yml` –
-  # `env:` workflowu sa nededí ani cez `workflow_call`, takže sa musia napísať
-  # druhýkrát (tá istá cena, akú platí `roads.yml`, len tam sa podávajú
-  # inputom). Že sa nerozídu, stráži `workers/lint/regenerate.py`: vrstva
-  # pregenerovaná pod iným podielom by varovala inak než tá z buildu.
+  # tie isté čísla ako v `build-map-region.yml` – `env:` sa nededí ani cez
+  # `workflow_call`. Že sa nerozídu, stráži `workers/lint/regenerate.py`.
   BUDGET_TRAILS_PCT: "3"
   BUDGET_FEATURES_PCT: "4"
   BUDGET_TRANSPORT_PCT: "8"
   BUDGET_BOUNDARIES_PCT: "3"
   BUDGET_WATER_PCT: "5"
-  # A to isté pre vrstvy z výškového modelu – `dem-layers.yml` ich dostáva
-  # inputom, lebo `env` sa cez `workflow_call` nededí ani od jedného volajúceho.
+  # to isté pre vrstvy z výškového modelu; `dem-layers.yml` ich dostáva inputom
   BUDGET_CONTOURS_PCT: "25"
   BUDGET_ROCKS_PCT: "12"
   BUDGET_TERRAIN_PCT: "12"
 
 jobs:
-  # ---------- príprava: región a PBF ----------
-  # To isté, čo robí `plan` v builde mapy, len bez toho, čo tu netreba: bez
-  # Pages, bez výrezu a bez výškového modelu. Skripty sú TIE ISTÉ – „ktorý
-  # súbor je región" a „čo znamenajú voľby" sú jedna otázka a odpoveď na ňu má
-  # jedno miesto (pravidlo 1).
+  # to isté, čo robí `plan` v builde mapy, len bez Pages, výrezu a modelu.
+  # Skripty sú tie isté – jedna otázka má mať jedno miesto.
   plan:
     name: Príprava (región, PBF)
     runs-on: ubuntu-latest
@@ -243,10 +162,8 @@ jobs:
       budget_transport_pct: ${{ env.BUDGET_TRANSPORT_PCT }}
       budget_boundaries_pct: ${{ env.BUDGET_BOUNDARIES_PCT }}
       budget_water_pct: ${{ env.BUDGET_WATER_PCT }}
-      # ---------- pre vrstvy z výškového modelu (`dem-layers.yml`) ----------
-      # Podiely rozpočtu idú cez výstup a nie z `env:` preto, že `env` sa vo
-      # `with:` volaného workflowu čítať nesmie – to isté a z toho istého
-      # dôvodu robí `budget_roads_pct` vyššie.
+      # podiely idú cez výstup, lebo `env` sa vo `with:` volaného workflowu
+      # čítať nesmie
       budget_contours_pct: ${{ env.BUDGET_CONTOURS_PCT }}
       budget_rocks_pct: ${{ env.BUDGET_ROCKS_PCT }}
       budget_terrain_pct: ${{ env.BUDGET_TERRAIN_PCT }}
@@ -281,9 +198,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # KTORÝ BALÍK SA IDE PREPÍSAŤ, POVIE ČÍSELNÍK. Keby to bol `case`
-      # v kroku publikovania, dala by sa sem pridať voľba a zabudnúť na balík –
-      # a beh by prepísal ten predošlý, teda cudzí.
+      # ktorý balík sa ide prepísať, povie číselník – `case` v kroku by dovolil
+      # pridať voľbu a zabudnúť na balík
       - name: Ktorý balík to je
         id: co
         run: |
@@ -299,12 +215,8 @@ jobs:
         env:
           CO: ${{ inputs.co }}
 
-      # TEN ISTÝ rozklad volieb ako pri builde mapy – vrátane zdrojov výšok,
-      # z ktorých `options.py` odvodí, čo sa ide počítať (`opt_contour_lines`,
-      # `opt_rocks`, `opt_terrain`, `opt_rock_dem`). Pri `body`, `linie`
-      # a `navigacia` sa tie hodnoty nikam nepodávajú a nikto na DEM nesiahne;
-      # `ziadne` sa dá vybrať aj vtedy, keď sa vrstva z modelu pregenerovať
-      # nemá.
+      # ten istý rozklad volieb ako pri builde. Pri `body`, `linie`
+      # a `navigacia` sa hodnoty nikam nepodávajú a nikto na DEM nesiahne.
       - name: Rozlož voľby
         id: opts
         run: |
@@ -326,16 +238,11 @@ jobs:
           mkdir -p steps-out
           : > steps-out/plan.tsv
 
-      # HRANICA KRAJA SA POČÍTA AŽ V KROKU „Stiahni PBF" – je v OSM dátach
-      # (relácia `boundary=administrative`), takže sa dá prečítať až
-      # z rodičovského extraktu. Volá si to `workers/plan/pbf.sh` samo, ten
-      # istý skript ako v builde mapy: dve hranice toho istého kraja by
-      # znamenali vrstvu orezanú inak než mapa pod ňou. Rozpis je v hlavičke
-      # `workers/plan/region-poly.py`.
+      # hranica kraja sa počíta až v kroku „Stiahni PBF" – je v OSM dátach.
+      # Volá si to `workers/plan/pbf.sh` samo, ten istý skript ako v builde.
 
-      # Kľúč je ten istý ako v builde mapy (`pbf-v6-…`), takže si beh vezme
-      # PBF, ktoré dnes stiahol build – a naopak. Bola by škoda ťahať 373 MB
-      # druhýkrát v ten istý deň kvôli tomu, že to spustila iná pipeline.
+      # kľúč je ten istý ako v builde (`pbf-v6-…`), takže si beh vezme PBF,
+      # ktoré dnes stiahol build – a naopak
       - name: Cache PBF regiónu (restore)
         id: pbf-cache
         uses: ./.github/actions/cache-restore
@@ -357,20 +264,14 @@ jobs:
           REGION: ${{ inputs.region }}
         run: workers/plan/pbf.sh
 
-      # VÝREZ. Pregenerovanie ide vždy na CELÝ kraj (`cely_region`) – výrez je
-      # pohorie a vyberať jedno pohorie pre vrstvu, ktorá sa prepisuje celá,
-      # nedáva zmysel. Vyriešiť sa aj tak musí: `dem-layers.yml` z neho berie
-      # bbox, na ktorom sa vrstvy počítajú, aj kľúč do mena uloženého výsledku.
-      # Ten istý skript ako v builde – dva výpočty toho istého výrezu by
-      # znamenali vrstvu spočítanú inde, než ju sklad hľadá.
+      # pregenerovanie ide vždy na celý kraj, ale výrez sa aj tak musí vyriešiť:
+      # `dem-layers.yml` z neho berie bbox aj kľúč do mena uloženého výsledku
       - name: Vyrieš výrez
         id: area
         run: |
           set -euo pipefail
-          # Rýchly test už výrez vyriešil v `pbf.sh` (musel, aby vedel, kam
-          # položiť štvorec) – odpoveď sa preberá, nie prepočítava: druhý
-          # výpočet by dal ten istý bbox, ale kľúč BEZ prípony `_test4`,
-          # a testovací výsledok by v sklade sadol na miesto ostrého.
+          # rýchly test už výrez vyriešil v `pbf.sh`; druhý výpočet by dal kľúč
+          # bez prípony `_test4` a test by v sklade sadol na miesto ostrého
           if [ -s /tmp/vyrez.txt ]; then
             cat /tmp/vyrez.txt >> "$GITHUB_OUTPUT"
             echo "Výrez z rýchleho testu (spočítaný v príprave):"
@@ -398,9 +299,8 @@ jobs:
             data/region.poly
           retention-days: 1
 
-      # Mená artefaktov (`pbf`, `region-poly`) sú tie isté ako v builde mapy
-      # ZÁMERNE: `roads.yml` a `navigation-region.yml` sú spoločné pre obe
-      # pipeline a sťahujú si ich menom.
+      # mená artefaktov sú tie isté ako v builde: `roads.yml`
+      # a `navigation-region.yml` sú spoločné a sťahujú si ich menom
       - name: Odlož PBF pre vrstvu
         uses: actions/upload-artifact@v7
         with:
@@ -409,12 +309,8 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-  # ---------- body z OSM ----------
-  # `workers/features/build.sh` vyrába DVA súbory naraz (línie s plochami
-  # a body) z jedného predfiltra – balík `body` je z toho druhého. Že sa tu
-  # spočíta aj `-features.pmtiles`, ktoré tento beh nepublikuje, je vedomá
-  # cena: druhý beh Planetileru je pár minút, kým vlastná vetva skriptu by
-  # bola druhá pravda o tom, ako sa prvky filtrujú.
+  # `workers/features/build.sh` vyrába dva súbory naraz; že sa spočíta aj to,
+  # čo tento beh nepublikuje, je vedomá cena za jednu pravdu o filtrovaní
   body:
     name: Body z OSM
     needs: plan
@@ -475,11 +371,8 @@ jobs:
           SIZE_LIMIT_MB: ${{ needs.plan.outputs.opt_size_limit_mb }}
         run: workers/features/build.sh
 
-      # PRÁZDNA VRSTVA JE TVRDÁ CHYBA, nie varovanie – na rozdiel od buildu
-      # mapy. Tam „v území nie je ani jeden prameň" znamená mapu bez tej
-      # vrstvy a mapa je aj tak celá; tu by to znamenalo, že sa nemá čím
-      # prepísať balík, ktorý na Drive LEŽÍ – a `publish-map.py` by ho
-      # nechal tak. Radšej spadnúť tu, kým je vidieť prečo.
+      # prázdna vrstva je tu tvrdá chyba, nie varovanie: nemá sa čím prepísať
+      # balík, ktorý na Drive leží, a `publish-map.py` by ho nechal tak
       - name: Vznikli nejaké body?
         run: |
           set -euo pipefail
@@ -505,18 +398,10 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # ---------- cesty a chodníky: CELÁ dopravná sieť ----------
-  # Celý balík `cesty`: cesty od diaľnice po schody, železnice, električky
-  # a metro, trajekty a lanovky – a k tomu obmedzenia na ceste (výška
-  # podjazdu, hmotnosť, rýchlosť) ako atribúty tých istých ciest. Ten istý
-  # workflow, aký volá build mapy; rozpis, čo v tej vrstve je, je v hlavičke
-  # `workers/transport/transport.yml`.
-  #
-  # JEDEN JOB, A JE TO ZMENA. Kým sa balík volal `linie`, boli v ňom tri
-  # vrstvy z troch jobov a všetky tri museli vzniknúť naraz (balík sa
-  # prepisuje CELÝ). Odkedy sú obmedzenia atribútmi tej istej siete a značené
-  # trasy cestujú v základnej mape, je balík jedna vrstva z jedného jobu –
-  # a polovica nová s polovicou starou už nemá ako vzniknúť.
+  # celý balík `cesty` aj s obmedzeniami na ceste; ten istý workflow, aký volá
+  # build mapy. Rozpis je v hlavičke `workers/transport/transport.yml`.
+  # Jeden job: odkedy sú obmedzenia atribútmi tej istej siete a trasy cestujú
+  # v základnej mape, je balík jedna vrstva.
   doprava:
     name: Cesty a chodníky
     needs: plan
@@ -532,10 +417,7 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_transport_pct }}
       day: ${{ needs.plan.outputs.day }}
 
-  # ---------- hranice území a ich názvy ----------
-  # Ten istý workflow, aký volá build mapy. Rozpis, čo v tej vrstve je a prečo
-  # nestačí hranica zo základnej mapy, je v hlavičke
-  # `workers/boundaries/boundaries.yml`.
+  # ten istý workflow, aký volá build mapy (`workers/boundaries/boundaries.yml`)
   hranice:
     name: Hranice území
     needs: plan
@@ -551,9 +433,7 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_boundaries_pct }}
       day: ${{ needs.plan.outputs.day }}
 
-  # ---------- vodstvo ----------
-  # Ten istý workflow, aký volá build mapy. Rozpis je v hlavičke
-  # `workers/water/water.yml`.
+  # ten istý workflow, aký volá build mapy (`workers/water/water.yml`)
   vodstvo:
     name: Vodstvo
     needs: plan
@@ -569,11 +449,8 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_water_pct }}
       day: ${{ needs.plan.outputs.day }}
 
-  # ---------- navigačný graf ----------
-  # VLASTNÝ BALÍK, teda vlastná voľba (`co: navigacia`) – rozpis v hlavičke.
-  # Ten istý workflow, aký volá build mapy. Graf odloží ako artefakt
-  # `navigacia-graf` (nie `site-…`, lebo na Pages nemá čo robiť) a balenie si
-  # ho stiahne menom – presne ako v builde.
+  # vlastný balík, teda vlastná voľba. Graf odloží ako artefakt `navigacia-graf`
+  # (nie `site-…`, na Pages nemá čo robiť) a balenie si ho stiahne menom.
   navigacia:
     name: Navigačný graf (Valhalla)
     needs: plan
@@ -583,21 +460,11 @@ jobs:
       region_key: ${{ needs.plan.outputs.key }}
       valhalla_image: ${{ needs.plan.outputs.opt_valhalla_image }}
 
-  # ---------- vrstvy z výškového modelu ----------
-  # TEN ISTÝ workflow, aký nad nimi púšťa build mapy (`dem-layers.yml`):
-  # kontrola skladu, jeho doplnenie, kľúče cache a tri joby, ktoré vrstvy
-  # počítajú. Nie kópia – vrstevnica z pregenerovania musí vyjsť rovnako ako
-  # tá z buildu, inak sa balík na Drive tichom rozdielom rozíde s mapou.
-  #
-  # ČO SA POČÍTA, ROZHODUJE VOĽBA `co`, nie zdroje výšok. Zdroj hovorí
-  # „z čoho", `co` hovorí „čo" – a keby o tom rozhodovali zdroje, výber
-  # `vrstevnice` by pregeneroval aj tieňovanie, lebo je predvolene `dmr5`.
-  #
-  # VRSTEVNICE A SKALY SÚ JEDEN BALÍK, takže sa pri oboch voľbách počítajú
-  # OBE (`opt_contours` je brána toho jobu) – ale PREGENERUJE sa len tá
-  # vybraná: druhá príde z cache za sekundy. Balík sa prepisuje celý
-  # a polovica nová s polovicou chýbajúcou by bola balík, ktorý sľubuje
-  # vrstvu, ktorú nenesie.
+  # ten istý workflow, aký nad nimi púšťa build mapy (`dem-layers.yml`) – nie
+  # kópia, inak by sa balík tichým rozdielom rozišiel s mapou.
+  # Čo sa počíta, rozhoduje voľba `co`, nie zdroje výšok.
+  # Vrstevnice a skaly sú jeden balík, tak sa počítajú obe, ale pregeneruje sa
+  # len tá vybraná.
   dem:
     name: Vrstvy z výškového modelu
     needs: plan
@@ -615,8 +482,7 @@ jobs:
       dem_bboxkey: ${{ needs.plan.outputs.dem_bboxkey }}
       test_km2: ${{ needs.plan.outputs.opt_test_km2 }}
       day: ${{ needs.plan.outputs.day }}
-      # Brána jobu s vrstevnicami a skalami: zapnutá pri oboch voľbách, lebo
-      # obe vrstvy idú do jedného balíka (rozpis vyššie).
+      # brána jobu: zapnutá pri oboch voľbách, obe vrstvy idú do jedného balíka
       opt_contours: ${{ (inputs.co == 'vrstevnice' || inputs.co == 'skaly') && 'true' || 'false' }}
       opt_contour_lines: ${{ (inputs.co == 'vrstevnice' || inputs.co == 'skaly') && needs.plan.outputs.opt_contour_lines || 'false' }}
       opt_rocks: ${{ (inputs.co == 'vrstevnice' || inputs.co == 'skaly') && needs.plan.outputs.opt_rocks || 'false' }}
@@ -639,12 +505,8 @@ jobs:
       opt_rock_img_zoom: ${{ needs.plan.outputs.opt_rock_img_zoom }}
       opt_rock_img_options: ${{ needs.plan.outputs.opt_rock_img_options }}
       opt_terrain_maxzoom: ${{ needs.plan.outputs.opt_terrain_maxzoom }}
-      # PREGENERUJE SA LEN TÁ VYBRANÁ. Príznak zahodí cache tej vrstvy
-      # a spočíta ju nanovo; druhá polovica balíka sa vráti z cache – to je
-      # celý rozdiel medzi „pregenerovať vrstevnice" a „pregenerovať skaly".
-      # Vybraná vrstva sa počíta nanovo TAK ČI TAK (`rebuild` nižšie); toto
-      # je o tej DRUHEJ polovici balíka – skaly pri pregenerovaní vrstevníc
-      # a naopak. Tá sa má vziať hotová, nie prepočítať, keď si to beh pýta.
+      # pregeneruje sa len tá vybraná; druhá polovica balíka sa vezme hotová,
+      # nie prepočíta – to je celý rozdiel medzi „vrstevnice" a „skaly"
       opt_reuse_layers: ${{ needs.plan.outputs.opt_reuse_layers }}
       opt_contours_rebuild: ${{ inputs.co == 'vrstevnice' && 'true' || 'false' }}
       opt_rocks_rebuild: ${{ inputs.co == 'skaly' && 'true' || 'false' }}
@@ -654,14 +516,11 @@ jobs:
       budget_rocks_pct: ${{ needs.plan.outputs.budget_rocks_pct }}
       budget_terrain_pct: ${{ needs.plan.outputs.budget_terrain_pct }}
 
-  # ---------- balík na Drive a katalóg ----------
   publish:
     name: Balík na Drive a katalóg
     needs: [plan, body, doprava, hranice, vodstvo, navigacia, dem]
-    # Ani jeden z jobov vrstvy nesmie spadnúť. `skipped` je v poriadku (beží
-    # vždy len tá vrstva, ktorá je vo formulári), `failure` nie – balík sa
-    # prepisuje celý a z polovice novej a polovice starej vrstvy by vznikol
-    # balík, ktorý o sebe klame.
+    # `skipped` je v poriadku, `failure` nie: balík sa prepisuje celý a
+    # z polovice novej a polovice starej vrstvy by vznikol balík, ktorý klame
     if: >-
       ${{ !cancelled() && needs.plan.result == 'success'
           && needs.body.result != 'failure'
@@ -673,8 +532,7 @@ jobs:
           && needs.plan.outputs.opt_publish == 'true' }}
     runs-on: ubuntu-latest
     permissions:
-      # `write`, a je to jediné miesto, kde do repozitára niečo ide: katalóg
-      # `maps.json` sa po nahratí balíka commitne do vetvy, z ktorej beh vyšiel.
+      # `write` je tu jediné miesto, kde do repozitára niečo ide: `maps.json`
       contents: write
     outputs:
       published: ${{ steps.publish.outcome }}
@@ -682,10 +540,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Kusy vrstvy. Vzor `site-*`, nie mená: pri vrstvách z DEM sú to dva
-      # artefakty (vrstevnice a skaly sú jeden balík) a inde jeden, takže
-      # menami by sa to muselo napísať pre každú vrstvu zvlášť.
-      #
+      # kusy vrstvy. Vzor `site-*`, nie mená: pri vrstvách z DEM sú to dva
+      # artefakty a inde jeden
       - name: Pozbieraj vrstvu
         uses: actions/download-artifact@v8
         with:
@@ -693,11 +549,8 @@ jobs:
           path: _site
           merge-multiple: true
 
-      # Graf sa nevolá `site-…` (na Pages nemá čo robiť), takže sa sťahuje
-      # menom. BEZ `continue-on-error` – na rozdiel od buildu mapy, kde je
-      # mapa bez navigácie stále mapa, je tu graf CELÝM balíkom. Keby artefakt
-      # nebol, nahral by sa prázdny `-navigacia.zip` a na ničom by to nebolo
-      # vidieť; radšej spadnúť tu.
+      # graf sa nevolá `site-…`, tak sa sťahuje menom. Bez `continue-on-error`:
+      # tu je graf celým balíkom, prázdny `-navigacia.zip` by nikto nespoznal.
       - name: Stiahni navigačný graf
         if: ${{ inputs.co == 'navigacia' }}
         uses: actions/download-artifact@v8
@@ -711,9 +564,8 @@ jobs:
           echo "body=${{ needs.body.result }}, cesty=${{ needs.doprava.result }}, hranice=${{ needs.hranice.result }}, vodstvo=${{ needs.vodstvo.result }}, navigácia=${{ needs.navigacia.result }}, vrstvy z DEM=${{ needs.dem.result }} (vrstevnice=${{ needs.dem.outputs.res_contours }}, tieňovanie=${{ needs.dem.outputs.res_terrain }})"
           find _site -type f -printf '%10s  %p\n' 2>/dev/null || true
 
-      # TEN ISTÝ packer a ten istý zápis do katalógu ako pri builde mapy, len
-      # s `--only`: publikuje jediný balík a položku regiónu DOPLNÍ, nie
-      # prepíše. Druhý packer by bol druhá pravda o tom istom.
+      # ten istý packer a zápis do katalógu ako pri builde, len s `--only`:
+      # publikuje jediný balík a položku regiónu doplní, nie prepíše
       - name: Publikuj balík na Drive a zapíš do maps.json
         id: publish
         env:
@@ -722,19 +574,10 @@ jobs:
           TEST_KM2: ${{ needs.plan.outputs.opt_test_km2 }}
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
-          # ČO JE V BALÍKU, POVIE BALÍK SÁM.
-          #
-          # Pri vrstvách z PBF (`body`, `cesty`, `hranice`, `vodstvo`,
-          # `navigacia`) je to meno tej
-          # vrstvy: bez neho by `obsah.json` zložený z premenných buildu
-          # tvrdil „bez_vrstevnic, bez_skal, bez_tienovania", čo pri takom
-          # balíku nie je opis, ale lož o mape, ktorú tento beh nevidel.
-          #
-          # Pri vrstvách z výškového modelu je naopak PRÁZDNE – a je to zámer:
-          # `publish-map.py` si vtedy meno vrstvy zloží z toho, čo mu o nej
-          # povie job (zdroj modelu, interval, prah sklonu), presne ako
-          # v builde. To sú údaje, ktoré `obsah.json` o tomto balíku naozaj
-          # má povedať, a napísať ich sem druhýkrát by bola druhá pravda.
+          # pri vrstvách z PBF je to meno tej vrstvy – bez neho by `obsah.json`
+          # tvrdil „bez_vrstevnic, bez_skal…", teda lož o mape, ktorú beh nevidel.
+          # Pri vrstvách z DEM je prázdne: `publish-map.py` si meno zloží z toho,
+          # čo mu o vrstve povie job (zdroj, interval, prah).
           MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'cesty' || inputs.co == 'hranice' || inputs.co == 'vodstvo' || inputs.co == 'navigacia') && inputs.co || '' }}
           CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
           CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
@@ -743,12 +586,10 @@ jobs:
           ROCKS_SOURCE: ${{ needs.dem.outputs.rock_source }}
           TERRAIN_ENABLED: ${{ needs.dem.outputs.terrain_enabled || 'false' }}
           TERRAIN_SOURCE: ${{ needs.dem.outputs.terrain_dem_source }}
-          # Bbox výrezu ide do katalógu vedľa bboxu mapy: mapa je celý región,
-          # ale vrstevnice a skaly sú len tu.
+          # bbox výrezu vedľa bboxu mapy: mapa je celý región, terén len tu
           AREA_BBOX: ${{ needs.plan.outputs.area_bbox }}
-          # `TILES_MAXZOOM` tu zámerne nie je: je to strop dlaždíc MAPY a tú
-          # tento beh nestaval. Prázdne pole v `obsah.json` je pravdivejšie
-          # než číslo odhadnuté z inej vrstvy. To isté robí „Build wiki".
+          # `TILES_MAXZOOM` tu zámerne nie je: je to strop dlaždíc mapy a tú
+          # tento beh nestaval
         run: |
           set -euo pipefail
           python3 workers/deploy/publish-map.py \
@@ -756,8 +597,7 @@ jobs:
             --site=_site --maps=maps.json \
             --summary="$GITHUB_STEP_SUMMARY"
 
-      # Ten istý skript, akým katalóg commituje build mapy – vrátane rebasu,
-      # keď medzitým pushol iný beh (a pri dávke nad krajinou pushne).
+      # ten istý skript, akým katalóg commituje build mapy – vrátane rebasu
       - name: Commitni maps.json
         if: ${{ steps.publish.outcome == 'success' }}
         env:
@@ -766,8 +606,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: workers/deploy/catalog.sh
 
-      # Aby `.aar` mohol vyrobiť job na macOS, musí sa k nemu vrstva dostať –
-      # v tom istom behu a bez druhého počítania.
+      # aby `.aar` mohol vyrobiť job na macOS, musí sa k nemu vrstva dostať
       - name: Odlož vrstvu pre Apple Archive
         if: ${{ steps.publish.outcome == 'success' }}
         uses: actions/upload-artifact@v7
@@ -796,15 +635,11 @@ jobs:
             echo "dopĺňa, nie prepisuje."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ---------- ten istý balík ešte raz ako .aar ----------
-  # MUSÍ TO BYŤ, nie „je to navyše": balíky majú stále mená a na Drive ležia
-  # obe podoby vedľa seba. Keby sa prepísal len ZIP, ostal by pri ňom `.aar`
-  # z predošlého behu – katalóg by ponúkal oba a kto by si stiahol ten druhý,
-  # dostal by STARÚ vrstvu bez toho, aby to na čomkoľvek bolo vidieť.
-  #
-  # Vlastný job a na macOS preto, že nástroj `aa` je súčasť macOS a inde
-  # neexistuje. Beží AŽ PO tom, čo sa nahral ZIP: `--only` položku katalógu
-  # DOPĹŇA, takže ZIP musí byť zapísaný prvý.
+  # ten istý balík ešte raz ako `.aar`. Musí to byť: obe podoby ležia na Drive
+  # vedľa seba, takže by pri novom ZIPe ostal starý `.aar` a kto by si ho
+  # stiahol, dostal by starú vrstvu.
+  # Vlastný job na macOS (nástroj `aa`), až po nahratí ZIPu – `--only` položku
+  # katalógu dopĺňa.
   apple-archive:
     name: Balík ako Apple Archive (.aar)
     needs: [plan, publish, dem]
@@ -830,9 +665,8 @@ jobs:
           TEST_KM2: ${{ needs.plan.outputs.opt_test_km2 }}
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
-          # MUSIA to byť tie isté hodnoty, aké dostal job so ZIPom:
-          # `obsah.json` sa skladá z nich a inými by `.aar` o sebe tvrdil
-          # niečo iné než ZIP s tým istým obsahom.
+          # musia to byť tie isté hodnoty, aké dostal job so ZIPom – `obsah.json`
+          # sa skladá z nich
           MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'cesty' || inputs.co == 'hranice' || inputs.co == 'vodstvo' || inputs.co == 'navigacia') && inputs.co || '' }}
           CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
           CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
@@ -842,8 +676,7 @@ jobs:
           TERRAIN_ENABLED: ${{ needs.dem.outputs.terrain_enabled || 'false' }}
           TERRAIN_SOURCE: ${{ needs.dem.outputs.terrain_dem_source }}
           AREA_BBOX: ${{ needs.plan.outputs.area_bbox }}
-          # Z ktorej vetvy si vypýtať čerstvý `maps.json` – ten predošlý job
-          # doň práve zapísal a checkout má stav spred toho.
+          # z ktorej vetvy si vypýtať čerstvý `maps.json`
           BRANCH: ${{ github.ref_name }}
         run: workers/deploy/apple-archive.sh
       - name: Commitni maps.json
