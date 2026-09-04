@@ -1,0 +1,182 @@
+name: Mapa · Regenerate state
+
+# JEDNA VRSTVA V CELEJ KRAJINE NA JEDNO KLIKNUTIE. To isté, čo robí „Mapa ·
+# Build map state" s celým buildom, len sa nad každým krajom nestavia VŠETKO,
+# ale to JEDNO, čo si vyberieš: body, línie, navigačné dáta, vrstevnice, skaly
+# alebo tieňovanie. Zadáš `slovensko` a `body`, a o chvíľu majú všetky kraje
+# na Drive nový balík `-body.zip` – bez toho, aby si osemkrát otvoril formulár
+# a osemkrát trafil tie isté nastavenia, a bez toho, aby sa osemkrát
+# prestavala celá mapa.
+#
+# ── ČO SA DÁ VYBRAŤ A ČO TO STOJÍ ─────────────────────────────────────────
+# Zoznam drží `workers/state/jobs.py` (jedno miesto, ktoré vie, čo sa dá
+# pregenerovať a čím sa to nad krajom spustí). Sú v ňom dve skupiny a líšia
+# sa cenou, nie tvarom formulára:
+#
+#   body, linie, navigacia        MINÚTY na kraj. Počítajú sa z toho istého
+#                                 OSM PBF ako mapa a majú VLASTNÝ balík na
+#                                 Drive, takže sa dá postaviť len tá vrstva
+#                                 a prepísať len jej balík. Robí to „Mapa ·
+#                                 Pregeneruj vrstvu kraja".
+#   vrstevnice, skaly, tienovanie HODINY na kraj. Potrebujú sklad výškového
+#                                 modelu, jeho doplnenie aj kľúče cache –
+#                                 idú preto celým buildom kraja s `rebuild`,
+#                                 ktorý zahodí cache tej jednej vrstvy.
+#
+# Prečo to tak je (a prečo tá druhá skupina nemá vlastnú lacnú cestu), je
+# rozpísané v hlavičke `workers/state/jobs.py`.
+#
+# ── PREČO TO NIE JE JEDEN DLHÝ JOB ────────────────────────────────────────
+# Tá istá odpoveď ako pri „Build map state": job na GitHube má strop ŠESŤ
+# HODÍN a dávka nad ôsmimi krajmi ho pri vrstvách z výškového modelu prekročí.
+# Beží to preto ako ŠTAFETA – jeden beh = jeden úsek (počkaj na kraj, spusti
+# ďalší, spusti si ďalší svoj beh). Jadro je vo `workers/state/estafeta.sh`,
+# spoločné s „Build map state"; čo je tu navyše, je vo
+# `workers/state/regenerate.sh`.
+#
+# ── ČO SA NA DRIVE STANE (a čo nie) ───────────────────────────────────────
+# Pri `body`, `linie` a `navigacia` sa prepíše LEN ten jeden balík a položka
+# v `maps.json` sa DOPLNÍ, nie prepíše – ostatné balíky kraja sa nedotknú
+# (`publish-map.py --only=…`). Pri vrstvách z výškového modelu ide celý build
+# kraja, takže sa prepíšu všetky balíky toho kraja; je to celý build a to je
+# na ňom to drahé.
+#
+# ── SPADNUTÝ KRAJ DÁVKU NEZASTAVÍ ─────────────────────────────────────────
+# To isté ako pri „Build map state": pokračuje sa ďalším krajom a POSLEDNÝ
+# úsek na tom spadne, aby dávka neskončila zelená s dierou. Kto chce zastaviť
+# všetko, zruší posledný beh reťaze – ďalší článok už nevznikne.
+
+on:
+  workflow_dispatch:
+    inputs:
+      # Krajiny, ktoré nejaké kraje majú. Zoznam drží workers/data/regions.json
+      # (stráži to „Kontrola · lint workflowov").
+      country:
+        description: "Krajina – pregeneruje sa v každom jej kraji"
+        required: true
+        default: slovensko
+        type: choice
+        options:
+          - slovensko
+      # Zoznam drží `workers/state/jobs.py`; stráži ho
+      # `workers/lint/regenerate.py`. Poradie je od najlacnejšieho
+      # k najdrahšiemu – hore je to, čo sa púšťa najčastejšie.
+      co:
+        description: "Čo pregenerovať v každom kraji"
+        required: true
+        default: body
+        type: choice
+        options:
+          - body
+          - linie
+          - navigacia
+          - vrstevnice
+          - skaly
+          - tienovanie
+      # Zdroje výšok a prah sklonu platia LEN pre vrstvy z výškového modelu
+      # (`vrstevnice`, `skaly`, `tienovanie`) – tie idú celým buildom kraja
+      # a bez nich by sa postavil s predvolenými hodnotami, teda inou mapou.
+      # Pri `body`, `linie` a `navigacia` sa nepodávajú vôbec: tá pipeline
+      # výškový model nečíta (`workers/state/jobs.py`, `CIELE`).
+      #
+      # Hodnoty aj predvoľby sú TIE ISTÉ ako vo formulári kraja – iná
+      # predvoľba by znamenala, že celá krajina vyjde inak než jeden kraj
+      # spustený ručne. Stráži to `workers/lint/regenerate.py`.
+      contour_source:
+        description: "Vrstevnice – z ktorého modelu terénu (ziadne = negenerovať)"
+        required: false
+        default: dmr5
+        type: choice
+        options:
+          - sonny
+          - sonny1
+          - dmr35
+          - dmr5
+          - ziadne
+      rock_source:
+        description: "Skaly – zo sklonu modelu, alebo z tieňovania (ziadne = negenerovať)"
+        required: false
+        default: dmr5
+        type: choice
+        options:
+          - sonny
+          - sonny1
+          - dmr35
+          - dmr5
+          - tienovanie
+          - ziadne
+      shading_source:
+        description: "Tieňovanie a 3D terén – z ktorého modelu (ziadne = negenerovať)"
+        required: false
+        default: dmr5
+        type: choice
+        options:
+          - sonny
+          - sonny1
+          - dmr35
+          - dmr5
+          - ziadne
+      rock_slope:
+        description: "Od akého sklonu (°) je terén skala (50 = steny, 40 = aj strmé svahy)"
+        required: false
+        default: "50"
+        type: string
+      # Pri dávke to je skúška samotnej dávky, nie mapy: osem krajov po pár
+      # minútach. Presne na to, či reťaz dobehne celá, sa to hodí.
+      test:
+        description: "Rýchly test: každý kraj len na 4 km² zo stredu (skúška dávky)"
+        required: false
+        default: false
+        type: boolean
+      options:
+        description: "Zriedka menené nastavenia ako kľúč=hodnota (viď workers/plan/options.py)"
+        required: false
+        default: ""
+        type: string
+      # ŠTAFETOVÝ KOLÍK, NIE POLE PRE ČLOVEKA. Vypĺňa si ho dávka sama, keď si
+      # spúšťa ďalší svoj beh; pri ručnom spustení ostáva prázdne. Je to vstup
+      # a nie súbor v repozitári preto, že stav dávky je tak vidieť priamo na
+      # behu a nevznikajú z neho commity, ktoré by sa bili s `maps.json` od
+      # práve bežiaceho kraja. Tvar je rozpísaný vo workers/state/estafeta.sh.
+      pokracovanie:
+        description: "Nevypĺňaj – kolík štafety, dávka si ho podáva sama"
+        required: false
+        default: ""
+        type: string
+
+# `actions: write` je to jediné, čo tento workflow naozaj robí: spúšťa iné
+# behy. Nič nečíta z Drive, nič necommituje – to všetko je vecou behov kraja.
+permissions:
+  contents: read
+  actions: write
+
+# ZÁMERNE BEZ `concurrency`, z toho istého dôvodu ako pri „Build map state":
+# články štafety sú samostatné behy toho istého workflowu, takže by si
+# v jednej skupine liezli do cesty – a pri TROCH behoch v skupine GitHub ten
+# prostredný ZRUŠÍ, čiže by si dávka sama odhryzla článok a ticho skončila.
+
+jobs:
+  estafeta:
+    name: Úsek štafety
+    runs-on: ubuntu-latest
+    # Pod stropom šiestich hodín, a s rezervou: samotné čakanie na kraj má
+    # v skripte strop 5 h, takže na spustenie ďalšieho článku ostáva hodina.
+    timeout-minutes: 350
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Počkaj na kraj, spusti ďalší a odovzdaj štafetu
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          COUNTRY: ${{ inputs.country }}
+          CO: ${{ inputs.co }}
+          POKRACOVANIE: ${{ inputs.pokracovanie }}
+          CONTOUR_SOURCE: ${{ inputs.contour_source }}
+          ROCK_SOURCE: ${{ inputs.rock_source }}
+          SHADING_SOURCE: ${{ inputs.shading_source }}
+          ROCK_SLOPE: ${{ inputs.rock_slope }}
+          TEST: ${{ inputs.test }}
+          OPTIONS: ${{ inputs.options }}
+        run: workers/state/regenerate.sh

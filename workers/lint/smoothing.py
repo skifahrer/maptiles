@@ -97,14 +97,22 @@ def main():
     # nie meno premennej kdekoľvek v okolí – to isté meno stojí aj v hláške
     # o riadok vyššie, takže by kontrola prešla aj vtedy, keď sa argument
     # stratí.
-    build = open(os.path.join(_WORKERS, "contours-rocks", "build.sh")).read()
+    # `build.sh` a `rocks.sh` sú JEDEN skript rozdelený kvôli stropu 800
+    # riadkov (druhá polovica sa číta cez `.`): argument vrstevníc stojí
+    # v prvej, argument skál v druhej. Čítajú sa preto spolu – hľadať každý
+    # zvlášť by znamenalo vedieť, v ktorej polovici má ktorý byť, a to sa
+    # pri ďalšom delení rozíde.
+    build = "".join(
+        open(os.path.join(_WORKERS, "contours-rocks", n)).read()
+        for n in ("build.sh", "rocks.sh"))
     for co, arg in (("vrstevníc", '--maxzoom="$OPT_CONTOUR_MAXZOOM"'),
                     ("skál", '--maxzoom="$OPT_ROCK_MAXZOOM"')):
         if arg not in build:
-            bad.append(f"V `workers/contours-rocks/build.sh` nie je "
-                       f"`{arg}` – zaoblenie {co} by sa riadilo mriežkou inej "
-                       f"vrstvy (alebo predvolenou z16). Tichý rozdiel "
-                       f"v hustote bodov, ktorý build nemá ako povedať.")
+            bad.append(f"V `workers/contours-rocks/build.sh` ani v jeho druhej "
+                       f"polovici `rocks.sh` nie je `{arg}` – zaoblenie {co} "
+                       f"by sa riadilo mriežkou inej vrstvy (alebo predvolenou "
+                       f"z16). Tichý rozdiel v hustote bodov, ktorý build nemá "
+                       f"ako povedať.")
 
     # ---------- 3. priehyb ostáva pod krokom mriežky ----------
     wf = open(WF).read()

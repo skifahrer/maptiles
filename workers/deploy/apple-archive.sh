@@ -27,9 +27,13 @@
 # nesadajú (mapa sveta z `world-map.yml`). MUSÍ tu byť tá istá hodnota ako
 # v jobe, čo nahral ZIP: položka katalógu sa tu prepisuje navrch, takže inou
 # hodnotou by `.aar` prebil to, čo o vrstvách napísal ZIP.
-# a k tomu ONLY / WIKI – ktorý balík sa ide robiť (prázdne = balíky mapy
-# z `_site`, `wikipedia` = jediný balík s článkami z `WIKI`) – a BRANCH,
-# z ktorej si vypýtať čerstvý `maps.json` (viď nižšie)
+# a k tomu ONLY / WIKI / SITE – ktorý balík sa ide robiť:
+#   prázdne      všetky balíky mapy z `_site` (Build map)
+#   wikipedia    jediný balík s článkami z `WIKI` (Build wiki)
+#   iné meno     jediný balík JEDNEJ VRSTVY z `SITE` (Pregeneruj vrstvu kraja) –
+#                `body`, `linie`, `navigacia`; mená balíkov pozná
+#                `workers/deploy/publish-map.py`
+# – a BRANCH, z ktorej si vypýtať čerstvý `maps.json` (viď nižšie)
 # a prihlásenie na Drive z `env:` celého workflowu.
 set -euo pipefail
 
@@ -41,9 +45,11 @@ echo "Apple Archive: $(command -v aa)"
 
 # ---------- čo sa ide baliť ----------
 # `ONLY` prázdne = balíky mapy z `_site` (Build map). `ONLY=wikipedia` = jediný
-# balík s článkami z `WIKI` (workflow „Build wiki"). Je to ten istý
-# skript pre obe pipeline zámerne: „ako sa vyrobí .aar a nahrá na Drive" je
-# jedna otázka a dve kópie by sa raz rozišli – jedna by mala strážcu, druhá nie.
+# balík s článkami z `WIKI` (workflow „Build wiki"). Akékoľvek iné meno balíka =
+# jediná vrstva z `SITE` (workflow „Mapa · Pregeneruj vrstvu kraja"). Je to ten
+# istý skript pre všetky tri pipeline zámerne: „ako sa vyrobí .aar a nahrá na
+# Drive" je jedna otázka a tri kópie by sa raz rozišli – jedna by mala strážcu,
+# ostatné nie.
 ONLY="${ONLY:-}"
 WIKI="${WIKI:-}"
 # KTORÝ KATALÓG. Rýchly test zapisuje do `maps-test.json` a ostrý beh do
@@ -55,7 +61,7 @@ MAPS="$(python3 workers/deploy/catalog.py --subor)"
 echo "Katalóg tohto behu: $MAPS"
 ARGS=(--format=aar --maps="$MAPS" --summary="${GITHUB_STEP_SUMMARY:-/dev/null}")
 
-if [ -n "$ONLY" ]; then
+if [ "$ONLY" = wikipedia ]; then
   ARGS+=(--only="$ONLY")
   if [ -z "$WIKI" ] || [ ! -f "$WIKI/index.json" ]; then
     echo "::error::ONLY=$ONLY, ale články nie sú (WIKI=${WIKI:-prázdne}). Nepokračujem: publish-map.py by spadol na prázdnom balíku."
@@ -63,6 +69,21 @@ if [ -n "$ONLY" ]; then
   fi
   ARGS+=(--wiki="$WIKI" --site="${SITE:-_site}")
   echo "Balí sa jediný balík: $ONLY ($(du -sh "$WIKI" | cut -f1))"
+elif [ -n "$ONLY" ]; then
+  # BALÍK JEDNEJ VRSTVY Z `_site` – „Mapa · Pregeneruj vrstvu kraja"
+  # (`regenerate-region.yml`). Na rozdiel od článkov to nie je vlastný
+  # priečinok, ale tie isté súbory, z akých balí build mapy: `_site/tiles/`
+  # (body, línie) alebo `_site/routing/` (navigačný graf). Ktoré z nich do
+  # balíka patria, rozhoduje `workers/deploy/subory.py` – to isté miesto ako
+  # pri builde, aby sa `.aar` a ZIP nemohli líšiť obsahom.
+  #
+  # KONTROLA ZLOŽENÉHO `_site` SEM NEPATRÍ. Tá nižšie pýta `manifest.json`
+  # a `styles/`, lebo bez nich by „celá mapa" nebola mapa – balík vrstvy ale
+  # ani jedno z toho neobsahuje a nemá obsahovať. Že v ňom niečo je, overí
+  # `publish-map.py` sám: prázdny `--only` balík je uňho tvrdá chyba.
+  SITE_DIR="${SITE:-_site}"
+  ARGS+=(--only="$ONLY" --site="$SITE_DIR")
+  echo "Balí sa jediný balík: $ONLY z $SITE_DIR ($(du -sh "$SITE_DIR" | cut -f1))"
 else
   # ---------- je `_site` naozaj zložené? ----------
   # Job si `_site` skladá z artefaktov `site-*`, teda z KUSOV od jednotlivých

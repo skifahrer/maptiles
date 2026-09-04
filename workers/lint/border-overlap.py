@@ -30,7 +30,10 @@ import sys
 # Súbor → premenná, v ktorej sa skladá meno assetu v sklade.
 SUBORY = {
     "workers/terrain/build.sh": "asset_name",
-    "workers/contours-rocks/build.sh": "ROCK_ASSET",
+    # `rocks.sh` je DRUHÁ POLOVICA `contours-rocks/build.sh` (ten prerástol
+    # 800 riadkov, tak sa rozdelil a číta sa cez `.`) – meno assetu so skalami
+    # sa skladá tam, takže sa tam aj kontroluje.
+    "workers/contours-rocks/rocks.sh": "ROCK_ASSET",
 }
 ZDROJ = "workers/plan/area.py"
 

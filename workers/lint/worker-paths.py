@@ -27,6 +27,13 @@ súboru. Beh 31947366438 na tom zhodil mapu sveta v prvom kroku: nový
 inom vidieť nie je – v diffe je to jeden riadok hlavičky a lokálne to nikto
 nespustí, lebo skript chce env z workflowu.
 
+VÝNIMKA SÚ KUSY, KTORÉ SA `source`-UJÚ. `.sh`, ktorý si iný skript číta cez
+`.`, nie je krok, ale kus toho skriptu: beží v jeho shelli a berie si jeho
+premenné (`contours-rocks/rocks.sh` je druhá polovica `build.sh`,
+`state/estafeta.sh` je jadro oboch štafiet). Sám by spadol na prvom riadku,
+takže `+x` na ňom nie je záruka, ale sľub, ktorý sa nedá dodržať – a preto sa
+od neho nevyžaduje.
+
 Spustiť sa dá aj lokálne: `python3 workers/lint/worker-paths.py`.
 """
 import glob
@@ -135,6 +142,29 @@ def chyby_v(path, text, styl):
     return zle
 
 
+def citane():
+    """`.sh`, ktoré si iný skript ČÍTA cez `.` (source), nie púšťa.
+
+    Nie je to spustiteľný krok, ale KUS INÉHO SKRIPTU: beží v jeho shelli,
+    berie si jeho premenné a svoje mu podáva späť. Také súbory vznikajú tam,
+    kde skript prerástol strop 800 riadkov (`contours-rocks/rocks.sh` je druhá
+    polovica `build.sh`), alebo kde tú istú vec robia dve pipeline
+    (`state/estafeta.sh` je jadro oboch štafiet). Spustiť sa nedajú – bez
+    premenných volajúceho by spadli na prvom riadku – takže `+x` na nich nie
+    je záruka, ale sľub, ktorý sa nedá dodržať.
+
+    Hľadá sa `. workers/…` a `source workers/…` v skriptoch bez komentárov:
+    zakomentované volanie nie je volanie.
+    """
+    out = set()
+    for f in glob.glob("workers/**/*.sh", recursive=True):
+        t = bez_komentarov(open(f, encoding="utf-8").read(), "sh")
+        for m in re.finditer(r"(?:^|\s)(?:\.|source)\s+(workers/[\w./-]+\.sh)",
+                             t, re.M):
+            out.add(m.group(1))
+    return out
+
+
 def nespustitelne():
     """`workers/**/*.sh` bez príznaku `+x` – workflow ich púšťa priamo.
 
@@ -142,9 +172,12 @@ def nespustitelne():
     dá nájsť `run:` vo workflowe: skripty si volajú aj samy navzájom
     (`world/build.sh` púšťa `lib/planetiler.sh` aj `assets/glyphs.sh`) a
     „zatiaľ ho nikto nevolá" je stav, ktorý o priečinok ďalej prestane platiť.
+    Výnimkou sú kusy, ktoré sa `source`-ujú (viď `citane`) – tie sa nepúšťajú
+    a nemajú sa ani dať.
     """
+    fragmenty = citane()
     return sorted(f for f in glob.glob("workers/**/*.sh", recursive=True)
-                  if not os.access(f, os.X_OK))
+                  if f not in fragmenty and not os.access(f, os.X_OK))
 
 
 def main():
