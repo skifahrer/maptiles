@@ -14,9 +14,11 @@ týka:
                                                       a viewera – viď nižšie)
         presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy
         presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice
-        presovsky-vysoke_tatry-linie.zip              trasy, obmedzenia na ceste
-                                                      a navigačný graf – všetko
-                                                      líniové z OSM
+        presovsky-vysoke_tatry-linie.zip              CELÁ dopravná sieť
+                                                      (cesty, trate, trajekty,
+                                                      lanovky), značené trasy
+                                                      a obmedzenia na ceste
+        presovsky-vysoke_tatry-navigacia.zip          navigačný graf (Valhalla)
         presovsky-vysoke_tatry-body.zip               body z OSM
         presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
 
@@ -56,22 +58,27 @@ vedieť. Cena za to je desiatky MB proti stovkám, ktoré vážia dlaždice, tak
 sa tu ani nemá čo šetriť. Balík `-search` preto zanikol (`ZRUSENE`) a starý
 sa na Drive maže.
 
-NAVIGÁCIA JE NAOPAK ZO ZÁKLADNEJ MAPY VON – a cestuje V BALÍKU `linie`.
-Balila sa dovnútra mapy s tým istým argumentom ako index, lenže NAMERANÉ TO
-TAK NIE JE: graf kraja váži 170 až 190 MB a mapa s ním 283 MB, čiže dve
-tretiny „základnej mapy" bola sieť, po ktorej sa jazdí, nie mapa, ktorá sa
-kreslí. To je presne prípad vrstevníc a tieňovania: ťažká vec, ktorú mapa na
-to, aby sa nakreslila, nepotrebuje.
+`-linie.zip` JE CELÁ DOPRAVNÁ SIEŤ, nie prívesok k mape. Sú v ňom tri vrstvy:
+`-transport.pmtiles` (cesty od diaľnice po schody, železnice, električky
+a metro, trajekty a lanovky), `-trails.pmtiles` (značené trasy)
+a `-roads.pmtiles` (obmedzenia na ceste). Cestná sieť V MAPE je vrstva
+`transportation` schémy OpenMapTiles – stavaná na kreslenie a v jednom archíve
+s vodstvom, krajinnou pokrývkou a popismi –, takže „chcem len siete, po ktorých
+sa dá cestovať" znamenalo stiahnuť stovky MB a vytiahnuť si to z nich sám.
+Rozpis je v hlavičke `workers/transport/transport.yml`.
 
-CHVÍĽU MAL GRAF VLASTNÝ BALÍK (`-navigacia.zip`) a to sa vrátilo späť – ale
-do `linie`, nie do mapy. Delenie na „línie" a „navigáciu" nemalo odberateľa:
-trasy, obmedzenia na ceste aj graf sú tá istá cestná a chodníková sieť z toho
-istého PBF, len raz nakreslená a raz zjazdná, a kto po tých čiarach chce ísť,
-chce oboje. Dva balíky boli za to dve položky v katalógu, dve mená, dve
-veľkosti a dve miesta, kde sa dá zabudnúť – s tichým výsledkom „mapa vie, kde
-čo je, ale nevie ťa tam doviezť". `-navigacia.zip` je preto v `ZRUSENE`:
-starý sa na Drive maže a z položky katalógu vypadne, presne ako kedysi
-`-search.zip`.
+NAVIGÁCIA JE ZO ZÁKLADNEJ MAPY VON A MÁ VLASTNÝ BALÍK. Balila sa dovnútra mapy
+s tým istým argumentom ako index, lenže NAMERANÉ TO TAK NIE JE: graf kraja váži
+170 až 190 MB a mapa s ním 283 MB, čiže dve tretiny „základnej mapy" bola sieť,
+po ktorej sa jazdí, nie mapa, ktorá sa kreslí. To je presne prípad vrstevníc
+a tieňovania: ťažká vec, ktorú mapa na to, aby sa nakreslila, nepotrebuje.
+
+CHVÍĽU CESTOVAL GRAF V BALÍKU `linie` – s tým, že je to tá istá sieť z toho
+istého PBF, len raz nakreslená a raz zjazdná. Odkedy je v `linie` CELÁ dopravná
+sieť, to už neplatí: tri vrstvy tam vážia desiatky MB, kým graf 170 až 190, tak
+by z balíka bolo deväť desatín graf a kto chce sieť len vidieť, by ho sťahoval
+tak či tak. Graf má preto zase VLASTNÝ balík – jednu položku v katalógu, ktorú
+si človek vyberie alebo nie, presne ako tieňovanie.
 
 HĽADANIE AJ NAVIGÁCIA SÚ VŽDY ZA TEN JEDEN REGIÓN. Index je z toho istého PBF
 ako mapa; graf sa z neho stavia tiež. Trasa v ňom KONČÍ NA HRANICI REGIÓNU –
@@ -151,7 +158,7 @@ casti_baliku = subory.casti_baliku
 kde_su_glyfy = subory.kde_su_glyfy
 linie_subory = subory.linie_subory
 manifest_data = subory.manifest_data
-graf_subory = subory.graf_subory
+navigacia_subory = subory.navigacia_subory
 mimo_balika = subory.mimo_balika
 tienovanie_subory = subory.tienovanie_subory
 velkost_casti = subory.velkost_casti
@@ -168,12 +175,14 @@ folder = load("drive_folder", os.path.join(_DRIVE, "folder.py"))  # priečinky a
 FOLDER_ID = "1pvrw7CGUkQLwg8Ql8xbKA4HhQHvPl8_7"
 
 # BALÍKY, KTORÉ UŽ NIE SÚ – ich obsah sa presťahoval DO základnej mapy.
+# (`navigacia` tu bola, kým graf cestoval v `linie`; odkedy je v `linie` celá
+# dopravná sieť, má graf zase vlastný balík – rozpis v hlavičke.)
 # Zoznam nie je pamätník: `-search.zip` z minulých behov na Drive LEŽÍ ďalej
 # (mená sú stále, takže ho nový beh neprepíše) a v katalógu by ostal ako
 # odkaz, ktorý sľubuje niečo, čo si už netreba sťahovať. Preto sa starý balík
 # maže a z položky katalógu vypadne – rovnako, ako keď vrstva v builde nie je.
 # Až prestane byť čo mazať, môže odtiaľto vypadnúť aj `search`.
-ZRUSENE = ("search", "navigacia")
+ZRUSENE = ("search",)
 
 # Balí sa `deflate` na najnižší stupeň. Obsah `_site` je z veľkej časti už
 # komprimovaný (PMTiles nesú gzip-nuté dlaždice, tieňovanie sú PNG), takže
@@ -321,6 +330,8 @@ def vrstvy():
         out.append("prvky")
     if env("ROADS_ENABLED") == "true":
         out.append("obmedzenia")
+    if env("TRANSPORT_ENABLED") == "true":
+        out.append("doprava")
     return out
 
 
@@ -496,9 +507,11 @@ def main():
     # funkcie je druhá odpoveď na tú istú otázku.
     vrstvy_pack = vrstvy_subory(args.site, man)
     tien_pack = tienovanie_subory(args.site, man)
-    # Navigačný graf je ČASŤ `linie` (`graf_subory` vnútri `linie_subory`),
-    # nie vlastný balík – rozpis v hlavičke súboru aj pri tej funkcii.
+    # `linie` je celá dopravná sieť z OSM; navigačný graf má VLASTNÝ balík
+    # vedľa nej (sám váži viac než ona) – rozpis v hlavičke súboru aj pri
+    # oboch funkciách.
     linie_pack = linie_subory(args.site, man)
+    navigacia_pack = navigacia_subory(args.site)
     body_pack = body_subory(args.site, man)
     # ČASTI ZÁKLADNEJ MAPY – dnes hľadanie. Zo základnej mapy sa NEVYNÍMAJÚ
     # (sú v nej, o to ide); počítajú sa preto, aby sa dali premerať a ich
@@ -522,17 +535,22 @@ def main():
                if subory else "TENTO BUILD JU NEVYROBIL, v mape nebude"))
     baliky = [
         ("", "základná mapa (aj s hľadaním) – bez vrstevníc, skál, "
-             "tieňovania, línií a bodov z OSM, glyfov a viewera",
+             "tieňovania, dopravnej siete, navigácie a bodov z OSM, "
+             "glyfov a viewera",
          args.site, zaklad_subory(args.site, vrstvy_pack + tien_pack
-                                  + linie_pack + body_pack + von_pack)),
+                                  + linie_pack + navigacia_pack
+                                  + body_pack + von_pack)),
         ("vrstevnice-skaly", "vrstevnice a skalné plochy (.pmtiles)",
          args.site, vrstvy_pack),
         ("tienovanie", "výškové dlaždice pre tieňovanie a 3D terén (raster .pmtiles)",
          args.site, tien_pack),
-        ("linie", "všetko líniové z OSM: značené trasy a obmedzenia na ceste "
-                  "(.pmtiles) a navigačný graf (Valhalla) – trasa v ňom končí "
-                  "na hranici regiónu",
+        ("linie", "celá dopravná sieť z OSM (.pmtiles): cesty od diaľnice po "
+                  "schody, železnice, električky a metro, trajekty a lanovky, "
+                  "k tomu značené trasy a obmedzenia na ceste",
          args.site, linie_pack),
+        ("navigacia", "navigačný graf (Valhalla) – trasa v ňom končí na "
+                      "hranici regiónu",
+         args.site, navigacia_pack),
         ("body", "pramene, jaskyne, rozhľadne a ďalšie body z OSM (.pmtiles)",
          args.site, body_pack),
     ]

@@ -85,6 +85,8 @@ jq -n \
   --argjson points "$POINTS_ENABLED" \
   --argjson roads "$ROADS_ENABLED" \
   --argjson rdmaxzoom "$ROADS_MAXZOOM" \
+  --argjson transport "$TRANSPORT_ENABLED" \
+  --argjson trmaxzoom "$TRANSPORT_MAXZOOM" \
   --argjson contours "$CONTOURS_ENABLED" \
   --argjson cmaxzoom "$CONTOURS_MAXZOOM" \
   --argjson rocks "$ROCKS_ENABLED" \
@@ -172,6 +174,19 @@ jq -n \
       + (if $roads then {
         roads: ("tiles/" + $region + "-roads.pmtiles"),
         roads_maxzoom: $rdmaxzoom
+      } else {} end)
+      # CELÁ DOPRAVNÁ SIEŤ – vlastný .pmtiles a jadro balíka `linie`.
+      # V MANIFESTE JE, HOCI JU ŠTÝL NEKRESLÍ: manifest je zoznam toho, čo
+      # v mape JE (odtiaľ ho číta `workers/deploy/subory.py`, keď skladá
+      # balíky, aj katalóg), nie zoznam toho, čo si pýta štýl. Keby tu
+      # nebola, balík `linie` by sa skladal podľa mien súborov v `_site`
+      # a vrstva by z neho pri prvej zmene mena ticho vypadla.
+      # Cestná sieť sa v mape kreslí z vrstvy `transportation` základných
+      # dlaždíc – rozpis, prečo je toto NAVYŠE a nie namiesto, je v hlavičke
+      # `workers/transport/transport.yml`.
+      + (if $transport then {
+        transport: ("tiles/" + $region + "-transport.pmtiles"),
+        transport_maxzoom: $trmaxzoom
       } else {} end)
       # Hranica stiahnutého regiónu. Viewer podľa nej prekryje všetko za
       # regiónom – dlaždice sú orezané len po celých dlaždiciach, takže bez

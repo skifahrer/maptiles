@@ -1,0 +1,28 @@
+# Predfilter PBF pre workers/transport/transport.yml (`osmium tags-filter --expressions`).
+#
+# JEDEN PRIECHOD, nie dva ako pri obmedzeniach na ceste. `tags-filter` vie len
+# ALEBO – a tu je to presne to, čo treba: dopravná sieť je „cesta ALEBO
+# železnica ALEBO trajekt ALEBO lanovka". Pri obmedzeniach sa filtruje dvakrát,
+# lebo tam je otázka „cesta A má obmedzenie" (rozpis vo `workers/roads/build.sh`).
+#
+# Zoznam je zámerne ŠIRŠÍ než schéma: filter je hrubé sito (`w/railway` pustí
+# aj zrušené trate a nástupištia), presné rozhodnutie robí schéma. Opačne to ale
+# neplatí – keď do schémy pribudne trieda a sem nie, Planetiler dostane PBF,
+# v ktorom ten tag už nie je, a v dlaždiciach sa TICHO neobjaví. Stráži to
+# `workers/lint/transport.py`.
+#
+# `w/` = len cesty (v zmysle OSM way). Zastávka ani vchod do metra nie sú
+# líniová sieť; body v krajine majú vlastnú vrstvu
+# (`workers/features/points.yml`).
+
+# --- cesty: od diaľnice po schody ---
+w/highway
+
+# --- koľajová doprava: vlak, električka, metro, ozubnica, lanovková dráha ---
+w/railway
+
+# --- trajekty a prievozy (na Dunaji jediné spojenie cez rieku) ---
+w/route=ferry
+
+# --- lanovky a vleky ---
+w/aerialway

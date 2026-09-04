@@ -28,17 +28,19 @@ import yaml
 # katalógu zapisuje ako `mapa`) – táto množina musí sedieť s tým zoznamom,
 # inak balík, ktorý pipeline práve pridala (naposledy `linie` a `body`, línie
 # a body z OSM), zhodí lint napriek tomu, že v katalógu je zo skutočného behu.
-DRUHY = {"mapa", "vrstevnice-skaly", "tienovanie", "wikipedia", "linie", "body"}
+DRUHY = {"mapa", "vrstevnice-skaly", "tienovanie", "wikipedia", "linie",
+         "navigacia", "body"}
 # ZRUŠENÉ DRUHY – v katalógu ešte môžu byť (kraj, ktorý sa odvtedy nestaval),
 # ale publikovanie ich už NEVYRÁBA: `search` sa presťahoval DOVNÚTRA balíka
 # `mapa` a jeho veľkosť je pod ním v `casti`. Hlásiť ich ako neznámy druh by
 # znamenalo červený lint za starý zápis, ktorý najbližší build sám prepíše;
 # preto sa berú, ale musia byť aj v `ZRUSENE` v `publish-map.py` – inak by
 # starý `-search.zip` ostal ležať na Drive a katalóg by naň ukazoval.
-# `navigacia` je tu od spojenia balíkov: graf cestuje v `linie` (tá istá sieť
-# z toho istého PBF, raz nakreslená a raz zjazdná), takže sa `-navigacia.zip`
-# už nevyrába a starý sa maže.
-ZRUSENE = {"search", "navigacia"}
+# `navigacia` tu bola, kým graf cestoval v `linie`; odkedy je v `linie` CELÁ
+# dopravná sieť (cesty, trate, trajekty, lanovky), má graf zase vlastný balík –
+# sám váži viac než tie tri vrstvy dokopy (rozpis v hlavičke
+# `workers/deploy/publish-map.py`). Je preto späť v `DRUHY`, nie tu.
+ZRUSENE = {"search"}
 # Meno balíka: `<kraj>[-<výsek>][-testNkm2]` + prípona druhu. Sedí to s
 # `zaklad()` a `meno()` vo `workers/deploy/publish-map.py`.
 MENO = re.compile(r"^[a-z0-9_]+(-[a-z0-9_]+)*(-test[0-9.]+km2)?"

@@ -210,29 +210,42 @@ def main():
     else:
         err(".github/workflows/navigation-region.yml", "workflow neexistuje.")
 
-    # --- 5b. graf je v balíku `linie` a v základnej mape nie je ---
+    # --- 5b. graf má VLASTNÝ balík a v základnej mape ani v `linie` nie je ---
     # Kým sa balil dovnútra mapy, bol argument „jednotky až desiatky MB proti
     # stovkám za dlaždice". Namerané: 170 až 190 MB grafu v 283 MB mape, čiže
     # dve tretiny „základnej mapy" bola sieť, po ktorej sa jazdí. Zo základnej
-    # mapy je preto von – a cestuje v balíku `linie`, k trasám a obmedzeniam
-    # na ceste: je to tá istá sieť z toho istého PBF, raz nakreslená a raz
-    # zjazdná. Kontroluje sa, že ho `linie_subory` naozaj berie; ČO v tom
-    # balíku skončí, overuje `workers/lint/packaging.py` nad naozaj zabalenými
-    # ZIPmi.
+    # mapy je preto von. Chvíľu cestoval v balíku `linie`; odkedy je v `linie`
+    # CELÁ dopravná sieť (cesty, trate, trajekty, lanovky – desiatky MB), by
+    # z toho balíka bolo deväť desatín graf, tak má zase vlastný.
+    # Kontroluje sa, že ho `navigacia_subory` naozaj skladá; ČO v tom balíku
+    # skončí, overuje `workers/lint/packaging.py` nad naozaj zabalenými ZIPmi.
     subory = os.path.join(_WORKERS, "deploy", "subory.py")
     if os.path.exists(subory):
         sub = open(subory, encoding="utf-8").read()
-        if "graf_subory" not in sub:
+        if "def navigacia_subory" not in sub:
             err("workers/deploy/subory.py",
-                "`graf_subory` tu nie je – graf kraja sa postaví a nikam sa "
-                "nenahrá, a katalóg o ňom nepovie nič, takže si ho appka nemá "
-                "ako vypýtať.")
-        elif not re.search(r"def linie_subory\(.*?\bgraf_subory\(", sub, re.S):
+                "`navigacia_subory` tu nie je – graf kraja sa postaví a nikam "
+                "sa nenahrá, a katalóg o ňom nepovie nič, takže si ho appka "
+                "nemá ako vypýtať.")
+        # Telo `linie_subory` sa vyreže po najbližšie ďalšie `def` – bez toho
+        # by `.*?` cez `re.S` prešlo aj do funkcií pod ňou a kontrola by
+        # hlásila graf v `linie` len preto, že je o dvadsať riadkov nižšie.
+        m = re.search(r"\ndef linie_subory\(.*?(?=\ndef )", sub, re.S)
+        linie_telo = m.group(0) if m else ""
+        if "navigacia_subory(" in linie_telo or "routing" in linie_telo.split(
+                '"""')[-1]:
             err("workers/deploy/subory.py",
-                "`linie_subory` už nepriberá `graf_subory`. Graf by sa "
-                "postavil, zo základnej mapy by bol vynechaný a do žiadneho "
-                "balíka by sa nedostal – mapa, ktorá vie, kde čo je, ale "
-                "nevie ťa tam doviezť.")
+                "`linie_subory` zase priberá graf. `linie` je KRESLENÁ "
+                "dopravná sieť (desiatky MB), graf je 170 až 190 MB – "
+                "v jednom balíku by z neho bolo deväť desatín a kto chce sieť "
+                "len vidieť, sťahoval by ho tak či tak.")
+        # A `linie` musí niesť to, kvôli čomu ten balík je: celú dopravnú sieť.
+        if "-transport.pmtiles" not in linie_telo:
+            err("workers/deploy/subory.py",
+                "`linie_subory` neberie `-transport.pmtiles`. Bez dopravnej "
+                "siete je to zase len „pár MB navyše k mape“ – a otázka "
+                "„chcem siete, po ktorých sa dá cestovať, a nie zvyšok mapy“ "
+                "ostane bez odpovede.")
     else:
         err("workers/deploy/subory.py", "skript neexistuje.")
 
@@ -270,8 +283,9 @@ def main():
         print(f"\n{len(bad)} problém(ov) v navigačnom grafe.")
         return 1
     print("Navigačný graf: rozsahy majú vlastný uzol v katalógu, celoštátny "
-          "PBF sa nereže, graf kraja o svojej hranici hovorí a je v balíku "
-          "`linie`, graf sa overuje celý a formulár sedí s číselníkom.")
+          "PBF sa nereže, graf kraja o svojej hranici hovorí a má vlastný "
+          "balík vedľa dopravnej siete, graf sa overuje celý a formulár sedí "
+          "s číselníkom.")
     return 0
 
 
