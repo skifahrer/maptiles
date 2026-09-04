@@ -368,6 +368,15 @@
       margin: 4px 0; padding: 4px 6px; border-radius: 6px;
       border: 1px solid #e6c68c; background: #fffdf7;
     }
+    /* Podkategória, na ktorú sa práve odskočilo z inšpektora – detail vrstvy
+       má aj tri obrazovky, takže bez zvýraznenia by nebolo vidieť, kde som. */
+    .dev-variant.focus { border-color: #d09030; box-shadow: 0 0 0 2px #f6e4c0; }
+    /* Cesta „kategória ↔ podkategórie": tie isté odkazy v detaile vrstvy
+       aj v inšpektore, nech sa medzi nimi dá chodiť oboma smermi. */
+    .dev-crumbs {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 5px 0;
+    }
+    .dev-crumbs .dev-note { white-space: nowrap; flex: none; }
     /* Zaškrtávatko s textom v jednom riadku (napr. „plynulý prechod") */
     .dev-inline { display: flex; align-items: center; gap: 5px; font-size: 11px; }
     .dev-inline.changed { color: #b06000; font-weight: 600; }
@@ -386,6 +395,9 @@
     }
     .dev-mini:hover { color: #222; }
     .dev-note { font-size: 10px; color: #999; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Poznámka, ktorá je vysvetlením, nie štítkom – orezaná tromi bodkami by
+       nepovedala nič („nad ňou: Kroviny a kos…"). */
+    .dev-note.wrap { white-space: normal; line-height: 1.35; flex: 1; min-width: 0; }
     .dev-num { width: 52px; padding: 2px 4px; font-size: 11px; border: 1px solid #ccc; border-radius: 4px; }
     /*
       BEZ NATÍVNYCH ŠÍPOK. Prázdne políčko `type=number` skočí šípkou dole na
@@ -484,6 +496,7 @@
     body.dark .dev-border { background: #262232; border-color: #3a3550; }
     body.dark .dev-borderbadge { background: #8a7c58; color: #16161f; }
     body.dark .dev-variant { background: #24202c; border-color: #6a5a34; }
+    body.dark .dev-variant.focus { border-color: #e0a850; box-shadow: 0 0 0 2px #4a3c1c; }
     body.dark .dev-varbadge { background: #342c1c; color: #e0c890; border-color: #6a5a34; }
     body.dark .dev-zrow.now { outline-color: #8a6a3a; }
     body.dark .dev-modebtn.on { background: #342c1c; border-color: #7a5a2a; }
