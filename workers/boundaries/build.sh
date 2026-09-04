@@ -11,11 +11,13 @@
 # PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho
 # GitHub ticho neprijme (stráži „Kontrola · lint workflowov").
 #
-# PREDFILTER SA MUSÍ PÝTAŤ AJ NA ČLENOV RELÁCIÍ (`-r`), a to je celý rozdiel
-# oproti ostatným vrstvám: hranica obce je v OSM RELÁCIA, ktorej členmi sú
-# cesty, a tie samy `boundary=administrative` nemajú. Bez `-r` by Planetiler
-# dostal relácie bez geometrie, nemal by z čoho zložiť polygón a v dlaždiciach
-# by TICHO nebolo nič.
+# PREDFILTER MUSÍ DOŤAHOVAŤ ČLENOV RELÁCIÍ, a to je celý rozdiel oproti
+# ostatným vrstvám: hranica obce je v OSM RELÁCIA, ktorej členmi sú cesty,
+# a tie samy `boundary=administrative` nemajú. Bez nich by Planetiler dostal
+# relácie bez geometrie, nemal by z čoho zložiť polygón a v dlaždiciach by
+# TICHO nebolo nič. `osmium tags-filter` ich doťahuje SÁM a vypína sa to až
+# `-R`/`--omit-referenced` – preto tu žiadny taký prepínač nie je.
+# (`-r` neexistuje, osmium na ňom skončí s „unrecognised option".)
 #
 # Podiel na veľkosti stránky berie z `BUDGET_BOUNDARIES_PCT` (env workflowu).
 
@@ -26,7 +28,7 @@ sudo apt-get install -y -qq osmium-tool
 
 # ---- 1. predfilter: hranice, ich členovia a body sídel ----
 T_F=$(date +%s)
-osmium tags-filter --overwrite -r -o data/boundaries.osm.pbf \
+osmium tags-filter --overwrite -o data/boundaries.osm.pbf \
   data/region.osm.pbf --expressions=workers/boundaries/filter.txt
 
 BEFORE=$(stat -c%s data/region.osm.pbf)

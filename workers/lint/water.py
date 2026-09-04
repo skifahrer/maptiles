@@ -11,8 +11,9 @@ Vodstvo: filter pustí, čo schéma chce – a meno je na tom istom prvku.
      je.
 
   2. FILTER PRESTANE DOŤAHOVAŤ ČLENOV RELÁCIÍ. Veľké jazerá a priehrady sú
-     MULTIPOLYGÓNY, ktorých členovia `natural=water` nemajú. Bez `-r`
-     v `osmium tags-filter` po Domaši v dlaždiciach ticho neostane nič.
+     MULTIPOLYGÓNY, ktorých členovia `natural=water` nemajú. `osmium
+     tags-filter` ich doťahuje sám; s `-R` (`--omit-referenced`) by po Domaši
+     v dlaždiciach ticho neostalo nič.
 
   3. Z DLAŽDICE ZMIZNE `name`. Kvôli tomu vrstva existuje: v OpenMapTiles je
      meno vody vo VLASTNEJ vrstve (`water_name`) mimo geometrie, takže „daj mi
@@ -67,6 +68,25 @@ def filter_keys(path):
     return out
 
 
+def prepinace_filtra(build):
+    """Prepínače SKUTOČNÉHO `osmium tags-filter`, nie zmienok v komentároch.
+
+    Číta sa celý príkaz aj s pokračovaním na ďalších riadkoch (`\\`), lebo
+    prepínač môže stáť aj tam. Hľadať len prvý výskyt slova v súbore je málo:
+    prvá zmienka je dnes v hlavičke a kontrola by potom čítala komentár.
+    """
+    riadky = build.splitlines()
+    for i, r in enumerate(riadky):
+        if r.lstrip().startswith("#") or "osmium tags-filter" not in r:
+            continue
+        prikaz = [r]
+        while prikaz[-1].rstrip().endswith("\\") and i + 1 < len(riadky):
+            i += 1
+            prikaz.append(riadky[i])
+        return " " + " ".join(prikaz) + " "
+    return ""
+
+
 def main():
     for path in (SCHEMA, FILTER, BUILD):
         if not os.path.exists(path):
@@ -100,11 +120,22 @@ def main():
     # ---- 2. filter doťahuje členov relácií ----
     with open(BUILD, encoding="utf-8") as f:
         build = f.read()
-    if " -r " not in build.split("tags-filter", 1)[-1].split("\n", 1)[0] + " ":
-        err(f"{BUILD}: `osmium tags-filter` beží bez `-r`, takže z PBF "
-            f"vypadnú ČLENOVIA relácií. Veľké jazerá a priehrady sú "
-            f"multipolygóny, ktorých členovia `natural=water` nemajú – po "
-            f"Domaši by v dlaždiciach ticho neostalo nič.")
+    prepinace = prepinace_filtra(build)
+    if not prepinace:
+        err(f"{BUILD}: `osmium tags-filter` tu nie je – bez predfiltra číta "
+            f"Planetiler celý región a táto kontrola nemá čo overiť.")
+    # `-r` NEEXISTUJE. osmium pozná len `-R`/`--omit-referenced` (opačný
+    # význam), na `-r` skončí s „unrecognised option“ a job padne hneď.
+    if " -r " in prepinace:
+        err(f"{BUILD}: `osmium tags-filter -r` – taký prepínač osmium nemá "
+            f"a skončí na ňom s „unrecognised option“. Členov relácií "
+            f"doťahuje sám, netreba o ne žiadať.")
+    if " -R " in prepinace or "--omit-referenced" in prepinace:
+        err(f"{BUILD}: `osmium tags-filter` beží s `-R`/`--omit-referenced`, "
+            f"takže z PBF vypadnú ČLENOVIA relácií. Veľké jazerá a priehrady "
+            f"sú multipolygóny, ktorých členovia `natural=water` nemajú – po "
+            f"Domaši by v dlaždiciach ticho neostalo nič. Bez toho prepínača "
+            f"ich osmium doťahuje sám.")
 
     # ---- 3. meno je na tom istom prvku ----
     for i, b in enumerate(bloky, start=1):

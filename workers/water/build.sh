@@ -9,9 +9,11 @@
 # PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho
 # GitHub ticho neprijme (stráži „Kontrola · lint workflowov").
 #
-# PREDFILTER SA MUSÍ PÝTAŤ AJ NA ČLENOV RELÁCIÍ (`-r`): veľké jazerá
-# a priehrady sú multipolygóny, ktorých členovia `natural=water` nemajú.
-# Bez toho by po Domaši v dlaždiciach ticho neostalo nič.
+# PREDFILTER MUSÍ DOŤAHOVAŤ ČLENOV RELÁCIÍ: veľké jazerá a priehrady sú
+# multipolygóny, ktorých členovia `natural=water` nemajú. Bez nich by po
+# Domaši v dlaždiciach ticho neostalo nič. `osmium tags-filter` to robí SÁM
+# a vypína sa to až `-R`/`--omit-referenced` – preto tu žiadny taký prepínač
+# nie je. (`-r` neexistuje, osmium na ňom skončí s „unrecognised option".)
 #
 # Podiel na veľkosti stránky berie z `BUDGET_WATER_PCT` (env workflowu).
 
@@ -22,7 +24,7 @@ sudo apt-get install -y -qq osmium-tool
 
 # ---- 1. predfilter: len voda ----
 T_F=$(date +%s)
-osmium tags-filter --overwrite -r -o data/water.osm.pbf \
+osmium tags-filter --overwrite -o data/water.osm.pbf \
   data/region.osm.pbf --expressions=workers/water/filter.txt
 
 BEFORE=$(stat -c%s data/region.osm.pbf)

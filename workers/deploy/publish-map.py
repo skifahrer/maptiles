@@ -529,7 +529,7 @@ def main():
     # ručne: to je celý zmysel tej zmeny. Každý sa počíta RAZ a to isté pole
     # ide aj do vlastného balíka aj do `vylucit`; druhé volanie tej istej
     # funkcie by bola druhá odpoveď na tú istú otázku.
-    vrstvy = baliky_vrstiev(args.site, man)
+    vrstvove_baliky = baliky_vrstiev(args.site, man)
     # ČASTI ZÁKLADNEJ MAPY – hľadanie a značené trasy. Zo základnej mapy sa
     # NEVYNÍMAJÚ (sú v nej, o to ide); počítajú sa preto, aby sa dali premerať
     # a ich veľkosť išla do katalógu pod balík `mapa`.
@@ -554,13 +554,14 @@ def main():
     # čo v balíku nemá čo robiť. Skladá sa to z toho ISTÉHO poľa, z ktorého sa
     # tie balíky o riadok nižšie vyrábajú – balík, ktorý pribudne do číselníka,
     # tak nemá ako ostať aj v mape.
-    vylucit = [p for _b, subory in vrstvy for p in subory] + von_pack
+    vylucit = [p for _b, subory in vrstvove_baliky for p in subory] + von_pack
     baliky = [
         ("", "základná mapa – celá kresba z OSM aj so značenými trasami "
              "a hľadaním; bez vrstiev, ktoré majú vlastný balík, a bez glyfov "
              "a viewera",
          args.site, zaklad_subory(args.site, vylucit)),
-    ] + [(b["kluc"], b["popis"], args.site, subory) for b, subory in vrstvy]
+    ] + [(b["kluc"], b["popis"], args.site, subory)
+         for b, subory in vrstvove_baliky]
     # WIKIPÉDIA SA PRIDÁ, LEN KEĎ O NEJ TENTO BEH VIE. Odkedy má vlastnú
     # pipeline (`.github/workflows/wiki.yml`), Build map články nesťahuje –
     # a keby ten balík ostal v zozname natrvalo, videl by ho ako „v tomto

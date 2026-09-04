@@ -9,7 +9,7 @@
 # cesty, a tie samy o sebe `boundary=administrative` nemajú. Filter len na `w/`
 # by z PBF pustil relácie bez ich geometrie – Planetiler by nemal z čoho zložiť
 # polygón a v dlaždiciach by ticho nebolo NIČ. `osmium tags-filter` doťahuje
-# členov relácií sám, keď sa relácia trafí (`-r` je v `build.sh`).
+# členov relácií sám, keď sa relácia trafí (nevypína to `-R` v `build.sh`).
 #
 # Zoznam je zámerne ŠIRŠÍ než schéma (pustí aj `admin_level` 9 a 10, teda
 # mestské časti): filter je hrubé sito, presné rozhodnutie robí schéma. Opačne
