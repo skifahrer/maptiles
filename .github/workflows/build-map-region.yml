@@ -2354,12 +2354,12 @@ jobs:
           PAGES_BUILD_TYPE: ${{ needs.plan.outputs.pages_build_type }}
         run: workers/deploy/smoke-test.sh
 
-      # NAVIGAČNÝ GRAF AŽ TU, ZA PAGES. Balí sa z neho vlastný balík
-      # `-navigacia.zip`, na stránku nejde – nie je čo kresliť a zjedol by
-      # rozpočet Pages. Preto sa artefakt nevolá `site-…`: krok „Pozbieraj
-      # kusy stránky“ berie `site-*` a graf by sa doňho zlial ešte pred
-      # nahratím na Pages. `continue-on-error`, lebo mapa bez navigácie je
-      # mapa – ten balík vtedy jednoducho nevznikne.
+      # NAVIGAČNÝ GRAF AŽ TU, ZA PAGES. Ide do balíka `-linie.zip` (je to tá
+      # istá sieť ako trasy a obmedzenia, len zjazdná), na stránku nejde –
+      # nie je čo kresliť a zjedol by rozpočet Pages. Preto sa artefakt nevolá
+      # `site-…`: krok „Pozbieraj kusy stránky“ berie `site-*` a graf by sa
+      # doňho zlial ešte pred nahratím na Pages. `continue-on-error`, lebo
+      # mapa bez navigácie je mapa – `-linie.zip` je vtedy len o ňu ľahší.
       - name: Stiahni navigačný graf do balíka
         if: ${{ always() && needs.navigacia.result == 'success' }}
         continue-on-error: true
@@ -2515,9 +2515,9 @@ jobs:
           name: deploy-site
           path: _site
       # NAVIGAČNÝ GRAF MUSÍ BYŤ AJ TU. `.aar` je ten istý obsah ako ZIP, len
-      # inak zabalený – keby graf chýbal, `-navigacia.aar` by vôbec nevznikol
-      # a v priečinku by vedľa ZIPu chýbal. Do `site-*` graf nepatrí (na
-      # Pages nemá čo robiť), takže sa sťahuje menom.
+      # inak zabalený – keby graf chýbal, `-linie.aar` by bol o polovicu
+      # ľahší než `-linie.zip` a na ničom by to nebolo vidieť. Do `site-*`
+      # graf nepatrí (na Pages nemá čo robiť), takže sa sťahuje menom.
       # `continue-on-error`: mapa bez navigácie je mapa.
       - name: Stiahni navigačný graf do balíka
         continue-on-error: true

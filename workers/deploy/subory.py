@@ -9,9 +9,12 @@ teda tam, kde sa mení otázka, rovnako ako pri `catalog.py`.
 
 TRI DRUHY ODPOVEDÍ SÚ TU:
 
-  * VLASTNÝ BALÍK (`vrstvy_subory`, `tienovanie_subory`, `navigacia_subory`).
+  * VLASTNÝ BALÍK (`vrstvy_subory`, `tienovanie_subory`, `linie_subory`).
     Ťažké veci, ktoré mapa na to, aby sa nakreslila, nepotrebuje – a ktoré
     vážia porovnateľne s ňou samou, takže sa oplatí nesťahovať ich.
+    Navigačný graf je od spojenia balíkov ČASŤ `linie_subory` (`graf_subory`),
+    nie vlastný balík: je to tá istá sieť z toho istého PBF ako trasy
+    a obmedzenia, len v podobe, po ktorej sa dá jazdiť.
   * ČASŤ ZÁKLADNEJ MAPY (`casti_baliku`: hľadanie). Desiatky MB proti stovkám
     za dlaždice; vlastný balík by znamenal mapu, v ktorej sa nedá nič nájsť,
     a nikto by nemal ako zistiť, že mu druhý súbor chýba. Premeriava sa
@@ -91,15 +94,39 @@ def vrstvy_subory(site, man):
 
 
 def linie_subory(site, man):
-    """Súbory balíka `linie` – značené trasy a obmedzenia na ceste (.pmtiles).
+    """Súbory balíka `linie` – VŠETKO líniové z OSM: trasy, obmedzenia, graf.
 
-    ČISTO LÍNIOVÉ DÁTA Z OSM, a preto len tieto dve vrstvy. Krajinné prvky
-    (`-features.pmtiles`) sú línie AJ plochy v jednom súbore (parkovisko,
-    zjazdovka sú plochy) a vlastný balík nemajú – rozpis prečo je
-    v `workers/README.md` pri balíkoch. `trails` a `roads` sú naopak
-    z definície čisto línie (`geometry: line` v oboch schémach), takže sa
-    dajú ponúknuť ako balík „línie z OSM" bez toho, aby sľuboval niečo, čo
-    v ňom nie je.
+    TRI VECI V JEDNOM BALÍKU, a je to vedomé spojenie. Značené trasy
+    (`-trails.pmtiles`) a obmedzenia na ceste (`-roads.pmtiles`) sú línie,
+    ktoré sa kreslia; navigačný graf (`_site/routing/`) je tá istá cestná
+    a chodníková sieť z toho istého PBF, len v podobe, po ktorej sa dá
+    jazdiť. Chvíľu boli dva balíky (`-linie.zip` a `-navigacia.zip`) a
+    ukázalo sa, že to je delenie bez odberateľa: kto chce po tých čiarach ísť,
+    chce oboje, a kto ich chce len vidieť, ušetrí tým jeden zo štyroch
+    balíkov, ktoré si aj tak sťahuje. Dva balíky sú dve položky v katalógu,
+    dve mená, dve veľkosti a dve miesta, kde sa dá zabudnúť – za mapu, ktorá
+    vie, kde čo je, ale nevie ťa tam doviezť.
+
+    GRAF JE CELÝ PRIEČINOK `_site/routing/`, a nie výber podľa mien: sú to
+    štyri súbory, ktoré si musia sedieť (`valhalla_tiles.tar`,
+    `valhalla.json`, `admins.sqlite`, `timezones.sqlite`) plus `graf.json`
+    s tým, z čoho a čím je postavený – a keby sa vyberali menami, prvý ďalší
+    súbor od Valhally by z balíka ticho vypadol a trasa by „len nešla".
+    `routing/` je zároveň jediný priečinok v `_site`, ktorý patrí grafu, takže
+    tu na rozdiel od `tiles/` nič cudzie nehrozí.
+
+    Že je graf za JEDEN REGIÓN a trasa v ňom končí na jeho hranici, hovorí
+    `graf.json` v ňom (`rozsah: "region"`); rozpis je v `docs/navigation.md`.
+
+    KRAJINNÉ PRVKY (`-features.pmtiles`) TU NIE SÚ. Sú to línie AJ plochy
+    v jednom súbore (parkovisko, zjazdovka sú plochy) a vlastný balík nemajú –
+    rozpis prečo je v `workers/README.md` pri balíkoch.
+
+    VLASTNÝ BALÍK, A NIE ČASŤ ZÁKLADNEJ MAPY. Graf kraja váži 170 až 190 MB
+    a mapa s ním 283 MB, čiže dve tretiny „základnej mapy" by bola sieť, po
+    ktorej sa jazdí, nie mapa, ktorá sa kreslí. To je ten istý dôvod, pre
+    ktorý majú vlastný balík vrstevnice a tieňovanie: kto navigáciu nechce,
+    nemá ju za čo sťahovať.
     """
     reg = catalog.region_entry(man)
     rel = [reg[k] for k in ("trails", "roads") if reg.get(k)]
@@ -108,8 +135,23 @@ def linie_subory(site, man):
         rel = [os.path.join("tiles", n) for n in sorted(os.listdir(tiles))
                if n.endswith(("-trails.pmtiles", "-roads.pmtiles"))] \
             if os.path.isdir(tiles) else []
-    return [os.path.join(site, p) for p in rel
-            if os.path.exists(os.path.join(site, p))]
+    return ([os.path.join(site, p) for p in rel
+             if os.path.exists(os.path.join(site, p))]
+            + graf_subory(site))
+
+
+def graf_subory(site):
+    """Navigačný graf z `_site/routing/` – časť balíka `linie` (viď vyššie).
+
+    Vlastná funkcia, hoci ju volá jediné miesto: „ktoré súbory sú graf" je
+    iná otázka než „ktoré súbory sú línie" (jedna sa pýta priečinka, druhá
+    prípon v `tiles/`) a `workers/lint/packaging.py` sa jej pýta zvlášť.
+    """
+    base = os.path.join(site, "routing")
+    if not os.path.isdir(base):
+        return []
+    return sorted(os.path.join(root, n)
+                  for root, _dirs, names in os.walk(base) for n in names)
 
 
 def body_subory(site, man):
@@ -151,36 +193,6 @@ def tienovanie_subory(site, man):
             if n.endswith("-terrain.pmtiles")]
 
 
-def navigacia_subory(site, man):
-    """Súbory balíka `navigacia` – cestná a chodníková sieť z OSM ako graf.
-
-    CELÝ PRIEČINOK `_site/routing/`, a nie výber podľa mien: graf sú štyri
-    súbory, ktoré si musia sedieť (`valhalla_tiles.tar`, `valhalla.json`,
-    `admins.sqlite`, `timezones.sqlite`) plus `graf.json` s tým, z čoho a čím
-    je postavený – a keby sa vyberali menami, prvý ďalší súbor od Valhally by
-    z balíka ticho vypadol a trasa by „len nešla". `routing/` je zároveň
-    jediný priečinok v `_site`, ktorý patrí grafu, takže tu na rozdiel od
-    `tiles/` nič cudzie nehrozí.
-
-    VLASTNÝ BALÍK, A NIE ČASŤ ZÁKLADNEJ MAPY. Kým sa balil dovnútra, znel
-    argument „jednotky až desiatky MB proti stovkám za dlaždice" – ale
-    namerané to tak nie je: graf kraja má 170 až 190 MB a mapa s ním váži
-    283 MB, čiže DVE TRETINY základnej mapy je sieť, po ktorej sa jazdí, nie
-    mapa, ktorá sa kreslí. To je presne ten dôvod, pre ktorý majú vlastný
-    balík vrstevnice a tieňovanie: kto navigáciu nechce, nemá ju za čo
-    sťahovať. Že sa o balíku dá dozvedieť, je vec katalógu – `maps.json` ho
-    nesie pod `maps.navigacia` vedľa ostatných, tak ako `linie` a `body`.
-
-    Že je graf za JEDEN REGIÓN a trasa v ňom končí na jeho hranici, hovorí
-    `graf.json` v ňom (`rozsah: "region"`); rozpis je v `docs/navigation.md`.
-    """
-    base = os.path.join(site, "routing")
-    if not os.path.isdir(base):
-        return []
-    return sorted(os.path.join(root, n)
-                  for root, _dirs, names in os.walk(base) for n in names)
-
-
 # ---------- časti, ktoré cestujú V ZÁKLADNEJ MAPE ----------
 # Hľadanie NIE JE balík (rozpis v hlavičke súboru). Je to časť základnej mapy
 # a jediné, čo o nej publikovanie navyše robí, je, že ju PREMERIA – veľkosť
@@ -215,9 +227,9 @@ def casti_baliku(site, man):
     Mlčanie by sa dalo čítať aj ako „zabudlo sa to premerať" – ten istý dôvod,
     pre ktorý meno balíka nesie `bez_skal`.
 
-    NAVIGÁCIA TU UŽ NIE JE a nie je to opomenutie: graf má vlastný balík
-    (`navigacia_subory`), lebo bol dvomi tretinami základnej mapy. Jeho
-    veľkosť je preto v katalógu pod `maps.navigacia.size` ako pri každom
+    NAVIGÁCIA TU UŽ NIE JE a nie je to opomenutie: graf bol dvomi tretinami
+    základnej mapy, takže sa z nej vybral do balíka `linie` (`graf_subory`).
+    Jeho veľkosť je preto v katalógu pod `maps.linie.size` ako pri každom
     inom balíku, nie pod `maps.mapa.casti`.
     """
     return [

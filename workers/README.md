@@ -1855,16 +1855,15 @@ Priečinok hovorí, čoho sa mapa týka, a čo chýba, sa vyrobí:
          krajina  kraj      výsek   (úrovne, čo nedávajú zmysel, sa vynechajú)
 
     presovsky-vysoke_tatry.zip                    základná mapa, BEZ riadkov nižšie,
-                                                  ale S hľadaním a navigáciou;
-                                                  bez glyfov a viewera (tie sú na Pages)
+                                                  ale S hľadaním; bez glyfov
+                                                  a viewera (tie sú na Pages)
     presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy (.pmtiles)
     presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice (.pmtiles)
-    presovsky-vysoke_tatry-linie.zip              značené trasy a obmedzenia na ceste –
-                                                  LÍNIE z OSM (.pmtiles)
+    presovsky-vysoke_tatry-linie.zip              značené trasy, obmedzenia na ceste
+                                                  a navigačný graf Valhally –
+                                                  VŠETKO LÍNIOVÉ z OSM
     presovsky-vysoke_tatry-body.zip               pramene, jaskyne, rozhľadne, … –
                                                   BODY z OSM (.pmtiles)
-    presovsky-vysoke_tatry-navigacia.zip          cestná a chodníková sieť z OSM
-                                                  ako graf Valhally
     presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
 
 Každý balík je aj ako **`.aar` (Apple Archive)** – ten istý obsah, to isté
@@ -1889,13 +1888,15 @@ výlučne o veľkosť sťahovania:
 
 | balík | čo v ňom je | z ktorých `.pmtiles` |
 |---|---|---|
-| `linie` | značené trasy a obmedzenia na ceste – ČISTO líniové dáta z OSM | `-trails`, `-roads` |
+| `linie` | značené trasy, obmedzenia na ceste a navigačný graf – VŠETKO líniové z OSM | `-trails`, `-roads`, `routing/` |
 | `body` | pramene, jaskyne, rozhľadne, pamiatky, banské dedičstvo, geodetické body | `-points` |
 
-`linie` je cestná sieť **na kreslenie**, `navigacia` (nižšie) tá istá sieť **na
-jazdenie**. Nie je to tá istá vec dvakrát: dlaždica je kreslený obraz
-s orezanou a zjednodušenou geometriou bez odbočovacích zákazov, takže sa z nej
-routovať nedá – rozpis v [`docs/navigation.md`](../docs/navigation.md) §1.
+V `linie` je tá istá cestná a chodníková sieť DVAKRÁT, a nie je to tá istá vec
+dvakrát: `.pmtiles` je sieť **na kreslenie** (kreslený obraz s orezanou
+a zjednodušenou geometriou bez odbočovacích zákazov, takže sa z nej routovať
+nedá), graf Valhally v `routing/` je tá istá sieť **na jazdenie** – rozpis
+v [`docs/navigation.md`](../docs/navigation.md) §1. Práve preto sú v jednom
+balíku: kto po tých čiarach chce ísť, chce oboje.
 
 Krajinné línie a plochy (`-features.pmtiles`: násypy, múry, ploty, vedenia,
 parkoviská, zjazdovky, …) VLASTNÝ balík nemajú a ostávajú v základnej mape –
@@ -1917,15 +1918,25 @@ mapu, v ktorej sa nedá nič nájsť, a že mu chýba druhý súbor, nemal ako v
 Cena je desiatky MB proti stovkám za dlaždice. Balík `-search` preto zanikol
 (`ZRUSENE` v `publish-map.py`) a starý sa na Drive maže.
 
-**Navigácia má VLASTNÝ balík `-navigacia.zip`** – cestná a chodníková sieť
-z OSM ako graf Valhally (`_site/routing/`: `valhalla_tiles.tar`,
-`valhalla.json`, `admins.sqlite`, `timezones.sqlite`, `graf.json`). Balila sa
-dovnútra mapy s tým istým argumentom ako index, lenže namerané to tak nie je:
-**graf kraja váži 170 až 190 MB a mapa s ním 283 MB**, čiže dve tretiny
-„základnej mapy" bola sieť, po ktorej sa jazdí, nie mapa, ktorá sa kreslí. To
-je presne prípad vrstevníc a tieňovania. Že sa o balíku dá dozvedieť, drží
-katalóg: `maps.json` ho nesie pod `maps.navigacia` vedľa `linie` a `body`,
-takže je v aplikácii v tom istom zozname na stiahnutie ako ony.
+**Navigácia je naopak zo základnej mapy VON a cestuje v balíku `linie`** –
+cestná a chodníková sieť z OSM ako graf Valhally (`_site/routing/`:
+`valhalla_tiles.tar`, `valhalla.json`, `admins.sqlite`, `timezones.sqlite`,
+`graf.json`). Balila sa dovnútra mapy s tým istým argumentom ako index, lenže
+namerané to tak nie je: **graf kraja váži 170 až 190 MB a mapa s ním 283 MB**,
+čiže dve tretiny „základnej mapy" bola sieť, po ktorej sa jazdí, nie mapa,
+ktorá sa kreslí. To je presne prípad vrstevníc a tieňovania.
+
+**Chvíľu mal graf vlastný `-navigacia.zip` a vrátilo sa to späť – ale do
+`linie`, nie do mapy.** Delenie na „línie" a „navigáciu" nemalo odberateľa:
+značené trasy, obmedzenia na ceste aj graf sú tá istá cestná a chodníková sieť
+z toho istého PBF, raz nakreslená a raz zjazdná, a kto po tých čiarach chce
+ísť, chce oboje. Dva balíky boli za to dve položky v katalógu, dve mená, dve
+veľkosti a dve miesta, kde sa dá zabudnúť – s tichým výsledkom „mapa vie, kde
+čo je, ale nevie ťa tam doviezť". `-navigacia.zip` je preto v `ZRUSENE`
+(`publish-map.py`): starý sa na Drive maže a z katalógu vypadne, presne ako
+kedysi `-search.zip`. Že sa o grafe dá dozvedieť, drží katalóg: `maps.json`
+nesie `-linie.zip` pod `maps.linie` vedľa `body`, takže je v aplikácii v tom
+istom zozname na stiahnutie ako ony.
 
 **Obe sú vždy za ten jeden región**, ktorého je mapa. Index je z toho istého
 PBF ako mapa; graf sa stavia z `data/region.osm.pbf` toho istého behu

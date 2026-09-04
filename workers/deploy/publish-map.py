@@ -14,10 +14,10 @@ týka:
                                                       a viewera – viď nižšie)
         presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy
         presovsky-vysoke_tatry-tienovanie.zip         len výškové dlaždice
-        presovsky-vysoke_tatry-linie.zip              trasy a obmedzenia na ceste
+        presovsky-vysoke_tatry-linie.zip              trasy, obmedzenia na ceste
+                                                      a navigačný graf – všetko
+                                                      líniové z OSM
         presovsky-vysoke_tatry-body.zip               body z OSM
-        presovsky-vysoke_tatry-navigacia.zip          cestná a chodníková sieť
-                                                      z OSM ako graf Valhally
         presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
 
 GLYFY A WEBOVÝ VIEWER SA NEBALIA. Fonty boli po dlaždiciach druhá najväčšia vec
@@ -56,15 +56,22 @@ vedieť. Cena za to je desiatky MB proti stovkám, ktoré vážia dlaždice, tak
 sa tu ani nemá čo šetriť. Balík `-search` preto zanikol (`ZRUSENE`) a starý
 sa na Drive maže.
 
-NAVIGÁCIA MÁ NAOPAK VLASTNÝ BALÍK a je to zmena oproti prvej verzii: graf sa
-balil dovnútra mapy s tým istým argumentom ako index, lenže NAMERANÉ TO TAK
-NIE JE. Graf kraja váži 170 až 190 MB a mapa s ním 283 MB – dve tretiny
-„základnej mapy" teda bola sieť, po ktorej sa jazdí, nie mapa, ktorá sa
+NAVIGÁCIA JE NAOPAK ZO ZÁKLADNEJ MAPY VON – a cestuje V BALÍKU `linie`.
+Balila sa dovnútra mapy s tým istým argumentom ako index, lenže NAMERANÉ TO
+TAK NIE JE: graf kraja váži 170 až 190 MB a mapa s ním 283 MB, čiže dve
+tretiny „základnej mapy" bola sieť, po ktorej sa jazdí, nie mapa, ktorá sa
 kreslí. To je presne prípad vrstevníc a tieňovania: ťažká vec, ktorú mapa na
-to, aby sa nakreslila, nepotrebuje, a ktorú si preto netreba sťahovať, keď ju
-človek nechce. Že sa o nej dozvie, drží katalóg: `-navigacia.zip` má
-v `maps.json` vlastnú položku vedľa `linie` a `body`, takže je v aplikácii
-v tom istom zozname na stiahnutie ako ony.
+to, aby sa nakreslila, nepotrebuje.
+
+CHVÍĽU MAL GRAF VLASTNÝ BALÍK (`-navigacia.zip`) a to sa vrátilo späť – ale
+do `linie`, nie do mapy. Delenie na „línie" a „navigáciu" nemalo odberateľa:
+trasy, obmedzenia na ceste aj graf sú tá istá cestná a chodníková sieť z toho
+istého PBF, len raz nakreslená a raz zjazdná, a kto po tých čiarach chce ísť,
+chce oboje. Dva balíky boli za to dve položky v katalógu, dve mená, dve
+veľkosti a dve miesta, kde sa dá zabudnúť – s tichým výsledkom „mapa vie, kde
+čo je, ale nevie ťa tam doviezť". `-navigacia.zip` je preto v `ZRUSENE`:
+starý sa na Drive maže a z položky katalógu vypadne, presne ako kedysi
+`-search.zip`.
 
 HĽADANIE AJ NAVIGÁCIA SÚ VŽDY ZA TEN JEDEN REGIÓN. Index je z toho istého PBF
 ako mapa; graf sa z neho stavia tiež. Trasa v ňom KONČÍ NA HRANICI REGIÓNU –
@@ -144,7 +151,7 @@ casti_baliku = subory.casti_baliku
 kde_su_glyfy = subory.kde_su_glyfy
 linie_subory = subory.linie_subory
 manifest_data = subory.manifest_data
-navigacia_subory = subory.navigacia_subory
+graf_subory = subory.graf_subory
 mimo_balika = subory.mimo_balika
 tienovanie_subory = subory.tienovanie_subory
 velkost_casti = subory.velkost_casti
@@ -166,7 +173,7 @@ FOLDER_ID = "1pvrw7CGUkQLwg8Ql8xbKA4HhQHvPl8_7"
 # odkaz, ktorý sľubuje niečo, čo si už netreba sťahovať. Preto sa starý balík
 # maže a z položky katalógu vypadne – rovnako, ako keď vrstva v builde nie je.
 # Až prestane byť čo mazať, môže odtiaľto vypadnúť aj `search`.
-ZRUSENE = ("search",)
+ZRUSENE = ("search", "navigacia")
 
 # Balí sa `deflate` na najnižší stupeň. Obsah `_site` je z veľkej časti už
 # komprimovaný (PMTiles nesú gzip-nuté dlaždice, tieňovanie sú PNG), takže
@@ -481,17 +488,18 @@ def main():
     # počítajú od tej bázy, takže vnútri je `articles.ndjson`, nie
     # `_wiki/articles.ndjson`.
     #
-    # Vrstevnice, skaly, tieňovanie, línie z OSM (trasy, obmedzenia na ceste),
-    # body z OSM a navigačný graf sa počítajú PRED základnou mapou, lebo tá
+    # Vrstevnice, skaly, tieňovanie, línie z OSM (trasy, obmedzenia na ceste
+    # a navigačný graf) a body z OSM sa počítajú PRED základnou mapou, lebo tá
     # ich musí VYNECHAŤ – majú vlastné balíky práve preto, aby si ich človek
     # nemusel sťahovať, keď ich nechce (viď hlavička súboru). Každý sa počíta RAZ
     # a to isté pole ide aj do vlastného balíka: druhé volanie tej istej
     # funkcie je druhá odpoveď na tú istú otázku.
     vrstvy_pack = vrstvy_subory(args.site, man)
     tien_pack = tienovanie_subory(args.site, man)
+    # Navigačný graf je ČASŤ `linie` (`graf_subory` vnútri `linie_subory`),
+    # nie vlastný balík – rozpis v hlavičke súboru aj pri tej funkcii.
     linie_pack = linie_subory(args.site, man)
     body_pack = body_subory(args.site, man)
-    nav_pack = navigacia_subory(args.site, man)
     # ČASTI ZÁKLADNEJ MAPY – dnes hľadanie. Zo základnej mapy sa NEVYNÍMAJÚ
     # (sú v nej, o to ide); počítajú sa preto, aby sa dali premerať a ich
     # veľkosť išla do katalógu pod balík `mapa`.
@@ -514,21 +522,19 @@ def main():
                if subory else "TENTO BUILD JU NEVYROBIL, v mape nebude"))
     baliky = [
         ("", "základná mapa (aj s hľadaním) – bez vrstevníc, skál, "
-             "tieňovania, línií a bodov z OSM, navigácie, glyfov a viewera",
+             "tieňovania, línií a bodov z OSM, glyfov a viewera",
          args.site, zaklad_subory(args.site, vrstvy_pack + tien_pack
-                                  + linie_pack + body_pack + nav_pack
-                                  + von_pack)),
+                                  + linie_pack + body_pack + von_pack)),
         ("vrstevnice-skaly", "vrstevnice a skalné plochy (.pmtiles)",
          args.site, vrstvy_pack),
         ("tienovanie", "výškové dlaždice pre tieňovanie a 3D terén (raster .pmtiles)",
          args.site, tien_pack),
-        ("linie", "značené trasy a obmedzenia na ceste – línie z OSM (.pmtiles)",
+        ("linie", "všetko líniové z OSM: značené trasy a obmedzenia na ceste "
+                  "(.pmtiles) a navigačný graf (Valhalla) – trasa v ňom končí "
+                  "na hranici regiónu",
          args.site, linie_pack),
         ("body", "pramene, jaskyne, rozhľadne a ďalšie body z OSM (.pmtiles)",
          args.site, body_pack),
-        ("navigacia", "cestná a chodníková sieť z OSM ako navigačný graf "
-                      "(Valhalla) – trasa končí na hranici regiónu",
-         args.site, nav_pack),
     ]
     # WIKIPÉDIA SA PRIDÁ, LEN KEĎ O NEJ TENTO BEH VIE. Odkedy má vlastnú
     # pipeline (`.github/workflows/wiki.yml`), Build map články nesťahuje –
