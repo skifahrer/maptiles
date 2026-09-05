@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# Vyhľadávacový index z OSM: názvy miest, hôrok, chát, trás – do `_site/search-index.db`.
+# Vyhľadávací index z OSM (názvy miest, hôr, chát, trás) → `_site/search-index.db`.
 #
-# PREČO VLASTNÝ SKRIPT:Search index čítame priamo z PBF bez Planetilera,
-# pretože tituly sú prvotné (bez straty zjednodušením), súradnice sú
-# presné a úlohu to ovládne v minútach namiesto desiatkov.
+# Číta sa priamo z PBF bez Planetilera: názvy sú prvotné, súradnice presné
+# a trvá to minúty.
 #
-# POISTKA PROTI TICHEJ STRATE: keď PBF nemá žiadny hľadateľný prvok,
-# ostane index prázdny – to nie je chyba, mapa vtedy pôjde bez indexu.
-# Ak sa index vyrába správne ale je prázdny (malý testovací štvorec),
-# povedú sa to na stdout.
+# Prázdny index nie je chyba – malý testovací štvorec nemusí mať čo indexovať;
+# povie sa to na stdout.
 
 set -euo pipefail
 mkdir -p _site/tiles data

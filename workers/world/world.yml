@@ -1,31 +1,24 @@
-# Planetiler custom schema – ZÁKLADNÁ MAPA SVETA.
+# Planetiler custom schema – základná mapa sveta.
 #
 # Tri veci a nič viac: vodstvo, hranice štátov a regióny, na ktoré je OSM
 # rozdelené na sťahovanie. Je to podklad pod výber „ktorý kus si stiahnuť",
-# nie mapa na chodenie – tá vzniká v `build-map-region.yml` z regionálneho PBF.
+# nie mapa na chodenie.
 #
-# Vstup vyrába `workers/world/sources.py` (prečo práve tieto zdroje a prečo nie
-# `planet.osm.pbf`, je rozpísané tam):
+# Vstup vyrába `workers/world/sources.py` (prečo práve tieto zdroje, je tam):
 #   OSM pobrežné čiary  → data/world/water.gpkg
 #   Natural Earth 10m   → data/world/{lakes,boundaries,countries}.geojson
 #   Geofabrik index-v1  → data/world/downloads.geojson
 #
-# POPISKY SÚ VLASTNÉ VRSTVY (`place`, `download_label`), nie body pri plochách
-# v tej istej vrstve. Dôvod je ten istý, prečo `workers/lint/style.mjs`
-# existuje: `fill` vrstva v MapLibre nepreskočí čiary ani body – prvok pustí do
-# výplne bez ohľadu na geometriu. Kým je vrstva čisto plošná, štýl nad ňou
+# Popisky sú vlastné vrstvy (`place`, `download_label`), nie body pri plochách:
+# `fill` vrstva v MapLibre nepreskočí čiary ani body, takže čisto plošná vrstva
 # nepotrebuje stráž a nedá sa to pokaziť ani neskôr.
 #
-# ZOOMY SÚ TU TO HLAVNÉ ROZHODNUTIE. Regiónov sťahovania je ~500 a pri pohľade
-# na celý svet by z nich bola kaša, v ktorej sa nedá ťuknúť na ten správny.
-# Preto sa odkrývajú po úrovniach stromu: svetadiel od z0, štát od z2, výsek
-# od z5. To isté platí pre popisky štátov a malé jazerá.
+# Zoomy sú hlavné rozhodnutie: regiónov sťahovania je ~500 a pri pohľade na
+# celý svet by z nich bola kaša. Odkrývajú sa po úrovniach stromu – svetadiel
+# od z0, štát od z2, výsek od z5.
 #
-# POZOR NA `min_zoom` NAD MAXZOOMOM ARCHÍVU: čo má vyšší `min_zoom`, než je
-# maxzoom vygenerovaných dlaždíc, Planetiler ticho zahodí (stálo to raz ploty
-# v krajinných prvkoch – viď `workers/features/features.yml`). Najvyšší
-# `min_zoom` je tu 5 a `workers/world/build.sh` ho porovná so zvoleným
-# maxzoomom a rozdiel ohlási.
+# Čo má vyšší `min_zoom` než maxzoom dlaždíc, Planetiler ticho zahodí; najvyšší
+# je tu 5 a `workers/world/build.sh` rozdiel ohlási.
 schema_name: FricoMaps svet
 schema_description: >-
   Základná mapa sveta – vodstvo z pobrežných čiar OSM, hranice štátov

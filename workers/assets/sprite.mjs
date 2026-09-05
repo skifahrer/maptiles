@@ -1,42 +1,29 @@
 #!/usr/bin/env node
 /**
- * Prerobí bežný sprite (osm-liberty) na **SDF sprite bez koliesok**.
+ * Prerobí bežný sprite (osm-liberty) na SDF sprite bez koliesok.
  *
  * Dva problémy naraz:
  *
- * 1. **Kruh pod ikonou.** Ikony osm-liberty nie sú čisté symboly – každá je
- *    nakreslená ako biele koliesko so sivým obrysom a až v ňom je vlastný
- *    maki symbol. Na mape to vyzerá ako pole bodiek. Koliesko sa nedá
- *    „odfiltrovať" farbou (symbol býva svetlejší než obrys kolieska), ale
- *    dá sa odčítať: je vo všetkých ikonách rovnakej veľkosti **identické**,
- *    takže najčastejšia hodnota po pixeloch cez celú skupinu dá presnú
- *    šablónu pozadia a zvyšok (to, čím sa ikona od šablóny líši) je hľadaný
- *    symbol. Ikony, ktoré nie sú v koliesku ale na plnofarebnom podklade
- *    (biele „P" na modrom štvorci), sa spracujú voči vlastnej farbe.
+ * 1. Kruh pod ikonou. Ikony osm-liberty sú nakreslené ako biele koliesko so
+ *    sivým obrysom a až v ňom je maki symbol – na mape z toho je pole bodiek.
+ *    Farbou sa to odfiltrovať nedá, ale koliesko je vo všetkých ikonách
+ *    rovnakej veľkosti identické: najčastejšia hodnota po pixeloch cez celú
+ *    skupinu dá šablónu pozadia a zvyšok je hľadaný symbol. Ikony na
+ *    plnofarebnom podklade sa spracujú voči vlastnej farbe.
+ * 2. Farba ikony. MapLibre ju vie nastaviť len obrázku s `sdf: true`, ktorého
+ *    alfa nesie signed distance field. Konvencia je rovnaká ako
+ *    mapbox/tiny-sdf – hrana leží na 0.75, ktorú hľadá shader.
  *
- * 2. **Farba ikony.** MapLibre vie ikone nastaviť farbu (`icon-color`,
- *    `icon-halo-color`) iba vtedy, ak je obrázok v sprite označený ako
- *    `sdf: true` a jeho alfa kanál nesie *signed distance field*. Symbol
- *    vytiahnutý v kroku 1 sa preto prepočíta na SDF – rovnaká konvencia ako
- *    mapbox/tiny-sdf: `alfa = 255 − 255·(d/radius + 0.25)`, teda hrana leží
- *    na hodnote 0.75, ktorú hľadá shader MapLibre.
+ * Okolo ikony pribudne rámik pre `icon-halo-width`, ikona sa oreže súmerne
+ * okolo stredu (nech sa nepohne kotva) a atlas sa preskladá „shelf" packerom.
+ * PNG sa číta aj zapisuje vlastným kodekom, takže netreba npm závislosť.
  *
- * Okolo každej ikony pribudne rámik, aby mal `icon-halo-width` kam kresliť,
- * ikona sa oreže na symbol (súmerne okolo stredu, nech sa nepohne kotva) a
- * atlas sa preskladá jednoduchým „shelf" packerom.
- *
- * PNG sa číta aj zapisuje vlastným minimálnym kodekom (zlib je v Node),
- * takže pipeline nepotrebuje žiadnu npm závislosť.
- *
- * Použitie:
  *   node workers/assets/sprite.mjs --in=_site/sprites/osm-liberty \
  *        --out=_site/sprites/osm-liberty-sdf
- *   (spracuje aj varianty @2x, ak existujú)
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { decodePng, encodePng, packShelves } from "../lib/png.mjs";
-// Matematika SDF je spoločná s `workers/assets/arrows.mjs`, ktorý si masku
-// kreslí sám – rozpis v hlavičke `workers/lib/sdf.mjs`.
+// matematika SDF je spoločná s `assets/arrows.mjs` – viď `lib/sdf.mjs`
 import { toSdf, SDF_RADIUS } from "../lib/sdf.mjs";
 
 /** Hrúbka rámika okolo ikony (v pixeloch pri pixelRatio 1) pre halo. */
@@ -60,7 +47,7 @@ const BADGE_MAX_LUMA = 120;
  */
 const HALO_MIN_CONTRAST = 60;
 
-// ==================== odstránenie kolieska pod ikonou ====================
+// odstránenie kolieska pod ikonou
 
 /** Ikona ako pole [R,G,B,A] s premultiplikovanou farbou (kvôli porovnávaniu). */
 function readIcon(src, e) {
@@ -129,15 +116,13 @@ const percentile = (values, q) => {
 
 const median = (values) => percentile(values, 0.5);
 
-
 /** Z rozdielov spraví pokrytie 0–1 so zostrenou hranou, orezané siluetou. */
 function toCoverage(diff, icon, w, h, hi) {
   const cov = new Float64Array(w * h);
   for (let p = 0; p < w * h; p++) {
     const ink = Math.max(0, Math.min(1, diff[p] / hi));
-    // Zostrenie okolo 0,5: hodnoty tesne nad/pod hranou sa rozhodnú, takže v
-    // ťahoch symbolu nezostanú „soľ a korenie" pixely. Samotná hrana (0,5)
-    // sa nehýbe, silueta teda zostáva tam, kde bola.
+    // zostrenie okolo 0,5, aby v ťahoch nezostali „soľ a korenie" pixely;
+    // samotná hrana sa nehýbe
     const sharp = Math.max(0, Math.min(1, (ink - 0.5) * GLYPH_CONTRAST + 0.5));
     // Symbol nikdy nesmie pretiecť mimo pôvodnú ikonu.
     cov[p] = sharp * Math.min(1, icon[p * 4 + 3] / 255);
@@ -201,8 +186,8 @@ function badgeCoverage(icon, w, h) {
   const inside = [];
   for (let p = 0; p < w * h; p++) {
     const a = icon[p * 4 + 3];
-    // Iba plne krycie pixely: polopriehľadný okraj odznaku by inak vyšiel
-    // ako obrys okolo celého symbolu.
+    // iba plne krycie pixely – polopriehľadný okraj odznaku by vyšiel ako
+    // obrys okolo celého symbolu
     if (a < 250) continue;
     const f = a / 255;
     const d = Math.max(
@@ -240,9 +225,8 @@ function glyphCoverage(icon, template, w, h) {
     diff[p] = d;
   }
 
-  // Prahovať sa smie len vnútri ikony. Priehľadné okolie má rozdiel nula a
-  // keby sa počítalo do štatistiky, „pozadím" by sa stalo okolie ikony a
-  // celé koliesko by prešlo ako symbol.
+  // prahovať sa smie len vnútri ikony: priehľadné okolie má rozdiel nula
+  // a stalo by sa „pozadím", takže by celé koliesko prešlo ako symbol
   const inside = [];
   for (let p = 0; p < w * h; p++) {
     if (icon[p * 4 + 3] >= 128) inside.push(diff[p]);
@@ -252,8 +236,8 @@ function glyphCoverage(icon, template, w, h) {
   // Konštantný posun pozadia (drobné odchýlky proti šablóne).
   const bg = median(inside);
   const rel = inside.map((d) => Math.max(0, d - bg));
-  // Horná hranica cez percentil, nie maximum – jeden odľahlý pixel (napr. na
-  // okraji kolieska) by inak celý symbol „stlačil" pod prah.
+  // horná hranica cez percentil, nie maximum – jeden odľahlý pixel by celý
+  // symbol stlačil pod prah
   const hi = percentile(rel, 0.98);
   if (hi < TEMPLATE_MIN_CONTRAST) return null;
 
@@ -344,7 +328,7 @@ function cropToInk(cov, w, h) {
   return { cov: out, width: cw, height: ch };
 }
 
-// ============================ hlavná časť ============================
+// hlavná časť
 
 /** Prerobí jeden pár .json/.png na SDF variant. Vracia počet ikon. */
 function convert(inBase, outBase, suffix) {

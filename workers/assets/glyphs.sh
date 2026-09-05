@@ -1,51 +1,37 @@
 #!/usr/bin/env bash
 # Glyfy (fonty) k sebe na Pages, nech mapa nezávisí od cudzej služby.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho GitHub
-# ticho neprijme (stráži to „Kontrola · lint workflowov").
+# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
 #
 # Keď sa balík nestiahne, mapa pôjde ďalej a štýl siahne na
-# `fonts.openmaptiles.org` – lepšie než beh bez mapy. Presné mená adresárov
-# v balíku sa môžu líšiť, preto sa fontstacky vyberajú postupne: presne to, čo
-# štýl chce → čokoľvek „Noto Sans" → všetko.
-#
-# `GLYPHS_ZIP` si berie z env workflowu.
+# `fonts.openmaptiles.org`. Mená adresárov v balíku sa môžu líšiť, tak sa
+# fontstacky vyberajú postupne: presne to, čo štýl chce → čokoľvek „Noto
+# Sans" → všetko. `GLYPHS_ZIP` si berie z env workflowu.
 
 set -euo pipefail
 
-# ROZSAHY ZNAKOV, KTORÉ V BALÍKU OSTANÚ.
+# rozsahy znakov, ktoré v balíku ostanú.
 #
-# Fontstack je 256 súborov po 256 znakoch, teda CELÝ unicode – vrátane CJK,
-# arabčiny, hebrejčiny, thajčiny a emoji. `cp -r` nižšie berie adresár celý,
-# takže tri stacky (Regular, Bold, Italic) sú 99,7 MB na disku a 61,2 MB
-# v ZIPe. Fonty sú v každom regióne tie isté, takže to bola KONŠTANTA
-# v každom balíku mapy: pri `bratislavsky.zip` (130,9 MB) 47 % toho, čo si
-# appka stiahne. Po orezaní na rozsahy nižšie ostane 51 súborov, 1,7 MB
-# v ZIPe – teda o 59,5 MB menej v KAŽDOM balíku mapy.
+# Fontstack je 256 súborov po 256 znakoch, teda celý unicode – tri stacky sú
+# 61,2 MB v ZIPe a fonty sú v každom regióne tie isté, takže to bola konštanta
+# v každom balíku (47 % `bratislavsky.zip`). Po orezaní ostane 1,7 MB.
 #
-# ČO SA NECHÁVA A PREČO. Mapa sa tiluje s `--languages=sk,en`
-# (`workers/tiles/build.sh`), takže do dlaždíc idú `name`, `name:sk`
-# a `name:en`. Nechávajú sa preto:
+# Mapa sa tiluje s `--languages=sk,en`, tak sa nechávajú:
 #
-#     0-2047       latinka, Latin-1, Latin Ext-A (č ď ľ ň š ť ž ĺ ŕ ô),
-#                  Ext-B, diakritika, gréčtina, cyrilika
+#     0-2047       latinka, Latin-1, Ext-A (č ď ľ ň š ť ž ĺ ŕ ô), Ext-B,
+#                  diakritika, gréčtina, cyrilika
 #     7424-9215    fonetika, Latin Extended Additional, Greek Extended,
-#                  interpunkcia (– — „ " …), meny, ⅓ ½ №, × ÷ ≈, technické
+#                  interpunkcia, meny, ⅓ ½ №, × ÷ ≈, technické
 #     11264-11519  Latin Extended-C
 #     42752-43007  Latin Extended-D, modifikátory tónu
 #
-# Je to o dosť viac, než mapa Slovenska naozaj potrebuje (samotná latinka
-# s interpunkciou je 1,1 MB), a to je zámer: rozdiel medzi „bezpečne" a
-# „na tesno" je 0,6 MB, kým chýbajúci rozsah znamená na mape prázdne
-# štvorčeky a nikto nepovie prečo.
+# Je to viac, než mapa Slovenska potrebuje, a je to zámer: rozdiel oproti samej
+# latinke je 0,6 MB, kým chýbajúci rozsah znamená prázdne štvorčeky bez
+# vysvetlenia.
 #
-# KEBY PRIBUDOL REGIÓN, KTORÝ PÍŠE INÝM PÍSMOM, je to jedna premenná – a keď
-# sa nastaví na `vsetko`, neoreže sa nič. (Prázdna hodnota to nevypne:
-# `${VAR:-...}` ju nahradí predvoleným zoznamom, takže „vypnuté" musí byť
-# slovo, nie prázdno.) Mapa sveta si rozsahy nehádže takto
-# natvrdo, ale MERIA z mien v podkladoch (`workers/world/glyphs.py`); tam sa
-# to dá, lebo mená štátov sú v jednom geojsone. Pri kraji sú mená
-# roztrúsené v PBF a v dlaždiciach, ktoré v tomto jobe ešte nie sú.
+# Iné písmo je jedna premenná; `vsetko` orezanie vypne. (Prázdna hodnota ho
+# nevypne – `${VAR:-…}` ju nahradí predvoleným zoznamom.) Mapa sveta si rozsahy
+# meria z mien v podkladoch; pri kraji sú mená roztrúsené v PBF.
 GLYPHS_KEEP_RANGES="${GLYPHS_KEEP_RANGES:-0-2047,7424-9215,11264-11519,42752-43007}"
 
 mkdir -p _site/fonts
@@ -98,11 +84,8 @@ elif [ -n "$(ls -A _site/fonts 2>/dev/null)" ]; then
     for b in $(seq $(( lo / 256 )) $(( hi / 256 ))); do OK["$b"]=1; done
   done
 
-  # NAJPRV SA OVERÍ ZOZNAM, AŽ POTOM SA MAŽE. Rozsah od 0 je základná latinka
-  # a číslice – bez neho by mapa bola bez nápisov. Keby sa kontrolovalo až po
-  # mazaní, ostal by po spadnutom behu okresaný `_site/fonts` a krok „Cache
-  # glyfov a spritov (save)" beží pri `always()`, takže by tú skazu ULOŽIL do
-  # cache a ďalšie behy by si ju ťahali späť.
+  # overiť zoznam pred mazaním: krok „cache glyfov (save)" beží pri `always()`,
+  # takže by okresaný `_site/fonts` po páde uložil do cache
   if [ -z "${OK[0]:-}" ]; then
     echo "::error::GLYPHS_KEEP_RANGES=\`$GLYPHS_KEEP_RANGES\` neobsahuje rozsah od 0 (základná latinka a číslice) – mapa by bola bez nápisov. Nič sa nezmazalo."
     exit 1

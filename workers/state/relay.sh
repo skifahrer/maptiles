@@ -1,41 +1,27 @@
 #!/usr/bin/env bash
-# JEDEN ÚSEK ŠTAFETY dávky „Build map state": počkaj na kraj, ktorý beží,
+# Jeden úsek štafety dávky „Build map state": počkaj na kraj, ktorý beží,
 # spusti ďalší a odovzdaj štafetu sám sebe.
 #
-# SAMOTNÁ ŠTAFETA JE VO `workers/state/estafeta.sh` – čakanie, kolík, súhrn
-# aj poistka proti nekonečnej reťazi. Je to to isté, čo robí dávka
-# „Regenerate state" (`workers/state/regenerate.sh`), a dve kópie by sa raz
-# rozišli práve v tom, či reťaz pokračuje. Tu ostáva JEDINÉ, čím sa táto
-# dávka od tamtej líši: ČO nad krajom spúšťa a s akými poľami.
+# Samotná štafeta je vo `workers/state/estafeta.sh` – to isté jadro, aké
+# používa „Regenerate state". Tu ostáva len to, čím sa táto dávka líši.
 #
-# ── V ČOM SA DÁVKA LÍŠI OD JEDNÉHO KRAJA ──────────────────────────────────
-#   area          natvrdo `cely_region`. Výrez je pohorie a vyberať jedno
-#                 pohorie pre osem krajov nedáva zmysel.
-#   publish_pages natvrdo VYPNUTÉ. Na Pages je JEDNA mapa, takže osem behov
-#                 za sebou by stránku osemkrát prepísalo a nechalo na nej
-#                 posledný kraj.
-#   reuse_layers  dopĺňa sa do `options` ako `true`, keď si ho tam človek
-#                 nenapísal sám. Rozpis hneď nižšie.
-# Všetko ostatné sa podáva ďalej nezmenené – a podáva sa CELÉ a zakaždým,
-# lebo články štafety sú samostatné behy a beh bez nich by postavil inú mapu.
-# Stráži to `workers/lint/state.py`.
+# Čím sa dávka líši od jedného kraja:
+#   area          natvrdo `cely_region` – vyberať jedno pohorie pre osem
+#                 krajov nedáva zmysel
+#   publish_pages natvrdo vypnuté – na Pages je jedna mapa a osem behov by ju
+#                 osemkrát prepísalo
+#   reuse_layers  dopĺňa sa ako `true`, keď si ho tam človek nenapísal sám
 #
-# ── PREČO DÁVKA NEPOČÍTA VRSTVY, KTORÉ UŽ RAZ VZNIKLI ─────────────────────
-# Vrstevnice, skaly a tieňovanie sú hodiny na kraj a krajov je osem – z dňa,
-# ktorý dávka trvá, je to väčšina. A pritom sa medzi dvomi dávkami zmení
-# málokedy niečo, čo by ich zmenilo: doplnený sklad výškového modelu a opravený
-# skript inde v pipeline zahodili cache oboch (bol v kľúči ich otlačok), takže
-# druhá dávka počítala to isté odznova. Preto sa každému kraju podáva
-# `reuse_layers=true`: vrstva, ktorá s TÝMI ISTÝMI nastaveniami už existuje,
-# sa vezme hotová a job, ktorý to spraví, to hlási `::notice::`-om.
+# Všetko ostatné sa podáva ďalej nezmenené, celé a zakaždým – články štafety sú
+# samostatné behy. Stráži to `workers/lint/state.py`.
 #
-# KTO CHCE PREPOČET, POVIE TO – a má na to dve páky, obe v tomto formulári:
-# `rebuild` (zahodí záznam tej vrstvy a spočíta ju nanovo) alebo
-# `options: reuse_layers=false` (celá dávka prísne, ako jeden kraj). Preto sa
-# hodnota dopĺňa len vtedy, keď o `reuse_layers` v `options` nie je ani slovo –
-# napísané prebíja doplnené.
+# Prečo dávka nepočíta vrstvy, ktoré už raz vznikli: vrstevnice, skaly
+# a tieňovanie sú hodiny na kraj a krajov je osem, čiže väčšina toho dňa. Medzi
+# dvomi dávkami sa pritom málokedy zmení niečo, čo by ich zmenilo. Kto chce
+# prepočet, povie to – `rebuild` alebo `options: reuse_layers=false`; napísané
+# prebíja doplnené.
 #
-# Hodnoty z prostredia (viď `.github/workflows/build-map-state.yml`):
+# Z prostredia (viď `.github/workflows/build-map-state.yml`):
 #   COUNTRY POKRACOVANIE REF SELF REGION_WF REPO SUMMARY GH_TOKEN
 #   CONTOUR_SOURCE ROCK_SOURCE SHADING_SOURCE ROCK_SLOPE REBUILD TEST OPTIONS
 set -euo pipefail

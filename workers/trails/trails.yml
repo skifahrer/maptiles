@@ -1,34 +1,25 @@
 # Planetiler custom schema – značené trasy (turistické, cyklo, bežky, jazdecké).
 #
-# Prečo vlastné dlaždice a nie OpenMapTiles: trasa je v OSM `type=route`
-# **relácia** nad cudzími cestami a schéma OpenMapTiles relácie trás nemá –
-# v dlaždiciach je len cesta, bez značenia. Značenie (farba pásika, sieť,
-# názov) sa preto vyťahuje samostatne a ide do vlastného `.pmtiles`.
+# Trasa je v OSM `type=route` relácia nad cudzími cestami a schéma
+# OpenMapTiles relácie trás nemá – v dlaždiciach je len cesta, bez značenia.
 #
-# Vstup vyrába workflow build-map-region.yml:
+# Vstup vyrába build-map-region.yml:
 #   osmium tags-filter (r/route=…) → workers/trails/routes.py → data/trails.geojson
 #
-# Jedna línia = jedna trasa na jednej ceste. Po ceste ich vedie aj päť naraz,
-# takže každá dostane svoj **pruh** (`side` = na ktorú stranu, `off` = koľká
-# je v rade na tej strane) a štýl ju podľa neho posunie (`line-offset`) vedľa
-# cesty. Samotná cesta tak zostane vidieť aj s tým, aká je. Pešie trasy idú na
-# jednu stranu, kolesové na druhú – po jednom chodníku vedie bežne turistická
-# značka aj cyklotrasa a takto obe začínajú hneď pri ňom.
+# Jedna línia = jedna trasa na jednej ceste; po ceste ich vedie aj päť naraz,
+# takže každá dostane svoj pruh (`side`, `off`) a štýl ju podľa neho posunie
+# vedľa cesty. Pešie trasy idú na jednu stranu, kolesové na druhú.
 #
-# `mark`, `mark_bg` a `mark_fg` sú TURISTICKÁ ZNAČKA, ako je namaľovaná na
-# strome (biely alebo žltý štvorec s farebným pásom, trojuholník na vrchol,
-# bicykel na cyklotrase). Kreslí sa pozdĺž trasy v pravidelných intervaloch –
-# je to to, čo človek v teréne sleduje, kým ikonka druhu trasy hovorí len,
-# že tadiaľ ide „nejaká turistická".
+# `mark`, `mark_bg` a `mark_fg` sú turistická značka tak, ako je namaľovaná na
+# strome – to, čo človek v teréne sleduje; ikonka druhu trasy hovorí len, že
+# tadiaľ ide „nejaká turistická".
 #
-# `way` (`path` / `road`) hovorí, po čom trasa vedie. Odstup pásika od čiary
-# pod ním totiž nie je jedno číslo: asfaltka je v mape niekoľkonásobne širšia
-# než chodník, takže odstup, pri ktorom sa pásik lepí na chodník, leží
-# uprostred cesty. Aký odstup pre ktorý prípad, si drží štýl.
+# `way` (`path` / `road`) hovorí, po čom trasa vedie: odstup, pri ktorom sa
+# pásik lepí na chodník, leží uprostred asfaltky. Aký odstup pre ktorý prípad,
+# si drží štýl.
 #
-# `tier` je dôležitosť trasy podľa siete (iwn/nwn/rwn/lwn). Riadi, od akého
-# zoomu je trasa v dlaždiciach: diaľkovú trasu má zmysel vidieť aj
-# z prehľadu, miestny okruh až keď je vidieť aj cesta pod ním.
+# `tier` je dôležitosť podľa siete (iwn/nwn/rwn/lwn) – riadi, od akého zoomu je
+# trasa v dlaždiciach.
 schema_name: FricoMaps značené trasy
 schema_description: Turistické chodníky, cyklotrasy, bežky a jazdecké trasy z OSM relácií
 attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>

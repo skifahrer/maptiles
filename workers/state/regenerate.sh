@@ -1,27 +1,21 @@
 #!/usr/bin/env bash
-# JEDEN ÚSEK ŠTAFETY dávky „Regenerate state": počkaj na kraj, ktorý beží,
+# Jeden úsek štafety dávky „Regenerate state": počkaj na kraj, ktorý beží,
 # spusti nad ďalším to, čo sa má pregenerovať, a odovzdaj štafetu sám sebe.
 #
-# SAMOTNÁ ŠTAFETA JE VO `workers/state/estafeta.sh` – to isté jadro, aké
-# používa dávka „Build map state" (`workers/state/relay.sh`). Tu ostáva len to,
-# čím sa táto dávka od tamtej líši: nespúšťa nad krajom CELÝ build, ale JEDNU
-# vec, a ktorú to je, hovorí formulár (`co`).
+# Samotná štafeta je vo `workers/state/estafeta.sh` – to isté jadro, aké
+# používa „Build map state". Tu ostáva len to, čím sa táto dávka líši:
+# nespúšťa celý build, ale jednu vec, a ktorú, hovorí formulár (`co`).
 #
-# ČO SA NAD KRAJOM SPUSTÍ, NEROZHODUJE TENTO SKRIPT. Číselník je vo
-# `workers/state/jobs.py` – vie, ktorý workflow tú vec nad krajom spraví
-# a s akými poľami. Keby to bol `case` tu, pribudnutá voľba by vo formulári
-# bola a štafeta by na nej spadla; alebo, čo je horšie, spustila by niečo
-# iné, než si vybral, a beh by bol zelený.
+# Čo sa nad krajom spustí, nerozhoduje tento skript – číselník je vo
+# `workers/state/jobs.py`. Keby to bol `case` tu, pribudnutá voľba by vo
+# formulári bola a štafeta by na nej spadla, alebo by spustila niečo iné a beh
+# by bol zelený.
 #
-# ── DVE CESTY, DVE CENY ───────────────────────────────────────────────────
-# Body, línie a navigácia sa počítajú z toho istého PBF ako mapa a nič iné
-# z buildu nepotrebujú – idú preto cez „Mapa · Pregeneruj vrstvu kraja",
-# ktorý postaví LEN tú vrstvu a na Drive prepíše LEN jej balík. Minúty.
-# Vrstevnice, skaly a tieňovanie potrebujú sklad výškového modelu, jeho
-# doplnenie aj kľúče cache – idú preto celým buildom kraja s `rebuild`.
-# Hodiny. Rozpis, prečo to tak je, je v hlavičke `workers/state/jobs.py`.
+# Dve cesty, dve ceny: body, línie a navigácia idú cez „Pregeneruj vrstvu
+# kraja" (minúty), vrstevnice, skaly a tieňovanie potrebujú sklad výškového
+# modelu, tak idú celým buildom kraja s `rebuild` (hodiny).
 #
-# Hodnoty z prostredia (viď `.github/workflows/regenerate-state.yml`):
+# Z prostredia (viď `.github/workflows/regenerate-state.yml`):
 #   COUNTRY CO POKRACOVANIE REF SELF REPO SUMMARY GH_TOKEN
 #   CONTOUR_SOURCE ROCK_SOURCE SHADING_SOURCE ROCK_SLOPE TEST OPTIONS
 set -euo pipefail

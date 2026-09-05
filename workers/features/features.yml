@@ -1,43 +1,25 @@
-# Planetiler custom schema – krajinné prvky, ktoré OpenMapTiles NEMÁ.
+# Planetiler custom schema – krajinné prvky, ktoré OpenMapTiles nemá.
 #
-# PREČO VLASTNÝ .pmtiles: schéma OpenMapTiles sa pozerá len na tridsať kľúčov
-# a niektoré veci, na ktorých v teréne záleží, medzi nimi nie sú vôbec.
-# V celom `openmaptiles/planetiler-openmaptiles` sa slovo `embankment`
-# nevyskytuje ani raz – rovnako `barrier` (líniový), `power`, `cutline`,
-# `piste:type`, `natural=cave_entrance` či `man_made=tower`. Nedá sa to
-# „zapnúť": v základných dlaždiciach tie prvky jednoducho nie sú, takže sa
-# musia vytiahnuť z toho istého PBF druhýkrát, vlastnou schémou.
+# Schéma OpenMapTiles sa pozerá len na tridsať kľúčov; `embankment`, líniový
+# `barrier`, `power`, `cutline`, `piste:type`, `natural=cave_entrance` ani
+# `man_made=tower` v nej nie sú vôbec. Nedá sa to zapnúť – musia sa vytiahnuť
+# z toho istého PBF druhýkrát, vlastnou schémou.
 #
-# Je to ten istý vzor ako značené trasy (workers/trails/trails.yml) a skaly
-# (workers/contours-rocks/rocks.yml): vlastný súbor, vlastný maxzoom, vlastný podiel na
-# rozpočte stránky, a v štýle vlastný `source`. Keď job nebeží, štýl vrstvy
-# jednoducho nepridá a mapa je ako predtým.
+# Ten istý vzor ako značené trasy a skaly: vlastný súbor, maxzoom aj podiel na
+# rozpočte. Keď job nebeží, štýl vrstvu nepridá.
 #
-# LEN LÍNIE A PLOCHY. Bodové prvky (pramene, jaskyne, rozhľadne, pamiatky, …)
-# sú vo VLASTNOM súbore, `workers/features/points.yml` – rozpis prečo je
-# v jeho hlavičke. Rovnaký vstup, rovnaký predfilter, len druhý beh
-# Planetileru nad tým istým PBF.
+# Len línie a plochy – body sú vo `workers/features/points.yml` (rovnaký vstup
+# aj predfilter, len druhý beh Planetileru).
 #
-# Vstup vyrába workflow build-map-region.yml:
-#   osmium tags-filter → data/features.osm.pbf
-# Predfilter je zámerne ŠIRŠÍ než tento súbor (vypúšťa napr. `barrier=gate`,
-# ktorý si berie POI vrstva OpenMapTiles). Keď sem (alebo do `points.yml`)
-# pribudne trieda, filter vo workflowe treba rozšíriť tiež – inak sa
-# v dlaždiciach ticho neobjaví. Na to sa už nemusí pamätať: stráži to
-# `workers/lint/features.py` (obe schémy proti tomu istému filtru).
+# Predfilter je zámerne širší než tento súbor. Keď sem pribudne trieda, musí
+# pribudnúť aj doň – stráži to `workers/lint/features.py`.
 #
-# ZOOMY sú tu to hlavné rozhodnutie. Plotov je v OSM viac než všetkých ciest
-# dokopy, takže idú až od z15; vedenie vysokého napätia je orientačný bod na
-# kilometre, takže od z11. Nie je to estetika, je to veľkosť súboru.
+# Zoomy sú hlavné rozhodnutie: plotov je v OSM viac než všetkých ciest, tak idú
+# od z15; vedenie vysokého napätia je orientačný bod na kilometre, tak od z11.
 #
-# POZOR NA `min_zoom` NAD MAXZOOMOM ARCHÍVU. Čo má tu vyšší `min_zoom`, než
-# je maxzoom vygenerovaných dlaždíc, Planetiler zahodí – a NEPOVIE O TOM NIČ.
-# Presne to sa raz stalo: ploty a živé ploty majú `min_zoom: 15`, dlaždice sa
-# robili po z14 a v mape ich bola nula. Preto je `features_maxzoom`
-# predvolene 15 a job v build-map-region.yml porovná najvyšší `min_zoom` v tomto
-# súbore (aj v `points.yml`) so zvoleným maxzoomom a rozdiel ohlási
-# varovaním. Znížiť maxzoom kvôli veľkosti je legitímne – len to má byť
-# vidieť, nie sa to dozvedieť z chýbajúcich plotov v mape.
+# Čo má vyšší `min_zoom`, než je maxzoom dlaždíc, Planetiler zahodí a nepovie
+# nič – raz tak bola v mape nula plotov. Preto je `features_maxzoom`
+# predvolene 15 a build rozdiel ohlási varovaním.
 schema_name: FricoMaps krajinné prvky
 schema_description: >-
   Násypy, zárezy, múry, ploty, elektrické vedenia, prieseky, stromoradia,
@@ -50,23 +32,18 @@ sources:
     type: osm
     local_path: data/features.osm.pbf
 
-# Napätie má byť v dlaždici číslo, nie reťazec – štýl podľa neho vyberá
-# hrúbku čiary. Hodnoty ako „22000;110000" sa nerozparsujú a atribút
-# jednoducho nebude; to je v poriadku. (Nadmorská výška, `ele`, je v bodovej
-# vrstve – tá je teraz vo `workers/features/points.yml`.)
+# napätie má byť číslo – štýl podľa neho vyberá hrúbku čiary. „22000;110000"
+# sa nerozparsuje a atribút nebude; to je v poriadku.
 tag_mappings:
   voltage: integer
 
 layers:
-  # ==================== LÍNIE ====================
-  # Jedna vrstva, `class` rozlišuje čo to je. Zvlášť by z každej bola vrstva
-  # o pár stovkách kB réžie a štýl by ich aj tak kreslil rovnakým vzorom.
+  # LÍNIE. Jedna vrstva, `class` rozlišuje čo to je – zvlášť by z každej bola
+  # vrstva o pár stovkách kB réžie.
   - id: feature_line
     features:
-      # --- násyp: presne to, čo v mape chýbalo ---
-      # `man_made=embankment` je samostatná čiara na hrane násypu,
-      # `embankment=yes` je vlastnosť cesty alebo železnice pod ňou. Obe sa
-      # kreslia rovnako (zúbky na dolnej strane), preto jedna trieda.
+      # násyp: `man_made=embankment` je čiara na hrane, `embankment=yes`
+      # vlastnosť cesty pod ňou. Kreslia sa rovnako, preto jedna trieda.
       - source: osm
         geometry: line
         min_zoom: 13
@@ -82,7 +59,7 @@ layers:
             type: long
           - key: osm_type
             value: '${ feature.osm_type }'
-      # --- zárez (opak násypu – cesta vedie pod úrovňou terénu) ---
+      # zárez (opak násypu – cesta vedie pod úrovňou terénu)
       - source: osm
         geometry: line
         min_zoom: 13
@@ -93,9 +70,7 @@ layers:
           - key: class
             value: cutting
 
-      # --- múry ---
-      # Hradby a oporné múry sú v krajine výrazné a bývajú dlhé, preto o zoom
-      # skôr než obyčajný plot.
+      # múry: hradby a oporné múry sú výrazné a dlhé, preto o zoom skôr než plot
       - source: osm
         geometry: line
         min_zoom: 14
@@ -109,10 +84,8 @@ layers:
           - key: subclass
             type: match_value
 
-      # --- ploty a živé ploty ---
-      # Až od z15: plotov je v OSM viac než ciest a na prehľadovom zoome by
-      # z nich bola len šeď. Živý plot je vlastná trieda, lebo sa kreslí
-      # zeleno a ako vegetácia, nie ako prekážka.
+      # ploty a živé ploty od z15: plotov je viac než ciest. Živý plot je
+      # vlastná trieda, lebo sa kreslí ako vegetácia, nie ako prekážka.
       - source: osm
         geometry: line
         min_zoom: 15
@@ -137,10 +110,8 @@ layers:
           - key: osm_type
             value: '${ feature.osm_type }'
 
-      # --- elektrické vedenie ---
-      # Od z11: stožiare a dráty sú v otvorenej krajine orientačný bod na
-      # kilometre a v turistickej mape patria k tomu najužitočnejšiemu, čo
-      # OpenMapTiles vynecháva.
+      # elektrické vedenie od z11: v otvorenej krajine orientačný bod
+      # na kilometre
       - source: osm
         geometry: line
         min_zoom: 11
@@ -160,23 +131,12 @@ layers:
             value: power_minor
           - key: voltage
 
-      # --- plánovaná cesta ---
-      # `highway=proposed` je cesta, ktorá ZATIAĽ NEEXISTUJE – trasa schválená
-      # alebo navrhnutá, na ktorej sa ešte nekope. V OpenMapTiles NIE JE:
-      # schéma má triedy `*_construction` (to je `highway=construction`, teda
-      # rozostavané), ale pre `proposed` v celej vrstve `transportation`
-      # neexistuje žiadna – overené v jej zozname tried. Takže sa musí, ako
-      # všetko ostatné tu, vytiahnuť z PBF druhýkrát.
-      #
-      # Od z11, rovnako ako rozostavané cesty v štýle: plánovaná diaľnica je
-      # čiara cez celý kraj a práve na tom zoome má zmysel vedieť, kade pôjde.
-      #
-      # ČO SA PLÁNUJE, hovorí `proposed=motorway` (dokumentovaný spôsob) alebo
-      # `proposed:highway=motorway`. Berú sa OBA – cez `coalesce`, teda „prvá
-      # nenulová hodnota", a nie dvoma atribútmi s tým istým kľúčom: čo sa
-      # stane pri zdvojenom kľúči, Planetiler nemá nikde napísané, takže by to
-      # bolo spoliehanie sa na neurčené správanie. Bez tohto rozlíšenia by
-      # z plánovanej diaľnice a plánovanej lesnej cesty bola tá istá čiara.
+      # plánovaná cesta: `highway=proposed` je trasa, na ktorej sa ešte
+      # nekope – v OpenMapTiles pre ňu neexistuje žiadna trieda (`*_construction`
+      # je `highway=construction`, teda rozostavané). Od z11 ako rozostavané
+      # cesty v štýle. Čo sa plánuje, hovorí `proposed=` alebo
+      # `proposed:highway=`; berú sa oba cez `coalesce` – zdvojený kľúč
+      # Planetiler nikde nedefinuje.
       - source: osm
         geometry: line
         min_zoom: 11
@@ -198,8 +158,7 @@ layers:
           - key: osm_type
             value: '${ feature.osm_type }'
 
-      # --- priesek ---
-      # V lese je to výrazná rovná čiara, často hranica alebo trasa vedenia.
+      # priesek: v lese výrazná rovná čiara, často hranica alebo trasa vedenia
       - source: osm
         geometry: line
         min_zoom: 13
@@ -209,9 +168,8 @@ layers:
           - key: class
             value: cutline
 
-      # --- nadzemné potrubie ---
-      # Podzemné sa vynecháva: v mape by z neho bola čiara cez krajinu,
-      # ktorú v teréne nie je ako overiť.
+      # nadzemné potrubie; podzemné by bola čiara cez krajinu, ktorú v teréne
+      # nie je ako overiť
       - source: osm
         geometry: line
         min_zoom: 13
@@ -223,7 +181,7 @@ layers:
           - key: class
             value: pipeline
 
-      # --- stromoradie ---
+      # stromoradie
       - source: osm
         geometry: line
         min_zoom: 14
@@ -233,9 +191,8 @@ layers:
           - key: class
             value: tree_row
 
-      # --- hate, priehradné múry, plavebné komory ---
-      # `waterway=dam` ako PLOCHA je v OpenMapTiles (landuse class=dam), ako
-      # čiara nie – a priehradný múr býva mapovaný práve čiarou.
+      # hate, priehradné múry, plavebné komory: `waterway=dam` ako plocha
+      # v OpenMapTiles je, ako čiara nie – a múr býva mapovaný práve čiarou
       - source: osm
         geometry: line
         min_zoom: 13
@@ -251,7 +208,7 @@ layers:
           - key: osm_type
             value: '${ feature.osm_type }'
 
-      # --- výmole a zrázy ---
+      # výmole a zrázy
       - source: osm
         geometry: line
         min_zoom: 14
@@ -261,21 +218,17 @@ layers:
           - key: class
             type: match_value
 
-    # Prvok je v OSM rozsekaný na desiatky krátkych ciest (plot sa láme na
-    # každej hranici pozemku). Zlepenie úsekov s rovnakými atribútmi je aj
-    # menšie, aj krajšie – prerušovaná čiara sa na 20-metrovom úseku nestihne
-    # ani raz zopakovať.
+    # prvok je v OSM rozsekaný na desiatky krátkych ciest; zlepenie je aj
+    # menšie, aj krajšie – prerušovaná čiara sa na 20 m nestihne zopakovať
     tile_post_process:
       merge_line_strings:
         min_length: 0
 
-  # ==================== PLOCHY ====================
+  # PLOCHY
   - id: feature_area
     features:
-      # --- parkovisko ---
-      # `amenity=parking` je v OpenMapTiles LEN ako bod, nikdy ako plocha.
-      # Pri obci aj pri východisku túry je to pritom presne tá plocha, ktorú
-      # človek na mape hľadá.
+      # parkovisko: `amenity=parking` je v OpenMapTiles len ako bod, hoci pri
+      # východisku túry je to práve tá plocha, ktorú človek hľadá
       - source: osm
         geometry: polygon
         min_zoom: 14
@@ -287,7 +240,7 @@ layers:
             value: parking
           # kryté/podzemné parkovisko sa nemá kresliť ako plocha na povrchu
           - key: parking
-      # --- skládka a halda ---
+      # skládka a halda
       - source: osm
         geometry: polygon
         min_zoom: 12
@@ -311,7 +264,7 @@ layers:
           - key: name
           - key: class
             value: spoil_heap
-      # --- hospodársky dvor ---
+      # hospodársky dvor
       - source: osm
         geometry: polygon
         min_zoom: 13
@@ -321,7 +274,7 @@ layers:
           - key: name
           - key: class
             type: match_value
-      # --- opustený priemysel ---
+      # opustený priemysel
       - source: osm
         geometry: polygon
         min_zoom: 12
@@ -330,9 +283,7 @@ layers:
         attributes:
           - key: class
             value: brownfield
-      # --- kamenné pole ---
-      # `natural=scree` a `bare_rock` sú v OpenMapTiles (landcover class=rock),
-      # `shingle` nie – a v našich dolinách je to bežná plocha.
+      # kamenné pole: `scree` a `bare_rock` v OpenMapTiles sú, `shingle` nie
       - source: osm
         geometry: polygon
         min_zoom: 11
@@ -342,20 +293,13 @@ layers:
           - key: class
             value: shingle
 
-  # BODY (pramene, jaskyne, rozhľadne, pamiatky, …) SÚ VO VLASTNOM SÚBORE
-  # od `workers/features/points.yml` – presne kvôli balíku na stiahnutie,
-  # ktorý appka ponúka zvlášť od línií a plôch (rozpis v hlavičke toho
-  # súboru). Rovnaký vstup (`data/features.osm.pbf`), rovnaký predfilter,
-  # len druhý beh Planetileru.
+  # body sú vo `workers/features/points.yml` kvôli balíku, ktorý appka ponúka
+  # zvlášť od línií a plôch
 
-  # ==================== ZJAZDOVKY A BEŽKY ====================
-  # Vleky a lanovky v dlaždiciach SÚ (`transportation class=aerialway`), trate
-  # nie – `piste:type` OpenMapTiles nepozná. Na lyžiarskej mape tak boli vleky
-  # bez toho, k čomu vedú.
-  #
-  # Trať sa mapuje raz čiarou (os zjazdovky) a raz plochou (jej obrys). Obe sa
-  # sem púšťajú zámerne: uzavretá cesta vyjde ako plocha AJ ako čiara, takže
-  # dostane výplň s obrysom, kým otvorená len čiaru. Presne tak to má vyzerať.
+  # ZJAZDOVKY A BEŽKY. Vleky a lanovky v dlaždiciach sú, trate nie –
+  # `piste:type` OpenMapTiles nepozná, takže na lyžiarskej mape boli vleky bez
+  # toho, k čomu vedú. Trať sa mapuje raz čiarou (os) a raz plochou (obrys);
+  # obe sa púšťajú zámerne, takže uzavretá cesta dostane výplň aj obrys.
   - id: piste
     features:
       - source: osm
@@ -369,7 +313,7 @@ layers:
           - key: class
             value:
               tag_value: "piste:type"
-          # modrá/červená/čierna – v mape to je prvé, čo lyžiar hľadá
+          # modrá/červená/čierna – prvé, čo lyžiar hľadá
           - key: difficulty
             value:
               tag_value: "piste:difficulty"

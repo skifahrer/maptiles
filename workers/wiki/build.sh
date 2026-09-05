@@ -1,17 +1,13 @@
 #!/usr/bin/env bash
 # Články z Wikipédie ku všetkému, čo v regióne odkazuje na wiki.
 #
-# PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: `build-map-region.yml` má strop
-# 128 KiB a nad ním ho GitHub ticho neprijme (stráži to „Kontrola · lint workflowov").
+# Vlastný skript, lebo build-map-region.yml je pri strope 128 KiB. Tu je
+# inštalácia, voľby z formulára a výstupy; celý výpočet je v `collect.py`.
 #
-# ČO TU JE a čo je vo `collect.py`: tu inštalácia, voľby z formulára a výstupy
-# pre ďalšie joby; tam celý výpočet (hľadanie odkazov, wikidata, sťahovanie).
+# Planetiler netreba, nič sa nedláždi – odkazy sú tagy a `osmium tags-filter`
+# ich z PBF vyberie za sekundy.
 #
-# PREČO NIE PLANETILER: nič sa nedláždi. Odkazy sú tagy a `osmium tags-filter`
-# ich z regionálneho PBF vyberie za sekundy – ten istý nástroj, ktorým si trasy
-# predfiltrujú relácie.
-#
-# Hodnoty z prostredia (viď workflow `Build wiki`, wiki.yml):
+# Z prostredia (viď wiki.yml):
 #   REGION_KEY WIKI_COUNTRY OPT_WIKI_LANGS OPT_WIKI_FORMAT OPT_WIKI_MAX
 set -euo pipefail
 

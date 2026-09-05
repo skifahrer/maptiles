@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
 # Vodstvo z OSM → `{región}-water.pmtiles`.
 #
-# ČO TO JE A PREČO: rozpis je v hlavičke `workers/water/water.yml`. Krátko –
-# voda v mape je rozdelená do troch vrstiev OpenMapTiles (`water`, `waterway`,
-# `water_name`), meno je v inej vrstve než geometria a potoky vypadávajú podľa
-# zoomu. Tu je všetko vodné v jednom archíve a meno na tom istom prvku.
+# Rozpis je v hlavičke `water.yml`. Krátko: voda v mape je v troch vrstvách
+# OpenMapTiles, meno je inde než geometria a potoky vypadávajú podľa zoomu.
+# Tu je všetko vodné v jednom archíve a meno na tom istom prvku.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho
-# GitHub ticho neprijme (stráži „Kontrola · lint workflowov").
+# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
 #
-# PREDFILTER MUSÍ DOŤAHOVAŤ ČLENOV RELÁCIÍ: veľké jazerá a priehrady sú
-# multipolygóny, ktorých členovia `natural=water` nemajú. Bez nich by po
-# Domaši v dlaždiciach ticho neostalo nič. `osmium tags-filter` to robí SÁM
-# a vypína sa to až `-R`/`--omit-referenced` – preto tu žiadny taký prepínač
-# nie je. (`-r` neexistuje, osmium na ňom skončí s „unrecognised option".)
+# Predfilter musí doťahovať členov relácií: jazerá a priehrady sú
+# multipolygóny, ktorých členovia `natural=water` nemajú. `osmium tags-filter`
+# to robí sám a vypína sa to až `-R`.
 #
-# Podiel na veľkosti stránky berie z `BUDGET_WATER_PCT` (env workflowu).
+# Podiel na veľkosti stránky berie z `BUDGET_WATER_PCT`.
 
 set -euo pipefail
 mkdir -p _site/tiles data steps-out

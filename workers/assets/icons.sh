@@ -1,20 +1,16 @@
 #!/usr/bin/env bash
 # SDF sprity zo sád ikoniek → `_site/sprites/`.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho GitHub
-# ticho neprijme (stráži to „Kontrola · lint workflowov").
+# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
 #
-# ZOZNAM ZDROJOV JE V `poc/web/icon-sources.js` – jedno miesto pre web aj
-# pipeline. Z každého sa vyrobí SDF sprite: symboly bez koliesok a podkladov,
-# ktorým sa dá nastaviť farba.
+# Zoznam zdrojov je v `poc/web/icon-sources.js` – jedno miesto pre web aj
+# pipeline. Z každého sa vyrobí SDF sprite: symboly bez koliesok, ktorým sa dá
+# nastaviť farba.
 #
-# JEDNA SADA, KTORÁ SA NESTIAHNE, NIE JE DÔVOD ZHODIŤ BUILD – sú to súbory
-# z cudzích serverov. Preskočí sa s varovaním; chyba je až to, keď nevyjde ani
-# jedna. Ktoré sady naozaj vznikli, ide von v `available`, aby manifest
-# neponúkal prepínač na prázdny sprite.
+# Sada, ktorá sa nestiahne, build nezhodí – sú to súbory z cudzích serverov;
+# chyba je až to, keď nevyjde ani jedna. Ktoré vznikli, ide von v `available`.
 #
-# `set -uo pipefail` bez `-e` je zámer: presne v tomto režime tento kód bežal,
-# kým bol v YAMLe, a preskakovanie chýbajúcich sád na tom stojí.
+# `set -uo pipefail` bez `-e` je zámer: preskakovanie chýbajúcich sád na tom stojí.
 
 set -uo pipefail
 T_SPR=$(date +%s)
@@ -26,14 +22,8 @@ mkdir -p _site/sprites /tmp/icons
 # by ním zhodil celý krok (find nad existujúcim adresárom vráti 0).
 CACHED_SPRITES=$(find _site/sprites -maxdepth 1 -name '*.json' | wc -l)
 
-# Zoznam zdrojov je v poc/web/icon-sources.js – jedno miesto pre web
-# aj pipeline. Z každého sa vyrobí SDF sprite: symboly bez koliesok
-# a podkladov, ktorým sa dá nastaviť farba.
-#
-# VLASTNÉ SADY z developer módu (`overrides.iconSets`) sú v tom zozname tiež:
-# je to tá istá vec – dvojica `<url>.json` + `<url>.png` – len ju nezapísal
-# repozitár, ale človek. Prechádza tým istým prerobením na SDF, takže sa
-# vybrať dá rovnako ako tie tri overené.
+# vlastné sady z developer módu sú v tom zozname tiež – je to tá istá vec
+# (`<url>.json` + `<url>.png`), len ju nezapísal repozitár, ale človek
 node -e "
   Promise.all([
     import('./poc/web/icon-sources.js'),

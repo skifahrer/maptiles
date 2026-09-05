@@ -1,30 +1,20 @@
-# Planetiler custom schema – BODOVÉ krajinné prvky z OSM, VLASTNÝ archív.
+# Planetiler custom schema – bodové krajinné prvky z OSM, vlastný archív.
 #
-# ODŠTIEPENÉ Z `features.yml` (línie a plochy zostali tam), presne kvôli
-# balíku na stiahnutie: appka chce vedieť „body z OSM" a „línie z OSM" ako
-# DVA rôzne súbory (`workers/data/packages.json`, balíky `cesty`
-# a `body`) – kým bolo všetko v jednom `.pmtiles`, to rozdelenie sa
-# nedalo spraviť inak než rozbalením a filtrovaním obsahu na strane appky.
-# Vlastný archív je odpoveď, ktorá to vie priamo: jeden Planetiler beh,
-# jeden výstupný súbor, jedna vec v ňom.
+# Odštiepené z `features.yml` (línie a plochy zostali tam) kvôli balíku na
+# stiahnutie: appka chce „body z OSM" a „línie z OSM" ako dva rôzne súbory
+# a v jednom `.pmtiles` sa to nedalo rozdeliť inak než filtrovaním na jej strane.
 #
-# ROVNAKÝ VSTUP AKO `features.yml`: `data/features.osm.pbf`
-# (`workers/features/filter.txt`, spoločný predfilter) a rovnaký job
-# (`workers/features/build.sh` volá Planetiler druhýkrát nad tým istým
-# súborom) – rozdeliť predfilter by znamenalo čítať PBF tretíkrát pre to,
-# čo prvý priechod už vybral.
+# Rovnaký vstup aj predfilter ako `features.yml` – `features/build.sh` volá
+# Planetiler druhýkrát nad tým istým súborom. Rozdeliť predfilter by znamenalo
+# čítať PBF tretíkrát pre to, čo prvý priechod už vybral.
 #
-# PREČO NIE V ŠTÝLE ROVNAKÝ ROZDIEL AKO PRI LÍNIÁCH/PLOCHÁCH. Mapa kreslí
-# body z tohto súboru presne tak, ako predtým z `features.pmtiles`
-# (`workers/styles/build.mjs`, zdroj `points`) – rozdelenie sa na to, čo je
-# na mape VIDIEŤ, neprejaví, len na tom, čo je v KTOROM SÚBORE.
+# Na mape sa rozdelenie neprejaví: štýl kreslí body zo zdroja `points` presne
+# ako predtým.
 #
-# `geometry: centroid` schválne: to isté sa v OSM mapuje raz uzlom
-# (prameň, jaskyňa) a raz plochou (archeologické nálezisko, halda). Bod
-# v strede je pre popisok správna odpoveď na oboje.
+# `geometry: centroid` schválne – to isté sa v OSM mapuje raz uzlom (prameň)
+# a raz plochou (halda), a bod v strede je pre popisok správna odpoveď na oboje.
 #
-# Zvyšok rozpisu (predfilter, zoomy, poistka na `min_zoom` nad maxzoomom
-# archívu) je v hlavičke `features.yml` – platí pre oba súbory rovnako.
+# Zvyšok rozpisu je v hlavičke `features.yml` a platí pre oba súbory.
 schema_name: FricoMaps body v krajine
 schema_description: >-
   Pramene, jaskyne, vodopády, rozhľadne, útulne, pamiatky, banské dedičstvo

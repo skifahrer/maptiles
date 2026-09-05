@@ -1,25 +1,18 @@
 #!/usr/bin/env bash
 # Hranice území a ich názvy z OSM → `{región}-boundaries.pmtiles`.
 #
-# ČO TO JE A PREČO: rozpis je v hlavičke `workers/boundaries/boundaries.yml`.
-# Krátko – hranica v mape je čiara BEZ MENA územia, ktoré ohraničuje, takže sa
-# z nej nedá povedať, v ktorej obci alebo v ktorom okrese je nejaký bod. Táto
-# vrstva je tá odpoveď: územia ako plochy s menom a úrovňou, k tomu čiary
-# a body sídel. Je to VRSTVA NA POUŽITIE, nie druhé kreslenie – hranice v mape
-# kreslí ďalej základná mapa (rovnaký vzťah ako pri dopravnej sieti).
+# Rozpis je v hlavičke `boundaries.yml`. Krátko: hranica v mape je čiara bez
+# mena územia, takže sa z nej nedá povedať, v ktorej obci nejaký bod je. Je to
+# vrstva na použitie, nie druhé kreslenie – hranice kreslí ďalej základná mapa.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho
-# GitHub ticho neprijme (stráži „Kontrola · lint workflowov").
+# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
 #
-# PREDFILTER MUSÍ DOŤAHOVAŤ ČLENOV RELÁCIÍ, a to je celý rozdiel oproti
-# ostatným vrstvám: hranica obce je v OSM RELÁCIA, ktorej členmi sú cesty,
-# a tie samy `boundary=administrative` nemajú. Bez nich by Planetiler dostal
-# relácie bez geometrie, nemal by z čoho zložiť polygón a v dlaždiciach by
-# TICHO nebolo nič. `osmium tags-filter` ich doťahuje SÁM a vypína sa to až
-# `-R`/`--omit-referenced` – preto tu žiadny taký prepínač nie je.
-# (`-r` neexistuje, osmium na ňom skončí s „unrecognised option".)
+# Predfilter musí doťahovať členov relácií, a to je celý rozdiel oproti
+# ostatným vrstvám: hranica obce je relácia, ktorej členmi sú cesty bez
+# `boundary=administrative`. `osmium tags-filter` ich doťahuje sám a vypína sa
+# to až `-R` – preto tu žiadny taký prepínač nie je.
 #
-# Podiel na veľkosti stránky berie z `BUDGET_BOUNDARIES_PCT` (env workflowu).
+# Podiel na veľkosti stránky berie z `BUDGET_BOUNDARIES_PCT`.
 
 set -euo pipefail
 mkdir -p _site/tiles data steps-out

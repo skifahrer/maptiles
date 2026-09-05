@@ -1,22 +1,18 @@
 #!/usr/bin/env node
 /**
- * Dopečie do spritu ŠÍPKY JEDNOSMERIEK – vlastné, aby boli v každej sade
- * ikoniek (rozpis v hlavičke `poc/web/arrows.js`).
+ * Dopečie do spritu šípky jednosmeriek – vlastné, aby boli v každej sade
+ * ikoniek (rozpis v `poc/web/arrows.js`).
  *
- * Beží po `workers/assets/sprite.mjs`, teda nad hotovým atlasom – preskladanie
- * robí `workers/lib/sprite-bake.mjs`, rovnako ako pri štítkoch ciest a
- * značkách trás.
+ * Beží po `assets/sprite.mjs`, nad hotovým atlasom; preskladanie robí
+ * `lib/sprite-bake.mjs`.
  *
- * SÚ TO SDF OBRÁZKY, a nie hotové farebné: šípka je jednofarebný tvar a tá
- * farba patrí do palety témy (`onewayIcon`). Distance field si kreslí
- * `workers/lib/sdf.mjs` z toho istého predikátu, akým je tvar zadaný.
+ * Sú to SDF obrázky: šípka je jednofarebný tvar a tá farba patrí do palety
+ * témy (`onewayIcon`).
  *
- * KEĎ SA ŠÍPKY NEDOPEČÚ, mapa nespadne: vrstva `road-oneway` sa vynechá presne
- * tak, ako sa vynechávala pri sade bez `arrow` (`hasIcon` v
- * `poc/web/themes.js`). Je to teda varovanie, nie chyba – ale kontrola
- * `workers/lint/icons.mjs` na to má oči, aby to nebolo ticho.
+ * Keď sa nedopečú, mapa nespadne – vrstva `road-oneway` sa vynechá tak ako
+ * pri sade bez `arrow`. Je to teda varovanie, na ktoré má oči
+ * `workers/lint/icons.mjs`.
  *
- * Použitie:
  *   node workers/assets/arrows.mjs --sprite=_site/sprites/osm-liberty
  */
 import { bakeIntoSprite } from "../lib/sprite-bake.mjs";

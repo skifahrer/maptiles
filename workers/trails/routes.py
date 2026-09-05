@@ -1,80 +1,42 @@
 #!/usr/bin/env python3
-"""
-Značené trasy z OSM: turistické chodníky, cyklotrasy, bežky, jazdecké trasy.
+"""Značené trasy z OSM: turistické chodníky, cyklotrasy, bežky, jazdecké trasy.
 
-**Prečo vlastný krok a nie OpenMapTiles.** Trasa nie je cesta – je to
-`type=route` **relácia**, ktorá zbiera cudzie cesty a nesie značenie
-(`osmc:symbol`, `colour`, `network`, `name`). Schéma OpenMapTiles relácie
-trás nemá: v dlaždiciach je len cesta (`class=path`), takže z nej nijako
-nezistíš, či po nej vedie červená turistická, dve cyklotrasy, alebo nič.
+Trasa nie je cesta – je to `type=route` relácia, ktorá zbiera cudzie cesty
+a nesie značenie. Schéma OpenMapTiles relácie trás nemá, takže z dlaždíc sa
+nedá zistiť, či po ceste vedie červená turistická, dve cyklotrasy, alebo nič.
 
-**Do dlaždíc ide aj ZNAČKA, nie len farba.** `osmc:symbol` je predpis toho,
-čo je namaľované na strome (biely alebo žltý štvorec s farebným pásom,
-trojuholník na vrchol, bicykel na cyklotrase) – rozoberá ho `tags.py` na
-trojicu `mark`, `mark_bg`, `mark_fg` a štýl z nej skladá meno obrázka
-v sprite. Farba pásika (`colour`) je iná otázka: tá hovorí, čím trasu
-NAKRESLIŤ, značka je obrázok tabuľky, ktorú má človek v teréne hľadať.
+Do dlaždíc ide aj značka (`osmc:symbol` rozobratý v `tags.py` na `mark`,
+`mark_bg`, `mark_fg`), nie len farba pásika: pásik hovorí, čím trasu kresliť,
+značka je obrázok tabuľky, ktorú má človek v teréne hľadať.
 
-**Jedna línia na dvojicu (cesta, trasa).** Po jednej ceste vedie bežne
-viac trás naraz (napr. červená aj modrá turistická + cyklotrasa). Preto sa
-každá cesta zapíše toľkokrát, koľko trás po nej vedie, a každá kópia dostane
-svoj **pruh** (`side` + `off`) – v štýle je to `line-offset`, takže sa trasy
-kreslia ako farebné pásiky **vedľa** cesty a samotná cesta zostane vidieť aj
-s tým, aká je (chodník, lesná cesta, asfaltka).
-
-**Pešie trasy sú na jednej strane, kolesové na druhej.** Po jednom chodníku
-vedie bežne turistická značka aj cyklotrasa; keby boli v jednom rade, tlačili
-by sa od cesty ďalej a ďalej. `side` je preto +1 (pešie: turistická, ferrata,
-bežky, jazdecké) alebo −1 (kolesové: cyklo, MTB), `off` je poradie v rade **na
-tej svojej strane**, číslované od cesty von od nuly:
+Jedna línia na dvojicu (cesta, trasa): po jednej ceste vedie bežne viac trás,
+takže sa cesta zapíše toľkokrát a každá kópia dostane svoj pruh (`side` +
+`off`). Pešie trasy idú na jednu stranu, kolesové na druhú, inak by sa tlačili
+od cesty ďalej a ďalej:
 
     ━━ cyklotrasa (side −1, off 0) ━━
     ── chodník ──────────────────────
     ━━ červená    (side +1, off 0) ━━
     ━━ modrá      (side +1, off 1) ━━
 
-Ako ďaleko od cesty ten rad začne a aký je krok, rozhoduje štýl – nie tieto
-dáta. Preto sa sem posiela aj `way`: `road` (asfaltka, ktorá je v mape široká,
-takže pásik musí ísť za jej okraj) alebo `path` (chodník a lesná cesta, kde
-stačí jemný odstup, nech je pod pásikom vidieť aj samotný chodník).
+Ako ďaleko rad začne a aký je krok, rozhoduje štýl – preto sa posiela aj `way`
+(`road` alebo `path`). Poradie pruhov závisí len od vlastností trasy, nikdy od
+poradia členov v relácii, takže si trasy na susedných úsekoch pruhy
+neprehadzujú.
 
-Poradie pruhov závisí len od vlastností trasy (sieť → druh → farba → id),
-nikdy nie od poradia členov v relácii. Vďaka tomu si trasy na susedných
-úsekoch pruhy neprehadzujú – dôležitejšia je vždy bližšie k ceste. Keď
-niektorá trasa začne alebo skončí, ostatné sa o pruh posunú (inak by
-vznikla diera), ale ich vzájomné poradie ostane.
+Smer čiary sa neurčuje z nej samej, ale z toho, na čo nadväzuje: `line-offset`
+posúva podľa smeru geometrie a kým sa normalizoval „od západnejšieho konca",
+preskakoval pásik na severojužnom chodníku na každom druhom úseku. Cesty sa
+preto poreťazia podľa spoločných uzlov (`orient_ways`).
 
-**Smer čiary sa neurčuje z nej samej, ale z toho, na čo nadväzuje.**
-`line-offset` posúva podľa smeru geometrie, takže dve susedné cesty nakreslené
-proti sebe majú pásik raz vľavo a raz vpravo. Kým sa smer normalizoval „od
-západnejšieho konca", rozhodovala o ňom pri severojužnom chodníku pár metrov
-široká kľukatina – a pásik preskakoval na druhú stranu na každom druhom úseku:
+Nad PBF sa ide trikrát: relácie → koncové uzly ciest (bez súradníc, teda bez
+indexu) → geometria. Tretí priechod je jediný drahý.
 
-    úsek A (mierne na východ)  → kreslí sa na sever → pásik vpravo
-    úsek B (mierne na západ)   → kreslí sa na juh   → pásik VĽAVO
-    úsek C (mierne na východ)  → kreslí sa na sever → pásik vpravo
+Zlom nad 120° sa rozdelí (`ease_corners`): ostrejší zlom `miter` nezošije
+a pásik v zákrute vyzerá zúžený.
 
-Preto sa cesty najprv **poreťazia podľa spoločných uzlov** (`orient_ways`) a
-smer sa im pridelí tak, aby na seba nadväzovali. Rozhoduje teda susedstvo, nie
-tvar jednej čiary.
+Vstup je PBF predfiltrovaný na `type=route` aj s členmi.
 
-Nad PBF sa preto ide TRIKRÁT: relácie (kto kade vedie) → koncové uzly ciest
-(kto s kým susedí, bez súradníc, takže bez indexu) → geometria. Tretí priechod
-je jediný drahý; medzi druhým a tretím sa rozhodne o smeroch.
-
-**Zlom nad 120° sa rozdelí (`ease_corners`).** Pásik sa v zákrute zošíva
-spojom `miter`, ale ten sa nedostane nad dvojnásobok odstupu – teda nad zlom
-120° – a ostrejší zlom MapLibre zreže, takže pásik v zákrute vyzerá zúžený.
-Taký zlom sa preto rozdelí na niekoľko po 60°; reže sa pritom len 2 m, čiže
-pásik ide tade, kade chodník (0,6 px pri z16).
-
-Vstup je PBF **predfiltrovaný** na `type=route` aj s členmi:
-
-    osmium tags-filter region.osm.pbf \\
-      r/route=hiking,foot,bicycle,mtb,ski,horse,via_ferrata \\
-      -o data/trails.osm.pbf
-
-Použitie:
     python3 workers/trails/routes.py --pbf=data/trails.osm.pbf \\
         --out=data/trails.geojson --stats=trail-stats.txt
 """
@@ -87,8 +49,7 @@ from collections import Counter, defaultdict, deque
 
 import osmium
 
-# Čo o trase hovoria jej TAGY (farba pásika, sieť, značka), je vo vedľajšom
-# `tags.py`: iná otázka než „kade trasa vedie", ktorú rieši tento súbor.
+# čo o trase hovoria jej tagy (farba, sieť, značka), je v `tags.py`
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from tags import (  # noqa: E402  (až za `sys.path`, inak sa modul nenájde)
     TIER_ORDER,
@@ -97,9 +58,7 @@ from tags import (  # noqa: E402  (až za `sys.path`, inak sa modul nenájde)
     resolve_tier,
 )
 
-# ---------------------------------------------------------------- druhy trás
-# Kľúč je hodnota `route` v relácii, hodnota je náš druh – štýl podľa neho
-# kreslí trasy rôznou farbou, hrúbkou a ikonou.
+# druhy trás: kľúč je hodnota `route` v relácii, hodnota náš druh
 ROUTE_TYPES = {
     "hiking": "hiking",
     "foot": "hiking",
@@ -110,33 +69,24 @@ ROUTE_TYPES = {
     "nordic": "ski",
     "skitour": "ski",
     "horse": "horse",
-    # Ferrata je značená trasa ako každá iná – relácia `type=route` nad
-    # cudzími cestami – ale vlastný druh: vedie po skale, nie po chodníku,
-    # a v mape má byť na prvý pohľad odlíšená od turistickej značky.
+    # ferrata je vlastný druh: vedie po skale, nie po chodníku
     "via_ferrata": "ferrata",
 }
 
-# Poradie druhov v pruhoch – pešie značky najbližšie k ceste, potom kolesá.
+# poradie druhov v pruhoch – pešie značky najbližšie k ceste
 ROUTE_ORDER = {"hiking": 0, "ferrata": 1, "bicycle": 2, "mtb": 3, "ski": 4,
                "horse": 5}
 
-# NA KTORÚ STRANU CESTY IDE PÁSIK. Kolesové trasy na opačnú než pešie: po
-# jednom chodníku vedie bežne turistická značka aj cyklotrasa a v jednom rade
-# by sa druhá z nich odsunula od cesty tak ďaleko, že by pri nej už nebolo
-# vidieť, ku ktorej ceste patrí. Takto obe začínajú hneď pri ceste, každá zo
-# svojej strany. +1 je vpravo v smere čiary (a ten je normalizovaný), −1 vľavo.
+# na ktorú stranu ide pásik. Kolesové na opačnú než pešie: v jednom rade by sa
+# druhá z nich odsunula tak ďaleko, že by nebolo vidieť, ku ktorej ceste patrí.
+# +1 je vpravo v smere čiary (a ten je normalizovaný), −1 vľavo.
 SIDE_BY_ROUTE = {"hiking": 1, "ferrata": 1, "ski": 1, "horse": 1,
                  "bicycle": -1, "mtb": -1}
 
-# ------------------------------------------------------ po čom trasa vedie
-# Odstup pásika od čiary pod ním nie je jedno číslo: asfaltka je v mape
-# niekoľkonásobne širšia než chodník, takže odstup, pri ktorom sa pásik lepí
-# na chodník, leží uprostred cesty. Do dlaždíc preto ide, po čom trasa vedie,
-# a odstup pre každý z tých dvoch prípadov si drží štýl.
-#
-# `path` sú chodníky a lesné/poľné cesty (tenká prerušovaná čiara, kde pásik
-# potrebuje jemný odstup, nech je pod ním vidieť aj samotný chodník),
-# `road` je všetko ostatné (široká čiara s obrysom – pásik musí za jej okraj).
+# po čom trasa vedie. Asfaltka je v mape niekoľkonásobne širšia než chodník,
+# takže odstup, pri ktorom sa pásik lepí na chodník, leží uprostred cesty.
+# Do dlaždíc ide `path` (chodníky a lesné cesty) alebo `road`; odstup pre
+# každý z tých dvoch prípadov si drží štýl.
 PATH_HIGHWAYS = {
     "path", "footway", "bridleway", "steps", "track", "cycleway", "corridor",
 }
@@ -147,42 +97,22 @@ def way_class(tags):
     return "path" if (tags.get("highway") or "").strip().lower() \
         in PATH_HIGHWAYS else "road"
 
-# ------------------------------------------------ zlom, ktorý sa nedá zošiť
-# Pásik trasy sa kreslí `line-offset`, teda posunutím KAŽDÉHO VRCHOLA čiary.
-# Ako ďaleko sa vrchol posunie, rozhoduje spoj čiary v štýle – a ten je
-# `miter` (rozpis v `TRAIL_JOIN` v poc/web/themes.js): vrchol ide po osi zlomu
-# o `odstup / cos(zlom/2)`, čo je presne roh rovnobežky, takže pásik má ten
-# istý ostrý uhol ako chodník pod ním a rovnakú hrúbku ako na rovine.
+# zlom, ktorý sa nedá zošiť. Pásik sa kreslí `line-offset`, teda posunutím
+# každého vrchola, a spoj `miter` posunie vrchol o `odstup / cos(zlom/2)`.
+# MapLibre ten posun pakuje do bajtu, takže sa nad dvojnásobok odstupu
+# nedostane – teda nad zlom 120°; ostrejší zreže na `bevel` a v zákrute ostane
+# diera. Preto sa taký zlom rozdelí na zlomy po 60°, krátkym oblúkom:
 #
-# LENŽE `miter` MÁ STROP. MapLibre pakuje ten posun do bajtu (63 jednotiek na
-# šírku čiary), takže sa nad DVOJNÁSOBOK odstupu nedostane – a dvojnásobok je
-# presne zlom 120°. Ostrejší zlom preto zreže na `bevel`: obe ramená pásika sa
-# skončia pred zlomom a v zákrute ostane diera. V mape to vyzerá, že sa pásik
-# v zákrute ZÚŽIL, prípadne sa na chvíľu stratil.
-#
-# ČO S TÝM. Zlom nad 120° sa rozdelí na niekoľko zlomov po 60° (posun 1,15×
-# odstupu, čiže hlboko pod stropom) – každý z nich už `miter` zošije a pásik
-# ide zákrutou v rovnakej hrúbke. Delí sa krátkym oblúkom, nie posunutím
-# vrcholu inam:
-#
-#   * REŽE SA LEN 2 m, čiže vrchol pásika je od zlomu chodníka najviac 1 m.
-#     Pri z16 je to 0,6 px a pri z14 (strop dlaždíc trás) 0,15 px – čiže
-#     pásik ide zákrutou tade, kade ide chodník. Menej sa rezať nedá: dlaždice
-#     trás majú pri z14 rozlíšenie 0,39 m a Planetiler ich pred zápisom ešte
-#     zjednodušuje (~0,6 m), takže kratší oblúk by sa v nich stratil a zlom by
-#     bol späť.
-#   * ZLOMOV NAD 120° JE MÁLO. Namerané na 419 tatranských cestách (22 238
-#     bodov z Overpassu): 354 zlomov, teda 1,6 % vrcholov. Zaobľovať aj miernejšie
-#     zlomy nemá zmysel (`miter` ich zošije) a nie je zadarmo – pri hranici
-#     30° má tretina vrcholov zlom nad ňou a geometria narastie o 108 %.
-#   * VLÁSENKA nad ~150° ostane vlásenkou: tam sa pásik pri hrote skončí
-#     (odrezať špičku o desiatky metrov, aby sa zošila, by bolo horšie).
-#   * KRAJNÉ BODY sa nehýbu vôbec.
+#   * reže sa len 2 m (0,6 px pri z16), takže pásik ide tade, kade chodník.
+#     Menej sa nedá – dlaždice trás majú pri z14 rozlíšenie 0,39 m;
+#   * zlomov nad 120° je málo: namerané 1,6 % vrcholov. Pri hranici 30° by
+#     geometria narástla o 108 %;
+#   * vlásenka nad ~150° ostane vlásenkou a krajné body sa nehýbu.
 EASE_ABOVE_DEG = 120.0
 MAX_TURN_DEG = 60.0
 CUT_M = 2.0
-# Body bližšie než toto sú po zaoblení to isté miesto – dva vrcholy na sebe
-# nemajú definovaný smer, takže by z nich `line-offset` vyrobil ďalší výbežok.
+# body bližšie než toto sú po zaoblení to isté miesto – dva vrcholy na sebe
+# nemajú definovaný smer
 MIN_STEP_M = 0.2
 
 
@@ -190,10 +120,8 @@ def ease_corners(coords, above_deg=EASE_ABOVE_DEG, max_turn_deg=MAX_TURN_DEG,
                  cut_m=CUT_M):
     """Zaoblí zlomy ostrejšie než `above_deg`; vracia `(body, počet)`.
 
-    Oblúk sa delí na kúsky pod `max_turn_deg`. Počíta sa v metroch (rovinná
-    aproximácia okolo stredu čiary – pri dĺžke cesty do pár kilometrov je
-    skreslenie pod percento), krajné body sa nehýbu: cesty na seba musia
-    nadväzovať tými istými uzlami ako v OSM.
+    Počíta sa v metroch (rovinná aproximácia okolo stredu čiary), krajné body
+    sa nehýbu: cesty na seba musia nadväzovať tými istými uzlami ako v OSM.
     """
     if len(coords) < 3:
         return coords, 0
@@ -222,11 +150,9 @@ def ease_corners(coords, above_deg=EASE_ABOVE_DEG, max_turn_deg=MAX_TURN_DEG,
         cut = min(cut_m, la * 0.45, lb * 0.45)
         a = (x - ax / la * cut, y - ay / la * cut)
         b = (x + bx / lb * cut, y + by / lb * cut)
-        # Kvadratická Bezierova krivka s pôvodným vrcholom ako riadiacim
-        # bodom: začína aj končí v smere ramena, takže na oblúk nadväzuje bez
-        # zlomu, a rozdelí zlom na `n` kúskov. Kúsok navyše je preto, že
-        # Bezier nerozdeľuje uhol rovnomerne – bez neho ostane na jeho konci
-        # zlom o pár stupňov väčší, než je MAX_TURN.
+        # kvadratická Bezierova krivka s pôvodným vrcholom ako riadiacim
+        # bodom – nadväzuje na ramená bez zlomu. Kúsok navyše preto, že Bezier
+        # nerozdeľuje uhol rovnomerne.
         n = max(2, math.ceil(turn / max_turn) + 1)
         out.append(a)
         for k in range(1, n):
@@ -237,10 +163,8 @@ def ease_corners(coords, above_deg=EASE_ABOVE_DEG, max_turn_deg=MAX_TURN_DEG,
         out.append(b)
     out.append(pts[-1])
 
-    # Späť na stupne; body, ktoré po zaoblení splynuli, sa zahodia. Krajné
-    # body sa NEPREPOČÍTAVAJÚ, berú sa pôvodné: cesty na seba nadväzujú
-    # spoločným uzlom a ten sa nesmie pohnúť ani o stotinu sekundy, inak
-    # Planetiler susedné úseky trasy nezlepí a popisok nemá na čom stáť.
+    # krajné body sa neprepočítavajú: cesty nadväzujú spoločným uzlom a ten
+    # sa nesmie pohnúť, inak Planetiler susedné úseky nezlepí
     lon0, lat0 = coords[0]
     res = []
     for j, (x, y) in enumerate(out):
@@ -258,45 +182,37 @@ def ease_corners(coords, above_deg=EASE_ABOVE_DEG, max_turn_deg=MAX_TURN_DEG,
     return [ll for ll, _, _ in res], eased
 
 
-# Role členov, ktoré nie sú samotnou trasou (rozcestníky, značky, zastávky).
+# role členov, ktoré nie sú samotnou trasou
 SKIP_ROLES = {
     "guidepost", "marker", "sign", "signpost", "stop", "platform",
     "site", "label", "map", "fixme", "shelter", "info",
 }
 
-# Trasy, ktoré ešte neexistujú, do mapy nepatria.
+# trasy, ktoré ešte neexistujú, do mapy nepatria
 SKIP_STATES = {"proposed", "planned", "abandoned", "removed", "disused"}
 
 
-# --------------------------------------------------- smer čiar (reťazenie)
+# smer čiar (reťazenie)
 
 def orient_ways(ends):
     """Ktoré cesty otočiť, aby na seba pásiky nadväzovali.
 
-    `ends` je `{id cesty: (prvý uzol, posledný uzol)}` – teda len susedstvo,
-    žiadne súradnice. Vracia `(množina ciest na otočenie, spory, reťaze)`.
+    `ends` je `{id cesty: (prvý uzol, posledný uzol)}` – len susedstvo, žiadne
+    súradnice. Vracia `(množina ciest na otočenie, spory, reťaze)`.
 
-    AKO. Cesty sú hrany grafu, uzly OSM sú jeho vrcholy. Od každej neprebranej
-    cesty sa ide do šírky a susedovi sa pridelí smer tak, aby v spoločnom uzle
-    jedna KONČILA a druhá ZAČÍNALA – presne to znamená „ísť ďalej rovnako".
-    Pásik potom drží stranu cez celý chodník bez ohľadu na to, ako kto ktorý
-    úsek nakreslil.
+    Cesty sú hrany grafu, uzly OSM jeho vrcholy: od každej neprebranej sa ide
+    do šírky a susedovi sa pridelí smer tak, aby v spoločnom uzle jedna
+    končila a druhá začínala.
 
-    ČO TO NEVYRIEŠI, a vedieť sa to má: na križovatke troch a viac chodníkov
-    „nadväzovať" nie je definované – dve vetvy z uzla vychádzajú a tretia doň
-    vchádza, takže niektorá stranu prehodí. Je to ale križovatka, kde sa trasa
-    aj tak vetví, nie prostriedok chodníka. Koľko takých miest v území je,
-    hovorí návratový `spory` – keď to číslo skočí, niečo sa pokazilo.
+    Na križovatke troch a viac chodníkov „nadväzovať" definované nie je –
+    niektorá vetva stranu prehodí. Koľko takých miest je, hovorí `spory`.
 
-    Smer prvej cesty v reťazi (a tým fyzická strana celého chodníka) je
-    ľubovoľný, ale STÁLY: berie sa najmenšie id cesty a v nej menšie id uzla.
-    Dôležité je, že sa strana nemení pozdĺž trasy, nie to, či je to práve
-    severná.
+    Smer prvej cesty v reťazi je ľubovoľný, ale stály (najmenšie id).
     """
     at = defaultdict(list)
     for wid, (first, last) in ends.items():
         at[first].append(wid)
-        # Uzavretý okruh sa dotýka svojho uzla dvakrát; do susedstva patrí raz.
+        # uzavretý okruh sa dotýka svojho uzla dvakrát; do susedstva patrí raz
         if last != first:
             at[last].append(wid)
 
@@ -313,8 +229,7 @@ def orient_ways(ends):
             wid = queue.popleft()
             first, last = ends[wid]
             tail, head = (last, first) if flip[wid] else (first, last)
-            # Dopredu od hlavy (sused má v tom uzle ZAČÍNAŤ) aj dozadu od
-            # päty (sused má v ňom KONČIŤ).
+            # dopredu od hlavy aj dozadu od päty
             for node, starts_there in ((head, True), (tail, False)):
                 for nxt in at.get(node, ()):
                     if nxt in flip:
@@ -323,9 +238,8 @@ def orient_ways(ends):
                     flip[nxt] = nfirst != node if starts_there else nlast != node
                     queue.append(nxt)
 
-    # Spory sa počítajú len tam, kde je „nadväzovať" vôbec definované – teda
-    # v uzle, kde sa stretávajú práve dve cesty. Keď tam obe končia (alebo obe
-    # začínajú), pásik na tom mieste stranu prehodí.
+    # spory sa počítajú len tam, kde je „nadväzovať" definované – v uzle,
+    # kde sa stretávajú práve dve cesty
     conflicts = 0
     for node, wids in at.items():
         if len(wids) != 2:
@@ -344,8 +258,7 @@ def orient_ways(ends):
 class Ends(osmium.SimpleHandler):
     """2. priechod: koncové uzly ciest, po ktorých nejaká trasa vedie.
 
-    Bez súradníc, takže bez indexu uzlov – je to len `{cesta: (uzol, uzol)}`
-    a je z toho vidieť, ktoré cesty na seba nadväzujú.
+    Bez súradníc, teda bez indexu uzlov.
     """
 
     def __init__(self, by_way):
@@ -382,9 +295,7 @@ class Routes(osmium.SimpleHandler):
 
         colour, hexcolour = resolve_colour(tags)
         tier, network = resolve_tier(tags)
-        # Značka, ako je na strome – iná otázka než farba pásika: pásik
-        # hovorí, čím trasu kresliť, značka je obrázok tabuľky, ktorú má
-        # človek v teréne hľadať.
+        # značka, ako je na strome – iná otázka než farba pásika
         mark, mark_bg, mark_fg = resolve_mark(tags, route, colour)
         info = {
             "route": route,
@@ -407,16 +318,15 @@ class Routes(osmium.SimpleHandler):
 
 
 class Ways(osmium.SimpleHandler):
-    """
-    2. priechod: cesty, po ktorých nejaká trasa vedie, dostanú geometriu –
-    a rovno toľko kópií, koľko trás po nich ide (každá vo svojom pruhu).
+    """3. priechod: cesty s trasou dostanú geometriu, a rovno toľko kópií,
+    koľko trás po nich ide (každá vo svojom pruhu).
     """
 
     def __init__(self, by_way, out, flipped=frozenset()):
         super().__init__()
         self.by_way = by_way
         self.out = out
-        # Ktoré cesty kresliť opačne, nech pásik drží stranu (`orient_ways`).
+        # ktoré cesty kresliť opačne, nech pásik drží stranu
         self.flipped = flipped
         self.features = 0
         self.ways = 0
@@ -428,8 +338,7 @@ class Ways(osmium.SimpleHandler):
         self.by_way_class = Counter()
         self.lanes = Counter()
         self.named = set()
-        # Koľko zlomov sa rozdelilo a o koľko bodov z toho geometria narástla
-        # – z toho je vidieť, či úprava nezačala robiť niečo iné, než má.
+        # koľko zlomov sa rozdelilo a o koľko bodov geometria narástla
         self.eased = 0
         self.points_in = 0
         self.points_out = 0
@@ -447,17 +356,13 @@ class Ways(osmium.SimpleHandler):
             self.no_geometry += 1
             return
 
-        # Smer čiary určuje, na ktorú stranu ju `line-offset` posunie – a
-        # rozhodlo sa o ňom v `orient_ways` podľa toho, na čo cesta NADVÄZUJE.
-        # Kým sa normalizoval „od západnejšieho konca", rozhodovala o smere
-        # severojužného chodníka pár metrov široká kľukatina a pásik
-        # preskakoval na druhú stranu na každom druhom úseku.
+        # smer čiary určuje, na ktorú stranu ju `line-offset` posunie –
+        # rozhodlo sa o ňom v `orient_ways` podľa toho, na čo cesta nadväzuje
         if w.id in self.flipped:
             coords.reverse()
 
-        # Zlom nad 120° `miter` nezošije (rozpis pri `ease_corners`), takže sa
-        # rozdelí. Raz na cestu, nie raz na pruh – všetky pruhy tej istej
-        # cesty kreslia tú istú čiaru.
+        # zlom nad 120° `miter` nezošije. Raz na cestu, nie raz na pruh –
+        # všetky pruhy tej istej cesty kreslia tú istú čiaru.
         self.points_in += len(coords)
         coords, eased = ease_corners(coords)
         self.points_out += len(coords)
@@ -468,8 +373,7 @@ class Ways(osmium.SimpleHandler):
         self.ways += 1
         self.lanes[len(lanes)] += 1
         self.by_way_class[way] += 1
-        # Rady sa číslujú zvlášť pre každú stranu, takže prvá pešia aj prvá
-        # kolesová trasa ležia hneď pri ceste – každá zo svojej.
+        # rady sa číslujú zvlášť pre každú stranu
         taken = Counter()
         for info in lanes:
             side = SIDE_BY_ROUTE.get(info["route"], 1)
@@ -487,9 +391,8 @@ class Ways(osmium.SimpleHandler):
             props = {
                 "route": info["route"],
                 "tier": info["tier"],
-                # Pruhy sa číslujú od cesty von a vždy na tú istú stranu.
-                # Keby boli vycentrované, koniec jednej trasy by posunul
-                # všetky ostatné – takto ostanú, kde boli.
+                # pruhy sa číslujú od cesty von; vycentrované by koniec jednej
+                # trasy posunul všetky ostatné
                 "side": side,
                 "off": idx,
                 "way": way,
@@ -505,19 +408,17 @@ class Ways(osmium.SimpleHandler):
 
     @staticmethod
     def lane_order(routes):
-        """
-        Poradie pruhov na ceste. Kľúč je len z vlastností trasy, takže dve
-        trasy si na susedných úsekoch pruhy neprehodia.
+        """Poradie pruhov na ceste – kľúč len z vlastností trasy, nie z poradia
+        členov v relácii.
 
-        Zároveň sa zahodia duplikáty: nadradená trasa (superroute) a jej časť
-        sú v OSM dve relácie na tých istých cestách – ako dva rovnaké pásiky
-        vedľa seba by to bola len chyba v mape.
+        Zároveň sa zahodia duplikáty: nadradená trasa a jej časť sú v OSM dve
+        relácie na tých istých cestách.
         """
         seen = {}
         for info in routes:
             key = (info["route"], info["colour"], info["hex"],
                    info["ref"] or info["name"])
-            # Z rovnakých trás si necháme tú s názvom – má čo popísať.
+            # z rovnakých trás si necháme tú s názvom
             old = seen.get(key)
             if old is None or (not old["name"] and info["name"]):
                 seen[key] = info
@@ -567,18 +468,16 @@ def main():
         print("::warning::V tomto území nie je ani jedna značená trasa – "
               "mapa pôjde bez nich.")
 
-    # Smer čiary rozhoduje, na ktorú stranu cesty pásik padne, takže sa
-    # nesmie brať z tvaru jednej čiary (rozpis v hlavičke). Tento priechod je
-    # lacný: číta len koncové uzly, teda bez indexu súradníc.
+    # smer sa nesmie brať z tvaru jednej čiary (rozpis v hlavičke); tento
+    # priechod je lacný – číta len koncové uzly
     print("2/3 – kto s kým susedí (smer pásikov) …", flush=True)
     ends = Ends(routes.by_way)
     ends.apply_file(args.pbf)
     flipped, conflicts, chains = orient_ways(ends.ends)
     print(f"    ciest {len(ends.ends)} v {chains} reťaziach, "
           f"otočených {len(flipped)}")
-    # Spor = uzol, kde sa stretávajú dve cesty a pásik na ňom stranu prehodí.
-    # Nula sa čakať nedá (križovatky troch chodníkov), ale je to číslo, ktoré
-    # má byť malé – keď skočí, smerovanie sa pokazilo.
+    # spor = uzol, kde sa stretávajú dve cesty a pásik prehodí stranu. Nula sa
+    # čakať nedá, ale keď číslo skočí, smerovanie sa pokazilo.
     pct = 100.0 * conflicts / max(1, len(ends.ends))
     print(f"    miest, kde pásik napriek tomu prehodí stranu: {conflicts} "
           f"({pct:.1f} % ciest)")
@@ -593,7 +492,6 @@ def main():
         fh.write('{"type":"FeatureCollection","features":[\n')
         ways = Ways(routes.by_way, fh, flipped)
         # `locations=True` doplní súradnice uzlov – predfiltrovaný PBF ich má
-        # v sebe, takže index nemusí byť na celé Slovensko.
         ways.apply_file(args.pbf, locations=True, idx="flex_mem")
         fh.write("]}\n")
 
@@ -637,13 +535,12 @@ def main():
                 fh.write(f"type_{key}={count}\n")
             for key, count in ways.by_tier.items():
                 fh.write(f"tier_{key}={count}\n")
-            # Hodnota má medzery aj zátvorky a súhrn buildu si súbor načíta
-            # cez `.` (source) – bez úvodzoviek by to shell nezobral.
+            # súhrn si súbor načíta cez `.`, takže bez úvodzoviek by to shell
+            # pri medzerách a zátvorkách nezobral
             fh.write('colours="' + ", ".join(
                 f"{k} {v}" for k, v in ways.by_colour.most_common()) + '"\n')
-            # Koľko úsekov dostalo naozajstnú značku (biely/žltý štvorec).
-            # Zvyšok sa kreslí ikonkou druhu trasy – z toho čísla je vidieť,
-            # či sa `osmc:symbol` v tomto kraji vôbec používa.
+            # koľko úsekov dostalo naozajstnú značku – vidieť z toho, či sa
+            # `osmc:symbol` v tomto kraji vôbec používa
             fh.write(f"marked={sum(v for k, v in ways.by_mark.items() if k != 'bez značky')}\n")
     return 0
 

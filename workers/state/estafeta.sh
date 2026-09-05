@@ -1,85 +1,37 @@
 #!/usr/bin/env bash
-# JADRO ŠTAFETY – spoločné pre obe dávky nad krajinou:
+# Jadro štafety – spoločné pre obe dávky nad krajinou (`relay.sh` postaví
+# každý kraj, `regenerate.sh` pregeneruje jednu vrstvu v každom kraji).
 #
-#   Mapa · Build map state       postav každý kraj (workers/state/relay.sh)
-#   Mapa · Regenerate state      pregeneruj jednu vrstvu v každom kraji
-#                                (workers/state/regenerate.sh)
+# Obe idú krajmi jeden po druhom a čakajú na beh kraja. Líšia sa len tým, čo
+# nad krajom spúšťajú – to si definujú samy (`odovzdaj`, `spusti_kraj`).
 #
-# Obe robia to isté: idú krajmi JEDEN PO DRUHOM, čakajú na beh kraja a potom
-# spustia ďalší. Líšia sa len tým, ČO nad krajom spúšťajú a s akými poľami –
-# a to je presne to, čo si každá z nich definuje sama (funkcie `odovzdaj`
-# a `spusti_kraj` nižšie). Keby bola štafeta napísaná dvakrát, rozišla by sa
-# v tom najhoršom mieste: jedna dávka by po zmene vedela pokračovať a druhá
-# by ticho skončila prvým krajom, a to zelená (pravidlo 1 v CLAUDE.md).
+# Prečo štafeta a nie jeden dlhý job: kraj sa stavia aj tri hodiny, krajov je
+# osem a job má strop šesť hodín. Beží to preto ako jeden krátky úsek, ktorý si
+# na konci cez `workflow_dispatch` spustí ďalší beh toho istého workflowu –
+# reťaz behov strop nemá. `workflow_dispatch` cez `GITHUB_TOKEN` beh spustí; je
+# to výslovná výnimka z pravidla, že udalosti z neho ďalšie behy nespúšťajú.
 #
-# ── PREČO ŠTAFETA A NIE JEDEN DLHÝ JOB ────────────────────────────────────
-# Kraj sa stavia aj tri hodiny a krajov je osem, čiže celá dávka je zhruba
-# deň. Job na GitHube má strop ŠESŤ HODÍN a po ňom ho GitHub zabije –
-# dispečer napísaný ako „spusti a čakaj, spusti a čakaj" by teda spoľahlivo
-# umrel v polovici: tri kraje hotové, zvyšok nikdy, a v behu nič, čo by
-# povedalo, že zvyšok nepríde.
-#
-# Beží to preto ako JEDEN KRÁTKY ÚSEK, ktorý si na konci spustí ďalší beh
-# toho istého workflowu (`workflow_dispatch`). Reťaz behov strop nemá – každý
-# článok je nový job s vlastnými šiestimi hodinami.
-#
-# `workflow_dispatch` cez `GITHUB_TOKEN` beh SPUSTÍ. Je to výslovná výnimka
-# z pravidla „udalosti z GITHUB_TOKENu nespúšťajú ďalšie behy" (spolu
-# s `repository_dispatch`) – práve preto je štafeta postavená na ňom a nie
-# na pushi, ktorý by ticho nespravil nič a žiadal by osobný token v secrete.
-#
-# ── ČO NESIE ŠTAFETOVÝ KOLÍK ──────────────────────────────────────────────
-# Vstup `pokracovanie`, štyri polia oddelené `|`:
+# Štafetový kolík je vstup `pokracovanie`, štyri polia oddelené `|`:
 #
 #   <id behu>:<kraj>|<kraje, čo ešte neboli>|<hotové>|<číslo úseku>
-#           │           │                      │
-#           │           │                      └ `kraj:výsledok:id`, čiarkami
-#           │           └ čiarkami, v poradí číselníka
-#           └ na tento beh sa čaká; prázdne = prvý úsek
 #
-# Prázdny kolík = prvý úsek: zoznam krajov sa vezme z číselníka
-# (`workers/state/queue.py`). Je to VSTUP a nie súbor v repozitári zámerne –
-# stav dávky je tak vidieť priamo na behu (Actions → beh → inputs), dá sa
-# z neho pokračovať ručne a nevznikajú z neho commity, ktoré by sa bili
-# s `maps.json`, ktorý práve zapisuje bežiaci kraj.
+# Prázdny kolík = prvý úsek, zoznam krajov sa vezme z číselníka. Je to vstup
+# a nie súbor v repozitári zámerne: stav dávky je vidieť priamo na behu, dá sa
+# z neho pokračovať ručne a nevznikajú commity biace sa s `maps.json`.
 #
-# ── KEĎ KRAJ SPADNE, DÁVKA IDE ĎALEJ ──────────────────────────────────────
-# Zmysel dávky je „sprav to nad celým Slovenskom a nechaj ma tak". Spadnutý
-# kraj preto reťaz nezastaví; zapíše sa do kolíka a POSLEDNÝ úsek na ňom
+# Spadnutý kraj reťaz nezastaví – zapíše sa do kolíka a posledný úsek na ňom
 # spadne, aby dávka neskončila zelená s dierou v mape.
 #
-# ── ZRUŠENIE ZASTAVÍ VŠETKO ───────────────────────────────────────────────
-# Spadnutý kraj a ZRUŠENÝ kraj vyzerajú v API skoro rovnako (`completed`
-# s inou `conclusion`), ale znamenajú opak: prvé je porucha, po ktorej má
-# dávka ísť ďalej, druhé je „dosť, zastav to". Kým sa to nerozlišovalo, dávka
-# sa nedala zastaviť: kto zrušil beh kraja, dostal o minútu ďalší kraj a k nemu
-# ďalší článok štafety – zastaviť by musel v správnom poradí dve veci naraz.
+# Zrušenie je opak: „dosť, zastav to". V API vyzerá skoro rovnako ako pád, tak
+# sa rozlišuje a platí oboje – zrušený beh kraja ukončí reťaz, zrušená dávka
+# cez `trap` zruší aj beh kraja, na ktorý čakala. Zastavená dávka nie je
+# spadnutá dávka: skončí zelená a do súhrnu napíše, čo ostalo a ako pokračovať.
+# (Zrušiť beh môže aj GitHub sám, keď sú tri behy v jednej `concurrency`
+# skupine, a od ručného zrušenia sa to nedá odlíšiť.)
 #
-# Zrušiť beh môže aj GitHub sám (tri behy v jednej `concurrency` skupine) a od
-# ručného zrušenia sa to nedá odlíšiť. Preto sa dávka nezastaví ticho: do
-# súhrnu napíše, čo ostalo nepostavené, aj kolík, ktorým sa dá pokračovať.
-#
-# Odteraz platí OBOJE, nech sa dá zastaviť z ktorejkoľvek strany:
-#
-#   zrušíš beh KRAJA     článok, ktorý naň čaká, nespustí ďalší kraj ani ďalší
-#                        svoj beh; napíše súhrn a skončí. Reťaz končí.
-#   zrušíš beh DÁVKY     článok pri odchode zruší aj beh kraja, na ktorý čakal
-#                        (GitHub dá kroku pri zrušení pár sekúnd a `trap` ich
-#                        využije). Bez toho by kraj bežal ešte hodiny a dávka
-#                        by sa „nedala zastaviť" – to je presne tá skúsenosť,
-#                        pre ktorú tu ten `trap` je.
-#
-# Zastavená dávka NIE JE spadnutá dávka: beh skončí zelený a nahlas to napíše
-# do súhrnu. Červený krížik za rozhodnutie človeka je šum, po ktorom si nikto
-# nevšimne ten, čo je porucha.
-#
-# ── ČO MUSÍ DODAŤ VOLAJÚCI ────────────────────────────────────────────────
-# Premenné: COUNTRY REPO (a voliteľne REF SELF REGION_WF SUMMARY)
-#           TITUL   nadpis súhrnu
-#           POPIS   odsek pod ním – čo tá dávka vlastne robí
-# Funkcie:  odovzdaj <kolík>   spusti ďalší svoj beh s tým istým formulárom
-#           spusti_kraj <kraj> spusti beh nad jedným krajom
-# Na konci: estafeta_hlavna
+# Volajúci musí dodať: COUNTRY REPO (voliteľne REF SELF REGION_WF SUMMARY),
+# TITUL a POPIS do súhrnu, funkcie `odovzdaj` a `spusti_kraj`, a na konci
+# zavolať `estafeta_hlavna`.
 set -euo pipefail
 
 COUNTRY="${COUNTRY:?chýba krajina}"
@@ -87,38 +39,32 @@ REPO="${REPO:?chýba repozitár}"
 POKRACOVANIE="${POKRACOVANIE:-}"
 REF="${REF:-master}"
 REGION_WF="${REGION_WF:?chýba workflow kraja}"
-# Meno workflowu kraja tak, ako sa volá vo formulári GitHubu –
-# do hlášky, v ktorej sa hovorí, čo si má človek pustiť ručne.
+# meno workflowu kraja tak, ako sa volá vo formulári – do hlášky o tom, čo si
+# má človek pustiť ručne
 REGION_MENO="${REGION_MENO:-$REGION_WF}"
 SUMMARY="${SUMMARY:-${GITHUB_STEP_SUMMARY:-/dev/null}}"
 SERVER="${GITHUB_SERVER_URL:-https://github.com}"
 
-# Koľko sa v jednom úseku čaká, kým sa štafeta odovzdá ďalej. Job má strop
-# šesť hodín; päť stačí na najdlhší kraj a hodina ostáva na to, aby sa stihol
-# spustiť ďalší článok. Keby sa čakalo do posledného dychu, GitHub by job
-# zabil PRESNE v kroku, ktorý reťaz predlžuje – a dávka by ticho skončila.
+# koľko sa v jednom úseku čaká, kým sa štafeta odovzdá ďalej. Job má strop
+# šesť hodín; päť stačí na najdlhší kraj a hodina ostáva na spustenie ďalšieho
+# článku – inak by GitHub zabil job presne v kroku, ktorý reťaz predlžuje.
 CAKANIE_MAX_S="${CAKANIE_MAX_S:-18000}"    # 5 h
 POLL_S="${POLL_S:-60}"
-# Poistka proti nekonečnej reťazi: keby sa zoznam z akéhokoľvek dôvodu
-# neskracoval, dávka by sa spúšťala donekonečna a míňala bežce. Na kraj
-# stačia tri úseky (spustenie + dve predĺženia čakania) aj v najhoršom.
+# poistka proti nekonečnej reťazi; na kraj stačia tri úseky aj v najhoršom
 USEKOV_NA_KRAJ=3
 
 log() { echo "$@"; }
 sumar() { echo "$@" >> "$SUMMARY"; }
 
-# Spánok, ktorý sa dá prerušiť. `sleep 60` je pre bash popredný príkaz a trap
-# by sa vykonal až po ňom – teda po minúte, ktorú nám GitHub pri zrušení
-# nedá. Na pozadí a `wait` znamená, že signál príde hneď.
+# spánok, ktorý sa dá prerušiť: `sleep 60` je popredný príkaz a trap by sa
+# vykonal až po ňom – teda po minúte, ktorú nám GitHub pri zrušení nedá
 cakaj() {
   sleep "$1" &
   wait "$!" 2>/dev/null || true
 }
 
-# ZRUŠENÝ BEH DÁVKY ZRUŠÍ AJ KRAJ, na ktorý práve čakal. Bez toho ostane kraj
-# bežať ešte hodiny a človek, ktorý dávku zastavil, sa na to pozerá.
-# Best effort: GitHub pošle kroku SIGINT a o pár sekúnd ho zabije natvrdo,
-# takže na jedno volanie API čas je a na viac sa nespoliehame.
+# zrušený beh dávky zruší aj kraj, na ktorý čakal – inak by kraj bežal ešte
+# hodiny. Best effort: GitHub dá kroku pár sekúnd, teda na jedno volanie API.
 pri_zruseni() {
   trap - INT TERM
   if [ -n "${BEZI_ID:-}" ]; then
@@ -132,13 +78,9 @@ trap pri_zruseni INT TERM
 
 odkaz() { echo "$SERVER/$REPO/actions/runs/$1"; }
 
-# ---------- súhrn ----------
-# CELÝ OBRAZ V KAŽDOM ÚSEKU. Súhrn behu (`GITHUB_STEP_SUMMARY`) patrí JEDNÉMU
-# behu a články štafety sú samostatné behy – keby si každý zapísal len svoj
-# riadok, stav dávky by nebol nikde a musel by sa poskladať z ôsmich behov.
-# Celá tabuľka sa preto skladá z kolíka a je čitateľná na ktoromkoľvek článku.
-# Funkcia preto, že to isté treba napísať aj vtedy, keď sa úsek končí
-# predčasne (kraj beží dlhšie než rozpočet úseku).
+# súhrn: celý obraz v každom úseku. `GITHUB_STEP_SUMMARY` patrí jednému behu
+# a články štafety sú samostatné behy, takže sa celá tabuľka skladá z kolíka.
+# Funkcia preto, že to isté treba napísať aj pri predčasnom konci úseku.
 SPADLO=0
 napis_sumar() {
   sumar "## $TITUL"
@@ -170,7 +112,7 @@ napis_sumar() {
 }
 
 estafeta_hlavna() {
-  # ---------- rozbaľ kolík ----------
+  # rozbaľ kolík
   IFS='|' read -r POLE_BEZI ZOSTAVA HOTOVE USEK <<< "$POKRACOVANIE"
   POLE_BEZI="${POLE_BEZI:-}"; ZOSTAVA="${ZOSTAVA:-}"
   HOTOVE="${HOTOVE:-}";       USEK="${USEK:-0}"
@@ -180,8 +122,8 @@ estafeta_hlavna() {
 
   VSETKY="$(python3 workers/state/queue.py --kraje="$COUNTRY" | paste -sd, -)"
   if [ -z "$POKRACOVANIE" ]; then
-    # Prvý úsek: zoznam krajov z číselníka, nie z formulára. Keby sa písal do
-    # formulára, pribudnutý kraj by v dávke ticho chýbal.
+    # prvý úsek: zoznam krajov z číselníka, nie z formulára – inak by
+    # pribudnutý kraj v dávke ticho chýbal
     ZOSTAVA="$VSETKY"
     log "Dávka pre krajinu $COUNTRY: $ZOSTAVA"
   fi
@@ -194,7 +136,7 @@ estafeta_hlavna() {
   fi
   log "Úsek $USEK z najviac $USEKOV_MAX. Beží „${BEZI_KRAJ:-(nič)}“ ($BEZI_ID), zostáva „${ZOSTAVA:-(nič)}“."
 
-  # ---------- 1. počkaj na kraj, ktorý beží ----------
+  # 1. počkaj na kraj, ktorý beží
   if [ -n "$BEZI_ID" ]; then
     local zaciatok stav vysledok
     zaciatok=$(date +%s)
@@ -207,9 +149,8 @@ estafeta_hlavna() {
         "") log "::warning::Beh $BEZI_ID sa nedá prečítať (výpadok API?) – skúšam ďalej." ;;
       esac
       if [ $(( $(date +%s) - zaciatok )) -ge "$CAKANIE_MAX_S" ]; then
-        # Kraj beží dlhšie, než sa do tohto jobu zmestí. Štafeta ide ďalej
-        # s TÝM ISTÝM kolíkom – ďalší článok čaká odznova a tento skončí skôr,
-        # než ho GitHub zabije.
+        # kraj beží dlhšie, než sa do tohto jobu zmestí – štafeta ide ďalej
+        # s tým istým kolíkom
         log "Kraj $BEZI_KRAJ beží dlhšie než $((CAKANIE_MAX_S / 3600)) h – odovzdávam štafetu ďalej."
         odovzdaj "$POLE_BEZI|$ZOSTAVA|$HOTOVE|$USEK"
         napis_sumar
@@ -222,10 +163,8 @@ estafeta_hlavna() {
     vysledok="${vysledok:-neznámy}"
     log "Kraj $BEZI_KRAJ (beh $BEZI_ID) skončil: $vysledok"
     HOTOVE="${HOTOVE:+$HOTOVE,}$BEZI_KRAJ:$vysledok:$BEZI_ID"
-    # ZRUŠENÝ KRAJ ZASTAVÍ CELÚ DÁVKU. Nie je to porucha, ale rozhodnutie
-    # človeka – a jediné, ako ho vie povedať behu, ktorý práve beží. Kým sa
-    # zrušenie rátalo ako spadnutý kraj, dávka po ňom spustila ďalší kraj
-    # a ďalší svoj beh, takže sa nedala zastaviť.
+    # zrušený kraj zastaví celú dávku: je to rozhodnutie človeka a jediné, ako
+    # ho vie povedať behu, ktorý práve beží
     if [ "$vysledok" = "cancelled" ]; then
       ZOSTAVA_PRED="$ZOSTAVA"
       BEZI_ID=""; BEZI_KRAJ=""; POLE_BEZI=""; ZOSTAVA=""
@@ -233,11 +172,9 @@ estafeta_hlavna() {
       sumar "**Dávka zastavená.** Beh kraja bol zrušený, takže sa ďalší kraj"
       sumar "nespúšťa a reťaz štafety tu končí."
       if [ -n "$ZOSTAVA_PRED" ]; then
-        # KOLÍK NA POKRAČOVANIE. Zrušenie nemusí byť rozhodnutie človeka –
-        # GitHub zruší beh kraja aj sám, keď sú v skupine `pages` tri behy
-        # naraz, a v API to vyzerá rovnako. Nech sa teda dá pokračovať tam,
-        # kde sa prestalo, bez toho, aby si zvyšné kraje prepisoval z tabuľky:
-        # prázdne prvé pole = „na nič sa nečaká, spusti prvý zo zostávajúcich".
+        # kolík na pokračovanie – zrušenie nemusí byť rozhodnutie človeka
+        # (GitHub zruší beh aj sám). Prázdne prvé pole = „na nič sa nečaká,
+        # spusti prvý zo zostávajúcich".
         sumar ""
         sumar "Nepostavené ostali: \`$ZOSTAVA_PRED\`. Pokračovať sa dá tou istou"
         sumar "dávkou s kolíkom \`|$ZOSTAVA_PRED|$HOTOVE|0\` v poli \`pokracovanie\`."
@@ -251,7 +188,7 @@ estafeta_hlavna() {
     BEZI_ID=""; BEZI_KRAJ=""; POLE_BEZI=""
   fi
 
-  # ---------- 2. spusti ďalší kraj ----------
+  # 2. spusti ďalší kraj
   NOVY_KOLIK=""
   if [ -n "$ZOSTAVA" ]; then
     local kraj zvysok pred id
@@ -259,8 +196,8 @@ estafeta_hlavna() {
     zvysok="${ZOSTAVA#*,}"
     [ "$zvysok" = "$ZOSTAVA" ] && zvysok=""
     log "Spúšťam kraj $kraj …"
-    # Čas PRED spustením: beh sa hľadá podľa toho, že vznikol po ňom. Vrátiť
-    # id priamo `workflow_dispatch` nevie (API odpovedá prázdnym 204).
+    # čas pred spustením: beh sa hľadá podľa toho, že vznikol po ňom –
+    # `workflow_dispatch` id nevracia (204)
     pred="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     spusti_kraj "$kraj"
     id=""
@@ -275,14 +212,13 @@ estafeta_hlavna() {
       id=""
     done
     if [ -z "$id" ]; then
-      # Bez id sa nedá počkať, a čakať sa MUSÍ: dva kraje naraz by si liezli do
-      # cache aj do katalógu. Radšej spadnúť tu, kým je vidieť, na čom.
+      # bez id sa nedá počkať, a čakať sa musí: dva kraje naraz by si liezli
+      # do cache aj do katalógu
       echo "::error::Kraj $kraj som spustil, ale jeho beh sa do dvoch minút neobjavil v zozname behov $REGION_WF. Bez jeho id sa naň nedá počkať, takže reťaz tu končí – zvyšné kraje ($kraj,$zvysok) spusti dávkou znova."
       exit 1
     fi
     log "Kraj $kraj beží ako $id ($(odkaz "$id"))"
-    # Zapísať PRED odovzdaním štafety: keby niekto zrušil dávku práve teraz,
-    # `trap` musí vedieť, ktorý kraj má zrušiť s ňou.
+    # zapísať pred odovzdaním štafety, nech `trap` vie, ktorý kraj zrušiť
     BEZI_ID="$id"; BEZI_KRAJ="$kraj"; ZOSTAVA="$zvysok"
     NOVY_KOLIK="$id:$kraj|$zvysok|$HOTOVE|$USEK"
     odovzdaj "$NOVY_KOLIK"
@@ -295,7 +231,7 @@ estafeta_hlavna() {
     exit 0
   fi
 
-  # ---------- koniec reťaze ----------
+  # koniec reťaze
   sumar "**Dávka je hotová.**"
   if [ "$SPADLO" -gt 0 ]; then
     echo "::error::Dávka pre $COUNTRY dobehla, ale $SPADLO kraj(ov) skončilo neúspešne – v mape krajiny je diera. Zoznam je v súhrne; spadnuté kraje pusti znova jednotlivo cez „$REGION_MENO“."

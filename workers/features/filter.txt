@@ -1,17 +1,12 @@
-# Predfilter PBF pre workers/features/features.yml (`osmium tags-filter --expressions`).
+# Predfilter PBF pre `features.yml` aj `points.yml` (`osmium tags-filter`).
 #
-# PREČO: Planetiler by celý región prečítal aj bez toho, ale prečítal by ho
-# druhýkrát celý – 380 MB Slovenska a s tým index polôh uzlov. Po tomto
-# filtri z neho ostane zlomok a job beží minúty namiesto desiatok minút.
+# Bez neho by Planetiler prečítal celé Slovensko (380 MB) druhýkrát aj
+# s indexom polôh uzlov; po filtri ostane zlomok a job beží minúty.
 #
-# Zoznam je zámerne ŠIRŠÍ než features.yml: filter má byť hrubé sito, presné
-# rozhodnutie robí schéma. Keď do schémy pribudne trieda, musí pribudnúť aj
-# sem – inak sa v dlaždiciach ticho neobjaví. Že sa tie dva súbory nerozišli,
-# kontroluje `workers/lint/features.py` (schéma proti tomuto filtru; širší
-# filter je v poriadku, chýbajúci kľúč alebo hodnota je chyba).
+# Zoznam je zámerne širší než schémy – presné rozhodnutie robia ony. Opačne to
+# neplatí a stráži to `workers/lint/features.py`.
 #
-# `nwr/` = uzly, cesty aj relácie. Relácie kvôli multipolygónom (parkovisko
-# s dierou, skládka z viacerých obrysov); osmium k nim dotiahne aj členov.
+# `nwr/` = uzly, cesty aj relácie (multipolygóny; osmium k nim dotiahne členov).
 
 # --- násypy a zárezy (to, čo v mape chýbalo) ---
 nwr/man_made=embankment,cutline,pipeline,spoil_heap,tower,mast,water_tower,chimney,adit,mineshaft,survey_point

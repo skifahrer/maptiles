@@ -1,23 +1,17 @@
-# Predfilter PBF pre workers/transport/transport.yml (`osmium tags-filter --expressions`).
+# Predfilter PBF pre `transport.yml` (`osmium tags-filter --expressions`).
 #
-# JEDEN PRIECHOD. `tags-filter` vie len ALEBO – a tu je to presne to, čo
-# treba: dopravná sieť je „cesta ALEBO železnica ALEBO trajekt ALEBO lanovka".
+# Jeden priechod: `tags-filter` vie len ALEBO, a dopravná sieť je „cesta ALEBO
+# železnica ALEBO trajekt ALEBO lanovka".
 #
-# OBMEDZENIA (`maxheight`, `maxspeed`, …) SA SEM NEPÍŠU a nie je to opomenutie:
-# `tags-filter` berie objekt CELÝ aj so všetkými tagmi, takže `w/highway`
-# prinesie aj výšku podjazdu toho istého úseku. Kým mali obmedzenia vlastnú
-# vrstvu, filtrovalo sa kvôli nim dvakrát („cesta A má obmedzenie" je A, nie
-# ALEBO); odkedy sú atribútom siete, je otázka zase len „je to cesta".
+# Obmedzenia (`maxheight`, `maxspeed`, …) sa sem nepíšu: `tags-filter` berie
+# objekt celý aj so všetkými tagmi, takže `w/highway` prinesie aj výšku
+# podjazdu toho istého úseku.
 #
-# Zoznam je zámerne ŠIRŠÍ než schéma: filter je hrubé sito (`w/railway` pustí
-# aj zrušené trate a nástupištia), presné rozhodnutie robí schéma. Opačne to ale
-# neplatí – keď do schémy pribudne trieda a sem nie, Planetiler dostane PBF,
-# v ktorom ten tag už nie je, a v dlaždiciach sa TICHO neobjaví. Stráži to
-# `workers/lint/transport.py`.
+# Zoznam je zámerne širší než schéma – filter je hrubé sito, presné rozhodnutie
+# robí schéma. Opačne to neplatí: trieda v schéme a nie tu znamená PBF bez toho
+# tagu a tichú stratu v dlaždiciach. Stráži to `workers/lint/transport.py`.
 #
-# `w/` = len cesty (v zmysle OSM way). Zastávka ani vchod do metra nie sú
-# líniová sieť; body v krajine majú vlastnú vrstvu
-# (`workers/features/points.yml`).
+# `w/` = len cesty; zastávka ani vchod do metra nie sú líniová sieť.
 
 # --- cesty: od diaľnice po schody ---
 w/highway

@@ -1,26 +1,22 @@
 #!/usr/bin/env bash
-# Krajinné prvky mimo schémy OpenMapTiles → DVA `.pmtiles`:
-#   `{región}-features.pmtiles`   línie a plochy (workers/features/features.yml)
-#   `{región}-points.pmtiles`     body (workers/features/points.yml)
+# Krajinné prvky mimo schémy OpenMapTiles → dva `.pmtiles`:
+#   `{región}-features.pmtiles`   línie a plochy (features.yml)
+#   `{región}-points.pmtiles`     body (points.yml)
 #
-# PREČO DVA SÚBORY Z JEDNÉHO JOBU: appka ponúka na stiahnutie „línie z OSM"
-# a „body z OSM" ako dva rôzne balíky (`workers/deploy/publish-map.py`,
-# balíky `cesty` a `body`) – rozpis prečo je v hlavičke `points.yml`. Vstup
-# aj predfilter sú pre oba súbory ROVNAKÉ, líši sa len schéma, ktorú nad ním
-# beží Planetiler – druhý beh je preto len pár riadkov navyše, nie druhý job.
+# Dva súbory z jedného jobu preto, že appka ponúka „línie z OSM" a „body
+# z OSM" ako dva balíky. Vstup aj predfilter sú rovnaké, líši sa len schéma –
+# druhý beh je pár riadkov navyše, nie druhý job.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho GitHub
-# ticho neprijme (stráži to „Kontrola · lint workflowov").
+# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
 #
-# Zoznam tagov je vo `workers/features/filter.txt` vedľa oboch schém, nech sa
-# všetky tri menia na jednom mieste. Bez predfiltra by Planetiler čítal celé
-# Slovensko druhýkrát (a s bodmi zvlášť trikrát).
+# Zoznam tagov je vo `filter.txt` vedľa oboch schém. Bez predfiltra by
+# Planetiler čítal celé Slovensko druhýkrát (a s bodmi trikrát).
 #
-# POISTKA PROTI TICHEJ STRATE: čo má v schéme `min_zoom` nad maxzoomom,
-# Planetiler zahodí bez slova – tak sa to najprv porovná a povie nahlas.
+# Čo má v schéme `min_zoom` nad maxzoomom, Planetiler zahodí bez slova – tak sa
+# to najprv porovná a povie nahlas.
 #
-# Podiel na veľkosti stránky berie z `BUDGET_FEATURES_PCT` (env workflowu) –
-# body sú doň započítané, nemajú vlastný podiel (rozpis pri poistke nižšie).
+# Podiel na veľkosti stránky berie z `BUDGET_FEATURES_PCT`; body sú doň
+# započítané a vlastný podiel nemajú.
 
 set -euo pipefail
 mkdir -p _site/tiles data
