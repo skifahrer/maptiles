@@ -1,30 +1,17 @@
 #!/usr/bin/env python3
-"""
-Kontrola: výber `rebuild` naozaj prepočíta to, čo sľubuje.
+"""Kontrola: výber `rebuild` naozaj prepočíta to, čo sľubuje.
 
-PREČO. `rebuild` je jediná páka, ktorou sa dá povedať „nepoužívaj cache, spočítaj
-to nanovo". Keď sľúbi vrstvu a tá sa aj tak vráti z cache, beh je ZELENÝ
-a výsledok je ten starý – teda pravidlo 8 v čistej podobe. Rozísť sa to vie
-tromi tichými spôsobmi:
+Jediná páka na „nepoužívaj cache". Keď sľúbi vrstvu a tá sa aj tak vráti
+z cache, beh je zelený a výsledok starý. Rozíde sa to trojako:
 
-  * hodnota vo formulári, ktorú `workers/plan/options.py` nepozná (alebo naopak
-    hodnota v `REBUILD`, ktorú formulár neponúka – tú si nikto nevyberie);
-  * príznak v `REBUILD`, ktorý nikto nevydá ako výstup jobu `plan`, takže sa
-    k jobu, ktorý má prepočítať, nedostane a ostane prázdny;
-  * `rebuild: skaly` pri `rock_source: tienovanie`. Skaly vtedy nepočíta sklon
-    z výškového modelu, ale podpipeline `Dáta · tieňované skaly` – a tá si
-    odkladá rozrobené obrysy. Bez `fresh=1` na ne nadviaže, takže „pregenerovať
-    skaly" vráti výsledok predošlého behu.
+  * hodnota vo formulári, ktorú `plan/options.py` nepozná (alebo naopak);
+  * príznak v `REBUILD`, ktorý nikto nevydá ako výstup jobu `plan`;
+  * `rebuild: skaly` pri `rock_source: tienovanie` – vtedy počíta skaly
+    podpipeline, ktorá si odkladá rozrobené obrysy, a bez `fresh=1` na ne
+    nadviaže.
 
-MENO VO FORMULÁRI JE SLOVENSKÉ MENO VRSTVY. Výber sa kedysi volal `teren`,
-kým tú istú vrstvu vyberá `shading_source` („Tieňovanie a 3D terén"), balík je
-`-tienovanie.zip` a v katalógu je `terrain_source`. Kto ju chcel prepočítať,
-hľadal v zozname „tieňovanie" a usúdil, že sa nedá. Staré meno preto ostáva
-prijímané ako alias (`REBUILD_ALIAS`), ale nesmie sa ponúkať – dve mená pre
-jednu vec vo formulári sú horšie než jedno.
-
-Spustiť sa dá aj lokálne:
-    python3 workers/lint/rebuild.py
+Meno vo formulári je slovenské meno vrstvy: staré `teren` ostáva prijímané ako
+alias, ale nesmie sa ponúkať – dve mená pre jednu vec sú horšie než jedno.
 """
 import importlib.util
 import sys

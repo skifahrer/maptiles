@@ -1,37 +1,24 @@
 #!/usr/bin/env python3
-"""
-Maska kraja: „patrí toto miesto (alebo táto dlaždica, alebo tento pixel) do
-kraja?"
+"""Maska kraja: „patrí toto miesto (dlaždica, pixel) do kraja?"
 
-Pýtajú sa jej vrstvy z výškového modelu – tieňovanie sa podľa nej rozhoduje,
-ktoré dlaždice vôbec kresliť (`tile_touches`) a ktoré pixely v tých, čo cez
-hranicu prečnievajú, sú ešte kraj (`pixel_mask`; za ním sa výška dopĺňa
-okolím), a vrstevnice so skalami ju dostanú ako `-cutline` do gdalwarpu.
+Pýtajú sa jej vrstvy z výškového modelu: tieňovanie sa podľa nej rozhoduje,
+ktoré dlaždice kresliť (`tile_touches`) a ktoré pixely v prečnievajúcich sú
+ešte kraj (`pixel_mask`), vrstevnice a skaly ju dostanú ako `-cutline`.
 Polygón vyrába `workers/plan/region-poly.py`.
 
-SÚ TO DVE HRUBOSTI JEDNEJ ODPOVEDE a obe treba: dlaždicová sa nedá spraviť
-jemnejšie než dlaždica (a tá je na z8 široká 156 km), pixelová zase nemá zmysel
-púšťať na dlaždicu, ktorá je celá mimo. Rozpis, ktorá kedy, je v hlavičke
-`workers/terrain/tiles.py`.
+Sú to dve hrubosti jednej odpovede a obe treba: dlaždicová sa nedá spraviť
+jemnejšie než dlaždica (na z8 je široká 156 km), pixelová nemá zmysel na
+dlaždici, ktorá je celá mimo.
 
-BEZ SHAPELY, a je to zámer – tá istá úvaha ako vo `workers/dem/coverage.py`:
-na otázku „je táto dlaždica v kraji?" stačí hrubá rastrová maska. Pri kraji
-2,7° × 0,7° a mriežke 2048 buniek je bunka ~100 m, kým dlaždica na z14 má
-~1,5 km, takže o zaradení dlaždice rozhoduje maska s rezervou. Presnosť na
-pixel by nič nepriniesla: hranica má aj tak povolený presah pol dlaždice.
+Bez shapely zámerne: pri kraji 2,7° × 0,7° a mriežke 2048 buniek je bunka
+~100 m, kým dlaždica na z14 má ~1,5 km – presnosť na pixel by nič nepriniesla.
 
-POL DLAŽDICE SMIE PREČNIEVAŤ. Dlaždica sa berie, keď sa jej okno ZVÄČŠENÉ
-o pol svojej strany dotýka kraja. Bez tej rezervy by vrstva končila presne na
-hranici a v mape by bola vidieť rovná hrana v mieste, kde ešte má byť terén;
-s ňou hranica „presvitá" o pol dlaždice ďalej, čo je presne to, čo o mape
-vyzerá prirodzene.
+Pol dlaždice smie prečnievať: berie sa, keď sa jej okno zväčšené o pol strany
+dotýka kraja. Bez tej rezervy by v mape bola vidieť rovná hrana tam, kde ešte
+má byť terén.
 
-Použitie ako modul:
     m = mask_from_file("data/region.geojson", cells=2048)
-    if m.touches(w, s, e, n): …
-Alebo z príkazového riadka (kontrola a debug):
-    python3 workers/lib/region-mask.py --poly=data/region.geojson \\
-        --bbox=19.865,48.745,22.585,49.48 --zoom=14
+    python3 workers/lib/region-mask.py --poly=… --bbox=… --zoom=14
 """
 import argparse
 import json

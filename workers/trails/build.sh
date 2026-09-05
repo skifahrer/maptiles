@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 # Značené trasy z OSM relácií → `{región}-trails.pmtiles`.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho GitHub
-# ticho neprijme (stráži to „Kontrola · lint workflowov").
+# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
 #
-# PREČO PREDFILTER. Celé Slovensko je ~380 MB a index polôh uzlov nad ním by
-# zobral niekoľko GB pamäte. `osmium tags-filter` nechá len relácie trás a ich
-# členov, čo je zlomok veľkosti – a až nad tým beží `trail-routes.py`.
+# Predfilter preto, že index polôh uzlov nad celým Slovenskom (~380 MB) by
+# zobral niekoľko GB pamäte; `osmium tags-filter` nechá len relácie trás a ich
+# členov a až nad tým beží `routes.py`.
 #
 # Prázdny výsledok nie je chyba: malý testovací štvorec nemusí mať ani jednu
-# značenú trasu a mapa vtedy pôjde bez tejto vrstvy (`enabled=false`).
+# značenú trasu.
 #
-# Podiel na veľkosti stránky berie z `BUDGET_TRAILS_PCT` (env workflowu).
+# Podiel na veľkosti stránky berie z `BUDGET_TRAILS_PCT`.
 
 set -euo pipefail
 mkdir -p _site/tiles data

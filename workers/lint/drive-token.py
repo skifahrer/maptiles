@@ -1,39 +1,19 @@
 #!/usr/bin/env python3
-"""
-Kontrola: token vlastníka Drive sa dostane všade, kde sa z Drive číta.
+"""Kontrola: token vlastníka Drive sa dostane všade, kde sa z Drive číta.
 
-PREČO. Z Drive sa v pipeline číta na štyroch miestach (DMR 5.0 vo výreze aj
-v dlaždiciach, Sonnyho priečinok, sklon pre skaly), leží na ňom cache buildu,
-sklad hotových dát aj hotové mapy. Keď na jedno miesto token nepríde, nič
-nespadne – len sa číta verejným odkazom s denným limitom, prípadne sa cache
-nenájde a nič neuloží. Build je zelený a počíta hodiny odznova; presne ten druh
-tichej chyby, na ktorý sú tieto kontroly (pravidlo 8).
+Z Drive sa číta na štyroch miestach a leží na ňom aj cache buildu. Keď token
+na jedno miesto nepríde, nič nespadne – len sa číta verejným odkazom s denným
+limitom alebo sa cache nenájde a build počíta hodiny odznova.
 
-KONTROLUJE SA Z OBOCH STRÁN: či volajúci podáva `secrets: inherit` tam, kde
-volaný workflow z Drive číta, a či ho volaný vôbec deklaruje – `workflow_call`
-nededí secrets sám.
-
-`DRIVE_CLIENT` medzi secrets NIE JE: `client_id` nie je tajný údaj, je to
-repository variable a `vars.*` sa v tom istom repozitári čítajú priamo. Preto
-sa tu overuje len dvojica `DRIVE_SECRET`/`DRIVE_REFRESH` – a nekompletná sa
-NESMIE brať ako „veď tam niečo je", lebo `drive-auth.py` na polovici údajov
-padne, a to až v tom trojhodinovom behu.
-
-Použitie:
-    python3 workers/lint/drive-token.py
+Kontroluje sa z oboch strán: či volajúci podáva `secrets: inherit` a či to
+volaný deklaruje (`workflow_call` nededí nič sám). `DRIVE_CLIENT` medzi
+secrets nie je – `client_id` nie je tajný údaj, je to repository variable.
 """
 import glob, re, sys, yaml
 
-# Prihlásenie sa dá podať dvoma tvarmi: všetko v jednom secrete,
-# alebo po kusoch. Nekompletná dvojica/trojica sa NESMIE brať ako
-# „veď tam niečo je" – `drive-auth.py` na polovicu údajov spadne,
-# a keby to kontrola prepustila, spadol by až ten trojhodinový beh.
-#
-# Druhá skupina má len DVA prvky: `client_id` (DRIVE_CLIENT) medzi
-# secrets nepatrí – nie je to tajné, je to repository variable a
-# `vars.*` sa v tomto repozitári číta priamo, bez podávania cez
-# `workflow_call`/`secrets: inherit`. Táto kontrola preto overuje
-# len to, čo sa cez secrets naozaj musí prevliecť.
+# prihlásenie sa dá podať v jednom secrete alebo po kusoch; nekompletná
+# skupina sa nesmie brať ako „veď tam niečo je" – drive-auth.py na polovici
+# údajov spadne až v tom trojhodinovom behu
 BLOB = "GDRIVE_CREDENTIALS"
 GROUPS = (("GDRIVE_CLIENT_ID", "GDRIVE_CLIENT_SECRET",
            "GDRIVE_REFRESH_TOKEN"),
@@ -53,14 +33,9 @@ def why_not(names):
                     f"údajov `drive-auth.py` odmieta")
     return f"chýba {BLOB} alebo {'/'.join(GROUPS[1])}"
 
-# Volanie workera sa hľadá na ZAČIATKU riadku v `run:`, nie kdekoľvek v texte:
-# tie isté mená spomínajú ako DÁTA aj iné kontroly, ktoré so sieťou nemajú nič
-# (`print(f"workers/contours-rocks/slope-chunks.py …")`), a tie sa hlásiť nesmú.
-#
-# Interpret je NEPOVINNÝ: `run: workers/dem/check.sh` je celý riadok bez `bash`
-# pred ním a kým to regex vyžadoval, ten krok cez sieť kontrolou prešiel. Pred
-# cestou smú stáť len shellové kľúčové slová a operátory (`elif python3 …`) –
-# nie `\S*`, ktoré by chytilo aj cestu vnútri reťazca.
+# volanie sa hľadá na začiatku riadku v `run:`: tie isté mená spomínajú ako
+# dáta aj iné kontroly. Interpret je nepovinný (`run: workers/dem/check.sh`),
+# pred cestou smú stáť len shellové kľúčové slová a operátory.
 CMD = re.compile(r"^\s*(?:(?:if|elif|then|else|do|!|&&|\|\|)\s+)*"
                  r"(?:\w+=\$\()?(?:(?:python3?|bash|sh)\s+)?"
                  r"(?:\./)?[\w./-]*"
@@ -69,16 +44,9 @@ CMD = re.compile(r"^\s*(?:(?:if|elif|then|else|do|!|&&|\|\|)\s+)*"
                  r"|drive-folder|drive-cache|drive-store"
                  r"|publish-map|publish-results)"
                  r"\.(?:py|sh)\b", re.M)
-# Cache leží na Drive, takže KAŽDÝ krok s ňou je krok, ktorý sa musí
-# vedieť prihlásiť. Bez tokenu sa nič nestratí, len sa nič nenájde
-# a nič neuloží – build počíta hodiny odznova a nikde to vidieť nie
-# je. Presne ten druh tichej chyby, na ktorý sú tieto kontroly.
+# cache leží na Drive, takže každý krok s ňou sa musí vedieť prihlásiť
 CACHE = "./.github/actions/cache-"
-# Workflowy, ktoré samy z Drive čítajú, takže im volajúci MUSÍ
-# prihlásenie podať. `update-dem.yml` sem pribudol s Sonnym: jeho
-# dlaždice sú tiež na Drive a ťahali sa anonymne, kým bol token
-# zapojený len do cesty k DMR 5.0. `shading-rocks.yml` s cache:
-# gigabajty stiahnutých dlaždíc sú tiež na Drive.
+# workflowy, ktoré samy z Drive čítajú – volajúci im prihlásenie musí podať
 CALLED = ("./.github/workflows/dmr5-drive" + ".yml",
           "./.github/workflows/update-dem" + ".yml",
           "./.github/workflows/shading-rocks" + ".yml")
@@ -89,8 +57,7 @@ for path in sorted(glob.glob(".github/workflows/*.yml")):
     top = d.get("env") or {}
     for name, job in (d.get("jobs") or {}).items():
         job = job or {}
-        # Volaný workflow si secret vyzdvihne sám, ale volajúci mu ho
-        # musí podať – `workflow_call` nededí nič automaticky.
+        # volaný si secret vyzdvihne sám, ale volajúci mu ho musí podať
         if job.get("uses") in CALLED:
             called = job["uses"].rsplit("/", 1)[1]
             sec = job.get("secrets")
@@ -125,7 +92,7 @@ for path in sorted(glob.glob(".github/workflows/*.yml")):
                     "celého workflowu.")
             bad += 1
 
-# A druhá strana toho istého: volaný workflow to musí prijať.
+# a druhá strana: volaný workflow to musí prijať
 for called in CALLED:
     d = yaml.safe_load(open(called[2:]))
     on = d[[k for k in d if k is True or k == "on"][0]]

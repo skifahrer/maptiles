@@ -1,47 +1,18 @@
 #!/usr/bin/env python3
-"""
-Kto púšťa Planetiler, musí mať v jobe `actions/setup-java` – a tú istú verziu.
+"""Kto púšťa Planetiler, musí mať v jobe `actions/setup-java` – a tú istú verziu.
 
-PREČO TO EXISTUJE. Planetiler je JAR preložený pre Javu 21 (class file 65)
-a `ubuntu-latest` má predvolene 17 (61). Bez kroku `actions/setup-java` sa
-`java -jar planetiler.jar` nespustí vôbec:
+JAR je preložený pre Javu 21, `ubuntu-latest` má 17, takže bez toho kroku
+sa `java -jar` nespustí vôbec. `setup-java` je akcia, tá sa do bashu vo
+`workers/` stiahnuť nedá, takže je to päť kópií jednej vety a šiesty volajúci
+na ňu zabudol – padlo to až za stiahnutými 100 MB podkladov.
 
-    UnsupportedClassVersionError: com/onthegomap/planetiler/Main has been
-    compiled by a more recent version of the Java Runtime (class file version
-    65.0), this version of the Java Runtime only recognizes class file
-    versions up to 61.0
+  1. každý job, ktorý (aj cez `workers/*.sh`) púšťa Planetiler, má `setup-java`;
+  2. jeho `java-version` sa rovná `JAVA_MIN` vo `workers/lib/planetiler.sh`;
+  3. žiadny `setup-java` v repozitári nemá inú verziu;
+  4. spustenie s orezom nemá `--bounds` a `--polygon` naraz – `tileExtents` sa
+     počíta už v konštruktore, takže polygón je v logu vidieť a neoreže nič.
 
-Ten krok je ale v YAMLe pri KAŽDOM jobe zvlášť (`setup-java` je akcia, tá sa
-do bashu vo `workers/` stiahnuť nedá), takže je to päť kópií jednej vety – a
-šiesty volajúci na ňu zabudol. Beh 31948543768: mapa sveta stiahla 100 MB
-podkladov a padla až za nimi. V jobe `contours` by to bolo až za DEM, teda po
-desiatkach minút. To je pravidlo 1 z CLAUDE.md v tej podobe, v akej sa proti
-nemu nedá brániť inak než kontrolou: jedna odpoveď, ale zapísať sa musí na
-šiestich miestach.
-
-ČO SA KONTROLUJE:
-
-  1. každý job, ktorý (aj cez `workers/*.sh`, ktoré si volá) púšťa Planetiler,
-     má krok `actions/setup-java`,
-  2. jeho `java-version` sa rovná `JAVA_MIN` vo `workers/lib/planetiler.sh` –
-     tam je to číslo raz a odtiaľ ho číta aj kontrola v samotnom skripte,
-  3. žiadny `setup-java` v repozitári si nedrží inú verziu (inak by sa joby
-     rozišli ticho: jeden stavia na 21, druhý na 17),
-  4. spustenie s orezom na región nemá `--bounds` a `--polygon` naraz.
-
-ŠTVRTÁ JE ĎALŠIA TICHÁ. `Bounds` v Planetileri si `tileExtents` (to, čo
-o dlaždici rozhoduje) spočíta už v konštruktore – teda z `--bounds` a s
-prázdnym tvarom – a `setShape()` prepočet nespustí. Polygón je preto v logu
-vidieť („argument: polygon=…"), Planetiler nepovie ani slovo a NEOREŽE NIČ.
-Namerané na Monaku (maxzoom 15): bez orezu 27 dlaždíc, `--polygon` na polovicu
-územia 17, `--polygon` **aj** `--bounds` zase 27. Mapa by potom v aplikácii
-zase siahala za stiahnutý región – a jediné, čo by na to upozornilo, je toto.
-
-Job, ktorý má `setup-java` a Planetiler nepúšťa, sa nehlási – Java môže raz
-byť aj pod niečím iným. Chýbajúci krok je tvrdá chyba, prebytočný nie.
-
-Spustiť sa dá aj lokálne:
-    python3 workers/lint/planetiler.py
+Job so `setup-java`, ktorý Planetiler nepúšťa, sa nehlási.
 """
 import glob
 import os
@@ -54,10 +25,7 @@ import yaml
 
 SCRIPT = "workers/lib/planetiler.sh"
 JE_TO_PLANETILER = re.compile(r"planetiler\.jar|lib/planetiler\.sh")
-# SPUSTENÝ skript, nie spomenutý. Cesta musí byť prvé slovo príkazu (nanajvýš
-# za `bash`, `sh`, `source` alebo `.`) – inak by sa za volajúceho rátal aj job
-# `lint`, ktorý si tie isté cesty len ČÍTA (krok „Vrstvy podávajú kľúč výrezu"
-# grepuje `workers/contours-rocks/build.sh`, ale nepúšťa ho).
+# spustený skript, nie spomenutý: cesta musí byť prvé slovo príkazu
 CESTA_SKRIPTU = re.compile(
     r"^\s*(?:(?:bash|sh|source|\.)\s+)?(workers/[\w./-]+\.sh)\b", re.M)
 

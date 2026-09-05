@@ -1,20 +1,16 @@
 #!/usr/bin/env node
 /**
- * Prevezme úpravy štýlu z developer módu a uloží ich do zdrojáku
- * (`poc/web/style-overrides.json`), odkiaľ ich potom použije web aj
- * generátor statických štýlov pre iOS.
+ * Prevezme úpravy štýlu z developer módu a uloží ich do
+ * `poc/web/style-overrides.json`, odkiaľ ich použije web aj generátor
+ * statických štýlov pre iOS.
  *
- * Vstup je JSON stiahnutý z developer módu – buď zo súboru, zo štandardného
- * vstupu, alebo priamo ako text z inputu workflowu. Pred zápisom sa
- * skontroluje a prečistí tou istou funkciou (`normalizeOverrides`), akú
- * používa prehliadač, takže do repa sa nedostane neznáma farba, neplatný hex
- * ani vlastnosť, ktorú štýl nevie prepísať.
+ * Vstup je JSON zo súboru, stdin alebo z inputu workflowu. Pred zápisom ho
+ * prečistí tá istá `normalizeOverrides`, akú používa prehliadač, takže sa do
+ * repa nedostane neznáma farba ani vlastnosť, ktorú štýl nevie prepísať.
  *
- * Použitie:
- *   node workers/styles/overrides.mjs --file=overrides.json
+ *   node workers/styles/overrides.mjs --file=overrides.json [--check]
  *   node workers/styles/overrides.mjs --stdin < overrides.json
- *   node workers/styles/overrides.mjs --file=x.json --check   (len kontrola)
- *   node workers/styles/overrides.mjs --reset                 (vráti pôvodný štýl)
+ *   node workers/styles/overrides.mjs --reset
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";

@@ -43,7 +43,7 @@ const chyba = (subor, text) => {
   bad += 1;
 };
 
-// ---------- 1. každý štítok má svoj obrázok ----------
+// 1. každý štítok má svoj obrázok
 for (const [id, , , , , shapeId] of SHIELD_DEFS) {
   if (!SHIELD_SHAPE_IDS.includes(shapeId)) {
     chyba(
@@ -55,12 +55,9 @@ for (const [id, , , , , shapeId] of SHIELD_DEFS) {
   }
 }
 
-// ---------- 1b. zaoblené je aj VNÚTORNÉ pole ----------
-// Pásma štítka vznikajú ODSADENÍM vonkajšieho tvaru dovnútra a pri odsadení
-// sa polomer zaoblenia zmenšuje o to isté. Vnútorné pole má teda polomer
-// `radius - 2 * SHIELD_RING`, a keď to vyjde nula alebo menej, má OSTRÉ rohy,
-// hoci vonkajší tvar je zaoblený. Je to tichá vec: obrázok sa upečie, sprite
-// aj štýl sú platné a v mape má štítok vnútro ako vystrihnuté nožnicami.
+// 1b. zaoblené je aj vnútorné pole
+// Pásma vznikajú odsadením dovnútra a polomer sa pri tom zmenšuje o to isté;
+// pri nule alebo menej má vnútro ostré rohy, hoci vonkajší tvar je zaoblený.
 for (const shape of SHIELD_SHAPES) {
   const vnutro = shape.radius - 2 * SHIELD_RING;
   if (vnutro <= 0) {
@@ -75,13 +72,11 @@ for (const shape of SHIELD_SHAPES) {
   }
 }
 
-// ---------- 2. rozťahovacie pásma prežijú preskladanie spritu ----------
-// Skúša sa to na NAOZAJ vyrobenom sprite: štítky sa dopečú do malého atlasu
-// a ten sa potom nechá preskladať tým, čo ho v pipeline preskladáva.
+// 2. rozťahovacie pásma prežijú preskladanie spritu – na naozaj vyrobenom sprite
 const dir = mkdtempSync(join(tmpdir(), "shields-lint-"));
 try {
   const base = join(dir, "sprite");
-  // Najmenší možný sprite: jeden biely štvorček, aby bolo čo preskladávať.
+  // najmenší možný sprite: jeden biely štvorček
   writeFileSync(
     `${base}.png`,
     encodePng({ width: 4, height: 4, data: Buffer.alloc(4 * 4 * 4, 255) })
@@ -120,7 +115,7 @@ try {
     }
   }
 
-  // A teraz to isté po preskladaní, ktoré robí dopekanie vzorov.
+  // a to isté po preskladaní, ktoré robí dopekanie vzorov
   const styles = join(dir, "styles");
   execFileSync("mkdir", ["-p", styles]);
   writeFileSync(
@@ -148,7 +143,7 @@ try {
   rmSync(dir, { recursive: true, force: true });
 }
 
-// ---------- 3. štítok je nad menom ulice ----------
+// 3. štítok je nad menom ulice
 let skusok = 0;
 for (const theme of Object.keys(THEMES)) {
   for (const mapType of MAP_TYPE_IDS) {
@@ -158,7 +153,7 @@ for (const theme of Object.keys(THEMES)) {
       tilesUrl: "pmtiles://x/t.pmtiles",
       spriteUrl: "https://x/sprite",
       glyphsUrl: "https://x/{fontstack}/{range}.pbf",
-      // Mená sú tvar × trieda × téma – štítok je pečený obrázok, nie SDF.
+      // mená sú tvar × trieda × téma – štítok je pečený obrázok, nie SDF
       icons: SHIELD_SHAPE_IDS.flatMap((tvar) =>
         SHIELD_DEFS.flatMap(([id]) => Object.keys(THEMES).map((t) => `${tvar}-${id}-${t}`)))
     });
@@ -176,8 +171,7 @@ for (const theme of Object.keys(THEMES)) {
           `vyhrávalo meno ulice a číslo cesty by mizlo.`);
       }
     }
-    // Štítok musí obrázok naozaj použiť, keď v sprite je – inak by sa
-    // dopekanie do spritu robilo pre nič.
+    // štítok musí obrázok použiť, keď v sprite je
     for (const [id] of SHIELD_DEFS) {
       const l = style.layers.find((x) => x.id === `road-shield-${id}`);
       if (l && !(l.layout || {})["icon-image"]) {
@@ -188,11 +182,9 @@ for (const theme of Object.keys(THEMES)) {
   }
 }
 
-// ---------- 4. tvar prepnutý v developer móde má svoj obrázok ----------
-// Developer mode vie štítku prepnúť TVAR (`overrides.shields`) a v prehliadači
-// sa tým mení len meno obrázka – sprite sa neprebuildováva. Preto musí byť
-// v sprite KAŽDÝ tvar pre KAŽDÚ triedu aj tému; keby nebol, prepnutie by
-// štítok nechalo bez podkladu a vyzeralo by to ako „ten tvar sa nedá".
+// 4. tvar prepnutý v developer móde má svoj obrázok
+// V prehliadači sa mení len meno obrázka, sprite sa neprebuildováva – v sprite
+// musí byť každý tvar pre každú triedu aj tému.
 const upecene = new Set(
   SHIELD_SHAPES.flatMap((shape) =>
     SHIELD_DEFS.flatMap(([id]) => Object.keys(THEMES).map((t) => `${shape.id}-${id}-${t}`))

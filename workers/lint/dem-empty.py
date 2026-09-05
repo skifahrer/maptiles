@@ -1,41 +1,18 @@
 #!/usr/bin/env python3
-"""
-„V tomto stupni terén nie je" sa nesmie povedať od oka ani bez podpisu.
+"""„V tomto stupni terén nie je" sa nesmie povedať od oka ani bez podpisu.
 
-PREČO TO TU JE. Prázdna dlaždica je doživotná odpoveď: kým leží v sklade,
-`workers/dem/check.sh` vidí jej meno, usúdi, že model ten stupeň má, a nikto
-ho už neprečíta. Keď tú odpoveď vysloví vzorkovaná štatistika, je to tichý
-omyl v najhoršej podobe – beh je zelený a v mape chýba pol kraja.
+Prázdna dlaždica je doživotná odpoveď: kým leží v sklade, `dem/check.sh` vidí
+jej meno a nikto ju už neprečíta. Vzorkovaná štatistika (`-approx_stats`) raz
+v `N48E016.tif` netrafila ani jeden platný pixel a vrstevnice, skaly aj
+tieňovanie Bratislavského kraja skončili rovnou líniou na 17. poludníku.
 
-Presne to sa stalo v behu 31526268289: `gdalinfo -approx_stats` číta len každý
-n-tý blok, v štvorcovej dlaždici teda uhlopriečku, a v `N48E016.tif` (Devín,
-Záhorie – Slovensko zaberá 7,8 % stupňa pri jeho východnom okraji) netrafilo
-ani jeden platný pixel. Dlaždica s 25 miliónmi platných buniek sa zahodila,
-do skladu išla prázdna a vrstevnice, skaly aj tieňovanie Bratislavského kraja
-skončili rovnou líniou na 17. poludníku.
-
-ČO SA KONTROLUJE:
-
-  1. `dem/tiles.py` pozná `EMPTY_PX`, `EMPTY_TAG` aj `EMPTY_CHECK` – teda vie,
-     ako prázdna dlaždica vyzerá a ktorá kontrola ju smela vyhlásiť.
-  2. prázdna dlaždica sa naozaj PODPÍŠE (`-mo EMPTY_CHECK=…`). Bez podpisu sa
-     nedá odlíšiť poctivá odpoveď od omylu starej kontroly.
-  3. o zahodení hotovej dlaždice nerozhoduje vzorkovanie: `elevation_range(dst`
-     sa v `tiles.py` nevolá, ide sa cez `has_elevations(`, ktorá „nič tu nie je"
-     overí presným priechodom.
-  4. `dem/coverage.py` si prázdnu dlaždicu nedefinuje druhýkrát – obe
-     konštanty berie z `dem/tiles.py` (pravidlo 1: jedna otázka, jedno miesto).
-  5. KONTROLA SA PÝTA TO ISTÉ, ČO STIAHNUTIE. `dem/check.sh` sa dlho pýtal len
-     „je to meno v sklade?", kým `coverage.py` meria, čo v tých súboroch je –
-     a v behu 31781263921 sa to rozišlo: `dem-dmr5` mal `N48E016.tif` s nulovou
-     veľkosťou (prázdna dlaždica ešte od kontroly „v1"), kontrola povedala
-     „2 z 2 → doplniť: false" a ostrý build Bratislavského kraja spadol
-     o minútu neskôr na pokrytí 75,8 %. Preto sa kontroluje, že `check.sh`
-     púšťa `dem/trust.py` a že `trust.py` posudzuje podpis TOU ISTOU funkciou
-     (`coverage.empty_stamp`), a nie vlastným nápadom.
-
-Spustenie (aj lokálne, bez GDALu – je to statická kontrola):
-    python3 workers/lint/dem-empty.py
+  1. `dem/tiles.py` pozná `EMPTY_PX`, `EMPTY_TAG` aj `EMPTY_CHECK`;
+  2. prázdna dlaždica sa podpíše (`-mo EMPTY_CHECK=…`);
+  3. o zahodení nerozhoduje vzorkovanie – ide sa cez `has_elevations(`;
+  4. `dem/coverage.py` si prázdnu dlaždicu nedefinuje druhýkrát;
+  5. `check.sh` púšťa `dem/trust.py` a ten posudzuje podpis funkciou
+     `coverage.empty_stamp` – inak sa „je to meno v sklade?" rozíde s tým,
+     čo v tých súboroch naozaj je.
 """
 import os
 import re

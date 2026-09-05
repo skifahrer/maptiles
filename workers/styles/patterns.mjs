@@ -2,13 +2,10 @@
 /**
  * Dopečie do spritu obrázky opakujúcich sa vzorov, ktoré používa hotový štýl.
  *
- * Vzory (`fill-pattern`, `line-pattern`) sa v developer móde nastavujú
- * predpisom, ktorý je zároveň názvom obrázka (`pat:hatch:3a5a34:16:12`).
- * V prehliadači si ich mapa dokreslí sama, ale statický `style.json` pre iOS
- * musí mať obrázky priamo v sprite – tento skript prejde vygenerované štýly,
- * pozbiera z nich názvy vzorov a doplní ich do atlasu (aj do varianty @2x).
+ * Vzory sa v developer móde nastavujú predpisom, ktorý je zároveň názvom
+ * obrázka (`pat:hatch:3a5a34:16:12`). V prehliadači si ich mapa dokreslí sama,
+ * ale statický `style.json` pre iOS musí mať obrázky priamo v sprite.
  *
- * Použitie:
  *   node workers/styles/patterns.mjs \
  *        --sprite=_site/sprites/osm-liberty-sdf --styles=_site/styles
  */

@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 # PBF pre navigačný graf – stiahnuť a zliať to, čo číselník rozsahu hovorí.
 #
-# PREČO NIE `workers/plan/pbf.sh`. Ten reže KRAJ z rodičovského extraktu, lebo
-# mapa je mapa kraja. Graf sa po krajoch nedelí (rozpis vo
-# `workers/data/routing-areas.json`), takže je to iná otázka a iný skript.
+# Nie `workers/plan/pbf.sh`: ten reže kraj z rodičovského extraktu, lebo mapa
+# je mapa kraja. Graf sa po krajoch nedelí, takže je to iná otázka.
 #
-# NEREŽE SA NIČ. Pri mape je orez na hranicu podstatný (dlaždice by inak
-# vznikali na obdĺžniku bboxu), tu by bol chybou: hrana grafu, ktorej chýba
-# druhý koniec, je slepá ulica a trasa cez ňu neprejde. Graf sa preto stavia
-# z CELÝCH štátnych extraktov.
+# Nereže sa nič: hrana grafu, ktorej chýba druhý koniec, je slepá ulica a trasa
+# cez ňu neprejde. Graf sa preto stavia z celých štátnych extraktov.
 #
 # Vstup:  AREA (kľúč v routing-areas.json), OSMFR_BASE
 # Výstup: data/routing.osm.pbf a `pbf_mb` do GITHUB_OUTPUT

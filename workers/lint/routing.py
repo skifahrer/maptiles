@@ -1,33 +1,18 @@
 #!/usr/bin/env python3
-"""
-Profil navigácie musí prejsť do motora CELÝ – alebo o sebe povedať, že nie.
+"""Profil navigácie musí prejsť do motora celý – alebo o sebe povedať, že nie.
 
-PREČO TO JE KONTROLA. Costing motora je slovník a **neznámy kľúč sa v ňom
-ticho ignoruje** – Valhalla aj GraphHopper vrátia platnú trasu, keď im napíšeš
-`top_speeed` namiesto `top_speed`. Nič nespadne, nič sa nevypíše, len trasa
-nesedí s tým, čo si odškrtol. To je pravidlo 8 v čistej podobe a tá istá trieda
-chyby ako neznámy `fill-pattern` v MapLibre alebo `source-layer`, ktorý schéma
-nevyrába.
+Costing motora je slovník a neznámy kľúč sa v ňom ticho ignoruje: Valhalla aj
+GraphHopper vrátia platnú trasu aj na `top_speeed`. Stráži sa:
 
-ČO SA STRÁŽI:
-
-  1. Voľba, ktorú režim ponúka, musí v číselníku existovať.
-  2. KAŽDÁ voľba má pre KAŽDÝ motor buď mapovanie, alebo `unsupported`
-     s dôvodom. Mlčanie je zakázané – bez toho by sa nepokrytá voľba zahodila
-     a `--strict` by ju nemal z čoho nájsť.
-  3. Mapovanie a `unsupported` sa vylučujú. Keby stáli vedľa seba, `profile.py`
-     by jedno z nich ignoroval podľa poradia `if`-ov v kóde.
-  4. Kľúč costingu Valhally musí byť ZO ZOZNAMU jej skutočných volieb (nižšie).
-     Toto chytí preklep, ktorý inak nechytí nikto.
-  5. Výraz vlastného modelu GraphHoppera smie stáť len na zakódovaných
-     hodnotách, ktoré naozaj existujú (`road_class`, `country`, …).
-  6. `vignettes.json`: krajina bez známky nesmie mať `required_on` a naopak;
-     každá trieda v `required_on` musí byť preložiteľná v `GH_ROAD_CLASS`
-     v `profile.py` – inak by z pravidla o známke NEVYPADLO NIČ a trasa by
-     krajinu bez známky pokojne prešla po diaľnici.
-  7. Profil sa musí dať zložiť pre každý režim a každý motor bez pádu.
-
-Spustiť: `python3 workers/lint/routing.py`
+  1. voľba, ktorú režim ponúka, musí v číselníku existovať;
+  2. každá voľba má pre každý motor mapovanie alebo `unsupported` s dôvodom –
+     mlčanie je zakázané;
+  3. mapovanie a `unsupported` sa vylučujú;
+  4. kľúč costingu Valhally musí byť zo zoznamu jej skutočných volieb;
+  5. výraz vlastného modelu GraphHoppera smie stáť len na zakódovaných hodnotách;
+  6. `vignettes.json`: krajina bez známky nesmie mať `required_on` a naopak,
+     každá trieda musí byť preložiteľná v `GH_ROAD_CLASS`;
+  7. profil sa musí dať zložiť pre každý režim a motor bez pádu.
 """
 import datetime
 import importlib.util
@@ -48,17 +33,10 @@ def load(name, filename, folder):
     return mod
 
 
-# SKUTOČNÉ VOĽBY VALHALLY. Vyzobrané zo zdrojáku (master, august 2026):
-#
-#   src/sif/dynamiccost.cc, src/sif/autocost.cc, src/sif/pedestriancost.cc,
-#   src/sif/bicyclecost.cc – kľúče sa tam čítajú ako `"/nazov"`, takže sa
-#   zoznam obnoví jedným grepom:
-#
-#     grep -ohE '"/[A-Za-z_/]+"' src/sif/*cost.cc | sort -u
-#
-# JE TO KÓPIA CUDZIEHO ZOZNAMU, a preto je tu napísané, ODKIAĽ je: keď sa
-# Valhalla posunie, tento zoznam sa musí obnoviť tým grepom, nie doplniť
-# ručne o to jedno meno, ktoré práve chýba.
+# skutočné voľby Valhally, vyzobrané zo zdrojáku (master, august 2026):
+#   grep -ohE '"/[A-Za-z_/]+"' src/sif/*cost.cc | sort -u
+# Je to kópia cudzieho zoznamu – pri posune Valhally sa obnoví tým grepom,
+# nie doplní ručne o to jedno meno, ktoré práve chýba.
 VALHALLA_OPTIONS = {
     "alley_factor", "alley_penalty", "avoid_bad_surfaces", "bicycle_type",
     "bss_rent_cost", "bss_rent_penalty", "bss_return_cost", "bss_return_penalty",
@@ -83,8 +61,7 @@ VALHALLA_OPTIONS = {
     "walkway_factor", "weight", "width",
 }
 
-# Zakódované hodnoty GraphHoppera, na ktorých smie stáť výraz vlastného
-# modelu. Zdroj: docs/core/profiles.md a custom-models.md.
+# zakódované hodnoty GraphHoppera; zdroj: docs/core/profiles.md, custom-models.md
 GH_ENCODED = {
     "road_class", "road_class_link", "road_environment", "road_access",
     "surface", "smoothness", "track_type", "toll", "hazmat", "country",
@@ -95,10 +72,8 @@ GH_ENCODED = {
 }
 
 
-# Zástupné znaky v šablóne (`{alpha3}`, `{classes}`) sa dopĺňajú až v
-# `profile.py`, takže v samotnej šablóne menami nie sú. Kontroluje sa preto
-# šablóna BEZ nich a k tomu hotový výraz, ktorý z nej vypadol (bod 7) – práve
-# tam sa totiž preklep v doplnenej časti prejaví.
+# zástupné znaky sa dopĺňajú až v profile.py, takže sa kontroluje šablóna bez
+# nich a k tomu hotový výraz z nej (bod 7) – tam sa preklep prejaví
 PLACEHOLDER = re.compile(r"\{[a-z_0-9]+\}")
 
 
@@ -135,7 +110,7 @@ def main():
 
     engines = sorted(p.engines)
 
-    # --- 1. režimy ---
+    # 1. režimy
     for mode, spec in p.modes.items():
         for key in spec["options"]:
             if key not in p.options:
@@ -149,7 +124,7 @@ def main():
                                    f"`{engine}`. Napíš meno costingu, alebo "
                                    f"`null` – ale napíš to.")
 
-    # --- 2., 3., 4., 5. voľby ---
+    # 2., 3., 4., 5. voľby
     for key, spec in p.options.items():
         for engine in engines:
             rule = spec.get(engine)
@@ -194,7 +169,7 @@ def main():
                                  f"GraphHoppera. Neznáme meno vo vlastnom "
                                  f"modeli je chyba požiadavky, nie trasa.")
 
-    # --- 6. známky ---
+    # 6. známky
     stavy = set(p.vig.get("_stavy", {}))
     for code, c in p.countries.items():
         if not re.fullmatch(r"[A-Z]{2}", code):
@@ -222,7 +197,7 @@ def main():
                          f"nevie preložiť – `_gh_vignettes` takú triedu "
                          f"PRESKOČÍ a pravidlo o známke ticho zredne.")
 
-    # --- 7. profil sa musí dať zložiť ---
+    # 7. profil sa musí dať zložiť
     date = datetime.date(2026, 1, 1)
     for mode, spec in p.modes.items():
         values = {}

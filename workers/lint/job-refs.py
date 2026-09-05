@@ -1,28 +1,13 @@
 #!/usr/bin/env python3
-"""
-`needs.<job>.outputs.<x>` musí ukazovať na výstup, ktorý ten job naozaj vydá.
+"""`needs.<job>.outputs.<x>` musí ukazovať na výstup, ktorý ten job naozaj vydá.
 
-PREČO. Neexistujúci výstup nie je chyba behu – GitHub ho vyhodnotí ako PRÁZDNY
-REŤAZEC. Job teda dostane `''` namiesto hodnoty, `if:` na ňom vyjde nepravdivo,
-vrstva sa nepridá a beh zazelená. To je pravidlo 8: tichý omyl je horší než pád.
+Neexistujúci výstup nie je chyba behu – GitHub ho vyhodnotí ako prázdny
+reťazec, `if:` na ňom vyjde nepravdivo, vrstva sa nepridá a beh zazelená.
 
-BOL TO INLINE BLOK V `lint-workflows.yml` a presunul sa sem, keď sa ukázalo, že
-nevie o volaných workflowoch (pravidlo 3: veľký `run:` patrí do `workers/`).
-
-ČO SA STRÁŽI:
-
-  1. `needs.<job>` musí byť v `needs:` toho jobu. Bez toho je hodnota prázdna
-     rovnako spoľahlivo, ako keby výstup neexistoval.
-  2. Výstup musí existovať – a POZOR, hľadá sa na DVOCH miestach:
-       * pri obyčajnom jobe v jeho `outputs:`,
-       * pri jobe s `uses: ./.github/workflows/X.yml` v tom volanom súbore,
-         v `on.workflow_call.outputs`. Volaný job vo volajúcom žiadne
-         `outputs:` nemá a nikdy mať nebude, takže kontrola, ktorá pozerá len
-         tam, by ho hlásila VŽDY – a to je horšie než nekontrolovať: falošné
-         hlásenie sa buď vypne, alebo sa „opraví" tým, že sa výstup pridá
-         nasilu tam, kam nepatrí. (Presne to sa stalo pri `roads.yml`.)
-
-Spustiť: `python3 workers/lint/job-refs.py`
+  1. `needs.<job>` musí byť v `needs:` toho jobu;
+  2. výstup musí existovať – pri obyčajnom jobe v jeho `outputs:`, pri jobe
+     s `uses: ./.github/workflows/X.yml` v `on.workflow_call.outputs` toho
+     volaného súboru (volaný job vo volajúcom `outputs:` nemá a mať nebude).
 """
 import glob
 import os

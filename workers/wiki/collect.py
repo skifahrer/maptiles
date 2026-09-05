@@ -1,60 +1,35 @@
 #!/usr/bin/env python3
-"""
-Články z Wikipédie ku všetkému, čo v regióne odkazuje na wiki.
+"""Články z Wikipédie ku všetkému, čo v regióne odkazuje na wiki.
 
-ČO TO ROBÍ. Z regionálneho PBF vyberie objekty (body, čiary aj plochy), ktoré
-majú odkaz na Wikipédiu alebo Wikidata, poskládá z nich zoznam článkov
-a stiahne ich PO PÄŤDESIATICH NA POŽIADAVKU do JEDNÉHO súboru. Balík z toho
-robí `workers/deploy/publish-map.py` (balík `wikipedia`), ktorý ho nahrá na
-Drive vedľa mapy a zapíše do `maps.json`.
+Z regionálneho PBF vyberie objekty s odkazom na Wikipédiu alebo Wikidata,
+poskladá z nich zoznam článkov a stiahne ich po päťdesiatich na požiadavku do
+jedného súboru. Balík z toho robí `deploy/publish-map.py`.
 
     data/region.osm.pbf
-      → osmium tags-filter    len objekty s wiki odkazom (z 30 MB PBF ostane
-                              rádovo 1 MB, takže ďalšie kroky sú sekundy)
-      → osmium cat -f opl     typ, id a tagy KAŽDÉHO takého objektu
-      → wikidata sitelinks    `Q…` → názov článku v požadovanom jazyku (50/req)
-      → api.php prop=revisions celý článok, PÄŤDESIAT NA POŽIADAVKU
+      → osmium tags-filter      len objekty s wiki odkazom
+      → osmium cat -f opl       typ, id a tagy každého takého objektu
+      → wikidata sitelinks      `Q…` → názov článku (50/req)
+      → api.php prop=revisions  celý článok (50/req)
       → wiki-out/articles.ndjson + wiki-out/index.json
 
-JEDEN SÚBOR, NIE SÚBOR NA ČLÁNOK. Formát je NDJSON – riadok = jeden článok
-ako JSON. Tak to robí aj Wikimedia Enterprise so svojimi dumpmi a má to dva
-namerané dôvody (vzorka 153 článkov sk wiki, 267 kB textu):
+Jeden NDJSON, nie súbor na článok – tak to robia aj dumpy Wikimedia
+Enterprise. Namerané na 153 článkoch: 149,1 kB proti 101,3 kB v ZIPe, teda
+o 32 % menej. ZIP má na každý záznam ~320 B hlavičky a deflate si na každom
+súbore začína slovník odznova.
 
-    súbor na článok   149,1 kB v ZIPe, 153 záznamov
-    jeden NDJSON      101,3 kB v ZIPe, 1 záznam      → o 32 % menej
+Odkaz má viac podôb a všetky sú v dátach: `wikipedia=sk:Devín (hrad)`,
+`wikipedia:sk=…`, celé URL, alebo `wikidata=Q…` cez sitelinks.
+`brand:wikipedia` a `operator:wikipedia` sa zámerne neberú – to nie je článok
+o tom mieste, ale o firme (podá sa cez `--keys`).
 
-Za tým rozdielom je jedna vec dvakrát: ZIP má na každý záznam hlavičku
-(~320 B nameraných vrátane centrálneho adresára – pri 5000 článkoch je to
-1,6 MB samej režie) a deflate si na každom súbore ZAČÍNA SLOVNÍK ODZNOVA,
-takže tisíc krátkych článkov o tej istej doline sa komprimuje horšie než jeden
-prúd. K tomu praktické: rozbaliť 5000 súborov je na väčšine systémov citeľne
-pomalšie než jeden, a čítať sa to dá po riadkoch bez rozbaľovania všetkého.
+`index.json` hovorí, ktorý článok patrí ktorému OSM objektu – bez neho je to
+hromada textov, ktorú sa nemá na čo napojiť. Nestiahnuté články sú v ňom ako
+`chybne`, nie zamlčané.
 
-ODKAZ MÁ VIAC PODÔB a všetky sú v dátach:
+Požiadavky idú sériovo (API:Etiquette), s krátkou pauzou, `User-Agent`,
+`maxlag`, a pri 429/503 sa čaká `Retry-After`.
 
-    wikipedia=sk:Devín (hrad)        jazyk je v hodnote (najčastejšie u nás)
-    wikipedia:sk=Devín (hrad)        jazyk je v kľúči
-    wikipedia=https://sk.wikipedia.org/wiki/Devín   celé URL (býva to tak)
-    wikidata=Q123456                 článok sa dohľadá cez sitelinks
-
-`brand:wikipedia` a `operator:wikipedia` sa zámerne NEBERÚ: to nie je článok
-o tom mieste, ale o firme, a v kraji by z toho boli stovky kópií článku o
-Lidli. Kto ich chce, podá si ich cez `--keys`.
-
-INDEX JE SÚČASŤ VÝSLEDKU. `index.json` hovorí, ktorý článok patrí ktorému OSM
-objektu (typ, id, meno, súradnice) – bez neho je to hromada textov, ktorú sa
-v mape nemá ako na čo napojiť. To isté platí pre články, ktoré sa nestiahli:
-sú v `index.json` ako `chybne`, nie zamlčané (pravidlo 8 – tichý omyl je horší
-než pád; „stiahlo sa 900 z 1000" musí byť napísané).
-
-ZDVORILOSŤ K WIKIMEDII. Požiadavky idú SÉRIOVO (tak to žiada API:Etiquette –
-„waiting for one request to finish before sending a new request"), s krátkou
-pauzou, s `User-Agent`, ktorý hovorí, kto sme, s `maxlag`, a pri 429/503 sa
-čaká `Retry-After`.
-
-Použitie:
     python3 workers/wiki/collect.py --pbf=data/region.osm.pbf --out=wiki-out
-    python3 workers/wiki/collect.py --pbf=… --langs=sk,en --format=wikitext
 """
 import argparse
 import importlib.util

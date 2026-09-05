@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
 # PBF → `{región}.pmtiles` Planetilerom, s rozpočtom na veľkosť.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho GitHub
-# ticho neprijme (stráži to „Kontrola · lint workflowov").
+# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
 #
-# ROZPOČET JE NA CELÚ STRÁNKU, nielen na tieto dlaždice: Pages zvládne ~1 GB
-# a do toho sa musia zmestiť aj vrstevnice, terén, fonty a sprity. Tie sa ale
-# počítajú v INÝCH JOBOCH a súbežne s týmto, takže tu ešte nikto nevie, aké
-# budú veľké. Namiesto „čo zvýšilo" preto dostanú dlaždice pevný podiel
-# (`BUDGET_*_PCT` v env workflowu) a job `deploy` na konci overí, že súčet
-# naozaj sedí.
+# Rozpočet je na celú stránku (~1 GB na Pages), do ktorej sa musia zmestiť aj
+# vrstevnice, terén, fonty a sprity – tie sa ale počítajú v iných jobch
+# a súbežne, takže tu ešte nikto nevie, aké budú. Dlaždice preto dostanú pevný
+# podiel (`BUDGET_*_PCT`) a `deploy` na konci overí, že súčet sedí.
 #
 # Keď sa výsledok nezmestí a `auto_shrink` je zapnutý, zoom sa zníži a beží sa
-# znova – preto je to slučka a nie jeden priechod.
+# znova – preto slučka a nie jeden priechod.
 
 set -euo pipefail
 T_TILES=$(date +%s)

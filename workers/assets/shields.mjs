@@ -1,23 +1,18 @@
 #!/usr/bin/env node
 /**
- * Dopečie do spritu ROZŤAHOVATEĽNÉ PODKLADY ŠTÍTKOV s číslom cesty
- * („D1", „R1", „I/18").
+ * Dopečie do spritu rozťahovateľné podklady štítkov s číslom cesty („D1").
  *
- * Beží hneď po `workers/assets/sprite.mjs`, teda nad hotovým SDF spritom –
- * a musí to byť ZVLÁŠŤ, lebo `sprite.mjs` odpovedá na inú otázku („ako z cudzej
- * sady ikoniek spraviť SDF symboly"), kým tu ide o obrázok, ktorý si kreslíme
- * sami a v žiadnej sade ikoniek nie je.
+ * Beží po `assets/sprite.mjs`, nad hotovým SDF spritom – zvlášť preto, že
+ * `sprite.mjs` odpovedá na inú otázku (ako z cudzej sady spraviť SDF symboly),
+ * kým tu ide o obrázok, ktorý si kreslíme sami.
  *
- * PREČO SA PODKLAD NEDÁ NAHRADIŤ SAMOTNÝM HALOM POPISKU. `text-halo-width`
- * obtiahne písmená, nie obdĺžnik – z „D1" cez les vyjde biely obrys písmen,
- * nie značka. Značka musí mať rovnú hranu, aby sa na mape čítala ako značka.
- * (Štýl to aj tak vie: keď štítok v sprite NIE JE, kreslí číslo cesty len
- * s hrubým halom. Vyzerá to horšie, ale nezmizne to.)
+ * Samotné halo popisku podklad nenahradí: `text-halo-width` obtiahne písmená,
+ * nie obdĺžnik. Značka musí mať rovnú hranu, aby sa čítala ako značka. (Keď
+ * štítok v sprite nie je, štýl kreslí číslo len s hrubým halom – vyzerá to
+ * horšie, ale nezmizne to.)
  *
- * Tvar, veľkosť aj rozťahovacie pásma sú v `poc/web/shields.js` – jedno
- * miesto pre pipeline aj pre štýl, ktorý sa na tie mená odkazuje.
+ * Tvar, veľkosť aj rozťahovacie pásma sú v `poc/web/shields.js`.
  *
- * Použitie:
  *   node workers/assets/shields.mjs --sprite=_site/sprites/osm-liberty
  */
 import { bakeIntoSprite } from "../lib/sprite-bake.mjs";

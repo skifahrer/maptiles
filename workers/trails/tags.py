@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
-"""
-Čo o trase hovoria jej TAGY: farba pásika, dôležitosť siete a značka.
+"""Čo o trase hovoria jej tagy: farba pásika, dôležitosť siete a značka.
 
-Oddelené od `routes.py` zámerne, a nie kvôli počtu riadkov: `routes.py`
-odpovedá na otázku „kade trasa vedie" (tri priechody nad PBF, smery čiar,
-pruhy vedľa cesty), kým tu je otázka „čo je to za trasu" – čítanie
-`osmc:symbol`, `colour` a `network`. Sú to dve rôzne veci a delí sa tam,
-kde sa mení otázka (pravidlo 5 v CLAUDE.md).
-
-Spustiť sa to dá aj samostatne, nad jedným `osmc:symbol`:
+Oddelené od `routes.py`, ktorý odpovedá na „kade trasa vedie"; tu je otázka
+„čo je to za trasu" – čítanie `osmc:symbol`, `colour` a `network`.
 
     python3 workers/trails/tags.py --osmc=red:white:red_bar --route=hiking
 """

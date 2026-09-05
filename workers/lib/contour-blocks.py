@@ -1,35 +1,19 @@
 #!/usr/bin/env python3
-"""
-`gdal_contour -p` po blokoch – aby to dobehlo aj nad veľkým územím.
+"""`gdal_contour -p` po blokoch – aby to dobehlo aj nad veľkým územím.
 
-PREČO. Skladanie prstencov v režime plôch NIE JE lineárne v počte buniek: čím
-viac rozpracovaných prstencov GDAL drží, tým drahšie je pridať ďalší segment.
-Nad zrnitým sklonom to znamená, že beh začne rýchlo a potom sa zadrháva.
-Namerané v behu 31418794845 (689 km², sklad 1 m), tempo po krokoch po 2,5 %:
-2 %/min do 17,5 %, potom 1,07, 0,36 a 0,26 %/min – každý ďalší krok ~1,4×
-dlhší než predošlý. Žiadny beh skál nad celým výrezom takto nikdy nedobehol.
+Skladanie prstencov nie je lineárne v počte buniek: čím viac rozpracovaných
+prstencov GDAL drží, tým drahšie je pridať segment. Namerané tempo po krokoch:
+2 %/min do 17,5 %, potom 1,07, 0,36 a 0,26 – žiadny beh nad celým výrezom
+nikdy nedobehol. V bloku sa prstence poskladajú rýchlo a čo je hotové, je na
+disku, takže zrušený beh nezahodí prácu.
 
-Blok je malý raster: prstence sa v ňom poskladajú rýchlo, pamäť je zhora
-ohraničená a hlavne – ČO JE HOTOVÉ, JE NA DISKU. Zrušený beh teda nezahodí
-prácu a ďalší dopočíta len zvyšok (`.part` + premenovanie, ako sklad sklonu).
+Platí sa za to švami: plocha cez hranicu bloku vypadne ako dva polygóny.
+`zlep_svy()` ich spojí `ST_Union`-om nad tými, čo sa hranice naozaj dotýkajú.
+Bez spatialite beh pokračuje s rozseknutými plochami a povie to – rozseknutá
+skala je horšia mapa, nie žiadna mapa.
 
-ZA ČO SA TO PLATÍ A AKO SA TO VRACIA. Plocha cez hranicu bloku vypadne ako dva
-polygóny a diera preseknutá hranicou ako zárez v okraji oboch polovíc.
-`zlep_svy()` ich spojí späť: `ST_Union` nad tými útvarmi, ktoré sa hranice
-NAOZAJ dotýkajú (`sev=1`), po triedach. Keď sa spoja obe polovice, zárezy do
-seba zapadnú a diera sa zase uzavrie. Únia beží nad zlomkom plôch, takže to
-nie je tá istá drahá fáza, ktorej sme sa blokmi zbavovali.
-
-Bez spatialite sa švy zlepiť nedajú – vtedy beh POKRAČUJE s rozseknutými
-plochami a povie to. Rozseknutá skala je horšia mapa, nie žiadna mapa.
-
-Používajú to OBE cesty ku skalám: `contours-rocks/rock-areas.py` (zo sklonu)
-a `rocks-shading/vector.py` (z tieňovania). Boli to dve implementácie jednej
-veci a rozišli sa presne tak, ako pravidlo 1 sľubuje: oprava, ktorá stála beh
-31434520563 (prázdna únia švov sa zahodí a plochy sa vrátia nezlepené), aj
-zhrnutie varovania o chýbajúcom SRS vznikli len v jednej z nich. Preto sú tu
-raz a preto tu majú aj zostať – čo je rozdielne (prahy, atribúty, rozpočet),
-sa podáva parametrom.
+Používajú to obe cesty ku skalám (`rock-areas.py`, `rocks-shading/vector.py`);
+boli to dve implementácie a rozišli sa. Čo je rozdielne, sa podáva parametrom.
 """
 import json
 import os
@@ -42,27 +26,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from watch import dir_mb, hms, run_watched  # noqa: E402
 
 
-# Varovanie, ktoré GDAL vypíše NAD KAŽDÝM blokom a je tu OČAKÁVANÉ: z okna
-# bloku sa `<SRS>` vyhadzuje zámerne (viď `po_blokoch`), takže vrstva naozaj
-# žiadny SRS nemá a ovládač to poslušne hlási.
-#
-# PREČO SA TO FILTRUJE. Pri 364 blokoch je toho 364 riadkov – a je to TEN ISTÝ
-# text, akým sa ohlásila skutočná chyba: v behu 31428413843 skončili skaly na
-# zlých súradniciach a v PMTiles bolo 0 dlaždíc, a jediné, čo to v logu
-# povedalo, bolo práve „No SRS set on layer". Varovanie, ktoré na jednom mieste
-# znamená „všetko v poriadku" a na druhom „mapa je rozbitá", si človek odvykne
-# čítať – a to je pravidlo 8 zadnými dverami. Preto sa vypíše RAZ, aj s tým,
-# prečo je v poriadku, a ostatné sa spočítajú. Čokoľvek iné zo stderr ide von
-# vždy a celé.
+# varovanie, ktoré GDAL vypíše nad každým blokom a je tu očakávané: z okna sa
+# `<SRS>` vyhadzuje zámerne. Filtruje sa preto, že je to ten istý text, akým
+# sa raz ohlásila skutočná chyba (skaly na zlých súradniciach, 0 dlaždíc) –
+# varovanie, ktoré raz znamená „v poriadku" a raz „mapa je rozbitá", si človek
+# odvykne čítať. Vypíše sa raz aj s dôvodom, ostatné sa spočítajú.
 OCAKAVANE_VAROVANIE = "No SRS set on layer"
 
 
 def _stderr_von(text, *, prve, kde):
     """Vypíše stderr z GDALu; očakávané varovanie zhrnie, zvyšok pustí celý.
 
-    Vracia počet riadkov očakávaného varovania, nech ich vie volajúci spočítať
-    a na konci povedať, koľko ich bolo – zamlčať sa nesmie ani to, čo je
-    v poriadku.
+    Vracia počet riadkov očakávaného varovania, nech ich vie volajúci spočítať.
     """
     ocakavane = 0
     for riadok in (text or "").splitlines():
@@ -190,13 +165,9 @@ def _dotyka_sa(geom, x0, y0, x1, y1, tol):
 def skontroluj_metricke(seq, minimum=1000.0, vzoriek=200):
     """Sú súradnice v metroch, alebo sa niekde stratili do stupňov?
 
-    Rozdiel nevidno na ničom inom: beh dobehne, výstup existuje a je zelený –
-    len každá plocha má rádovo 1e-9 m² a filter najmenšej plochy ju vyhodí.
-    Preto sa to kontroluje rovno pri zdroji a je to CHYBA, nie varovanie.
-
-    Rozhoduje NAJVÄČŠIA súradnica zo vzorky, nie prvá: jeden bod môže byť
-    blízko nuly aj v metroch. V EPSG:3035 má Slovensko rádovo 4,8e6 / 3,0e6,
-    v stupňoch je to do 180 – tie dva svety sa nemajú ako pomýliť.
+    Nevidno to na ničom inom: beh dobehne a je zelený, len má každá plocha
+    rádovo 1e-9 m² a filter najmenšej plochy ju vyhodí. Preto chyba, nie
+    varovanie. Rozhoduje najväčšia súradnica zo vzorky, nie prvá.
     """
     najvacsia = 0.0
     videl = False
@@ -220,9 +191,8 @@ def skontroluj_metricke(seq, minimum=1000.0, vzoriek=200):
     except FileNotFoundError:
         return True
     if videl and najvacsia < minimum:
-        # `RuntimeError`, nie `ValueError`: volajúci ju chytá a vypisuje ako
-        # `::error::` s hláškou (`rocks-shading/build.py`). Hláška je
-        # zrozumiteľná, traceback nie.
+        # `RuntimeError`, nie `ValueError`: volajúci ju vypisuje ako
+        # `::error::` s hláškou – tá je zrozumiteľná, traceback nie
         raise RuntimeError(
             f"súradnice vyzerajú ako stupne (najväčšia {najvacsia:.6f}), nie "
             f"ako metre – z okna bloku sa nevyhodil `<SRS>` a GDAL ich "
@@ -237,12 +207,9 @@ def po_blokoch(vrt, out_dir, urovne, atributy, blok_px, geo, *, budget_s=0):
 
     `urovne`   – zoznam prahov pre `-fl`
     `atributy` – napr. `["-amin", "smin", "-amax", "smax"]`
-    `geo`      – (ox, oy, res): ľavý horný roh a veľkosť bunky v metroch,
-                 aby sa okno dalo prepočítať na súradnice
-    `budget_s` – strop času, VYPNUTÝ kým ho niekto nezapne. Patrí sem práve
-                 preto, že sa po zastavení dá nadviazať: hotové bloky ostávajú
-                 na disku, takže `TimeoutError` nie je zahodená práca, ale
-                 „na tomto zoome sa to nestihne, povedzme to teraz".
+    `geo`      – (ox, oy, res): ľavý horný roh a veľkosť bunky v metroch
+    `budget_s` – strop času, vypnutý kým ho niekto nezapne. Hotové bloky
+                 ostávajú na disku, takže `TimeoutError` nie je zahodená práca.
     """
     w_px, h_px = raster_size(vrt)
     if not w_px:
@@ -265,22 +232,13 @@ def po_blokoch(vrt, out_dir, urovne, atributy, blok_px, geo, *, budget_s=0):
             continue
         bw, bh = min(blok_px, w_px - bx), min(blok_px, h_px - by)
         okno = os.path.join(out_dir, "okno.vrt")
-        # `-of VRT` je len XML nad tým istým rastrom – výrez bloku nestojí
-        # ani jeden prepísaný bajt dát.
+        # `-of VRT` je len XML nad tým istým rastrom – výrez nestojí ani bajt
         subprocess.run(["gdal_translate", "-q", "-of", "VRT",
                         "-srcwin", str(bx), str(by), str(bw), str(bh),
                         vrt, okno], check=True)
-        # A TERAZ TO DÔLEŽITÉ: z okna sa vyhodí <SRS>.
-        #
-        # Ovládač GeoJSON prepočítava do WGS84 vždy, keď zdroj vie, v čom je.
-        # `gdal_contour` nad rastrom s EPSG:3035 by teda vypísal STUPNE – a kto
-        # z toho počíta plochu ako z metrov, tomu vyjde každá skala rádovo
-        # 1e-9 m² a spadne pod `min_area`. Von potom ide NULA plôch a beh je
-        # pritom zelený. Stalo sa to dvakrát: v tieňovacej ceste (beh
-        # 31245134321, 976 725 plôch → 0 ponechaných) a znova tu, keď sa
-        # bloky písali pre sklon a tento riadok sa nepreniesol (beh
-        # 31426542010). Bez SRS nemá GDAL čo prepočítať a súradnice ostanú
-        # metrické.
+        # z okna sa vyhodí <SRS>: ovládač GeoJSON prepočítava do WGS84 vždy,
+        # keď zdroj vie, v čom je, takže by `gdal_contour` vypísal stupne
+        # a každá skala by mala 1e-9 m². Stalo sa to dvakrát.
         with open(okno) as f:
             xml = f.read()
         with open(okno, "w") as f:
@@ -288,51 +246,41 @@ def po_blokoch(vrt, out_dir, urovne, atributy, blok_px, geo, *, budget_s=0):
         part = cesta + ".part"
         if os.path.exists(part):
             os.remove(part)
-        # stderr sa CHYTÁ, nie potláča: očakávané varovanie o chýbajúcom SRS
-        # sa zhrnie (viď `_stderr_von`), čokoľvek iné ide do logu tak, ako
-        # prišlo. Pri páde sa vypíše všetko a až potom sa chyba prehodí ďalej –
-        # inak by po `check=True` ostal dôvod pádu iba v zahodenom stderr.
+        # stderr sa chytá, nie potláča; pri páde sa vypíše všetko a až potom
+        # sa chyba prehodí ďalej
         hotovo = subprocess.run(
             ["gdal_contour", "-p", "-q", "-fl", *urovne, *atributy,
              "-f", "GeoJSONSeq", "-nln", "band",
-             # Súradnice sú metrické, dve desatiny = centimeter.
+             # súradnice sú metrické, dve desatiny = centimeter
              "-lco", "COORDINATE_PRECISION=2", okno, part],
             capture_output=True, text=True)
-        # `prve` sa viaže na PRVÝ VÝSKYT, nie na prvý blok: keby varovanie
-        # prišlo až od druhého bloku, vysvetlenie by sa inak nevypísalo vôbec
-        # a zvyšok by sa len ticho počítal.
+        # `prve` sa viaže na prvý výskyt, nie na prvý blok
         bez_srs += _stderr_von(hotovo.stderr, prve=(bez_srs == 0),
                                kde="gdal_contour")
         if hotovo.stdout.strip():
             print(f"    gdal_contour: {hotovo.stdout.strip()}", flush=True)
         hotovo.check_returncode()
-        # STRÁŽCA: prvý blok sa pozrie, či sú súradnice naozaj metrické.
-        # Keď sa sem raz vráti prepočet do stupňov, nespadne nič – len
-        # z filtra plochy vypadne všetko a mapa bude ticho bez skál.
+        # strážca: prvý blok sa pozrie, či sú súradnice naozaj metrické
         if spravene == 0:
             skontroluj_metricke(part)
-        # Súradnice sú v metroch výrezu; hranica bloku je jeho okraj.
+        # súradnice sú v metroch výrezu; hranica bloku je jeho okraj
         x0, y0 = ox + bx * res, oy - by * res
         x1, y1 = x0 + bw * res, y0 - bh * res
         oznac_svy(part, cesta, lambda g: _dotyka_sa(g, x0, y1, x1, y0, res))
         os.remove(part)
         spravene += 1
         el = time.time() - t0
-        # Postup po blokoch je jediné, čo o dlhej fáze niečo povie – a na
-        # rozdiel od percent `gdal_contour` sa nezasekne, lebo blok buď je,
-        # alebo nie je hotový.
+        # postup po blokoch je jediné, čo o tej dlhej fáze niečo povie
         if spravene and (i % max(1, len(bloky) // 50) == 0 or i == len(bloky) - 1):
             zvysok = el / spravene * (len(bloky) - i - 1)
             print(f"  … obrysy: blok {i + 1}/{len(bloky)}, beží {hms(el)}, "
                   f"zostáva ~{hms(zvysok)}, na disku {dir_mb(out_dir):.0f} MB",
                   flush=True)
-        # Rozpočet sa kontroluje až po zapísanom bloku: čo je hotové, ostáva
-        # na disku a ďalší beh nadviaže presne tu.
+        # rozpočet až po zapísanom bloku – ďalší beh nadviaže presne tu
         if budget_s and el > budget_s:
             raise TimeoutError(f"obrysy: {i + 1}/{len(bloky)} blokov")
-    # Koľko blokov to varovanie vypísalo, sa POVIE. Keď ho zrazu nemá jeden
-    # blok z 364, je to rozdiel oproti zvyšku a stojí za to, aby bol vidieť –
-    # zhrnutie nemá znamenať, že sa prestalo pozerať.
+    # koľko blokov varovanie vypísalo, sa povie: keď ho zrazu nemá jeden
+    # z 364, je to rozdiel oproti zvyšku a stojí za to, aby bol vidieť
     if bez_srs:
         print(f"  (GDAL hlásil „{OCAKAVANE_VAROVANIE}“ pri {bez_srs} "
               f"z {spravene} počítaných blokov – očakávané)", flush=True)
@@ -343,40 +291,17 @@ def zlep_svy(seq, tmp, *, klucovy_atribut="smin", heartbeat=30,
              max_s=0, label="švy"):
     """Spojí plochy rozseknuté hranicou bloku. Vráti cestu k výsledku.
 
-    Unionuje LEN útvary s `sev=1`, po triedach – inak by sa stena zlepila so
-    svahom.
+    Unionuje len útvary s `sev=1`, po triedach – inak by sa stena zlepila
+    so svahom.
 
-    ÚNIA SA MÔŽE NEPODARIŤ A NEPOVIE TO NÁVRATOVÝM KÓDOM. `ST_Union` nad
-    obrysmi z `gdal_contour` padá na neplatných geometriách („TopologyException:
-    unable to assign free hole to a shell") – ogr2ogr pritom skončí ÚSPECHOM
-    a napíše prázdny súbor. Kým sa výsledok nekontroloval, zmizli s ním všetky
-    plochy, ktoré sa dotýkali hranice bloku: v behu 31434520563 to bolo 22
-    z 24 útvarov a z celých Vysokých Tatier ostalo 44 plôch so súhrnnou
-    plochou 0,00 km². Beh bol zelený a mapa bez skál.
+    Únia sa môže nepodariť a nepovie to návratovým kódom: `ST_Union` padá na
+    neplatných geometriách, ogr2ogr pritom skončí úspechom a napíše prázdny
+    súbor (raz tak z Vysokých Tatier ostalo 44 plôch so súhrnnou plochou
+    0,00 km²). Preto `ST_MakeValid` pred úniou, prepočet plochy po nej
+    a návrat pôvodných útvarov, keď vyjde prázdna.
 
-    Preto sa tu robia tri veci navyše:
-      * `ST_MakeValid` pred úniou – tá topologická chyba je práve o tom,
-      * výsledok sa PREPOČÍTA a keď je prázdny, únia sa zahodí,
-      * pri zahodení sa vracajú PÔVODNÉ útvary. Rozseknutá skala je horšia
-        mapa; žiadna skala je rozbitá mapa.
-
-    A VÝSTUPU SA NESMIE DAŤ SRS. Je to tá istá pasca, kvôli ktorej sa z okna
-    bloku vyhadzuje `<SRS>` (viď `po_blokoch`), len o krok neskôr: ovládač
-    GeoJSON prepočítava do WGS84 vždy, keď vrstva vie, v čom je – takže
-    `-a_srs EPSG:3035` nad GeoJSONSeq výstupom neoznačí metre, ale ich ZMENÍ
-    NA STUPNE. Únia pritom prebehne správne a ogr2ogr skončí úspechom.
-
-    Presne to sa stalo v behu 32300347626 (Bratislavský kraj, 80 blokov):
-    do únie išlo 3570,56 km², von vyšla tá istá plocha v stupňoch, kontrola
-    plochy ju prepočítala ako 0,00 km² a únia sa zahodila ako „stratená".
-    V logu pritom nebola ani jedna `TopologyException` – varovanie ukazovalo
-    na GEOS, kým chyba bola v jednotkách. Švy sa tak nezlepili ANI RAZ, odkedy
-    sa počíta po blokoch, a keby kontrola plochy nebola, ostatné kusy by ostali
-    v metroch a zlepené v stupňoch – jeden súbor v dvoch sústavách.
-
-    Overené lokálne (GDAL 3.8.4, dva dotýkajúce sa štvorce v EPSG:3035):
-    s `-a_srs` vyšli súradnice 16,68 / 49,92, bez neho 4800000 / 3000000
-    a únia v oboch prípadoch spojila štvorce do jedného polygónu.
+    A výstupu sa nesmie dať SRS – tá istá pasca ako pri okne bloku, len o krok
+    neskôr: `-a_srs` nad GeoJSONSeq metre neoznačí, ale zmení na stupne.
     """
     svy = os.path.join(tmp, "svy.geojsonl")
     zvysok = os.path.join(tmp, "bez-svov.geojsonl")
@@ -398,12 +323,8 @@ def zlep_svy(seq, tmp, *, klucovy_atribut="smin", heartbeat=30,
     print(f"  švy: {n_sev} plôch na hranici bloku, {n_ok} mimo – "
           f"zlepujem tie prvé", flush=True)
     zlep = os.path.join(tmp, "zlepene.geojsonl")
-    # ŽIADNE `-a_srs` A ŽIADNE `-t_srs` (viď rozvahu v docstringu): GeoJSON
-    # ovládač by podľa neho prepočítal metre do stupňov. `ST_Union` je rovinná
-    # operácia a SRID ju nezaujíma – GDAL len vypíše `No SRS set on layer`,
-    # čo je tu, rovnako ako pri blokoch, OČAKÁVANÉ.
-    # `COORDINATE_PRECISION=2`: to isté, čo píšu bloky – centimeter stačí
-    # a súbor je o polovicu menší.
+    # žiadne `-a_srs` ani `-t_srs` (viď docstring). `ST_Union` je rovinná
+    # operácia a SRID ju nezaujíma. `COORDINATE_PRECISION=2`: centimeter stačí.
     chyba = None
     try:
         run_watched(["ogr2ogr", "-f", "GeoJSONSeq", zlep, svy,
@@ -416,16 +337,14 @@ def zlep_svy(seq, tmp, *, klucovy_atribut="smin", heartbeat=30,
     except Exception as exc:
         chyba = f"{type(exc).__name__}"
 
-    # ÚSPECH OGR2OGR NESTAČÍ – a nerozhoduje ani POČET útvarov: zlepiť 22
-    # kúskov do jedného je práve zmysel únie. Rozhoduje PLOCHA. Únia smie
-    # plochu mierne zmenšiť (prekryvy sa spoja), ale nikdy nie zmiesť.
+    # úspech ogr2ogr nestačí a nerozhoduje ani počet útvarov (zlepiť 22 kúskov
+    # do jedného je zmysel únie) – rozhoduje plocha
     n_zlep = 0
     if not chyba and os.path.exists(zlep):
         with open(zlep) as f:
             n_zlep = sum(1 for line in f if line.strip())
-    # JEDNOTKY SA KONTROLUJÚ SKÔR NEŽ PLOCHA – inak by sa prepočet do stupňov
-    # ohlásil ako „stratená plocha" a poslal hľadať chybu do GEOSu (beh
-    # 32300347626). Sú to dva rôzne dôvody a každý chce inú opravu.
+    # jednotky sa kontrolujú skôr než plocha: inak by sa prepočet do stupňov
+    # ohlásil ako „stratená plocha" a poslal hľadať chybu do GEOSu
     if n_zlep:
         try:
             skontroluj_metricke(zlep)
@@ -441,14 +360,9 @@ def zlep_svy(seq, tmp, *, klucovy_atribut="smin", heartbeat=30,
                  "(únia skončila prázdna – hľadaj v logu `TopologyException`)"
                  if not n_zlep else
                  f"(z {plocha_pred/1e6:.2f} km² ostalo {plocha_po/1e6:.2f} km²)")
-        # POZOR NA DÔVOD V TEJ HLÁŠKE, UŽ DVAKRÁT UKAZOVAL VEDĽA. Kým tu stálo
-        # „Chýba spatialite?", posielala každý beh hľadať chybu tam, kde nie je:
-        # `libsqlite3-mod-spatialite` inštaluje `contours-rocks/build.sh`
-        # a `ST_Union` sa volá úspešne. Potom tu natvrdo stálo, že dôvod je
-        # `TopologyException` z GEOS – a v behu 32300347626 nebola v logu ani
-        # jedna, únia prebehla správne a chybný bol prepočet do stupňov
-        # (`-a_srs` nad GeoJSONSeq). Preto sa dôvod BERIE Z TOHO, čo sa naozaj
-        # zistilo, a nedopisuje sa k nemu domnienka.
+        # dôvod v tej hláške už dvakrát ukazoval vedľa („Chýba spatialite?",
+        # potom natvrdo `TopologyException`), preto sa berie z toho, čo sa
+        # naozaj zistilo, a nedopisuje sa k nemu domnienka
         print(f"::warning::Zlepenie švov sa nedá použiť {preco}"
               + f". Vraciam {n_sev} pôvodných plôch nezlepených: na hraniciach "
               f"blokov ({label}) budú rozseknuté a diery na nich otvorené, ale "

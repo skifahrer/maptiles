@@ -1,57 +1,31 @@
 #!/usr/bin/env python3
-"""
-Čo sa dá pregenerovať v celej krajine – a čím sa to nad jedným krajom spustí.
+"""Čo sa dá pregenerovať v celej krajine – a čím sa to nad krajom spustí.
 
-„Mapa · Regenerate state" je tá istá štafeta ako „Build map state", len nad
-krajom nespúšťa CELÝ build, ale JEDEN BALÍK: body záujmu, cesty a chodníky,
-hranice, vodstvo, navigáciu, vrstevnice, skaly alebo tieňovanie. Ktoré balíky
-sú, drží číselník `workers/data/packages.json`; tento súbor k nim dopĺňa to,
-čo je vec dávky – poradie vo formulári, vetu do súhrnu a ktorý workflow to nad
-krajom spraví.
+„Regenerate state" je tá istá štafeta ako „Build map state", len nad krajom
+spúšťa jeden balík. Ktoré balíky sú, drží `workers/data/packages.json`; tento
+súbor k nim dopĺňa poradie vo formulári, vetu do súhrnu a workflow.
 
-PREČO ČÍSELNÍK A NIE `case` V SKRIPTE. Tú istú otázku si kladú tri miesta:
-formulár dávky (`co` je `type: choice`, teda zoznam v YAMLe), štafeta
-(`workers/state/regenerate.sh`, ktorá beh kraja spúšťa) a súhrn behu. Keby si
-na ňu odpovedalo každé samo, pribudnutá voľba by vo formulári bola a štafeta
-by na nej spadla – alebo horšie: spustila by niečo iné, než si vybral, a beh
-by bol zelený. Zoznam vo formulári sa generovať nedá (`choice` v YAMLe je
-zoznam), ale dá sa strážiť – robí to `workers/lint/regenerate.py`.
+Číselník, a nie `case` v skripte: tú istú otázku si kladú tri miesta (formulár,
+štafeta, súhrn). Keby si odpovedalo každé samo, pribudnutá voľba by vo
+formulári bola a štafeta by na nej spadla – alebo by spustila niečo iné a beh
+by bol zelený. Zoznam v `choice` sa generovať nedá, ale dá sa strážiť
+(`workers/lint/regenerate.py`).
 
-VŠETKO IDE JEDNOU CESTOU: „Mapa · Pregeneruj vrstvu kraja"
-(`regenerate-region.yml`) postaví LEN tú jednu vec a na Drive prepíše LEN jej
-balík (`publish-map.py --only=…`, ktorý položku v katalógu doplní, nie
-prepíše). Mapy, dlaždíc ani Pages sa to nedotkne.
+Všetko ide cez „Pregeneruj vrstvu kraja", ktorý postaví len tú vec a prepíše
+len jej balík. Ceny sú rôzne: z PBF (`body`, `cesty`, `hranice`, `vodstvo`,
+`navigacia`) sú to minúty, z výškového modelu (`vrstevnice`, `skaly`,
+`tienovanie`) desiatky minút až hodiny – a robí to `dem-layers.yml`, ten istý
+workflow, aký volá build mapy.
 
-Ceny sú ale rôzne a je dobré to vedieť dopredu:
+Základná mapa a články tu nie sú: mapa je celý build (a značené trasy
+cestujú v nej), články majú vlastnú pipeline.
 
-  Z PBF (`body`, `cesty`, `hranice`, `vodstvo`, `navigacia`) sú to MINÚTY na
-  kraj – tie vrstvy sa počítajú z toho istého OSM PBF ako mapa a nič iné
-  nepotrebujú.
-
-  Z VÝŠKOVÉHO MODELU (`vrstevnice`, `skaly`, `tienovanie`) sú to desiatky
-  minút až hodiny: treba sklad DEM, prípadne ho doplniť, prečítať ho a nad
-  ním trasovať. Robí to `dem-layers.yml` – TEN ISTÝ workflow, aký volá build
-  mapy, takže sa vrstva z pregenerovania nemá ako rozísť s tou z buildu.
-  Ušetrí sa proti celému buildu všetko ostatné: dlaždice, ikonky, štýl,
-  kontrola webu, Pages a prepísanie ostatných balíkov na Drive.
-
-ZÁKLADNÁ MAPA A ČLÁNKY Z WIKIPÉDIE TU NIE SÚ. Mapa je celý build (dlaždice
-Planetilerom nad celým PBF, štýl, ikonky) – pregenerovať „len ju" znamená
-spustiť „Mapa · Build map region"; a značené trasy, ktoré v nej cestujú, sú
-preto tiež jej vec. Články majú vlastnú pipeline („Mapa · Build wiki") s inou
-sieťou a inou životnosťou.
-
-VRSTEVNICE A SKALY SÚ JEDEN BALÍK (`-vrstevnice-skaly.zip`), takže sa pri
-oboch voľbách počítajú OBE – len tá druhá sa vezme z cache. Balík sa
-prepisuje celý a polovica nová s polovicou chýbajúcou by bola balík, ktorý
+Vrstevnice a skaly sú jeden balík, takže sa pri oboch voľbách počítajú obe –
+len tá druhá z cache. Polovica nová a polovica chýbajúca by bola balík, ktorý
 sľubuje vrstvu, ktorú nenesie.
 
-Použitie:
-    python3 workers/state/jobs.py --zoznam            # kľúče, v poradí formulára
-    python3 workers/state/jobs.py --workflow=body     # čo sa nad krajom spustí
-    python3 workers/state/jobs.py --meno=body         # meno toho workflowu
-    python3 workers/state/jobs.py --popis=body        # čo to pregeneruje
-    python3 workers/state/jobs.py --polia=body        # `-f` polia, po riadkoch
+    python3 workers/state/jobs.py --zoznam | --workflow=body | --meno=body
+    python3 workers/state/jobs.py --popis=body | --polia=body
 """
 import argparse
 import importlib.util

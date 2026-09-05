@@ -1,90 +1,54 @@
 #!/usr/bin/env python3
-"""
-Koľko metrov je jedna bunka – a čo z toho plynie.
+"""Koľko metrov je jedna bunka – a čo z toho plynie.
 
-Bunka výškového modelu a pixel dlaždice sú dve čísla a porovnanie tých dvoch
-rozhoduje o troch veciach naraz: **ktorý maxzoom** má zmysel počítať, **ktorým
-resamplingom** sa na daný zoom ide a **aký zvislý krok** znesie kódovanie
-výšky. Sú to tri otázky, ale odpoveď na všetky stojí na tom istom prevode
-„stupne → metre" – a keby sa dve z nich rozišli, tieňovanie by sa počítalo
-na inej mriežke, než akú mu vybral plán. Preto sú tu spolu (pravidlo 1
-v CLAUDE.md). Pýtajú sa ich:
+Bunka modelu a pixel dlaždice rozhodujú o troch veciach naraz: ktorý maxzoom
+má zmysel počítať, ktorým resamplingom sa naň ide a aký zvislý krok znesie
+kódovanie výšky. Odpoveď na všetky stojí na tom istom prevode stupňov na
+metre, tak sú tu spolu. Pýtajú sa ich `plan/options.py`,
+`contours-rocks/rock-plan.py`, `terrain/tiles.py` a `smooth-shapes.py`.
 
-  `plan/options.py`             ktorý maxzoom vyjde na tento model
-                                (`terrain_maxzoom: auto`)
-  `contours-rocks/rock-plan.py` aká je NAOZAJ mriežka toho rastra
-  `terrain/tiles.py`            zväčšuje sa DEM alebo zmenšuje, a koľko
-                                zlomkových bitov výšky treba
-  `contours-rocks/smooth-shapes.py`  aký jemný detail dlaždica ešte unesie
-                                (krok mriežky `extent`)
-
-BEZ NUMPY, a je to zámer. Tieto funkcie sú čistá aritmetika a `lint/terrain.py`
-ich musí vedieť spustiť – lintovací job má len `checkout` a holý `python3`,
-žiadne `pip install`. Keby tu numpy bolo, kontrola by sa buď musela ticho
-preskakovať (zelená, ktorá sa nepozrela na nič), alebo by lint pri každom pushi
-visel na sieti. Práca nad poliami (kódovanie do RGB, test roviny) preto ostáva
-vo `terrain/tiles.py`.
-
-Použitie ako modul:
-    sys.path.insert(0, os.path.join(_WORKERS, "lib"))
-    from cell import tile_m_per_px, terrain_zoom_for, dem_cell_metres
+Bez numpy zámerne: `lint/terrain.py` to musí vedieť spustiť a lintovací job má
+len holý python3. Práca nad poliami ostáva v `terrain/tiles.py`.
 """
 import json
 import math
 import subprocess
 
-# Stred Slovenska. Mriežka Web Mercatora je v metroch na rovníku, takže sa
-# každý rozmer musí prepočítať na našu šírku – a keď sa nevie, ktorá to je,
-# platí táto. Rozdiel medzi 47,7° a 49,6° je na tomto asi 4 %, čo o zoome
-# ani o resamplingu nerozhoduje.
+# stred Slovenska: mriežka Web Mercatora je v metroch na rovníku, tak sa
+# rozmer musí prepočítať na našu šírku (rozdiel 47,7° a 49,6° sú ~4 %)
 DEFAULT_LAT = 49.0
 
 # Zoom 0 má na rovníku 156 543,03 m na pixel (256 px na 40 075 km).
 EQUATOR_M_PER_PX = 156543.03
 
-# Koľko metrov je stupeň. Zemepisná šírka je takmer konštantná (110 540 m),
-# dĺžka sa krátí s kosínusom šírky – u nás je z 111 320 m len ~73 000. Kto
-# prepočítava toleranciu z metrov na stupne, má deliť TOU DLHŠOU: vyjde
-# menšie číslo, takže na zemi nikdy nebude väčšia, než sa žiadalo.
+# šírka je takmer konštantná, dĺžka sa krátí s kosínusom. Kto prepočítava
+# toleranciu z metrov na stupne, delí tou dlhšou – na zemi tak nevyjde väčšia.
 M_PER_DEG_LAT = 110540
 M_PER_DEG_LON_EQ = 111320
 
 
 def tile_m_per_px(z, lat=DEFAULT_LAT):
-    """Koľko metrov v teréne je jeden pixel dlaždice na danom zoome.
-
-    Číslo je tu raz, nech sa výber zoomu, voľba resamplingu a to, čo o nich
-    hovorí log, nemôžu rozísť.
-    """
+    """Koľko metrov v teréne je jeden pixel dlaždice na danom zoome."""
     return EQUATOR_M_PER_PX * math.cos(math.radians(lat)) / (2 ** z)
 
 
-# Súradnicová mriežka vektorovej dlaždice. `extent` je v Planetileri
-# konštanta 4096 a dlaždica má 256 „štýlových" pixelov, takže na jeden pixel
-# pripadá 16 krokov mriežky. Do tejto mriežky sa pri zápise zaokrúhli KAŽDÝ
-# bod geometrie – jemnejší detail sa do dlaždice nezmestí, nech ho vrstva
-# nesie akokoľvek presne. Preto sa podľa nej riadi aj to, ako husto sa vzorkuje
-# vyhladená vrstevnica (`contours-rocks/smooth-shapes.py`): hustejšie body už
-# mriežka aj tak zlepí a schodíky z nich len pribudnú.
+# súradnicová mriežka vektorovej dlaždice: `extent` 4096 na 256 pixelov, teda
+# 16 krokov na pixel. Zaokrúhli sa do nej každý bod geometrie, takže sa podľa
+# nej riadi aj hustota vzorkovania vyhladenej vrstevnice.
 TILE_EXTENT = 4096
 TILE_PX = 256
 
 
 def tile_grid_m(z, lat=DEFAULT_LAT):
-    """Krok súradnicovej mriežky dlaždice v metroch na danom zoome.
-
-    Je to `tile_m_per_px` delené 16 – jedno miesto na obe otázky, nech sa
-    „koľko je pixel" a „koľko je krok mriežky" nemôžu rozísť.
-    """
+    """Krok súradnicovej mriežky dlaždice v metroch na danom zoome."""
     return tile_m_per_px(z, lat) * TILE_PX / TILE_EXTENT
 
 
 def terrain_zoom_for(cell_m, lo=8, hi=16):
     """Najnižší zoom, na ktorom je pixel dlaždice jemnejší než bunka modelu.
 
-    Vyššie už dlaždice nesú detail, ktorý v modeli nie je – len štvornásobok
-    súborov na každý ďalší zoom. Sonny (20 m) → z13, DMR 3.5 (10 m) → z14,
-    DMR 5.0 (5 m) → z15.
+    Vyššie už dlaždice nesú detail, ktorý v modeli nie je. Sonny (20 m) → z13,
+    DMR 3.5 (10 m) → z14, DMR 5.0 (5 m) → z15.
     """
     for z in range(lo, hi + 1):
         if tile_m_per_px(z) <= cell_m:
@@ -92,110 +56,53 @@ def terrain_zoom_for(cell_m, lo=8, hi=16):
     return hi
 
 
-# Sklon, ktorý sa v tieňovaní už nedá odlíšiť od roviny. Pri svetle pod 45°
-# mení sklon σ jas asi o 0,7·σ, takže 2 % sú ~3,6 z 255 odtieňov – a v štýle
-# to ide ešte cez `hillshade-exaggeration` 0,25–0,4, čiže pod jeden odtieň.
-#
-# JEDNO ČÍSLO, DVE POUŽITIA, a obe hovoria to isté („pod týmto nie je čo
-# tieňovať"): vyberá zvislý krok kódovania (`frac_bits`) a rozhoduje, ktorá
-# dlaždica je rovina a nemusí vzniknúť (`je_rovina` v `terrain/tiles.py`).
-# Keby to boli dve čísla, raz by sa rozišli a jedno by tvrdilo, že tam nič
-# nie je, kým druhé by tam platilo bity za presnosť.
+# sklon, ktorý sa v tieňovaní už nedá odlíšiť od roviny (2 % je ~3,6 z 255
+# odtieňov, a v štýle ešte cez `hillshade-exaggeration`). Jedno číslo, dve
+# použitia: vyberá zvislý krok kódovania a rozhoduje, ktorá dlaždica je rovina.
 SLOPE_EPS = 0.02
 
-# Jemnejšie než 1/64 m nemá čo pridať: taký krok je pod šumom každého modelu,
-# ktorý sem chodí, a v PNG je to už len nestlačiteľný bajt navyše.
+# jemnejšie než 1/64 m je pod šumom každého modelu a v PNG len bajt navyše
 MAX_FRAC_BITS = 6
 
-# O KOĽKO POD HRANICU VIDITEĽNOSTI. `SLOPE_EPS` je sklon, ktorý sa v JEDNOM
-# mieste stratí – lenže kvantizácia ho nerobí v jednom mieste, robí ho
-# PRAVIDELNE cez celú dlaždicu. Krok presne na `SLOPE_EPS × pixel` teda
-# posadí falošný sklon tesne POD hranicu viditeľnosti a nechá ho tam na
-# každom zoome rovnako; oko z toho číta mriežku, lebo je pravidelná (a na
-# hranách schodíkov ju druhá derivácia ešte zvýrazní – Machove pásy).
-#
-# Je to tá istá chyba, ktorú už raz popísala hlavička `terrain/tiles.py`:
-# „merala sa VEĽKOSŤ odchýlky, nie jej TVAR". Prvá oprava ju popísala
-# správne a potom si krok aj tak vybrala presne na tú hranicu.
-#
-# Namerané celou cestou cez `terrain/tiles.py` na hladkom umelom teréne
-# (mriežka = stredná |Laplacián| tieňovania ×10⁻³). Kvantizácia pridáva na
-# KAŽDOM zoome to isté, lebo krok ide s pixelom – preto je „+0" na oboch
-# zoomoch rovnaké číslo:
-#
-#     bity navyše   z12 krok  mriežka  kB/dl.   z13 krok  mriežka  kB/dl.
-#     +0 (doteraz)    1/2      10,47    20,3     1/4        9,12    21,2
-#     +1              1/4       6,39    26,6     1/8        4,62    30,8
-#     +2              1/8       4,68    35,3     1/16       2,33    38,7
-#     +3 (dnes)       1/16      4,07    43,7     1/32       1,17    47,4
-#
-# Každý bit stojí ~30 % veľkosti dlaždice. Na z13 tri bity mriežku zrazia
-# 7,8× a je po nej; na z12 sa zastaví na 4,07, lebo tam už nedrží kvantizácia,
-# ale samotné prevzorkovanie pri pomere 1,25 (blízko Nyquista) – a to sa
-# bitmi nedá kúpiť. Dlaždice sú za to ~2,2× väčšie a to je celá cena, ktorú
-# `--budget-mb` môže zaplatiť jedným zoomom navrch.
+# o koľko pod hranicu viditeľnosti. `SLOPE_EPS` je sklon, ktorý sa stratí
+# v jednom mieste – kvantizácia ho ale robí pravidelne cez celú dlaždicu, tak
+# ho oko číta ako mriežku. Namerané celou cestou cez `terrain/tiles.py`: každý
+# bit navyše stojí ~30 % veľkosti dlaždice a tri bity zrazia mriežku na z13
+# 7,8×. Na z12 sa zastaví na prevzorkovaní pri pomere 1,25 (blízko Nyquista),
+# ktoré sa bitmi kúpiť nedá.
 FRAC_BITS_MARGIN = 3
 
 
 def frac_bits(px_m):
     """Koľko zlomkových bitov výšky (bajt B) treba pri pixeli `px_m` metrov.
 
-    Krok kódovania je 2^-bits metra a má ostať `FRAC_BITS_MARGIN` bitov POD
-    `SLOPE_EPS × pixel` – teda nie tesne na hranici viditeľnosti, ale
-    bezpečne pod ňou, lebo falošný sklon z kvantizácie je pravidelný.
-    Rozpis aj namerané čísla sú pri `FRAC_BITS_MARGIN` a v hlavičke
-    `workers/terrain/tiles.py`. Nula znamená celé metre; na najhrubších
-    zoomoch teda dlaždice nerastú vôbec.
+    Krok kódovania má ostať `FRAC_BITS_MARGIN` bitov pod `SLOPE_EPS × pixel`.
+    Nula znamená celé metre – na najhrubších zoomoch dlaždice nerastú vôbec.
     """
     want = SLOPE_EPS * px_m
     if not (want > 0):
         return 0
-    # Hranica viditeľnosti posunutá o `FRAC_BITS_MARGIN` bitov nadol. Strop
-    # `MAX_FRAC_BITS` platí ďalej – na najvyšších zoomoch preto vyjde margin
-    # menší, a je to v poriadku: krok 1/64 m je pri pixeli 3 m falošný sklon
-    # 0,5 %, čiže aj tak štvrtina `SLOPE_EPS`.
+    # strop `MAX_FRAC_BITS` platí ďalej: na najvyšších zoomoch vyjde margin
+    # menší, a je to v poriadku (1/64 m je pri pixeli 3 m len 0,5 % sklonu)
     target = want / (2 ** FRAC_BITS_MARGIN)
     return max(0, min(MAX_FRAC_BITS, int(math.ceil(-math.log2(target)))))
 
 
-# Od akého NÁSOBKU bunky sa smie priemerovať. `average` je box filter cez tie
-# bunky, ktoré cieľový pixel prekryje – priemerovať teda má čo až vtedy, keď
-# ich prekryje aspoň dve. Hneď nad bunkou (pomer 1,0–2,0) mu ich padne raz
-# jedna, raz dve, čo je striedavo najbližší sused a priemer dvojice; z toho
-# vznikne rytmus plošiniek a hillshade (derivácia) z ich hrán spraví tú istú
-# mriežku ako pri zväčšovaní. Je to jedna chyba, len na druhej strane hranice.
-#
-# Namerané na umelom hladkom teréne (bunka 20 m, mriežka = stredná |Laplacián|
-# tieňovania ×10⁻³). Najprv SAMOTNÝ WARP, bez kódovania – tam je rozdiel vidieť
-# najčistejšie:
-#
-#     zoom   pixel    pomer   average   cubicspline
-#     z11    50,1 m    2,51     0,65       0,58      ← tu sú si rovné
-#     z12    25,1 m    1,25     5,36       0,53      ← 10× a doteraz `average`
-#     z13    12,5 m    0,63    34,34       0,04      ← opravené v PR #149
-#
-# A to isté celou cestou cez `terrain/tiles.py` (z12, krok 1/16 m v oboch):
-# `average` 5,45 proti `cubicspline` 4,07. Menej než na samotnom warpe, lebo
-# pri pomere 1,25 je zvyšok blízko Nyquista a ten sa prevzorkovaním nedá
-# odstrániť – ale je to zadarmo, dlaždica z toho nerastie ani o bajt.
-#
-# Nad pomerom 2 sa už nelíšia (a `average` je tam lacnejší aj poctivejší –
-# je to skutočný priemer, nie vzorka splajnu), pod ním je `average` horší.
+# od akého násobku bunky sa smie priemerovať. `average` je box filter cez
+# prekryté bunky, takže priemerovať má čo až od dvoch. Hneď nad bunkou mu
+# padne raz jedna, raz dve – rytmus plošiniek a z neho tá istá mriežka ako pri
+# zväčšovaní. Namerané (bunka 20 m, mriežka = stredná |Laplacián| ×10⁻³):
+# pri pomere 2,51 sú `average` a `cubicspline` rovné, pri 1,25 je `average`
+# 10× horší. Nad pomerom 2 sa nelíšia a `average` je tam lacnejší.
 AVERAGE_RATIO = 2.0
 
 
 def resampling(px_m, cell_m):
     """`average` až keď je pixel aspoň `AVERAGE_RATIO`× hrubší než bunka.
 
-    Priemerovať sa oplatí len tam, kde je čo priemerovať. Pri ZVÄČŠOVANÍ
-    `average` zdegeneruje na najbližšieho suseda a z každej bunky modelu
-    vypadne štvorček rovnakých pixelov – a z jeho hrán spraví hillshade
-    mriežku. V PÁSME TESNE NAD BUNKOU je to to isté, len slabšie: pixel
-    prekryje raz jednu bunku, raz dve. Preto hranica nie je `px_m >= cell_m`,
-    ale dvojnásobok – rozpis a namerané čísla sú pri `AVERAGE_RATIO`.
-
-    Bez známej bunky modelu ostáva `average`: je to doterajšie správanie
-    a pri poctivom zmenšovaní je správne.
+    Pri zväčšovaní zdegeneruje na najbližšieho suseda; v pásme tesne nad
+    bunkou je to to isté, len slabšie. Bez známej bunky ostáva `average` –
+    doterajšie správanie, pri poctivom zmenšovaní správne.
     """
     if not cell_m or px_m >= AVERAGE_RATIO * cell_m:
         return "average"
@@ -205,13 +112,10 @@ def resampling(px_m, cell_m):
 def dem_cell_metres(dem, lat=DEFAULT_LAT):
     """Rozmer bunky zdrojového DEM v metroch – zmeraný z rastra, nie z mena.
 
-    `data/dem-sources.json` má pri každom modeli `cell_m`, ale to je hodnota
-    zo zadania: `dmr5` je 5 m na región a 1 m na výrez, a `sonny1` má mriežku
-    nesúmernú (20,3 × 30,9 m). Kto potrebuje vedieť, na čom naozaj počíta,
-    má sa spýtať rastra.
+    `cell_m` v `dem-sources.json` je hodnota zo zadania: `dmr5` je 5 m na
+    región a 1 m na výrez, `sonny1` má mriežku nesúmernú (20,3 × 30,9 m).
 
-    Vracia `(dx, dy)`, alebo `(None, None)`, keď sa raster nedá prečítať –
-    volajúci si vtedy musí vybrať bezpečnú vetvu sám.
+    Vracia `(dx, dy)`, alebo `(None, None)`, keď sa raster nedá prečítať.
     """
     try:
         out = subprocess.run(["gdalinfo", "-json", dem], check=True,

@@ -1,30 +1,20 @@
 #!/usr/bin/env bash
-# Súhrn behu „Build map" do záložky Summary: čo sa robilo, ako dlho to trvalo
-# a s akým detailom. Riadky si každý job odložil do svojho `steps-*` artefaktu;
-# `deploy` ich zlepí a zoradí podľa poradového čísla, nie podľa času – joby
-# bežia súbežne, takže čas by hovoril len o tom, ktorý runner bol rýchlejší.
+# Súhrn behu „Build map" do záložky Summary: čo sa robilo, ako dlho a s akým
+# detailom. Riadky si každý job odložil do svojho `steps-*` artefaktu; `deploy`
+# ich zlepí a zoradí podľa poradového čísla, nie podľa času – joby bežia
+# súbežne, takže čas by hovoril o tom, ktorý runner bol rýchlejší.
 #
-# PREČO SAMOSTATNÝ SKRIPT A NIE `run:` V WORKFLOWE: workflow súbor má strop
-# 128 KiB a `build-map-region.yml` bol tesne nad ním. GitHub taký súbor NEPRIJME –
-# neohlási chybu, len po pushi vyrobí beh bez jobov, pomenovaný cestou
-# k súboru. Deväť kilobajtov markdownu je preto tu.
+# Vlastný skript, lebo build-map-region.yml je pri strope 128 KiB.
 #
-# Hodnoty z workflowu chodia cez prostredie (viď krok „Súhrn buildu"):
-#   REGION_NAME  R_PLAN R_CONTOURS R_SHADING_ROCKS R_TRAILS R_FEATURES R_TERRAIN
-#   R_TILES R_ASSETS  SRC_CONTOURS SRC_ROCKS SRC_SHADING
-#   USED_CONTOURS USED_ROCKS USED_SHADING  SIZE_LIMIT_MB  PAGE_URL
-#   PUBLISH_PAGES  (false = beh na Pages vôbec nenasadzoval, PAGE_URL je prázdny)
-#   PAGES_BUILD_TYPE  (`legacy` = mapu prepíše najbližší push)
-#   REGION_KEY  TEST_KM2 TEST_BBOX TEST_FULL_BBOX  (testovací režim)
-#   INPUTS_JSON  (celý formulár ako JSON – blok „Nastavenia tohto behu")
-# Očakáva aj `gh` a premenné GITHUB_* od runnera.
+# Hodnoty chodia cez prostredie (viď krok „Súhrn buildu"): R_* výsledky jobov,
+# SRC_*/USED_* zdroje vrstiev, SIZE_LIMIT_MB, PAGE_URL, PUBLISH_PAGES,
+# PAGES_BUILD_TYPE, REGION_KEY, TEST_*, INPUTS_JSON. A `gh` a GITHUB_* od runnera.
 
 set -uo pipefail
 S="$GITHUB_STEP_SUMMARY"
 hms() { printf '%d:%02d:%02d' $(( $1 / 3600 )) $(( $1 % 3600 / 60 )) $(( $1 % 60 )); }
 
-# Celkový čas behu je čas celého workflowu, nie tohto jobu – joby
-# bežia súbežne, takže súčet ich časov by klamal.
+# celkový čas je čas workflowu, nie tohto jobu – joby bežia súbežne
 STARTED=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
   -q .run_started_at 2>/dev/null || echo '')
 if [ -n "$STARTED" ]; then
@@ -56,7 +46,7 @@ fi
 } >> "$S"
 
 if [ -d steps-out ] && [ -n "$(find steps-out -name '*.tsv' 2>/dev/null)" ]; then
-  # Prvé pole je len na zoradenie (`sort -n`), ďalej sa nepoužíva.
+  # prvé pole je len na zoradenie
   cat steps-out/*.tsv | sort -n | while IFS=$'\t' read -r _ord name secs detail; do
     [ -n "$name" ] || continue
     printf '| %s | %s | %s |\n' "$name" "$(hms "${secs:-0}")" "$detail" >> "$S"
@@ -65,17 +55,15 @@ else
   echo "| — | — | žiadny job sa nedostal po prvý meraný krok |" >> "$S"
 fi
 
-# ---- detail skál ----
-# Čísla píše workers/contours-rocks/rock-areas.py; job s vrstevnicami ich pribalil
-# k meraniu krokov, takže ich súhrn má aj pri behu bez výpočtu.
+# detail skál: čísla píše rock-areas.py, job s vrstevnicami ich pribalil
+# k meraniu krokov
 if [ -s steps-out/rock-stats.txt ]; then
   # shellcheck disable=SC1091
   . steps-out/rock-stats.txt
 fi
 
-# „Dáta · tieňované skaly" majú vlastnú tabuľku: nemajú sklon,
-# mriežku ani bunku DEM, takže tá dole by bola stĺpec otáznikov
-# a pod ním text o izolínii sklonu, ktorá tu nikdy nevznikla.
+# „Dáta · tieňované skaly" majú vlastnú tabuľku: nemajú sklon, mriežku ani
+# bunku DEM, takže tá dole by bola stĺpec otáznikov
 if [ "${source:-dem}" = "tienovanie" ]; then
   {
     echo
@@ -87,10 +75,9 @@ if [ "${source:-dem}" = "tienovanie" ]; then
     echo "| počet samostatných plôch | ${count:-?} |"
     echo "| zdroj | ${asset:-release dem-rocks-img} |"
     echo
-    # Dve úplne iné situácie, ktoré tu kedysi mali jednu vetu: buď si build
-    # hotové polygóny len stiahol z releasu, alebo si podpipeline zavolal
-    # a tá ich v TOMTO behu spočítala. Tvrdiť to prvé aj v druhom prípade
-    # znamenalo, že beh počítal skaly a pod tabuľkou stálo „nepočítali sa".
+    # buď si build hotové polygóny stiahol, alebo si podpipeline zavolal a tá
+    # ich v tomto behu spočítala – kým to bola jedna veta, tvrdila to prvé aj
+    # v druhom prípade
     if [ "${R_SHADING_ROCKS:-skipped}" = 'success' ]; then
       echo "Tieto skaly **spočítal tento beh** – job *Skaly z tieňovania*,"
       echo "ktorý si build zavolal sám. Hľadá ich ako tmavé plochy"
@@ -177,9 +164,7 @@ elif [ -s steps-out/rock-stats.txt ]; then
   } >> "$S"
 fi
 
-# ---- detail značených trás ----
-# Čísla píše workers/trails/routes.py; job s trasami ich pribalil
-# k meraniu krokov.
+# detail značených trás: čísla píše trails/routes.py
 if [ -s steps-out/trail-stats.txt ]; then
   # shellcheck disable=SC1091
   . steps-out/trail-stats.txt
@@ -198,8 +183,7 @@ if [ -s steps-out/trail-stats.txt ]; then
     echo "| lyžiarske / jazdecké | ${type_ski:-0} / ${type_horse:-0} |"
     echo "| diaľkové (medzinárodné + národné) | $(( ${tier_international:-0} + ${tier_national:-0} )) |"
     echo "| farby značiek | ${colours:-–} |"
-    # Zlom nad 120° spoj `miter` nezošije, takže sa v dátach delí
-    # (rozpis vo workers/trails/routes.py).
+    # zlom nad 120° spoj `miter` nezošije, takže sa v dátach delí
     echo "| rozdelených zlomov nad 120° | ${eased:-0} |"
     echo
     echo "Trasa sa kreslí ako farebný pásik **vedľa** cesty, každá vo"
@@ -238,13 +222,9 @@ fi
   echo
 } >> "$S"
 
-# ---- s čím bol beh spustený ----
-# TU UŽ NIE JE, a je to zámer: ten blok píše job `plan` na ZAČIATKU behu
-# (`workers/plan/summary-inputs.py` a `--summary` v `plan/options.py`).
-# Stránka behu skladá súhrny všetkých jobov pod seba, takže by tu bola tá
-# istá tabuľka druhýkrát – a hlavne: keď beh o hodinu spadne, do tohto
-# súhrnu sa vôbec nedostane, kým súhrn prípravy je na stránke od prvej
-# minúty. Zoznam, z ktorého sa dá beh zopakovať, má byť čitateľný aj po páde.
+# s čím bol beh spustený tu už nie je zámerne: ten blok píše job `plan` na
+# začiatku behu. Keď beh o hodinu spadne, do tohto súhrnu sa nedostane, kým
+# súhrn prípravy je na stránke od prvej minúty.
 
 {
   echo "**Ako pregenerovať:** spusti workflow znova a vo výbere"
@@ -253,9 +233,8 @@ fi
   echo "\`Dáta · tieňované skaly\`), \`tienovanie\` alebo \`vsetko\`."
   echo "Najprv sa zmaže príslušná cache – inak by sa stará verzia"
   echo "len vrátila späť."
-  # Tabuľka „Nastavenia tohto behu" vyššie ukazuje `rebuild` tak, ako bol
-  # vo formulári – pri zapnutom teste by teda tvrdila `nic`, hoci sa počítalo
-  # všetko nanovo. Bez tejto vety by to vyzeralo ako chyba súhrnu.
+  # tabuľka vyššie ukazuje `rebuild` tak, ako bol vo formulári – pri zapnutom
+  # teste by tvrdila `nic`, hoci sa počítalo všetko nanovo
   if [ "${TEST_KM2:-0}" != '0' ]; then
     echo
     echo "V tomto behu to však nebolo treba: **rýchly test pregenerúva vždy"
@@ -278,17 +257,13 @@ fi
 if [ "$PAGE_URL" != '' ]; then
   echo -e "\n[Otvoriť mapu](${PAGE_URL})" >> "$S"
 elif [ "${PUBLISH_PAGES:-true}" = 'false' ]; then
-  # Nie chyba, len rozhodnutie z formulára – nech je hneď vidieť prečo tu
-  # nie je odkaz, a nie treba hádať, či nasadenie spadlo.
+  # nie chyba, len rozhodnutie z formulára
   echo -e "\n**Na GitHub Pages sa mapa nenasadila** (\`publish_pages=false\`) –" \
        "hotová je len na Google Drive." >> "$S"
 fi
 
-# ---- Pages berie zdroj z vetvy ----
-# Toto patrí hore a nahlas: mapa síce je nasadená a odkaz vyššie funguje,
-# ale najbližší push do master ju prepíše obsahom repozitára. Beh o tom
-# nemôže spraviť nič – je to nastavenie repozitára a `GITHUB_TOKEN` naň
-# nemá práva (mení sa ním repozitár, nie obsah stránky).
+# Pages berie zdroj z vetvy: mapa je nasadená, ale najbližší push do master ju
+# prepíše. Beh s tým nemôže spraviť nič – je to nastavenie repozitára.
 if [ -n "${PAGES_BUILD_TYPE:-}" ] && [ "$PAGES_BUILD_TYPE" != 'workflow' ]; then
   {
     echo
@@ -308,10 +283,8 @@ if [ -n "${PAGES_BUILD_TYPE:-}" ] && [ "$PAGES_BUILD_TYPE" != 'workflow' ]; then
   } >> "$S"
 fi
 
-# ---- kde je testovací výrez ----
-# Obrázok sa nasadil spolu so stránkou, takže má verejnú adresu a súhrn ho
-# vie priamo ukázať – z artefaktu by sa musel sťahovať. Odkaz do mapy mieri
-# na stred testovaného štvorca; bez neho by sa výsledok hľadal ručne.
+# kde je testovací výrez: obrázok sa nasadil so stránkou, takže má verejnú
+# adresu; odkaz mieri na stred testovaného štvorca
 if [ "${TEST_KM2:-0}" != '0' ] && [ -n "${TEST_BBOX:-}" ]; then
   python3 workers/plan/test-map.py \
     --bbox="$TEST_BBOX" --full-bbox="${TEST_FULL_BBOX:-}" \
@@ -329,17 +302,10 @@ if [ "${TEST_KM2:-0}" != '0' ] && [ -n "${TEST_BBOX:-}" ]; then
   fi
 fi
 
-# ---- čo spadlo ----
-# Tabuľka jobov hore povie „failure" a tým to končí – ktorý krok, ako dlho
-# bežal a čo vlastne vypísal, sa dá zistiť len prehrabaním sa logom. Tu je
-# to rovno: krok, trvanie a posledné `::error::` z logu toho jobu.
-#
-# Zvlášť pri `cancelled`: to nie je pád, ale zrušenie – buď timeoutom jobu
-# (potom trvanie sedí na jeho strop), alebo zvonku. Bez trvania sa to
-# nerozlíši. Beh 31222472790 bol práve toto: tri hodiny a runner ho zabil.
-#
-# `|| true` všade: keď na to token nemá právo alebo je log ešte nedostupný,
-# nemá to zhodiť súhrn – zvyšok tabuliek je aj tak užitočný.
+# čo spadlo: tabuľka jobov hore povie „failure" a tým to končí. Tu je krok,
+# trvanie a posledné `::error::` z logu. Trvanie rozlíši `cancelled` timeoutom
+# jobu od zrušenia zvonku. `|| true` všade – chýbajúce právo alebo nedostupný
+# log nemá zhodiť súhrn.
 SPADLO=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
   --jq '.jobs[]
         | select(.conclusion == "failure" or .conclusion == "cancelled")
@@ -368,8 +334,7 @@ if [ -n "$SPADLO" ]; then
         echo "> nižší zoom alebo hrubšiu mriežku."
       fi
     } >> "$S"
-    # Posledné chybové riadky z logu. Čas na začiatku riadku ide preč – je
-    # to šum, ktorý v súhrne akurát zalomí tabuľku.
+    # čas na začiatku riadku ide preč – zalomil by tabuľku
     CHYBY=$(gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$jid/logs" 2>/dev/null \
       | grep -a "##\[error\]" | tail -3 | sed 's/^[0-9TZ:.-]* //' || true)
     if [ -n "$CHYBY" ]; then

@@ -1,58 +1,27 @@
 #!/usr/bin/env python3
-"""
-Cache buildu na Google Drive – náhrada za `actions/cache`.
+"""Cache buildu na Google Drive – náhrada za `actions/cache`.
 
-PREČO TO EXISTUJE. GitHubová cache má na repozitár **10 GB** a keď sa naplní,
-nič nepovie: ticho zahodí najstaršie záznamy (LRU). Táto pipeline do nej
-ukladá DEM dlaždice, sklad častí sklonu, vrstevnice, tieňovanie, dlaždice
-tieňovania a Planetiler – rádovo desiatky GB na jeden výrez. Výsledok bol, že
-sa cache ustavične vyhadzovala navzájom a hodinové výpočty sa rátali znova bez
-toho, aby to bolo na čom vidieť. Na Drive miesto máme (ten istý účet, ktorý
-drží DMR 5.0) a záznam z neho nezmizne sám.
+GitHubová cache má na repozitár 10 GB a keď sa naplní, ticho zahodí najstaršie
+záznamy. Táto pipeline do nej ukladá desiatky GB na jeden výrez, takže sa
+vyhadzovala navzájom a hodinové výpočty sa rátali znova. Na Drive miesto máme.
 
-ČO SA TÝM MENÍ A ČO NIE:
+Sémantika ostáva tá istá, nech sa `if:` podmienky vo workflowoch neprepisujú:
+`cache-hit` len pri presnej zhode kľúča, `restore-keys` sú predpony a berie sa
+najnovší záznam, existujúci kľúč sa neprepisuje.
 
-    actions/cache/restore   →  .github/actions/cache-restore  (tento skript)
-    actions/cache/save      →  .github/actions/cache-save     (tento skript)
+Jeden záznam = jeden `.tar.zst` v priečinku `FOLDER_ID`, pomenovaný kľúčom.
+Celý kľúč je aj v `description`: v mene sa znaky mimo `[A-Za-z0-9._-]`
+nahrádzajú podčiarkovníkom, takže dva kľúče by sa mohli zliať do jedného mena.
 
-Sémantika ostáva TÁ ISTÁ, nech sa `if:` podmienky vo workflowoch nemusia
-prepisovať a nech platí to, čo je pri nich napísané:
+Zapisovať sa musí dať: pod `drive.readonly` sa cache uloží nikdy a `--save` na
+tom padne s návodom. Nič sa nemaže samo – na to je `--prune`, ktorý raz za
+týždeň spúšťa upratovanie. Prerieďuje dvoma rýchlosťami: hotové vrstvy z DEM sú
+hodiny výpočtu na kraj, ostatné sa dá zohnať znova.
 
-  * `cache-hit` je `true` len pri PRESNEJ zhode kľúča;
-  * `restore-keys` sú PREDPONY a berie sa NAJNOVŠÍ záznam, ktorý na ne sedí;
-  * existujúci kľúč sa NEPREPISUJE (preto majú niektoré kľúče v sebe
-    `github.run_id` a preto má jeden z nich v `shading-rocks.yml` príponu `-s`);
-  * výstupy sú `cache-hit`, `cache-primary-key` a `cache-matched-key`.
-
-JEDEN ZÁZNAM = JEDEN SÚBOR v priečinku `FOLDER_ID`, pomenovaný kľúčom
-(`.tar.zst`). Celý kľúč je aj v `description` súboru – v mene sa znaky mimo
-`[A-Za-z0-9._-]` nahrádzajú podčiarkovníkom, takže dva rôzne kľúče by sa
-teoreticky mohli zliať do jedného mena a `description` je to, čo o zhode
-rozhodne. Predpony fungujú aj tak: nahradzuje sa znak za znak, takže predpona
-kľúča je predponou mena.
-
-ZAPISOVAŤ SA MUSÍ DAŤ. Token vlastníka mal donedávna rozsah `drive.readonly`
-a pod ním sa cache uloží presne nikdy – Drive vráti 403. `--check` to povie
-jednou vetou a `--save` na tom padne s návodom (nový token vyrobí workflow
-„Údržba · prihlásenie Drive"). Čítanie readonly tokenu stačí, takže
-build medzitým beží ďalej, len si nič neuloží.
-
-NIČ SA NEMAŽE SAMO. GitHub si staré záznamy vyhadzoval sám, Drive nie – preto
-je `--prune` a preto ho raz za týždeň spúšťa workflow „Údržba · týždenné upratovanie".
-Prerieďuje sa DVOMA rýchlosťami: hotové vrstvy z výškového modelu (vrstevnice,
-skaly, tieňovanie) sú hodiny výpočtu na kraj a build sa na ne vie spýtať aj
-o mesiace, tak sa držia dlhšie a pri strope priečinka odchádzajú posledné;
-všetko ostatné (stiahnuté DEM dlaždice, Planetiler, PBF) sa dá zohnať znova.
-
-Použitie:
-    python3 workers/drive/cache.py --check
-    python3 workers/drive/cache.py --list
-    python3 workers/drive/cache.py --restore --key=abc --path=dem \\
-        --restore-keys=$'slope-v1-tatry-\\n'
-    python3 workers/drive/cache.py --save --key=abc --path=dem --path=terrain-out
-    python3 workers/drive/cache.py --delete --key=abc
-    python3 workers/drive/cache.py --prune --keep-days=30 --keep-gb=100 \\
-        --keep-days-layers=180
+    python3 workers/drive/cache.py --check | --list
+    python3 workers/drive/cache.py --restore --key=abc --path=dem
+    python3 workers/drive/cache.py --save --key=abc --path=dem
+    python3 workers/drive/cache.py --prune --keep-days=30 --keep-gb=100
 """
 import argparse
 import calendar

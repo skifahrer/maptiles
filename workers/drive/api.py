@@ -1,27 +1,18 @@
 #!/usr/bin/env python3
-"""
-Drive API: jedno volanie, jeden preklad odmietnutia. Spodná vrstva prihlásenia.
+"""Drive API: jedno volanie, jeden preklad odmietnutia.
 
-ČO JE TU. Všetko, čo hovorí s Google API a čo z jeho odpovedí robí hlášku, po
-ktorej sa dá niečo urobiť: jedna HTTP požiadavka s opakovaním, prevod chýb na
-vetu s návodom, `files.delete`, a otázka „aké rozsahy ten token NAOZAJ dostal".
-Kto sme (`Credentials`, `from_env`, obnova tokenu) a jednorazové prihlásenie
-rieši `workers/drive/auth.py` – ten si tento modul berie a jeho mená vystavuje
-ďalej, takže `auth.api_get(...)` aj `auth.AuthError` fungujú v ostatných
-workeroch ako predtým.
+Všetko, čo hovorí s Google API: požiadavka s opakovaním, prevod chýb na vetu
+s návodom, `files.delete` a otázka na rozsahy tokenu. Kto sme rieši
+`workers/drive/auth.py`, ktorý si tento modul berie a jeho mená vystavuje
+ďalej – `auth.api_get(...)` funguje v ostatných workeroch ako predtým.
 
-PREČO ZVLÁŠŤ. `drive-auth.py` mal 894 riadkov a v jednom takom súbore sa nedá
-rýchlo nájsť, čo sa zmenilo (pravidlo 5 v CLAUDE.md, strop 800 stráži
-`Kontrola · lint workflowov`). Rez je NADOL, nie nabok: tento modul o `Credentials` nevie
-nič – `creds` mu chodí ako parameter a stačí, že má `.token()` a `.client_id`.
-Preto tu nie je kruhová závislosť a netreba lenivé importy.
+Rez je nadol, nie nabok: tento modul o `Credentials` nevie nič (`creds` mu
+chodí ako parameter), takže niet kruhovej závislosti.
 
-PREKLAD ODMIETNUTÍ JE TU CELÝ SCHVÁLNE. Google vracia na tri rôzne chyby ten
-istý HTTP 403 a rozdiel je len v tele odpovede; keby si to prekladalo každé
-volanie samo, tri miesta by z toho spravili tri rôzne hlášky (pravidlo 1).
+Preklad odmietnutí je tu celý schválne: Google vracia na tri rôzne chyby ten
+istý HTTP 403 a rozdiel je len v tele odpovede.
 
-Spúšťa sa ako modul, nie z príkazovej riadky:
-    api = load("drive_api", "api.py")
+Spúšťa sa ako modul: `api = load("drive_api", "api.py")`.
 """
 import json
 import os

@@ -1,40 +1,16 @@
 #!/usr/bin/env python3
-"""
-Kontrola: resampling výškového modelu si nikto nevyberá sám.
+"""Kontrola: resampling výškového modelu si nikto nevyberá sám.
 
-PREČO TO EXISTUJE. „Ktorým resamplingom" je JEDNA otázka a odpovedá na ňu
-`workers/lib/cell.py` (`resampling`, `AVERAGE_RATIO`) – lenže odpovedať sa dá
-aj tak, že sa do príkazu napíše `-r average`. Presne to sa stalo a stálo to
-mriežku v mape:
+Odpovedá `workers/lib/cell.py` – lenže odpovedať sa dá aj tak, že sa do
+príkazu napíše `-r average`. `dmr5-cut.py` tak robil z 4 m pyramídy 5 m bunky:
+pri pomere 1,25 `average` nepriemeruje, ale každý štvrtý pixel preskočí,
+a z toho rytmu je v mape pravidelná mriežka.
 
-  `workers/drive/dmr5-cut.py` čítal DMR 5.0 zo 4 m pyramídy a robil z nej 5 m
-  bunky príkazom `gdal_translate -ovr AUTO -r average`. Pomer je 1,25, a pri
-  ňom `average` nepriemeruje – GDAL berie CELÉ zdrojové pixely z okna
-  `[floor, ceil)`, takže pri 1,25 každý štvrtý preskočí. Z toho rytmu spraví
-  hillshade (derivácia výšky) pravidelnú svetlo-tmavú MRIEŽKU a vrstevnice,
-  ktoré sa trasujú z toho istého modelu, sú zubaté s tým istým rastrom.
-
-  `workers/lib/cell.py` pritom o pomere 1,25 hovorí presný opak už dávno
-  (`AVERAGE_RATIO`) – jeho odpoveď sa len nikto nepýtal. Namerané:
-  `workers/dem/measure-resampling.py` (mriežka 51,9 → 23,6).
-
-Nič z toho nespadne. Dlaždice vzniknú, sklad ich prijme, mapa sa nasadí –
-a mriežka sa nájde až okom na hotovej mape, o hodiny čítania z Drive neskôr.
-To je pravidlo 8 v CLAUDE.md a preto je na to kontrola.
-
-ČO SA KONTROLUJE:
-
-  1. Doktrína sama. `resampling(5, 4)` NESMIE byť `average` – keby niekto
-     stiahol `AVERAGE_RATIO` na 1, všetko ostatné by prešlo a mriežka by sa
-     vrátila.
-  2. Kto prevzorkúva výškový model, pýta sa `lib/cell.py`. V súboroch, ktoré
-     model vyrábajú, nesmie byť kernel napísaný natvrdo.
-  3. Pyramída sa vyberá na jednom mieste (`dmr5-cut.pyramid_level`) a NIE
-     cez `-ovr AUTO`: z úrovne vyplýva pomer pixel/bunka, a keby o nej
-     rozhodoval GDAL sám, resampling by sa vyberal podľa iného čísla, než sa
-     naozaj číta.
-
-Spustiť sa dá aj lokálne: `python3 workers/lint/dem-resampling.py`
+  1. `resampling(5, 4)` nesmie byť `average` (inak by stačilo stiahnuť
+     `AVERAGE_RATIO` na 1 a mriežka sa vráti);
+  2. kto prevzorkúva model, pýta sa `lib/cell.py` – žiadny kernel natvrdo;
+  3. pyramída sa vyberá v `dmr5-cut.pyramid_level`, nie cez `-ovr AUTO`:
+     z úrovne vyplýva pomer pixel/bunka.
 """
 import os
 import re

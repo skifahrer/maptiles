@@ -1,29 +1,13 @@
 #!/usr/bin/env python3
-"""
-Kontrola „publikuje sa len na Drive". Volá ju `Kontrola · lint workflowov`.
+"""Kontrola „publikuje sa len na Drive". Volá ju `Kontrola · lint workflowov`.
 
-ČO STRÁŽI. Do GitHubu nesmie ísť ani release, ani artefakt, ktorý má prežiť
-beh. Všetko, čo pipeline vyrobí a chce si nechať, ide do skladu na Google Drive
-(`workers/drive/store.py`) – výškové modely, skaly, tieňovanie, hotové mapy aj
-medzivýsledky na pozretie.
+Do GitHubu nesmie ísť ani release, ani artefakt, ktorý má prežiť beh – všetko
+ide do skladu na Drive. `gh release upload` je jeden riadok a poznalo by sa to
+len tým, že v Releases pribúdajú gigabajty; `retention-days: 90` je uložený
+výsledok, nie prepravka medzi jobmi jedného behu.
 
-PREČO KONTROLA A NIE LEN DOHODA. `gh release upload` je jeden riadok a keby sa
-vrátil, poznalo by sa to len tým, že v Releases pribúdajú gigabajty, ktoré nikto
-nečíta – a že tá istá vec leží na dvoch miestach (pravidlo 1 v CLAUDE.md).
-Rovnako `retention-days: 90`: artefakt s takou retenciou je uložený výsledok,
-nie prepravka medzi jobmi jedného behu.
-
-A tretia vec, ktorá by inak bola TICHÁ: preklep v mene skladu. `--store=`
-s neznámym menom neskončí chybou, ale prázdnym skladom – teda „počítaj to celé
-odznova" bez jedinej červenej hlášky. Preto sa doslovné mená kontrolujú proti
-`KNOWN` v `drive-store.py`.
-
-PREČO SAMOSTATNÝ SÚBOR A NIE HEREDOC V YAMLE: `lint-workflows.yml` je nad
-stropom 800 riadkov, ktorý si sám kontroluje, a veľký `run:` blok patrí do
-`workers/` (pravidlo 3). Vedľajší zisk: dá sa to spustiť lokálne.
-
-Použitie:
-    python3 workers/lint/publishing.py
+A tretia vec, ktorá by inak bola tichá: preklep v mene skladu neskončí chybou,
+ale prázdnym skladom – doslovné mená sa preto kontrolujú proti `KNOWN`.
 """
 import ast
 import glob

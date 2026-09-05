@@ -1,27 +1,21 @@
 /**
- * Čítanie a prenášanie ŠTÝLU JEDNEJ VRSTVY – bez DOM, aby sa to dalo spustiť
+ * Čítanie a prenášanie štýlu jednej vrstvy – bez DOM, aby sa to dalo spustiť
  * aj z kontroly (`workers/lint/overrides.mjs`).
  *
  * Dve otázky, ktoré developer mode potreboval a nemal:
  *
- *   1. **„Čo tá vlastnosť práve teraz robí?"** V štýle je hrúbka čiary
- *      spravidla `interpolate` podľa zoomu, takže políčko ukazuje „auto"
- *      a človek nemá z čoho vyjsť. `valueAtZoom` z krivky vytiahne hodnotu
- *      na tom zoome, na ktorom mapa práve stojí.
- *   2. **„Sprav túto vrstvu takú, ako je tamtá."** `snapshotStyle` odfotí
- *      ÚČINNÝ vzhľad vrstvy (to, čo je naozaj v štýle, nie len úpravu nad ním)
- *      a `pasteStyle` ho preloží na inú vrstvu.
+ *   1. „Čo tá vlastnosť práve teraz robí?" Hrúbka čiary je spravidla
+ *      `interpolate` podľa zoomu, takže políčko ukazuje „auto"; `valueAtZoom`
+ *      z krivky vytiahne hodnotu na aktuálnom zoome.
+ *   2. „Sprav túto vrstvu takú, ako je tamtá." `snapshotStyle` odfotí účinný
+ *      vzhľad (nie len úpravu nad ním) a `pasteStyle` ho preloží inam.
  *
- * PREČO ÚČINNÝ VZHĽAD A NIE ÚPRAVA. Keby sa kopírovala len úprava, kopírovanie
- * z vrstvy, ktorú nikto neladil, by vrátilo prázdno – a pritom práve to je
- * najčastejšie zadanie („nech sú múry ako ploty"). Odfotí sa preto `paint`
- * hotového štýlu; krivka podľa zoomu sa uloží ako zoomové zlomy, ktoré formát
- * úprav pozná.
+ * Účinný vzhľad preto, že kopírovanie z vrstvy, ktorú nikto neladil, by inak
+ * vrátilo prázdno – a práve to je najčastejšie zadanie.
  *
- * PREKLAD MEDZI DRUHMI VRSTIEV je podľa PRÍPONY vlastnosti, nie podľa mena:
- * `fill-color` na čiaru je `line-color`. Vlastnosť, ktorú cieľ nepozná
- * (`fill-outline-color` na čiare), sa NEVLOŽÍ a povie sa to – tichý polovičný
- * vklad by vyzeral ako pokazené kopírovanie.
+ * Preklad medzi druhmi vrstiev je podľa prípony, nie podľa mena: `fill-color`
+ * na čiaru je `line-color`. Vlastnosť, ktorú cieľ nepozná, sa nevloží a povie
+ * sa to – tichý polovičný vklad by vyzeral ako pokazené kopírovanie.
  */
 import {
   MAX_PAINT_STOPS,
@@ -90,10 +84,9 @@ export const canDecorate = (layer) =>
 
 /**
  * Hodnota z hotového štýlu → hodnota, akú unesie súbor úprav.
- * Krivka podľa zoomu sa zapíše ako zoomové zlomy a `step` ako zoomové pásma –
- * teda každá vec tým tvarom, ktorý ju vyrába. Keď ich je viac než strop
- * (`MAX_PAINT_STOPS`), nechajú sa krajné a rovnomerne rozložené vnútorné –
- * bez toho by `normalizeOverrides` celú vlastnosť zahodil.
+ * Krivka sa zapíše ako zoomové zlomy, `step` ako zoomové pásma. Keď ich je
+ * viac než `MAX_PAINT_STOPS`, nechajú sa krajné a rovnomerne rozložené
+ * vnútorné – inak by `normalizeOverrides` celú vlastnosť zahodil.
  */
 function snapValue(value) {
   if (isScalarValue(value)) return value;
@@ -226,10 +219,8 @@ function primaryOf(paint, suffix) {
 /**
  * Preloží odfotený vzhľad na inú vrstvu.
  *
- * Rovnaký druh vrstvy dostane všetko, čo pozná. Iný druh dostane HLAVNÚ
- * vlastnosť každej prípony preloženú na svoju predponu (`fill-color` →
- * `line-color`) – „nech je čiara taká zelená ako tá plocha" je zmysluplné
- * zadanie, „nech má čiara `fill-outline-color`" nie je.
+ * Rovnaký druh dostane všetko, čo pozná. Iný druh dostane hlavnú vlastnosť
+ * každej prípony preloženú na svoju predponu (`fill-color` → `line-color`).
  *
  * @returns {{patch: object, skipped: string[]}} `patch` ide do `setLayerOverride`
  */

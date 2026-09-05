@@ -1,41 +1,19 @@
 #!/usr/bin/env python3
-"""
-Navigačný graf: rozsah, jeho uzol v katalógu a to, čo sa v ňom NESMIE stratiť.
+"""Navigačný graf: rozsah, jeho uzol v katalógu a čo sa v ňom nesmie stratiť.
 
-ŠTYRI TICHÉ VECI, na ktoré je táto kontrola:
+Štyri tiché veci:
+  1. dva rozsahy v jednom uzle katalógu – druhý beh by položku prvého
+     prepísal a katalóg by poznal len jeden z dvoch balíkov na Drive;
+  2. graf sa nesmie stavať z rezaného PBF: hrana bez druhého konca je slepá
+     ulica, ale graf sa postaví a beh zazelená;
+  3. bez `admins.sqlite` Valhalla nevie, v ktorej krajine hrana leží – trasa
+     sa spočíta, len je iná;
+  4. graf kraja je z rezaného PBF zámerne, ale `graf.json` to musí povedať,
+     inak sa to nedá odlíšiť od pokazeného grafu;
+  5. rozsah pokrývajúci krajinu mimo `vignettes.json` sa na známku nespýta.
 
-  1. DVA ROZSAHY V JEDNOM UZLE KATALÓGU. `admin_level: 2` spraví z `country`
-     v `regions.json` aj uzol v `maps.json`, takže keby `navigacia_slovensko`
-     a `navigacia_slovensko_susedia` mali spoločné `country: navigacia`, druhý
-     beh by položku prvého PREPÍSAL – balíky na Drive by ležali oba a katalóg
-     by poznal len jeden. To isté rozhodnutie ako `svet_basic` (pravidlo 2:
-     meno je sľub o rozsahu). Presne toto sa pri prvej verzii aj stalo.
-
-  2. REZANÝ PBF. Graf sa nesmie stavať z výrezu: hrana, ktorej chýba druhý
-     koniec, je slepá ulica a trasa cez ňu neprejde – ale graf sa postaví
-     a beh zazelená. `pbf.sh` preto nesmie rezať.
-
-  3. STRATENÝ `admins.sqlite`. Bez neho Valhalla nevie, v ktorej krajine hrana
-     leží: nefunguje `country_crossing_penalty`, strana jazdy sa hádá
-     a diaľničná známka po krajinách nemá na čom stáť. A nefunguje TICHO –
-     trasa sa spočíta, len je iná. `graph.sh` ho musí kontrolovať.
-
-  4b. GRAF KRAJA, KTORÝ MLČÍ O SVOJEJ HRANICI. Kraj sa stavia z REZANÉHO PBF
-     (mapa je mapa kraja a navigácia je za ten istý kraj), takže trasa v ňom
-     končí na hranici – a keď to `graf.json` nepovie, nedá sa to odlíšiť od
-     pokazeného grafu. Rovnako musí platiť, že ten graf stavia ten istý
-     skript a že sa do balíka `-linie.zip` (kam graf od spojenia balíkov
-     patrí – k trasám a obmedzeniam, ktoré sú tá istá sieť) naozaj dostane.
-
-  4. KRAJINA MIMO `vignettes.json`. Rozsah, ktorý pokrýva krajinu, o ktorej
-     `vignettes.json` nevie, znamená, že sa v nej voľba `vignettes` nespýta
-     na nič – a mlčanie sa nedá odlíšiť od „známku tam netreba".
-
-A k tomu to, čo stráži aj `world.py`: zoznam vo formulári (`choice`) GitHub zo
-súboru prečítať nevie, takže sa musí písať dvakrát – a keď sa rozíde, nový
-rozsah sa jednoducho nedá vybrať.
-
-Spustiť: `python3 workers/lint/navigation.py`
+A k tomu (ako vo `world.py`): zoznam vo formulári GitHub zo súboru prečítať
+nevie, takže sa píše dvakrát a rozídený rozsah sa nedá vybrať.
 """
 import json
 import os
@@ -52,17 +30,15 @@ AREAS = os.path.join(_DATA, "routing-areas.json")
 REGIONS = os.path.join(_DATA, "regions.json")
 VIGNETTES = os.path.join(_DATA, "vignettes.json")
 WORKFLOW = os.path.join(".github", "workflows", "navigation.yml")
-# Druhý rozsah toho istého grafu: JEDEN KRAJ, a graf ide vedľa mapy toho kraja
-# do balíka `-linie.zip`. Volá ho `build-map-region.yml` cez `workflow_call`
-# (vlastný súbor, lebo ten je pri strope 128 KiB).
+# druhý rozsah: jeden kraj, graf ide vedľa mapy do balíka `-linie.zip`;
+# vlastný súbor, lebo build-map-region.yml je pri strope 128 KiB
 REGION_WORKFLOW = os.path.join(".github", "workflows", "navigation-region.yml")
 BUILD_MAP = os.path.join(".github", "workflows", "build-map-region.yml")
 PBF_SH = os.path.join(_WORKERS, "routing", "pbf.sh")
 GRAPH_SH = os.path.join(_WORKERS, "routing", "graph.sh")
 
-# Čo musí byť v balíku, aby sa v telefóne dalo naozaj navigovať. Zoznam je
-# TU aj v `graph.sh`, a je to zámer: tam sa kontroluje BEH (súbor vznikol),
-# tu sa kontroluje SKRIPT (kontrola z neho nezmizla).
+# zoznam je tu aj v graph.sh zámerne: tam sa kontroluje beh (súbor vznikol),
+# tu skript (kontrola z neho nezmizla)
 POVINNE = ("valhalla_tiles.tar", "valhalla.json", "admins.sqlite",
            "timezones.sqlite")
 
@@ -119,7 +95,7 @@ def main():
     # --- 2., 3. skripty ---
     if os.path.exists(PBF_SH):
         pbf = open(PBF_SH, encoding="utf-8").read()
-        # Komentáre preč – slovo „reže“ je v hlavičke práve preto, že sa NEREŽE.
+        # komentáre preč – v hlavičke je slovo „reže" práve preto, že sa nereže
         kod = re.sub(r"^[ \t]*#.*$", "", pbf, flags=re.M)
         for zle in ("osmium extract", "--polygon", "--bbox"):
             if zle in kod:
@@ -155,13 +131,8 @@ def main():
     else:
         err("workers/routing/graph.sh", "skript neexistuje.")
 
-    # --- 5. graf kraja: existuje, stavia ho ten istý skript a POVIE,
-    #        že trasa v ňom končí na hranici ---
-    # Graf z REZANÉHO PBF je presne to, čo `pbf.sh` robiť nesmie (kontrola 2) –
-    # tu je to zámer, lebo navigácia kraja je za ten istý kraj ako jeho mapa.
-    # Preto to musí byť NAPÍSANÉ v balíku: bez toho sa „trasa cez hranicu
-    # nejde" nedá odlíšiť od pokazeného grafu, a to je ten istý tichý omyl,
-    # len z druhej strany.
+    # 5. graf kraja: existuje, stavia ho ten istý skript a povie, že trasa
+    # v ňom končí na hranici – bez toho sa to nedá odlíšiť od pokazeného grafu
     if os.path.exists(REGION_WORKFLOW):
         wtext = open(REGION_WORKFLOW, encoding="utf-8").read()
         if "workers/routing/graph.sh" not in wtext:
@@ -175,12 +146,8 @@ def main():
                 "graf sa neodkladá ako artefakt `navigacia-graf`. Do balíka "
                 "sa dostane jedine cezeň – `site-*` sa zlieva do `_site` pred "
                 "nahratím na Pages a graf tam nemá čo robiť.")
-        # GRAF KRAJA STOJÍ NA PBF KRAJA – na tom istom, z akého je mapa.
-        # Odkedy je to PBF rezané PRESNE na hranicu kraja
-        # (`workers/plan/boundary.py`), je to zároveň jediné, čo drží
-        # navigáciu „len za tento kraj": keby si job stiahol iný extrakt
-        # (štátny, susedov), graf by ticho pokrýval viac než mapa nad ním
-        # a `graf.json` by o sebe tvrdil `rozsah: region`.
+        # graf kraja stojí na PBF kraja: iný extrakt by ticho pokrýval viac
+        # než mapa nad ním, a `graf.json` by tvrdil `rozsah: region`
         if "ROUTING_PBF: data/region.osm.pbf" not in wtext:
             err(".github/workflows/navigation-region.yml",
                 "graf kraja sa nestavia z `data/region.osm.pbf` "
@@ -227,13 +194,8 @@ def main():
     else:
         err("workers/routing/graph.sh", "skript neexistuje.")
 
-    # --- 5. graf kraja: existuje, stavia ho ten istý skript a POVIE,
-    #        že trasa v ňom končí na hranici ---
-    # Graf z REZANÉHO PBF je presne to, čo `pbf.sh` robiť nesmie (kontrola 2) –
-    # tu je to zámer, lebo navigácia kraja je za ten istý kraj ako jeho mapa.
-    # Preto to musí byť NAPÍSANÉ v balíku: bez toho sa „trasa cez hranicu
-    # nejde" nedá odlíšiť od pokazeného grafu, a to je ten istý tichý omyl,
-    # len z druhej strany.
+    # 5. graf kraja: existuje, stavia ho ten istý skript a povie, že trasa
+    # v ňom končí na hranici – bez toho sa to nedá odlíšiť od pokazeného grafu
     if os.path.exists(REGION_WORKFLOW):
         wtext = open(REGION_WORKFLOW, encoding="utf-8").read()
         if "workers/routing/graph.sh" not in wtext:
@@ -247,12 +209,8 @@ def main():
                 "graf sa neodkladá ako artefakt `navigacia-graf`. Do balíka "
                 "sa dostane jedine cezeň – `site-*` sa zlieva do `_site` pred "
                 "nahratím na Pages a graf tam nemá čo robiť.")
-        # GRAF KRAJA STOJÍ NA PBF KRAJA – na tom istom, z akého je mapa.
-        # Odkedy je to PBF rezané PRESNE na hranicu kraja
-        # (`workers/plan/boundary.py`), je to zároveň jediné, čo drží
-        # navigáciu „len za tento kraj": keby si job stiahol iný extrakt
-        # (štátny, susedov), graf by ticho pokrýval viac než mapa nad ním
-        # a `graf.json` by o sebe tvrdil `rozsah: region`.
+        # graf kraja stojí na PBF kraja: iný extrakt by ticho pokrýval viac
+        # než mapa nad ním, a `graf.json` by tvrdil `rozsah: region`
         if "ROUTING_PBF: data/region.osm.pbf" not in wtext:
             err(".github/workflows/navigation-region.yml",
                 "graf kraja sa nestavia z `data/region.osm.pbf` "
@@ -282,20 +240,12 @@ def main():
     else:
         err(".github/workflows/navigation-region.yml", "workflow neexistuje.")
 
-    # --- 5b. graf má VLASTNÝ balík a v základnej mape ani v `cesty` nie je ---
-    # Kým sa balil dovnútra mapy, bol argument „jednotky až desiatky MB proti
-    # stovkám za dlaždice". Namerané: 170 až 190 MB grafu v 283 MB mape, čiže
-    # dve tretiny „základnej mapy" bola sieť, po ktorej sa jazdí. Zo základnej
-    # mapy je preto von a je to VLASTNÝ balík vedľa `cesty` – tá je kreslená
-    # dopravná sieť v desiatkach MB, takže by z jedného balíka bolo deväť
-    # desatín graf a kto chce sieť len vidieť, sťahoval by ho tak či tak.
-    #
-    # Odkedy zoznam balíkov drží číselník (`workers/data/packages.json`),
-    # kontroluje sa on: balík `navigacia` v ňom musí byť a musí sa skladať
-    # z priečinka `routing`, nie z výberu podľa mien (sú to štyri súbory,
-    # ktoré si musia sedieť – prvý ďalší od Valhally by ticho vypadol a trasa
-    # by „len nešla"). ČO v tom balíku naozaj skončí, overuje
-    # `workers/lint/packaging.py` nad naozaj zabalenými ZIPmi.
+    # 5b. graf má vlastný balík a v základnej mape ani v `cesty` nie je
+    # Namerané 170–190 MB grafu v 283 MB mape: dve tretiny „základnej mapy"
+    # bola sieť, po ktorej sa jazdí. Balík drží číselník packages.json a musí
+    # sa skladať z priečinka `routing`, nie z výberu podľa mien – prvý ďalší
+    # súbor od Valhally by ticho vypadol. Čo v balíku skončí, overuje
+    # workers/lint/packaging.py nad zabalenými ZIPmi.
     ciselnik = os.path.join(_WORKERS, "data", "packages.json")
     if os.path.exists(ciselnik):
         with open(ciselnik, encoding="utf-8") as f:

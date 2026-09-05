@@ -1,33 +1,21 @@
 /**
- * NÁHĽAD VZORU A JEHO VÝBER – a vlastný obrázok ako vzor.
+ * Náhľad vzoru a jeho výber – a vlastný obrázok ako vzor.
  *
- * Vzor sa dovtedy vyberal z rozbaľovačky s menami („Šrafovanie /", „Šupiny
- * (skaly)") a to je pri vzore ešte horšie než pri ikone: meno nepovie ani ako
- * je hustý, ani ako je hrubý, ani ako vyzerá nad farbou, ktorú tá plocha má.
- * Vybrať ten správny znamenalo prepínať jeden po druhom a pozerať sa do mapy.
- * Preto je z toho MRIEŽKA S NÁHĽADMI, a každý náhľad je kreslený TÝM ISTÝM
- * rasterizérom (`renderPattern`), aký vyrobí obrázok pre mapu aj pre sprite –
- * teda presne to, čo v mape naozaj bude.
+ * Meno vzoru nepovie ani ako je hustý, ani ako vyzerá nad farbou, ktorú tá
+ * plocha má. Preto mriežka s náhľadmi, a každý náhľad je kreslený tým istým
+ * rasterizérom (`renderPattern`), aký vyrobí obrázok pre mapu aj pre sprite.
  *
- * NÁHĽAD SA KRESLÍ NAD FARBOU PODKLADU. Vzor je vždy druhá vrstva nad plochou
- * (`fill-pattern` sa nedá kresliť do tej istej vrstvy ako výplň), takže sám
- * o sebe nehovorí nič: šrafovanie na bielom pozadí panela vyzerá inak než to
- * isté šrafovanie nad tmavozeleným lesom. Preto sa podklad vypĺňa farbou
- * vrstvy a až na ňu ide vzor – aj s jeho krytím.
+ * Náhľad sa kreslí nad farbou podkladu: vzor je vždy druhá vrstva nad plochou,
+ * takže sám o sebe nehovorí nič – šrafovanie na bielom pozadí panela vyzerá
+ * inak než nad tmavozeleným lesom.
  *
- * VLASTNÝ OBRÁZOK je nahratý súbor, ktorý sa dlaždicuje namiesto kresleného
- * vzoru. Je uložený ako VLASTNÁ IKONA úprav (`own:…`, PNG v `data:` adrese),
- * a to je celý dôvod, prečo preň netreba nič ďalšie: obrázok sa nesie spolu
- * s úpravami (funguje offline aj v balíku pre mobil), prehliadač ho dokreslí
- * cez `styleimagemissing` a do každého spritu ho dopečie
- * `workers/assets/custom-icons.mjs`. Druhá pečiaca cesta by bola druhé miesto,
- * ktoré sa raz rozíde s prvým.
+ * Vlastný obrázok je uložený ako vlastná ikona úprav (`own:…`, PNG v `data:`),
+ * takže sa nesie spolu s nimi, prehliadač ho dokreslí cez `styleimagemissing`
+ * a do spritu ho dopečie `workers/assets/custom-icons.mjs`.
  *
- * VEĽKOSŤ DLAŽDICE SA URČUJE PRI NAHRATÍ. Obrázok sa prevzorkuje na zvolenú
- * stranu a uloží sa už taký – čo je v úpravách, je presne to, čo mapa
- * dlaždicuje. Druhá mierka „až pri kreslení" by znamenala, že sprite a
- * prehliadač musia škálovať rovnako, a to je práve ten druh dvoch právd,
- * z ktorých sa raz stane tichý rozdiel medzi webom a mobilom.
+ * Veľkosť dlaždice sa určuje pri nahratí: obrázok sa prevzorkuje a uloží sa už
+ * taký. Druhá mierka „až pri kreslení" by znamenala, že sprite a prehliadač
+ * musia škálovať rovnako.
  */
 import { el } from "./dom.js";
 import { PATTERNS, patternSpec, renderPattern } from "./patterns.js";
@@ -43,11 +31,10 @@ const ownImage = (custom, name) => (custom || []).find((c) => c.name === name) |
 
 /**
  * Vykreslí vzor na plátno: podklad vo farbe vrstvy a nad ním dlaždicovaný
- * vzor s jeho krytím. `spec` = `null` znamená „bez vzoru" – ostane podklad.
+ * vzor s jeho krytím. `spec` = `null` znamená „bez vzoru".
  *
- * Vlastný obrázok sa načítava asynchrónne (je to `data:` adresa), takže sa
- * plátno dokreslí až v `onload`. Preto sa najprv vždy vyplní podklad: prázdne
- * biele miesto by vyzeralo ako pokazený náhľad, nie ako „ešte sa načítava".
+ * Vlastný obrázok sa načítava asynchrónne, tak sa najprv vždy vyplní podklad –
+ * prázdne biele miesto by vyzeralo ako pokazený náhľad.
  */
 export function drawPattern(canvas, spec, background, custom = []) {
   const ctx = canvas.getContext("2d");

@@ -1,30 +1,14 @@
 #!/usr/bin/env python3
-"""
-Kontrola: čo si schéma krajinných prvkov vyžiada, to jej predfilter pustí.
+"""Kontrola: čo si schéma krajinných prvkov vyžiada, to jej predfilter pustí.
 
-PREČO. Job `features` čítá PBF DVAKRÁT za sebou (a od rozdelenia bodov do
-vlastného súboru TROJKRÁT – oba behy Planetileru idú nad tým istým výstupom
-predfiltra):
+Job `features` číta PBF trikrát: predfilter (`filter.txt`) a nad jeho výstupom
+dva behy Planetileru (`features.yml`, `points.yml`). To isté rozhodnutie je
+tak na troch miestach a rozídené je tiché – Planetiler dostane PBF, v ktorom
+tie objekty vôbec nie sú, a vyrobí dlaždice bez nich.
 
-    región.osm.pbf --[osmium tags-filter, workers/features/filter.txt]-->
-        features.osm.pbf --[Planetiler, workers/features/features.yml]--> dlaždice (línie, plochy)
-        features.osm.pbf --[Planetiler, workers/features/points.yml]--> dlaždice (body)
-
-Predfilter je hrubé sito (bez neho by Planetiler prechádzal 380 MB Slovenska
-druhýkrát a job by bežal desiatky minút namiesto minút), presné rozhodnutie
-robí schéma. Tým sa ale to isté rozhodnutie ocitlo na TROCH miestach – a keď
-sa rozídu, je to TICHÉ: do schémy pridáš triedu, filter o nej nevie, Planetiler
-dostane PBF, v ktorom tie objekty vôbec nie sú, a vyrobí dlaždice bez nich.
-Beh je zelený, súbor vznikne, v mape tá vrstva len nie je. Presne to hovorí
-varovanie v hlavičke všetkých troch súborov – „inak sa v dlaždiciach ticho
-neobjaví" – a doteraz to nikto nekontroloval, iba si to musel pamätať.
-
-ČO SA KONTROLUJE: každý `include_when` v OBOCH schémach musí mať v predfiltri
-buď holý kľúč (`nwr/embankment`), alebo kľúč so svojou hodnotou
-(`nwr/power=line,…`). Naopak to neplatí a je to zámer: filter SMIE byť širší.
-
-Spustiť sa dá aj lokálne:
-    python3 workers/lint/features.py
+Kontroluje sa, že každý `include_when` v oboch schémach má v predfiltri holý
+kľúč alebo kľúč so svojou hodnotou. Naopak to neplatí zámerne: filter smie
+byť širší.
 """
 import os
 import sys

@@ -1,39 +1,25 @@
-# Planetiler custom schema – VODSTVO z OSM v jednom `.pmtiles`.
+# Planetiler custom schema – vodstvo z OSM v jednom `.pmtiles`.
 #
-# PREČO VLASTNÝ SÚBOR, KEĎ VODA V MAPE UŽ JE. Vrstvy `water`, `waterway`
-# a `water_name` schémy OpenMapTiles sú stavané na KRESLENIE: geometria je
-# zjednodušená podľa zoomu, potoky vypadávajú na nižších zoomoch, meno je
-# v tretej vrstve zvlášť a všetko to leží v jednom archíve s cestami, krajinnou
-# pokrývkou a popismi. Kto chce „vodstvo a nič iné" – na plánovanie, na export,
-# na vlastnú analýzu –, musí si stiahnuť celú mapu (stovky MB) a vytiahnuť si
-# to z nej sám.
+# Vrstvy `water`, `waterway` a `water_name` v OpenMapTiles sú stavané na
+# kreslenie: geometria zjednodušená podľa zoomu, potoky vypadávajú, meno je
+# v tretej vrstve zvlášť a všetko leží v jednom archíve so zvyškom mapy. Tu je
+# všetko vodné aj s menom na tom istom prvku.
 #
-# Tento súbor je odpoveď na to: JEDEN archív, v ktorom je všetko vodné, aj
-# s menom NA TOM ISTOM prvku – rieky, potoky, kanály, jazerá, priehrady,
-# rybníky, zálivy, prielivy a pobrežná čiara.
+# Plocha oceánu tu nie je a nedá sa tu mať: more v OSM je pobrežná čiara celej
+# planéty, z ktorej sa plocha skladá až nad planétnym súborom (Planetiler má
+# na to `water_polygons`). Z rezaného PBF by vzniklo more končiace na hranici
+# výrezu, tak ide `natural=coastline` ako čiara a plochu kreslí základná mapa.
 #
-# PLOCHA OCEÁNU TU NIE JE A NEDÁ SA TU MAŤ. More v OSM nie je nakreslené ako
-# polygón: je to POBREŽNÁ ČIARA celej planéty, z ktorej sa plocha skladá až
-# nástrojom nad celým planétnym súborom (Planetiler na to má vlastný zdroj
-# `water_polygons`, a preto more v základnej mape JE). Z rezaného PBF kraja sa
-# zložiť nedá – zložilo by sa z nej more, ktoré končí na hranici výrezu. Do
-# dlaždice preto ide `natural=coastline` ako ČIARA a meno mora ako bod; plochu
-# kreslí základná mapa.
-#
-# ZOOMY SÚ TU TO HLAVNÉ ROZHODNUTIE. Potokov a jarkov je v OSM rádovo viac než
-# riek, takže rozhodujú o veľkosti súboru:
+# Zoomy sú hlavné rozhodnutie – potokov a jarkov je rádovo viac než riek:
 #
 #     more, veľké rieky, veľké jazerá     od z4
 #     rieky a väčšie vodné plochy         od z8
 #     potoky, kanály, menšie plochy       od z11
 #     jarky, odvodňovacie kanály          od z13
 #
-# POZOR NA `min_zoom` NAD MAXZOOMOM ARCHÍVU: čo má vyšší `min_zoom`, než je
-# maxzoom dlaždíc, Planetiler ZAHODÍ a nepovie o tom nič. Stráži to
-# `workers/water/build.sh`.
-#
-# PREDFILTER (`workers/water/filter.txt`) MUSÍ PUSTIŤ VŠETKO, ČO TU JE – aj
-# členov relácií, inak z veľkých jazier ostane prázdno.
+# Čo má vyšší `min_zoom` než maxzoom dlaždíc, Planetiler zahodí a nepovie nič –
+# stráži to `workers/water/build.sh`. Predfilter musí pustiť všetko, čo tu je,
+# aj členov relácií, inak z veľkých jazier ostane prázdno.
 schema_name: FricoMaps vodstvo
 schema_description: >-
   Rieky, potoky, kanály, jazerá, priehrady, rybníky, zálivy a pobrežná čiara

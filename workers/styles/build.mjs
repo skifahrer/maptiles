@@ -61,10 +61,7 @@ import {
 } from "../../poc/web/themes.js";
 import { allIconSources } from "../../poc/web/icon-sources.js";
 
-// Vlastný priečinok je `workers/styles`. Číselníky sú v susednom
-// `workers/data/`, koreň repozitára o dve úrovne vyššie – kým bol tento
-// súbor priamo vo `workers/`, bola to jedna úroveň a po presune z toho
-// vyšlo `workers/styles/regions.json` (beh 31413580102).
+// číselníky sú v susednom `workers/data/`, koreň o dve úrovne vyššie
 const SELF = dirname(fileURLToPath(import.meta.url));
 
 const args = Object.fromEntries(
@@ -78,62 +75,54 @@ const baseUrl = (args["base-url"] || "").replace(/\/$/, "");
 const region = args.region || "slovensko";
 const outDir = args.out || "_site/styles";
 const maxzoom = Number(args.maxzoom || MAX_TILE_Z);
-// Vrstevnice sú voliteľné – štýl ich zapne, len ak pipeline vyrobila .pmtiles.
+// vrstevnice sú voliteľné – štýl ich zapne, len ak pipeline vyrobila .pmtiles
 const contoursMaxzoom = Number(args["contours-maxzoom"] || 14);
 const hasContours = args.contours === "true" || args.contours === "1";
-// Skaly majú vlastný .pmtiles a vlastný maxzoom – viď workers/contours-rocks/rocks.yml.
+// skaly majú vlastný .pmtiles a vlastný maxzoom
 const rocksMaxzoom = Number(args["rocks-maxzoom"] || 16);
 const hasRocks = args.rocks === "true" || args.rocks === "1";
-// Značené trasy – rovnako voliteľné a v samostatnom .pmtiles.
+// značené trasy – rovnako voliteľné a v samostatnom .pmtiles
 const trailsMaxzoom = Number(args["trails-maxzoom"] || 14);
 const hasTrails = args.trails === "true" || args.trails === "1";
-// Krajinné prvky – to isté: vlastný .pmtiles, vlastný maxzoom, voliteľné.
+// krajinné prvky – to isté
 const featuresMaxzoom = Number(args["features-maxzoom"] || 15);
 const hasFeatures = args.features === "true" || args.features === "1";
-// Body v krajine (pramene, jaskyne, rozhľadne, …) – DRUHÝ výstup toho
-// istého jobu ako krajinné prvky (workers/features/points.yml), preto
-// vlastný .pmtiles, ale rovnaký maxzoom.
+// body v krajine: druhý výstup toho istého jobu, preto vlastný .pmtiles,
+// ale rovnaký maxzoom
 const pointsMaxzoom = Number(args["points-maxzoom"] || featuresMaxzoom);
 const hasPoints = args.points === "true" || args.points === "1";
-// Obmedzenia na ceste (výška podjazdov, šírka, hmotnosť, maximálna rýchlosť)
-// – opäť vlastný .pmtiles, vlastný maxzoom a voliteľné.
+// obmedzenia na ceste – opäť vlastný .pmtiles a voliteľné
 const transportMaxzoom = Number(args["transport-maxzoom"] || 14);
 const hasTransport = args.transport === "true" || args.transport === "1";
-// Zdroj výšok ovplyvňuje atribúciu vrstevníc a skál v štýle.
+// zdroj výšok ovplyvňuje atribúciu vrstevníc a skál
 const demSource = DEM_SOURCES[args["dem-source"]]
   ? args["dem-source"]
   : DEFAULT_DEM_SOURCE;
-// Tieňovanie má vo formulári vlastný výber modelu, takže výškové dlaždice
-// môžu byť z iného než vrstevnice – atribúcia sa preto berie zvlášť.
+// tieňovanie má vlastný výber modelu, takže dlaždice môžu byť z iného než
+// vrstevnice – atribúcia sa berie zvlášť
 const demTilesSource = DEM_SOURCES[args["dem-tiles-source"]]
   ? args["dem-tiles-source"]
   : demSource;
-// Tieňovanie reliéfu sa dá vypnúť (--dem-tiles=none). Ak pipeline vyrobila
-// vlastné výškové dlaždice, príde sem ich URL šablóna a max zoom.
+// tieňovanie sa dá vypnúť (`--dem-tiles=none`)
 const demTiles =
   args["dem-tiles"] === "none" ? null : args["dem-tiles"] || DEFAULT_DEM_TILES;
 const demMaxzoom = Number(args["dem-maxzoom"] || DEFAULT_DEM_MAXZOOM);
-// 3D TERÉN. Zapína sa vtedy, keď máme VLASTNÉ výškové dlaždice – tie sú z
-// modelu vybraného v `shading_source` (predvolene DMR 5.0, mriežka 5 m, čo
-// dá dlaždice do z15). Na verejné AWS Terrain Tiles sa 3D nezapína: sú
-// globálne a hrubé, takže by z hôr spravili mydlové kopce.
-//
-// Doteraz si 3D zapínal len web za behu (`map.setTerrain` v poc/web/app.js) –
-// všetko ostatné, čo tento štýl číta (iOS cez MapLibre Native), dostávalo
-// plochú mapu, hoci dlaždice v štýle boli. `--terrain-3d=0` to vypne.
+// 3D terén sa zapína, keď máme vlastné výškové dlaždice. Na verejné AWS
+// Terrain Tiles sa nezapína: sú globálne a hrubé, z hôr by boli mydlové kopce.
+// Doteraz si 3D zapínal len web za behu, takže iOS dostával plochú mapu, hoci
+// dlaždice v štýle boli.
 const ownDemTiles = Boolean(demTiles) && demTiles !== DEFAULT_DEM_TILES;
 const terrain3dArg = String(args["terrain-3d"] ?? "auto").toLowerCase();
 const terrain3d = ["0", "false", "nie", "ziadne", "vypnute"].includes(terrain3dArg)
   ? false
-  // `auto` aj `1`/`true` znamenajú „zapni, ak máme z čoho"; bez vlastných
-  // dlaždíc sa 3D nezapne ani na výslovnú žiadosť.
+  // `auto` aj `1` znamenajú „zapni, ak máme z čoho"; bez vlastných dlaždíc
+  // sa 3D nezapne ani na výslovnú žiadosť
   : ownDemTiles;
 const terrainExaggeration = Number(
   args["terrain-exaggeration"] || DEFAULT_TERRAIN_EXAGGERATION
 );
-// Kde vlastné výškové dlaždice vôbec sú. Rýchly test (switch `test`) ich
-// počíta len na štvorci s pár km², kým mapa je celý kraj – bez tejto hranice
-// by klient pýtal tieňovanie po celom kraji a dostával 404.
+// kde vlastné výškové dlaždice vôbec sú – rýchly test ich počíta len na
+// štvorci, takže by klient inak pýtal tieňovanie po celom kraji a dostal 404
 const demBounds = args["dem-bounds"]
   ? args["dem-bounds"].split(",").map(Number)
   : null;
@@ -142,20 +131,13 @@ if (demBounds && (demBounds.length !== 4 || demBounds.some((n) => !Number.isFini
   process.exit(1);
 }
 
-// HRANICA STIAHNUTÉHO REGIÓNU – A PREČO SA VKLADÁ DO ŠTÝLU, NIE AKO URL.
-// Tento štýl číta aj aplikácia, ktorá si mapu STIAHNE a otvorí ju offline;
-// všetko ostatné (dlaždice, sprite, glyfy) si pri tom musí prepísať z adresy
-// Pages na svoje súbory. Odkaz na `region.geojson`, na ktorý by sa v tom
-// prepise zabudlo, by sa neprejavil pádom – len by sa maska nenačítala a mapa
-// by zase siahala za región, čiže presne tá tichá chyba, ktorú to má riešiť.
-// Dáta majú jednotky kB (Prešovský kraj 8,9 kB), takže sa zaplatí radšej
-// kópia v každom štýle.
+// hranica regiónu sa vkladá do štýlu, nie ako URL: aplikácia si mapu stiahne
+// a offline musí prepísať adresy; zabudnutý odkaz na `region.geojson` by sa
+// neprejavil pádom – mapa by len zase siahala za región. Dáta majú jednotky kB.
 //
-// Do štýla ide najprv ZÁSTUPNÝ REŤAZEC a hotový JSON sa za neho vymení až
-// nakoniec. `JSON.stringify(…, null, 2)` totiž rozsype každú súradnicu na
-// vlastný riadok: z 8,9 kB dát je 54 kB a v 25 súboroch štýlov 1,3 MB navyše –
-// všetko len odsadenie, ktoré v mape nikto nevidí. Vymieňa sa presný reťazec
-// aj s úvodzovkami, takže sa netrafí nič iné.
+// Do štýlu ide zástupný reťazec a hotový JSON sa zaň vymení až nakoniec:
+// `JSON.stringify(…, null, 2)` rozsype každú súradnicu na vlastný riadok
+// (z 8,9 kB je 54 kB a v 25 štýloch 1,3 MB samého odsadenia).
 const OUTLINE_TOKEN = "__frico:region-outline__";
 const regionOutlinePath = args["region-outline"] || "";
 let regionOutline = null;
@@ -179,21 +161,17 @@ if (!baseUrl) {
 const regions = JSON.parse(
   readFileSync(join(SELF, "..", "data", "regions.json"), "utf8")
 );
-// Región nemusí byť v regions.json (custom región z osm.fr – Európa/svet);
-// vtedy sa meno berie z --name, prípadne z kľúča regiónu.
+// región nemusí byť v regions.json (custom z osm.fr) – vtedy meno z `--name`
 const regionName = regions[region]?.name || args.name || region;
 
-// ---------- sada ikoniek ----------
-// Ktorú sadu použiť, hovoria úpravy z developer módu; sprite k nej hľadáme
-// medzi nasadenými. Ak chýba (napr. sa nestiahla), vezme sa prvá dostupná.
+// sada ikoniek: ktorú použiť, hovoria úpravy z developer módu; keď jej sprite
+// chýba, vezme sa prvá dostupná
 const spritesDir = args["sprites-dir"] || "";
 let iconSetId = null;
 let spriteJsonPath = args.sprite || "";
 
-// ---------- ikony zo spritu ----------
-// Zo sprite indexu sa berie nielen zoznam ikon, ale aj to, či je sprite SDF.
-// SDF sprite (workers/assets/sprite.mjs) je bez koliesok pod ikonami a dá
-// sa mu nastaviť farba – štýl na to potom pridá `icon-color`.
+// zo sprite indexu sa berie aj to, či je sprite SDF – tomu sa dá nastaviť
+// farba, takže štýl pridá `icon-color`
 let icons = [];
 let sdfIcons = false;
 function readSprite(path) {
@@ -210,8 +188,7 @@ function readSprite(path) {
   }
 }
 
-// ---------- úpravy z developer módu ----------
-// Súbor je voliteľný; ak chýba alebo je prázdny, štýl je pôvodný.
+// úpravy z developer módu; súbor je voliteľný
 const overridesPath =
   args.overrides || join(SELF, "..", "..", "poc", "web", "style-overrides.json");
 let overrides = null;
@@ -234,12 +211,11 @@ console.log(
     : "Úpravy štýlu z developer módu: žiadne"
 );
 
-// Sadu ikoniek určujú úpravy; sprite k nej musí byť nasadený.
+// sadu ikoniek určujú úpravy; sprite k nej musí byť nasadený
 iconSetId = selectedIconSource(overrides);
 if (spritesDir) {
-  // Náhradníci: keď vybraná sada nie je nasadená (stiahnutie z cudzieho
-  // servera môže zlyhať), vezme sa prvá, ktorá je. Vlastné sady z úprav sú
-  // medzi nimi tiež – kto si pridal vlastnú, tú aj chce.
+  // náhradníci, keď vybraná sada nie je nasadená; vlastné sady z úprav sú
+  // medzi nimi tiež
   const candidates = [
     iconSetId,
     ...allIconSources(overrides).map((s) => s.id).filter((id) => id !== iconSetId)
@@ -261,9 +237,8 @@ if (!icons.length) {
   console.warn("⚠ Sprite index nie je k dispozícii – použije sa záložný zoznam ikon.");
 }
 
-// ---------- fontstacky ----------
-// Na Pages ležia glyfy v _site/fonts/<Fontstack>/<range>.pbf. Vyberieme
-// reálne existujúce adresáre; ak žiadne nie sú, spadneme na verejnú službu.
+// fontstacky: na Pages ležia glyfy v `_site/fonts/<Fontstack>/<range>.pbf`.
+// Keď žiadne nie sú, spadne sa na verejnú službu.
 const PREFERRED = {
   regular: ["Noto Sans Regular", "Open Sans Regular", "Roboto Regular"],
   bold: ["Noto Sans Bold", "Open Sans Bold", "Roboto Medium"],
@@ -287,7 +262,7 @@ for (const [role, candidates] of Object.entries(PREFERRED)) {
     candidates[0];
 }
 
-// Sprite, na ktorý sa odkazuje výsledný štýl (bez prípony).
+// sprite, na ktorý sa odkazuje výsledný štýl (bez prípony)
 const spriteUrl = (
   args["sprite-url"] || `${baseUrl}/sprites/${iconSetId}`
 ).replace(/\.json$/, "");
@@ -305,8 +280,8 @@ if (availableStacks.length) {
 }
 console.log(`Fonty: regular="${fonts.regular}" bold="${fonts.bold}" italic="${fonts.italic}"`);
 
-// Každá farba témy musí byť v niektorej skupine palety, inak by sa v
-// developer móde nedala nájsť ani zmeniť.
+// každá farba témy musí byť v niektorej skupine palety, inak by sa v developer
+// móde nedala nájsť
 const coverage = paletteCoverage();
 if (coverage.missing.length || coverage.extra.length) {
   console.error(
@@ -374,8 +349,7 @@ for (const type of MAP_TYPES) {
     ).length;
 
     writeFileSync(join(outDir, `${region}-${type.id}-${themeKey}.json`), json);
-    // Staré meno bez typu mapy ostáva – odkazuje naň iOS aplikácia aj smoke
-    // test po nasadení, a nie je dôvod ich nútiť poznať typy máp.
+    // staré meno bez typu mapy ostáva – odkazuje naň iOS aj smoke test
     if (type.id === DEFAULT_MAP_TYPE) {
       writeFileSync(join(outDir, `${region}-${themeKey}.json`), json);
     }

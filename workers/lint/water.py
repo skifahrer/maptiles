@@ -1,32 +1,17 @@
 #!/usr/bin/env python3
-"""
-Vodstvo: filter pustí, čo schéma chce – a meno je na tom istom prvku.
+"""Vodstvo: filter pustí, čo schéma chce – a meno je na tom istom prvku.
 
-ŠTYRI TICHÉ VECI, na ktoré je táto kontrola:
+Štyri tiché veci:
 
-  1. PREDFILTER A SCHÉMA SA ROZÍDU. Job `vodstvo` číta PBF dvakrát (`osmium
-     tags-filter` nad `workers/water/filter.txt`, potom Planetiler nad
-     `water.yml`). Keď sa rozídu, Planetiler dostane PBF, v ktorom ten tag už
-     NIE JE – dlaždice vzniknú, beh zazelená a tá trieda vody v nich len nie
-     je.
-
-  2. FILTER PRESTANE DOŤAHOVAŤ ČLENOV RELÁCIÍ. Veľké jazerá a priehrady sú
-     MULTIPOLYGÓNY, ktorých členovia `natural=water` nemajú. `osmium
-     tags-filter` ich doťahuje sám; s `-R` (`--omit-referenced`) by po Domaši
-     v dlaždiciach ticho neostalo nič.
-
-  3. Z DLAŽDICE ZMIZNE `name`. Kvôli tomu vrstva existuje: v OpenMapTiles je
-     meno vody vo VLASTNEJ vrstve (`water_name`) mimo geometrie, takže „daj mi
-     rieky s menami“ znamená spájať dve vrstvy. Tu je meno na tom istom prvku
-     a je to celý rozdiel.
-
-  4. MORE SA ZAČNE KRESLIŤ AKO PLOCHA. Plocha oceánu v OSM neexistuje –
-     skladá sa až z pobrežných čiar celej planéty, takže z rezaného PBF kraja
-     by vzniklo more, ktoré končí na hranici výrezu. `natural=coastline` preto
-     MUSÍ ísť ako čiara; plochu kreslí základná mapa z `water_polygons`
-     Planetileru.
-
-Spustiť: `python3 workers/lint/water.py`
+  1. predfilter (`filter.txt`) a schéma (`water.yml`) sa rozídu – Planetiler
+     dostane PBF, v ktorom ten tag už nie je, a beh zazelená;
+  2. filter prestane doťahovať členov relácií: jazerá a priehrady sú
+     multipolygóny, ktorých členovia `natural=water` nemajú, takže s `-R`
+     by po Domaši v dlaždiciach neostalo nič;
+  3. z dlaždice zmizne `name` – kvôli tomu vrstva existuje (v OpenMapTiles je
+     meno vody vo vlastnej vrstve mimo geometrie);
+  4. more sa začne kresliť ako plocha – plocha oceánu v OSM neexistuje, takže
+     z rezaného PBF by vzniklo more končiace na hranici výrezu.
 """
 import os
 import sys

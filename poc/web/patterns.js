@@ -1,23 +1,17 @@
 /**
  * Opakujúce sa vzory pre plochy a línie + prerušovanie čiar.
  *
- * MapLibre kreslí vzor z obrázka v sprite (`fill-pattern`, `line-pattern`) a
- * taký obrázok sa nedá prefarbiť. Aby sa vzory dali v developer móde ladiť
- * ako všetko ostatné, vyrábajú sa **procedurálne**: názov obrázka je zároveň
- * jeho predpis (`pat:hatch:3a5a34:16:12`), takže
+ * Obrázok v sprite sa nedá prefarbiť, tak sa vzory vyrábajú procedurálne:
+ * názov obrázka je zároveň jeho predpis (`pat:hatch:3a5a34:16:12`), takže si
+ * ho prehliadač dokreslí sám a pipeline tie isté názvy nájde v hotovom štýle
+ * a dopečie do spritu – rovnaký štýl teda funguje aj na iOS.
  *
- *   - prehliadač si obrázok dokreslí sám (`styleimagemissing` → `addImage`),
- *   - pipeline tie isté názvy nájde v hotovom štýle a dopečie ich do spritu,
- *     takže rovnaký štýl funguje aj na iOS.
- *
- * Vzory sú kreslené v jednotkových súradniciach a dlaždicujú sa – pri
- * rasterizácii sa počíta vzdialenosť aj k 3×3 susedným kópiám, takže tvar
- * SMIE prečnievať za hranu (súradnice mimo 0–1) a druhá polovica sa objaví na
- * opačnej strane sama. Pri vzore, ktorý má vyzerať ako rozsyp, je to povinné:
- * inak má dlaždica po obvode prázdny okraj a z opakovania je mriežka prázdnych
- * uličiek, ktorú oko vidí ako raster (stráži to `workers/lint/style.mjs`).
- * Otáčanie sa zámerne neponúka: v štvorcovej dlaždici by rozbilo napojenie;
- * namiesto toho má každý smer vlastný vzor.
+ * Vzory sú v jednotkových súradniciach a dlaždicujú sa; rasterizácia počíta
+ * aj 3×3 susedné kópie, takže tvar smie prečnievať za hranu a druhá polovica
+ * sa objaví na opačnej strane sama. Pri vzore, ktorý má vyzerať ako rozsyp, je
+ * to povinné – inak je z opakovania mriežka prázdnych uličiek (stráži
+ * `workers/lint/style.mjs`). Otáčanie sa neponúka: v štvorcovej dlaždici by
+ * rozbilo napojenie, tak má každý smer vlastný vzor.
  */
 
 const seg = (ax, ay, bx, by) => ({ t: "s", ax, ay, bx, by });
@@ -83,30 +77,16 @@ export const PATTERNS = [
     ]
   },
   {
-    // Skalné pole – rozsypané kamene, nie pravidelné šrafovanie. Kamene sú
-    // ŠESŤ RÔZNYCH: každý inak veľký, inak natočený a inak zúbkovaný, žiadne
-    // dva rovnaké. Rovnaký tvar v pravidelnom rastri prestane byť suťou
+    // skalné pole – rozsypané kamene, nie pravidelné šrafovanie. Kamene sú
+    // šesť rôznych: rovnaký tvar v pravidelnom rastri prestane byť suťou
     // a začne byť bodkovaná mriežka.
     //
-    // KAMENE ZÁMERNE PREČNIEVAJÚ ZA HRANU (súradnice mimo 0–1) a je to celý
-    // dôvod, prečo tie čísla vyzerajú takto. Kým ležali všetky vnútri, mala
-    // dlaždica po celom obvode prázdny okraj – a z dlaždicovania bola mriežka
-    // prázdnych uličiek každých `size` pixelov, ktorú oko vidí ako raster.
-    // Namerané rasterizérom (18 px, weight 1,2), krytie inkom:
-    //
-    //           celkovo   na šve   najprázdnejší pás   rozptyl 3×3 blokov
-    //   predtým   25,8 %    3,4 %        0,0 %              21 b.
-    //   teraz     25,0 %   27,1 %       12,5 %               5 b.
-    //
-    // Rozloženie nie je od oka: stredy vyšli zo zlatého rezu (rovnomerné
-    // pokrytie torusu bez mriežky) a doladili sa hľadaním, ktoré minimalizuje
-    // práve tie štyri čísla vyššie – hustota má ostať tá istá (aby plocha
-    // vyzerala rovnako sypko), ale bez uličiek a bez dier. Rasterizér počíta
-    // vzdialenosť aj k 3×3 susedným kópiám, takže presahujúca polovica kameňa
-    // sa objaví na opačnej strane sama a nič sa nemusí zdvojovať ručne.
-    //
-    // Otáčanie celého vzoru sa neponúka: v štvorcovej dlaždici by rozbilo
-    // napojenie – preto má každý smerový vzor vlastnú položku.
+    // Zámerne prečnievajú za hranu (súradnice mimo 0–1): kým ležali všetky
+    // vnútri, mala dlaždica po obvode prázdny okraj a z dlaždicovania bola
+    // mriežka uličiek (krytie na šve 3,4 % proti 27,1 % teraz). Stredy vyšli
+    // zo zlatého rezu a doladili sa hľadaním, ktoré drží hustotu, ale bez
+    // uličiek a dier; rasterizér počíta aj 3×3 susedné kópie, takže sa
+    // presahujúca polovica objaví na opačnej strane sama.
     id: "rocks",
     label: "Kamienky (skalné pole)",
     // ROZSYP: tento vzor má vyzerať nepravidelne. Kontrola
@@ -183,9 +163,8 @@ const PATTERN_BY_ID = Object.fromEntries(PATTERNS.map((p) => [p.id, p]));
 /**
  * Prerušovanie čiar – `line-dasharray` v násobkoch šírky čiary.
  *
- * Zoznam je jediný zdroj pravdy: rovnaké predvoľby ponúka developer mode
- * (výber „Čiara" v štýle vrstvy aj pri okraji) a rovnaké mená sa ukladajú do
- * `style-overrides.json`, takže sa dajú zapiecť do štýlu pre web aj iOS.
+ * Zoznam je jediný zdroj pravdy: tie isté predvoľby ponúka developer mode
+ * a tie isté mená sa ukladajú do `style-overrides.json`.
  */
 export const DASH_PRESETS = [
   { id: "solid", label: "Plná", dash: null },
@@ -216,11 +195,9 @@ export const dashArray = (id) => DASH_BY_ID[id]?.dash ?? null;
 /**
  * Opak `dashArray`: predvoľba podľa `line-dasharray` zo štýlu.
  *
- * Je to tu, a nie pri čítaní štýlu, lebo sa na to pýtajú TRI miesta – štýl
- * (aby vedel do metadát zapísať, akú čiaru vrstva zabudovanú má), developer
- * mode (aby vo výbere ukázal TO, čo je v mape) a kopírovanie štýlu medzi
- * vrstvami. Vlastné prerušovanie, ktoré nie je ani jedna z predvolieb, vráti
- * `null` – a to je poctivá odpoveď, nie „plná".
+ * Tu, a nie pri čítaní štýlu, lebo sa pýtajú tri miesta – štýl, developer mode
+ * a kopírovanie štýlu medzi vrstvami. Vlastné prerušovanie vráti `null`, a to
+ * je poctivá odpoveď, nie „plná".
  */
 export function dashIdOf(dasharray) {
   if (!Array.isArray(dasharray)) return null;
@@ -241,12 +218,11 @@ export function dashLabel(dash) {
 }
 
 /**
- * Náhľad prerušovania ako `stroke-dasharray` do SVG. Kým je výber čiary len
- * text v rozbaľovačke, nie je z neho vidieť, ako čiara naozaj vyzerá –
- * developer mode preto kreslí vedľa neho ukážku.
+ * Náhľad prerušovania ako `stroke-dasharray` do SVG – z textu v rozbaľovačke
+ * nie je vidieť, ako čiara vyzerá.
  *
  * @param {string|number[]} dash  predvoľba alebo rovno `line-dasharray`
- * @param {number} scale  hrúbka čiary v ukážke (dasharray je v jej násobkoch)
+ * @param {number} scale  hrúbka čiary v ukážke
  */
 export function dashPreview(dash, scale = 2) {
   const d = Array.isArray(dash) ? dash : dashArray(dash);
@@ -256,11 +232,9 @@ export function dashPreview(dash, scale = 2) {
 /**
  * Predvolený predpis vzoru – doplní, čo používateľ nezadal.
  *
- * VLASTNÝ OBRÁZOK JE INÝ DRUH ODPOVEDE, nie ďalšie pole vedľa ostatných:
- * keď je `image`, vzor sa nekreslí z tvarov, ale dlaždicuje sa nahratý
- * obrázok – a farba, veľkosť ani hrúbka naň neplatia (sú zapečené v ňom).
- * Preto sa v tom prípade vracia len `image`: keby sa vliekli aj tie tri,
- * panel by ich ponúkal a nič by nerobili.
+ * Vlastný obrázok je iný druh odpovede: vtedy sa dlaždicuje nahratý obrázok
+ * a farba, veľkosť ani hrúbka naň neplatia. Preto sa vracia len `image` – inak
+ * by ich panel ponúkal a nič by nerobili.
  */
 export function patternSpec(spec = {}) {
   const image = typeof spec?.image === "string" ? spec.image.trim() : "";

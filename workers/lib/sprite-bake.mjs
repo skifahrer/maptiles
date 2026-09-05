@@ -1,23 +1,16 @@
 /**
- * DOPEČENIE VLASTNÝCH OBRÁZKOV DO HOTOVÉHO SPRITU.
+ * Dopečenie vlastných obrázkov do hotového spritu.
  *
- * Sprite vyrobí `workers/assets/sprite.mjs` z cudzej sady ikoniek. Tri veci
- * si ale kreslíme sami a v žiadnej sade byť nemôžu:
+ * Sprite vyrobí `assets/sprite.mjs` z cudzej sady. Štítky ciest, značky trás
+ * a vzory výplní si kreslíme sami a v žiadnej sade byť nemôžu; všetky tri
+ * rozoberú atlas, pridajú svoje a preskladajú ho späť. Kým to bol trikrát ten
+ * istý kus kódu, líšil sa – a rozdiel bol tichý: v jednej kópii sa
+ * neprenášali `stretchX`/`stretchY`/`content`, takže z dlhého čísla na štítku
+ * vyšla kapsula.
  *
- *   `workers/assets/shields.mjs`   štítok s číslom cesty („D1")
- *   `workers/assets/marks.mjs`     turistická a cyklistická značka
- *   `workers/styles/patterns.mjs`  vzory výplní zo štýlu (`pat:hatch:…`)
- *
- * Všetky tri robia to isté: rozoberú atlas na obrázky, pridajú svoje
- * a preskladajú ho späť. Kým to bol trikrát ten istý kus kódu, líšil sa –
- * a rozdiel bol TICHÝ: v jednej kópii sa pri preskladaní neprenášali
- * `stretchX`/`stretchY`/`content`, takže sa štítok cesty naťahoval celý aj
- * s rohmi a z dlhého čísla vyšla kapsula. Sprite aj štýl pritom ostali
- * platné a nič nespadlo (rozpis vo `workers/lint/shields.mjs`).
- *
- * Preto je preskladanie TU a raz. Volajúci povie len dve veci: ktoré mená
- * v atlase sú jeho (tie sa zahodia a nakreslia znova, aby pri opakovanom
- * behu nad spritom z cache nepribúdali kópie) a čo do neho pridať.
+ * Volajúci povie dve veci: ktoré mená v atlase sú jeho (tie sa zahodia
+ * a nakreslia znova, nech pri behu nad spritom z cache nepribúdajú kópie)
+ * a čo pridať.
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { decodePng, encodePng, packShelves } from "./png.mjs";

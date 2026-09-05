@@ -1,28 +1,18 @@
 /**
- * VÝBER IKONKY V DEVELOPER MÓDE – a vlastné obrázky.
+ * Výber ikonky v developer móde – a vlastné obrázky.
  *
- * Dovtedy tu bol `select` s menami: „aeroway_11", „alcohol_shop_11",
- * „amusement_park_11" … tri stovky riadkov textu, z ktorých sa nedalo
- * prečítať, ako tá ikona vyzerá. Vybrať z nich tú správnu znamenalo skúšať
- * jednu po druhej a pozerať sa do mapy.
+ * Dovtedy tu bol `select` s tromi stovkami mien, z ktorých sa nedalo prečítať,
+ * ako ikona vyzerá. Preto mriežka s náhľadmi, kreslená z toho istého spritu,
+ * aký má mapa.
  *
- * Preto je z toho MRIEŽKA S NÁHĽADMI: vedľa mena je obrázok, hore je
- * hľadanie a vybraná ikona je zvýraznená. Kreslí sa z toho istého spritu,
- * aký má mapa – teda presne to, čo v nej naozaj bude.
+ * SDF sa musí prekresliť: sprity z pipeline nesú vzdialenostné pole v alfe
+ * (hrana na 0,75), takže vykreslené tak, ako sú, vyzerajú ako rozmazané
+ * škvrny. Náhľad alfu prahuje a vyfarbí – ako MapLibre s `icon-color`.
  *
- * SDF SA MUSÍ PREKRESLIŤ. Sprity z pipeline nesú vzdialenostné pole v alfe
- * (hrana leží na 0,75), takže vykreslené tak, ako sú, vyzerajú ako rozmazané
- * škvrny. Náhľad preto alfu prahuje a vyfarbí ju – rovnako, ako to robí
- * MapLibre s `icon-color`.
- *
- * VLASTNÁ IKONA je obrázok, ktorý si človek nahrá (PNG, JPG aj SVG). Prevedie
- * sa TU, v prehliadači, na PNG v `data:` adrese – a to je zámer:
- *
- *   * v úpravách je potom samotný obrázok, nie odkaz na cudzí server, takže
- *     mapa funguje aj offline a v balíku pre mobil;
- *   * pipeline ho vie dopiecť do spritu bez toho, aby musela vedieť
- *     rasterizovať SVG (`workers/assets/custom-icons.mjs` len dekóduje PNG);
- *   * a čo je v mape vidieť, je presne to, čo sa uložilo.
+ * Vlastná ikona sa prevedie tu, v prehliadači, na PNG v `data:` adrese:
+ * v úpravách je potom samotný obrázok (mapa funguje offline aj v balíku),
+ * pipeline ho vie dopiecť bez rasterizácie SVG a v mape je presne to, čo sa
+ * uložilo.
  */
 import { el } from "./dom.js";
 
@@ -98,13 +88,11 @@ function iconCanvas({ name, entry, image, color, png, size = 22 }) {
 }
 
 /**
- * NÁHĽAD JEDNEJ IKONY – to, čo je pri kategórii naozaj v mape.
+ * Náhľad jednej ikony – to, čo je pri kategórii naozaj v mape.
  *
- * Bez neho sa výber ikony nedá urobiť: „reštaurácia má `restaurant_11`" je
- * meno, nie obrázok, a človek sa podľa mena nerozhodne (to je ten istý dôvod,
- * pre ktorý je namiesto rozbaľovačky mriežka). Prázdne meno je platná
- * odpoveď – „táto kategória nemá ikonu" – a kreslí sa ako ∅, nie ako prázdno:
- * prázdne miesto vyzerá ako nenačítaný obrázok.
+ * Bez neho sa výber urobiť nedá: „`restaurant_11`" je meno, nie obrázok.
+ * Prázdne meno je platná odpoveď („táto kategória nemá ikonu") a kreslí sa
+ * ako ∅ – prázdne miesto vyzerá ako nenačítaný obrázok.
  *
  * @param {object} opts
  * @param {string} opts.name    meno ikony (`""` = žiadna)
@@ -223,11 +211,8 @@ export function iconNameFromFile(fileName, prefix) {
 /**
  * Prevedie nahraný súbor (PNG, JPG, SVG) na PNG v `data:` adrese.
  *
- * Kreslí sa na DVOJNÁSOBNÚ mriežku (`pixelRatio: 2`) – tá istá konvencia ako
- * pri `@2x` sprite: na retine je ikona ostrá a MapLibre si ju zmenší sám.
- * Väčší obrázok sa zmenší tak, aby dlhšia strana mala `CUSTOM_ICON_MAX_PX`;
- * menší sa NEZVÄČŠUJE, lebo z rozmazanej ikony by väčšia bola len väčšia
- * rozmazaná.
+ * Kreslí sa na dvojnásobnú mriežku – tá istá konvencia ako pri `@2x` sprite.
+ * Väčší obrázok sa zmenší na `CUSTOM_ICON_MAX_PX`, menší sa nezväčšuje.
  */
 export function fileToIconPng(file, maxPx = CUSTOM_ICON_MAX_PX) {
   return new Promise((resolve, reject) => {
