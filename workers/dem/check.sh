@@ -170,7 +170,12 @@ PY
         ;;
     esac
   fi
-  DEMKEY=$(printf '%s' "$assets" | sha256sum | cut -c1-12)
+  # otlačok len z dlaždíc, ktoré vrstva naozaj číta: z celého skladu ho
+  # zmenilo aj doplnenie susedného kraja a cache padla všetkým
+  DEMKEY=$(printf '%s\n' "$assets" | awk -v want="$want" '
+    BEGIN { n = split(want, w, " "); for (i = 1; i <= n; i++) chce[w[i]] = 1 }
+    n == 0 || substr($0, 1, index($0, ":") - 1) in chce
+  ' | sha256sum | cut -c1-12)
 }
 
 for pair in \

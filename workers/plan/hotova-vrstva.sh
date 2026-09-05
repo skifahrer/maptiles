@@ -8,9 +8,9 @@
 #
 # Tri dôvody, prečo ju môžeme mať, a nie sú rovnocenné:
 #   presná zhoda kľúča   nič nové
-#   predpona             nastavenia sedia, otlačky nie – to si pýta dávka nad
-#                        krajinou (`reuse_layers`); hlási sa `::notice::`-om,
-#                        lebo v mape je vrstva, ktorú dnešný kód nevyrobil
+#   predpona             nastavenia sedia, otlačky nie – to je predvolené
+#                        (`reuse_layers`); hlási sa `::notice::`-om, lebo
+#                        v mape je vrstva, ktorú dnešný kód nevyrobil
 #   kľúč spred rozdelenia jednorazová migrácia
 #
 # Uložiť sa smie len to, čo sa naozaj spočítalo: vrstva vzatá po predpone by
@@ -32,7 +32,7 @@ elif [ -n "$MATCHED" ]; then
   MAM=true
   # nahlas, a nie do logu: je to jediné miesto, kde sa dá zistiť, že v mape
   # je vrstva staršia než dnešný kód
-  echo "::notice::$VRSTVA – neprepočítava sa, beriem hotovú vrstvu z predošlého behu (\`$MATCHED\`). Nastavenia sedia, otlačok skladu modelu alebo skriptov nie. Prepočíta ju výber \`rebuild\`, alebo beh bez voľby \`reuse_layers=true\`."
+  echo "::notice::$VRSTVA – neprepočítava sa, beriem hotovú vrstvu z predošlého behu (\`$MATCHED\`). Nastavenia sedia, otlačok skladu modelu alebo skriptov nie. Prepočíta ju výber \`rebuild\`, alebo beh s voľbou \`reuse_layers=false\`."
 elif [ "$HIT_STARY" = 'true' ]; then
   MAM=true
   echo "$VRSTVA: v cache pod kľúčom spred rozdelenia kľúčov – nepočíta sa."
