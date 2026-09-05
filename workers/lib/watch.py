@@ -1,33 +1,17 @@
 #!/usr/bin/env python3
-"""
-Spustí príkaz a je pri ňom počuť: postup, tep, pamäť, rast výstupu.
+"""Spustí príkaz a je pri ňom počuť: postup, tep, pamäť, rast výstupu.
 
-PREČO: `gdal_contour` nad krajom beží desiatky minút a s `-q` je úplne ticho.
-Z logu sa potom nedá odlíšiť „počíta" od „zaseklo sa" – a keď to po hodine
-spadne na timeout, nevieš ani, ako ďaleko sa dostalo. To isté platí pre
-`gdalwarp` nad mozaikou a pre `ogr2ogr` nad miliónmi čiar.
+`gdal_contour` nad krajom beží desiatky minút a s `-q` je ticho – z logu sa
+nedá odlíšiť „počíta" od „zaseklo sa". Rieši to dvoma vecami:
 
-Dve veci, ktoré to rieši:
+  1. GDAL píše postup bez konca riadku a Actions taký riadok neukážu, kým
+     príkaz neskončí. Tu sa číta po bajtoch a každý krok sa vypíše hneď –
+     a krokom je bodka (2,5 %), nie desiatka.
+  2. Keď príkaz nehlási nič, beží popri ňom tep: čas, odhad konca, pamäť,
+     CPU, I/O a rast výstupu. Ticho dlhšie než `--every` sekúnd nenastane.
 
-  1. GDAL píše postup ako „0...10...20..." BEZ konca riadku. GitHub Actions
-     taký riadok neukáže, kým sa príkaz neskončí – čiže presne vtedy, keď
-     už progress netreba. Tu sa číta po bajtoch a každý nový krok postupu sa
-     vypíše ako samostatný riadok, teda hneď. Kroky sú BODKY, nie desiatky:
-     medzi desiatkami sú tri bodky, čiže 2,5 % na bodku – pri dvojhodinovej
-     vektorizácii je to správa každé tri minúty namiesto každých dvanástich.
-  2. Keď príkaz nehlási nič (`-q`, alebo fáza bez progressu), beží popri
-     ňom tep: koľko to už trvá, kde je, kedy skončí, koľko má proces pamäte
-     a CPU, koľko číta a zapisuje a ako rastie výstup. Ticho dlhšie než
-     `--every` sekúnd tak nikdy nenastane.
-
-Používa to `rock-areas.py` (odtiaľ to pochádza) aj kroky workflowu.
-
-Použitie ako knižnica:
     from watch import run_watched, Heartbeat, hms
-
-Použitie z shellu:
-    python3 workers/lib/watch.py --label="vrstevnice" --watch-file=dem/raw.gpkg \\
-        -- gdal_contour -a ele -i 10 -f GPKG dem/clip.tif dem/raw.gpkg
+    python3 workers/lib/watch.py --label="vrstevnice" -- gdal_contour …
 """
 import argparse
 import os
@@ -52,9 +36,8 @@ def gb(mb):
 def o_kolkej(za_s):
     """Hodina, keď sa to podľa doterajšieho tempa skončí.
 
-    „Zostáva ~1:47:10" sa musí prirátať k času v hlavičke riadku, kým sa dá
-    povedať „to je po obede". Hodina to povie rovno; v Actions je log v UTC,
-    takže sedí na časy krokov vedľa.
+    „Zostáva ~1:47:10" treba prirátať k času v hlavičke riadku; hodina to
+    povie rovno.
     """
     return time.strftime("%H:%M", time.localtime(time.time() + za_s))
 
@@ -87,15 +70,13 @@ def proc_rss_mb(pid):
 def proc_cpu_s(pid):
     """Koľko sekúnd procesor tomu procesu naozaj venoval.
 
-    Toto je tá otázka, na ktorú „beží 7 minút, pamäť 0,2 GB" neodpovedá:
-    POČÍTA sa, alebo sa ČAKÁ? Keď je CPU blízko 100 %, je to výpočet a treba
-    zmenšiť prácu; keď je blízko nule, visí to na I/O alebo na sieti a
-    zmenšovanie územia nepomôže.
+    Odpovedá na „počíta sa, alebo sa čaká?": blízko 100 % je výpočet a treba
+    zmenšiť prácu, blízko nule visí na I/O alebo sieti.
     """
     try:
         with open(f"/proc/{pid}/stat") as f:
-            # 14. a 15. pole sú utime a stime v tikoch; meno procesu môže
-            # obsahovať medzery a zátvorky, tak sa reže až za poslednou `)`.
+            # 14. a 15. pole sú utime a stime; meno procesu môže mať medzery
+            # a zátvorky, tak sa reže až za poslednou `)`
             polia = f.read().rpartition(")")[2].split()
         tiky = int(polia[11]) + int(polia[12])
         return tiky / os.sysconf("SC_CLK_TCK")
@@ -123,31 +104,25 @@ class Heartbeat(threading.Thread):
                  max_s=0):
         super().__init__(daemon=True)
         self.label, self.pid, self.tmp = label, pid, tmp
-        # Sekunda je podlaha, nie odporúčanie: pri `every=0` by sa čakanie
-        # vracalo hneď a z tepu by bola nekonečná slučka, ktorá zaplní log aj
-        # CPU. „Ticho" sa tu robiť nedá – na tepe visí aj strop pamäte.
+        # sekunda je podlaha: pri `every=0` by z tepu bola nekonečná slučka –
+        # a na tepe visí aj strop pamäte
         self.every = max(float(every), 1.0)
         self.max_rss_mb, self.max_s = max_rss_mb, max_s
         self.t0 = time.time()
         self.stop_flag = threading.Event()
         self.killed_for_memory = False
         self.killed_for_time = False
-        # Posledné percento, ktoré GDAL nahlásil, a kedy. Dopĺňa to `run_watched`
-        # a tep z toho počíta odhad konca – jediné číslo, ktoré počas
-        # dlhého behu naozaj zaujíma.
+        # posledné percento od GDALu a kedy; tep z toho počíta odhad konca
         self.pct = 0.0
         self.pct_at = self.t0
-        # Predošlé hlásené percento – z neho sa počíta NEDÁVNE tempo. Bez neho
-        # sa dá povedať len priemer od štartu, a ten pri spomaľujúcom procese
-        # klame smerom nadol: `gdal_contour -p` nad jemným sklonom ide prvých
-        # 20 % rýchlo a potom sa každý ďalší krok predlžuje, takže odhad
-        # z priemeru sľubuje koniec, ktorý nepríde (beh 31418794845).
+        # predošlé percento – z neho nedávne tempo. Priemer od štartu pri
+        # spomaľujúcom procese sľubuje koniec, ktorý nepríde.
         self.prev_pct = 0.0
         self.prev_at = self.t0
-        # Aby varovanie o spomalení nezaznelo pri každom tepe.
+        # aby varovanie o spomalení nezaznelo pri každom tepe
         self.spomalenie_ohlasene = False
-        # Namerané čísla si tep drží aj pre záverečný riadok: keď proces
-        # skončí, `/proc/<pid>` zmizne a spýtať sa už nie je koho.
+        # namerané čísla si tep drží aj pre záverečný riadok – po skončení
+        # procesu `/proc/<pid>` zmizne
         self.rss_mb = 0.0
         self.peak_rss_mb = 0.0
         self.cpu_s = 0.0
@@ -169,22 +144,19 @@ class Heartbeat(threading.Thread):
         now = time.time()
         beh = now - self.t0
         dt = max(now - self._last[0], 1e-6)
-        # S rozpočtom sa hlási aj to, koľko z neho je preč. Bez toho sa
-        # z „beží 2:41:30" nedá poznať, či to smeruje do cieľa alebo do
-        # steny – a to je jediné, čo počas dlhého behu potrebuješ vedieť.
+        # s rozpočtom sa hlási aj to, koľko z neho je preč: inak sa z „beží
+        # 2:41:30" nedá poznať, či to smeruje do cieľa alebo do steny
         parts = [f"beží {hms(beh)}" + (
             f" z {hms(self.max_s)} ({100 * beh / self.max_s:.0f} %)"
             if self.max_s else "")]
 
-        # Odhad konca z NAMERANÉHO postupu, nie z konštanty vopred.
-        # Konštanta sa mýli aj osemdesiatnásobne (`gdal_contour` nad
-        # jemným sklonom); percentá z bežiaceho procesu nie.
+        # odhad konca z nameraného postupu, nie z konštanty – tá sa mýli aj
+        # osemdesiatnásobne
         if 0 < self.pct < 100:
             priemer, nedavne = self.tempo()
             zvysok = beh / (self.pct / 100.0) - beh
-            # Keď je nedávne tempo výrazne pod priemerom, proces spomaľuje
-            # a odhad z priemeru je lož. Vtedy sa ukáže oboje a odhad sa
-            # počíta z toho, ako to ide TERAZ.
+            # keď je nedávne tempo výrazne pod priemerom, proces spomaľuje
+            # a odhad z priemeru je lož
             if nedavne and priemer and nedavne < priemer / 2:
                 z_nedavneho = (100.0 - self.pct) / nedavne * 60.0
                 parts.append(
@@ -205,10 +177,8 @@ class Heartbeat(threading.Thread):
             parts.append(f"pamäť {gb(rss)} "
                          f"(špička {gb(self.peak_rss_mb)}{strop})")
 
-        # POČÍTA, ALEBO ČAKÁ? Bez tohto sa z tepu nedá povedať nič o tom,
-        # prečo to trvá – len že to trvá. Okamžitý podiel hovorí, čo robí
-        # TERAZ, priemer za celý beh to zasadí do súvislostí (jedna fáza
-        # čakania na sieť ešte neznamená, že sa nepočíta).
+        # počíta, alebo čaká? Okamžitý podiel hovorí, čo robí teraz, priemer
+        # to zasadí do súvislostí
         cpu = proc_cpu_s(self.pid) if self.pid else 0.0
         if cpu:
             self.cpu_s = cpu
@@ -223,8 +193,7 @@ class Heartbeat(threading.Thread):
 
         mb = dir_mb(self.tmp) if self.tmp and os.path.exists(self.tmp) else 0.0
         if mb:
-            # Rast výstupu je jediná stopa po postupe fázy, ktorá percentá
-            # nehlási vôbec – „výstup 0 MB" dve hodiny je odpoveď.
+            # rast výstupu je jediná stopa po fáze, ktorá percentá nehlási
             parts.append(f"výstup {mb:.0f} MB (+{(mb - self._last[3]) / dt:.1f} MB/s)")
             self.out_mb = mb
 
@@ -246,13 +215,9 @@ class Heartbeat(threading.Thread):
                 except OSError:
                     pass
                 return
-            # Strop na čas – ZAPÍNA SA, nepredpokladá sa. Má zmysel len tam,
-            # kde zastavenie niečo zachráni: obrysy tieňovania sa počítajú po
-            # blokoch a hotové bloky sa po zastavení uložia, takže ďalší beh
-            # nadviaže. Kde je výpočet JEDEN nedeliteľný priechod (skaly zo
-            # sklonu), zastavenie nezachráni nič – zahodí hodiny práce a
-            # nevyrobí ani neúplný výstup, tak sa tam `max_s` nepodáva a beží
-            # sa, kým to nie je hotové.
+            # strop na čas sa zapína, nepredpokladá: má zmysel len tam, kde
+            # sa po zastavení dá nadviazať (obrysy po blokoch). Pri jednom
+            # nedeliteľnom priechode by zahodil hodiny práce a nevyrobil nič.
             if self.max_s and beh > self.max_s:
                 self.killed_for_time = True
                 print(f"::error::{self.label} beží {hms(beh)}, rozpočet je "
@@ -268,20 +233,13 @@ class Heartbeat(threading.Thread):
         self.stop_flag.set()
 
 
-# Meradlo postupu GDALu je JEDINÝ riadok zložený len z číslic a bodiek
-# („0...10...20..."), takže sa dá odlíšiť od hlášky, ktorá tiež obsahuje čísla
-# aj bodky (`Warning 1: ... 3.5`). Kým platí toto, čítajú sa percentá; prvý iný
-# znak z riadku spraví hlášku a percentá sa v ňom už nehľadajú.
+# meradlo postupu GDALu je jediný riadok len z číslic a bodiek, takže sa dá
+# odlíšiť od hlášky, ktorá tiež obsahuje čísla aj bodky
 POSTUP = re.compile(rb"[\d.]+")
 
 
 def percenta(line):
-    """Percento z meradla postupu – aj MEDZI desiatkami.
-
-    Medzi číslami sú tri bodky, čiže jedna bodka je 2,5 %. Čítať len tie
-    desiatky znamenalo pri hodinovom `gdal_contour` správu raz za dvanásť
-    minút; takto je štvornásobne hustejšia a nestojí to nič navyše.
-    """
+    """Percento z meradla postupu – aj medzi desiatkami (bodka je 2,5 %)."""
     m = re.match(rb"^.*?(\d+)(\.*)$", line, re.S)
     if not m:
         return None
@@ -291,10 +249,9 @@ def percenta(line):
 def run_watched(cmd, label, tmp=None, max_rss_mb=0, every=30, max_s=0):
     """Spustí príkaz, priebežne hlási, že žije, a prekladá progress GDALu.
 
-    `max_rss_mb` je strop pamäte: po jeho prekročení sa proces zastaví
-    a vyletí `MemoryError` – lepšie než OOM, po ktorom v logu nie je nič.
-    `max_s` je strop času a je VYPNUTÝ, kým ho niekto nezapne (vyletí
-    `TimeoutError`); patrí len tam, kde sa po zastavení dá nadviazať.
+    `max_rss_mb` je strop pamäte (`MemoryError` – lepšie než OOM, po ktorom
+    v logu nie je nič). `max_s` je strop času, vypnutý kým ho niekto nezapne;
+    patrí len tam, kde sa po zastavení dá nadviazať.
     """
     t0 = time.time()
     every = max(float(every), 1.0)   # 0 by z tepu spravila nekonečnú slučku
@@ -309,10 +266,8 @@ def run_watched(cmd, label, tmp=None, max_rss_mb=0, every=30, max_s=0):
     hb = Heartbeat(label, proc.pid, tmp, every=every, max_rss_mb=max_rss_mb,
                    max_s=max_s)
     hb.start()
-    # Bodky sú husté ZÁMERNE, ale krátky príkaz nemá zaplniť log štyridsiatimi
-    # riadkami o ničom: desiatky idú vždy, medzikroky len keď je medzi nimi
-    # aspoň `krok_s` ticha. Pri hodinovom behu tak vypadne riadok každé
-    # 2,5 %, pri dvadsaťsekundovom len desiatky.
+    # bodky sú husté zámerne, ale krátky príkaz nemá zaplniť log riadkami
+    # o ničom: desiatky idú vždy, medzikroky len po `krok_s` ticha
     krok_s = max(5.0, every / 3.0)
     line, last, last_at = b"", -1.0, 0.0
     try:
@@ -321,8 +276,7 @@ def run_watched(cmd, label, tmp=None, max_rss_mb=0, every=30, max_s=0):
             if not chunk:
                 break
             if chunk == b"\n":
-                # Riadok, ktorý nie je len meradlo postupu (napr. Warning) –
-                # ten sa nesmie stratiť.
+                # riadok, ktorý nie je len meradlo postupu, sa nesmie stratiť
                 txt = re.sub(rb"[\d.\s]|- done\.", b"", line)
                 if txt.strip():
                     print(f"  {label}: {line.decode(errors='replace').strip()}",
@@ -331,12 +285,11 @@ def run_watched(cmd, label, tmp=None, max_rss_mb=0, every=30, max_s=0):
                 continue
             predtym, line = line, line + chunk
             if chunk == b".":
-                # Nová bodka = ďalších 2,5 %, a číslo pred ňou je už celé.
+                # nová bodka = ďalších 2,5 %, číslo pred ňou je už celé
                 pct = percenta(line) if POSTUP.fullmatch(line) else None
             elif not chunk.isdigit() and predtym[-1:].isdigit() \
                     and POSTUP.fullmatch(predtym):
-                # Číslo sa práve dopísalo (za ním medzera z „100 - done."):
-                # inak by posledné percento nikdy nezaznelo.
+                # číslo sa práve dopísalo – inak by posledné percento nezaznelo
                 pct = percenta(predtym)
             else:
                 continue          # číslica sa ešte dopisuje, alebo je to hláška
@@ -345,15 +298,11 @@ def run_watched(cmd, label, tmp=None, max_rss_mb=0, every=30, max_s=0):
             last = pct
             teraz = time.time()
             beh = teraz - t0
-            # Tepu sa to podá, aby vedel dopočítať odhad aj medzi bodkami –
-            # pri pomalom behu je medzi nimi aj štvrť hodiny.
+            # tepu sa to podá, aby vedel dopočítať odhad aj medzi bodkami
             hb.prev_pct, hb.prev_at = hb.pct, hb.pct_at
             hb.pct, hb.pct_at = pct, teraz
-            # SPOMAĽUJE? Povedať to nahlas a HNEĎ, nie až keď to niekto po
-            # hodine zruší. `gdal_contour -p` nad jemným sklonom nezrýchli
-            # späť – keď tempo spadne na štvrtinu, je to signál, že zadanie
-            # je nad možnosti jedného priechodu (rozpis pri
-            # `CONTOUR_SRC_CELLS_PER_S` v contours-rocks/rock-plan.py).
+            # spomaľuje? Povedať to hneď, nie až keď to niekto po hodine zruší:
+            # `gdal_contour -p` nad jemným sklonom späť nezrýchli
             priemer, nedavne = hb.tempo()
             if (not hb.spomalenie_ohlasene and beh > 300
                     and nedavne and priemer and nedavne < priemer / 4):
@@ -388,8 +337,7 @@ def run_watched(cmd, label, tmp=None, max_rss_mb=0, every=30, max_s=0):
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(proc.returncode, cmd)
     took = time.time() - t0
-    # Namerané čísla na koniec: bez nich sa odhady nemajú z čoho opraviť
-    # a „trvalo to dlho" je jediné, čo po behu ostane.
+    # namerané čísla na koniec – bez nich sa odhady nemajú z čoho opraviť
     konce = [f"hotovo za {hms(took)}"]
     if tmp and os.path.exists(tmp):
         konce.append(f"výstup {dir_mb(tmp):.0f} MB")

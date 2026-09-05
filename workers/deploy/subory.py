@@ -1,43 +1,24 @@
 #!/usr/bin/env python3
-"""
-Ktorý súbor z `_site` ide do ktorého balíka – a čo cestuje v základnej mape.
+"""Ktorý súbor z `_site` ide do ktorého balíka – a čo cestuje v základnej mape.
 
-PREČO ZVLÁŠŤ OD `publish-map.py`: ten odpovedá na „ako sa balík volá, ako sa
-zabalí a ako sa nahrá na Drive"; toto na „čo je v ňom". Sú to dve otázky
-a súbor prerástol strop 800 riadkov práve tam, kde sa stretli – rezalo sa
-teda tam, kde sa mení otázka, rovnako ako pri `catalog.py`.
+`publish-map.py` odpovedá na „ako sa balík volá, zabalí a nahrá", toto na „čo
+je v ňom". Ktoré balíky vôbec sú, tu napísané nie je – zoznam drží
+`workers/data/packages.json`; kým bol v každom mieste zvlášť, znamenal nový
+balík päť úprav a ktorákoľvek zabudnutá bola tichá.
 
-KTORÉ BALÍKY VÔBEC SÚ, TU NAPÍSANÉ NIE JE. Zoznam drží `workers/data/
-packages.json` a číta ho `workers/deploy/baliky.py` – ten istý zoznam, z akého
-sa skladá formulár pregenerovania, dávka nad krajinou aj mená a ikony
-v aplikácii. Kým bol napísaný v každom z tých miest zvlášť, znamenal nový
-balík päť úprav a ktorákoľvek zabudnutá bola tichá: vrstva sa buď nezabalila
-nikam, alebo ostala aj v základnej mape a človek si ju stiahol dvakrát.
+Tri druhy odpovedí:
 
-TRI DRUHY ODPOVEDÍ SÚ TU:
+  * vlastný balík (`baliky_vrstiev`) – ťažké veci, ktoré mapa na nakreslenie
+    nepotrebuje a ktoré vážia porovnateľne s ňou samou;
+  * časť základnej mapy (`casti_baliku`: hľadanie) – desiatky MB proti stovkám
+    za dlaždice; vlastný balík by znamenal mapu, v ktorej sa nedá nič nájsť.
+    Premeriava sa, aby bolo v katalógu vidieť, koľko z balíka je;
+  * mimo balíka (`mimo_balika`: glyfy a viewer) – viewer si aplikácia
+    nespúšťa a glyfy si nesie vo vlastnom binári, takže sa vynechajú vždy.
 
-  * VLASTNÝ BALÍK (`baliky_vrstiev`). Ťažké veci, ktoré mapa na to, aby sa
-    nakreslila, nepotrebuje – a ktoré vážia porovnateľne s ňou samou, takže sa
-    oplatí nesťahovať ich: tieňovanie, vrstevnice so skalami, dopravná sieť,
-    body záujmu, hranice, vodstvo a navigačný graf. ČO je v ktorom, hovorí
-    číselník (`manifest`, `pripony`, `priecinok`); tento súbor vie len, ako sa
-    to podľa toho nájde.
-  * ČASŤ ZÁKLADNEJ MAPY (`casti_baliku`: hľadanie). Desiatky MB proti stovkám
-    za dlaždice; vlastný balík by znamenal mapu, v ktorej sa nedá nič nájsť,
-    a nikto by nemal ako zistiť, že mu druhý súbor chýba. Premeriava sa
-    (`velkost_casti`), aby bolo v katalógu vidieť, koľko z balíka je.
-  * MIMO BALÍKA (`mimo_balika`: glyfy a viewer). Viewer je web, ktorý si
-    aplikácia nespúšťa, a glyfy si appka nesie vo vlastnom binári – vynechajú
-    sa preto VŽDY, nie podľa tvaru adresy v manifeste (rozpis v hlavičke
-    `publish-map.py`). `kde_su_glyfy` k tomu povie, odkiaľ si ich kto vezme.
-
-ZNAČENÉ TRASY SÚ V ZÁKLADNEJ MAPE, nie vo vlastnom balíku, a je to zmena
-oproti stavu, keď cestovali v `linie`. Dôvod je ten istý, pre ktorý je v nej
-hľadanie: mapa bez značiek je pre turistickú appku mapa, ktorá nesľubuje to,
-čo od nej čaká každý, kto si ju stiahol – a stoja jednotky MB proti stovkám za
-dlaždice. `linie` sa tým rozpadlo na dvoje: kreslená dopravná sieť je balík
-`cesty`, značené trasy sú v mape a obmedzenia na ceste (výška podjazdu,
-hmotnosť) sú odteraz ATRIBÚTMI tej siete, nie vlastnou vrstvou.
+Značené trasy sú v základnej mape z toho istého dôvodu ako hľadanie. `linie`
+sa tým rozpadlo: kreslená sieť je balík `cesty`, trasy sú v mape a obmedzenia
+na ceste sú atribútmi tej siete.
 """
 import importlib.util
 import json

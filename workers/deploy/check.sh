@@ -2,11 +2,9 @@
 # Overí, že nasadená stránka je celá: štýl neodkazuje na nič, čo v `_site`
 # nie je, a súčet sa zmestí do rozpočtu.
 #
-# Chýbajúci sprite či dlaždica sa v mape neprejaví pádom – mapa sa načíta
-# a len nenakreslí polovicu vecí. To je tichý omyl, ktorý sa nájde až na
-# hotovej stránke, tak sa hľadá tu a beh na ňom padá.
+# Chýbajúci sprite či dlaždica sa neprejaví pádom – mapa sa načíta a len
+# nenakreslí polovicu vecí.
 #
-# Použitie (hodnoty chodia z prostredia, aby sa dal skript spustiť aj ručne):
 #   SPRITE=osm-liberty REGION_KEY=presovsky_kraj LIMIT_MB=900 \
 #   workers/deploy/check.sh
 set -euo pipefail

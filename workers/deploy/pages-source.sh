@@ -1,23 +1,15 @@
 #!/usr/bin/env bash
 # Zapni GitHub Pages a prepni zdroj na Actions – a keď sa nedá, povedz to.
 #
-# PREČO SKRIPT A NIE `run:` BLOK: `build-map-region.yml` je pri strope 128 KiB, nad
-# ktorým GitHub workflow TICHO NEPRIJME (rozpis v hlavičke `transport.yml`), a
-# veľký `run:` blok patrí do `workers/` (pravidlo 3 v CLAUDE.md). Obsah je ten
-# istý, čo v ňom bol – nič sa v ňom nemení.
+# Vlastný skript, lebo build-map-region.yml je pri strope 128 KiB.
 #
-# PREČO TO VÔBEC EXISTUJE: pri zdroji Pages „z vetvy" nasadenie funguje, len
-# mapu prepíše najbližší push do master. Kým sa to skúšalo prepnúť natvrdo,
-# beh na tom PADAL – `GITHUB_TOKEN` na zmenu nastavenia repozitára nestačí –
-# a mapa nebola ŽIADNA. Radšej mapa, ktorá vydrží do ďalšieho mergu, než nič:
-# skúsiť, nahlas povedať, čo API odpovedalo, a ísť ďalej. Odpoveď sa NEZAHADZUJE
-# do /dev/null – bez nej sa z logu nedalo zistiť, či je to chýbajúce právo,
-# alebo niečo iné.
+# Pri zdroji „z vetvy" nasadenie funguje, len mapu prepíše najbližší push do
+# master. Kým sa to prepínalo natvrdo, beh na tom padal (`GITHUB_TOKEN` na
+# zmenu nastavenia repozitára nestačí) a mapa nebola žiadna. Preto: skúsiť,
+# nahlas povedať, čo API odpovedalo, a ísť ďalej.
 #
-# Vstup:  GH_TOKEN (`github.token`), GITHUB_REPOSITORY
+# Vstup:  GH_TOKEN, GITHUB_REPOSITORY
 # Výstup: `build_type` do GITHUB_OUTPUT – `workflow`, keď berie z Actions.
-#         Ide von, aby to súhrn vedel povedať nahlas a smoke test vedel, či je
-#         prázdny koreň stránky chyba, alebo známa príčina.
 
 set -uo pipefail
 RUCNE="Nastav to ručne raz: Settings → Pages → Build and deployment → Source: 'GitHub Actions'."

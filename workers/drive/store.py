@@ -1,72 +1,33 @@
 #!/usr/bin/env python3
-"""
-Sklad hotových dát na Google Drive – náhrada za GitHub releasy.
+"""Sklad hotových dát na Google Drive – náhrada za GitHub releasy.
 
-PREČO TO EXISTUJE. Pipeline si osem druhov drahých medzivýsledkov odkladala do
-GitHub releasov (`dem-sonny`, `dem-dmr35`, `dem-dmr5`, `dem-ugkk`,
-`dem-terrain`, `dem-rocks`, `dem-rocks-img`, `dem-slope`) a to skončilo:
-publikuje sa **len na Drive**. Dôvod nie je estetický: release má na jeden asset
-strop 2 GB, ktorý pipeline zvonku tvaroval, a hotové dáta v releasoch verejného
-repozitára vyzerajú ako vydanie softvéru, ktorým nie sú. Drive už aj tak drží
-DMR 5.0, cache buildu aj hotové mapy, takže sklad je štvrtý priečinok toho
-istého účtu, nie nová závislosť.
+Publikuje sa len na Drive: release má na asset strop 2 GB, ktorý pipeline
+zvonku tvaroval, a hotové dáta v releasoch verejného repozitára vyzerajú ako
+vydanie softvéru, ktorým nie sú. Drive už drží DMR 5.0, cache aj hotové mapy.
 
-ČO TÝM ODPADLO A ČO NIE: 2 GB strop na súbor odpadol. Dve podoby DMR 5.0
-(dlaždice po 5 m, výrez v 1 m) ostávajú – tie nedržal strop assetu, ale runner:
-jedna 1°×1° dlaždica má v metri ~48 GB a voľných je ~60 GB.
+    gh release view          → --names / --index / --latest
+    gh release download      → --get
+    gh release upload        → --put
+    gh release delete-asset  → --rm
 
-    gh release view    → --names / --index / --latest
-    gh release download → --get
-    gh release upload   → --put   (`--clobber` je v ňom, viď nižšie)
-    gh release delete-asset → --rm
+Mená súborov ostávajú tie isté, aké mali assety – meno je sľub o rozsahu.
+Dve podoby DMR 5.0 ostávajú tiež: tie nedržal strop assetu, ale runner
+(1°×1° dlaždica má v metri ~48 GB a voľných je ~60 GB).
 
-ČO SA TÝM NEMENÍ. Mená súborov ostávajú tie isté, aké mali assety releasov
-(`N49E020.tif`, `ugkk-vysoke_tatry.tif`, `terrain-<kľúč>-<model>-z<zoom>-v4.pmtiles`
-…), lebo **meno je sľub o rozsahu** – pravidlo 2 v CLAUDE.md. Ostáva aj to,
-ktorý sklad ktorá vrstva hľadá; odpoveď na to má jedno miesto
-(`workers/dem/target.py`) a tento skript sa jej nepýta.
+Rozloženie je plochá dvojúrovňová vec, nech sa dá prezerať očami:
+`<koreň>/<sklad>/<meno assetu>`. Koreň `fricomaps-sklad` vzniká sám pri prvom
+zápise; inde ho posadí `DRIVE_STORE_FOLDER`.
 
-ROZLOŽENIE NA DRIVE je plochá dvojúrovňová vec, aby sa dala prezerať očami:
+„Clobber" je najprv nahrať nové, až potom zmazať staré – opačne by po spadnutom
+uploade nebolo ani jedno. Pri čítaní vyhráva najnovší súbor daného mena.
 
-    <koreň>/dem-dmr5/N49E020.tif
-    <koreň>/dem-ugkk/ugkk-vysoke_tatry.tif
-             sklad     meno assetu
+Bez prihlásenia to nefunguje a nesmie to byť tiché: „v sklade nič nie je"
+a „nemám token" by boli na nerozoznanie.
 
-`<koreň>` je priečinok `fricomaps-sklad` v My Drive vlastníka tokenu; vyrobí sa
-sám pri prvom zápise, takže nikto nemusí najprv ručne vyrábať priečinok a sem
-dopisovať jeho id. Keď má ležať inde, povie to `DRIVE_STORE_FOLDER` (id alebo
-odkaz) – jedno číslo na jednom mieste, ako `FOLDER_ID` pri DMR 5.0.
-
-„CLOBBER" SA ROBÍ V TOMTO PORADÍ: najprv sa nahrá nové, až potom zmaže staré.
-Drive dovolí dva súbory s tým istým menom vedľa seba, takže by „najprv zmaž"
-znamenalo, že po spadnutom uploade nie je ani nové, ani staré – a ďalší beh by
-hodinu počítal niečo, čo tam pred pár minútami bolo. Pri čítaní preto vždy
-vyhráva NAJNOVŠÍ súbor daného mena.
-
-BEZ PRIHLÁSENIA TO NEFUNGUJE a nesmie to byť tiché: Drive API anonymné
-požiadavky neobsluhuje, takže „v sklade nič nie je" a „nemám token" by boli na
-nerozoznanie – a to druhé by znamenalo, že sa všetko počíta odznova a zapisuje
-do prázdna. Preto sa bez tokenu padá s návodom.
-
-Použitie:
-    python3 workers/drive/store.py --check
-    python3 workers/drive/store.py --list --store=dem-dmr5
-    python3 workers/drive/store.py --names --store=dem-dmr5
-    python3 workers/drive/store.py --index --store=dem-dmr5      # meno:veľkosť
-    python3 workers/drive/store.py --get --store=dem-dmr5 --dir=dem/tiles \\
-        --name=N49E019.tif --name=N49E020.tif --missing-ok
+    python3 workers/drive/store.py --check | --list --store=dem-dmr5
+    python3 workers/drive/store.py --get --store=dem-dmr5 --dir=dem/tiles \
+        --name=N49E019.tif --missing-ok
     python3 workers/drive/store.py --put --store=dem-terrain --file=/tmp/x.tar.zst
-    python3 workers/drive/store.py --rm --store=dem-rocks --name=rock-….gpkg.zst
-    python3 workers/drive/store.py --latest --store=dem-rocks-img \\
-        --prefix=rockimg-vysoke_tatry- --suffix=.gpkg.zst
-    python3 workers/drive/store.py --prune --store=vysledky --keep-days=90
-
-Návratové kódy:
-    0   hotovo
-    1   chyba (nedá sa prihlásiť, Drive odmietol, upload zlyhal)
-    3   „toto tam nie je" – sklad neexistuje alebo chýba žiadaný súbor.
-        Volajúci sa podľa toho vie rozhodnúť (doplniť, alebo prejsť na hrubší
-        model), tak ako to robil pri `gh release download`.
 """
 import argparse
 import calendar
