@@ -1,26 +1,14 @@
 #!/usr/bin/env python3
-"""
-Workery ležia v priečinku podľa jobu – a presne jednu úroveň hlboko.
+"""Workery ležia v priečinku podľa jobu – a presne jednu úroveň hlboko.
 
-PREČO TO JE KONTROLA. Keď sa `workers/` presúvalo z plochého zoznamu do
-priečinkov, ticho prestali platiť kontroly, ktoré si cesty hľadali vzorom
-`workers/*.sh` alebo regexom `workers/[\\w.-]+\\.sh`. Ani jeden z nich nechytí
-lomku, takže `workers/dem/check.sh` im nesedel a všetky prešli na prázdnom
-zozname – zelené, hoci nepozreli na nič. To je presne ten druh tichého omylu,
-ktorý je horší než pád (pravidlo 8).
+Pri presune z plochého zoznamu ticho prestali platiť kontroly, ktoré si cesty
+hľadali vzorom `workers/*.sh`: lomku nechytí ani jeden a všetky prešli na
+prázdnom zozname.
 
-ČO SA STRÁŽI:
-
-  1. V `workers/` samotnom nesmie ležať spustiteľný worker. Keď tam niekto
-     pridá nový skript „len nateraz", vypadne zo všetkých kontrol naraz.
-  2. Hĺbka je presne jedna úroveň. Python moduly si spoločné veci hľadajú cez
-     `os.path.dirname(_HERE)`, čo znamená `workers/` len vtedy, keď skript sedí
-     v `workers/<job>/`. Z druhej úrovne by to ukázalo o priečinok vedľa
-     a `_DATA` by mierilo do neexistujúceho miesta.
-  3. Priečinok musí byť známy – nie preklep. Nový job = dopíš ho sem aj do
-     tabuľky v CLAUDE.md, nech tie dva zoznamy ostanú jeden.
-
-Spustiť sa dá aj lokálne: `python3 workers/lint/layout.py`.
+  1. v `workers/` samotnom nesmie ležať spustiteľný worker;
+  2. hĺbka je presne jedna úroveň – moduly si spoločné veci hľadajú cez
+     `os.path.dirname(_HERE)`, čo je `workers/` len z `workers/<job>/`;
+  3. priečinok musí byť známy: nový job dopíš sem aj do tabuľky v CLAUDE.md.
 """
 import os
 import sys

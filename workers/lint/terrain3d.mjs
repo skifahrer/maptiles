@@ -3,36 +3,19 @@
  * 3D terén: sľub o výškovom modeli musí platiť až do štýlu. Volá to
  * `Kontrola · lint workflowov`.
  *
- * ČO STRÁŽI A PREČO. Výškový model (balík `tienovanie`, terrarium dlaždice
- * z `workers/terrain/`) má dve použitia: tieňovanie reliéfu a 3D terén. To
- * druhé je JEDINÝ RIADOK v štýle – `terrain: { source, exaggeration }` –
- * a všetko na ňom je ticho:
+ * 3D terén je jediný riadok v štýle (`terrain: { source, exaggeration }`)
+ * a všetko na ňom je ticho: bez neho je mapa plochá, s odkazom na neexistujúci
+ * zdroj MapLibre odmietne celý štýl, a zdroj iného typu než `raster-dem` dá
+ * terén poskladaný z náhodných hodnôt.
  *
- *   - keď `terrain` v štýle NIE JE, klient nakreslí plochú mapu. Nikto
- *     nepovie nič; dlaždice sú stiahnuté, len ich nemá čo vyzdvihnúť. Presne
- *     to sa dialo na iOS, kým si 3D zapínal len web za behu
- *     (`map.setTerrain` v `poc/web/app.js`).
- *   - keď `terrain` v štýle JE, ale ukazuje na zdroj, ktorý v ňom nie je,
- *     MapLibre odmietne CELÝ štýl a mapa sa nevykreslí vôbec.
- *   - keď je zdroj iného typu než `raster-dem`, číta sa z neho výška z RGB
- *     bežnej dlaždice – terén je z toho poskladaný z náhodných hodnôt.
+ *   1. bez výškových dlaždíc `terrain` v štýle byť nesmie,
+ *   2. s dlaždicami a `terrain3d` musí – a ukazovať na `raster-dem` zdroj,
+ *   3. prevýšenie je kladné konečné číslo (0 je najtichšia podoba vypnutého 3D),
+ *   4. vypnuté 3D nesmie zobrať tieňovanie – sú to tie isté dlaždice.
  *
- * ŠTYRI VECI:
- *   1. bez výškových dlaždíc nesmie `terrain` v štýle byť (ukazoval by na nič),
- *   2. s dlaždicami a `terrain3d` musí byť – a musí ukazovať na existujúci
- *      zdroj typu `raster-dem`,
- *   3. prevýšenie musí byť kladné konečné číslo (0 je plochá mapa so zapnutým
- *      3D, čo je najtichšia podoba vypnutého 3D),
- *   4. vypnuté 3D nesmie zobrať tieňovanie: zdroj `dem` a vrstva `hillshade`
- *      ostávajú, lebo sú to tie isté dlaždice a druhé použitie.
+ * A mimo štýlu: `deploy/site.sh` musí písať `terrain_3d` podľa hotového
+ * štýlu, nie podľa prepínača (`auto` sám o výsledku nehovorí).
  *
- * A JEDNA VEC MIMO ŠTÝLU: `workers/deploy/site.sh` musí písať do manifestu
- * `terrain_3d` podľa HOTOVÉHO štýlu, nie podľa prepínača. Prepínač je `auto`
- * („zapni, ak máme z čoho"), takže sám o výsledku nehovorí – a dve odpovede
- * na jednu otázku sa raz rozídu (pravidlo 1). Appka podľa toho poľa ponúka
- * vrstvu „3D terén", takže rozídenie znamená ponuku, ktorá nič neurobí.
- *
- * Použitie:
  *   node workers/lint/terrain3d.mjs
  */
 import fs from "node:fs";

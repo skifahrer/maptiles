@@ -1,45 +1,19 @@
 #!/usr/bin/env python3
-"""
-Mapa sveta: štýl kreslí presne tie vrstvy a od tých zoomov, ktoré schéma robí.
+"""Mapa sveta: štýl kreslí presne tie vrstvy a od tých zoomov, ktoré schéma robí.
 
-PREČO TO EXISTUJE. Je to ten istý pár čísel na dvoch miestach, aký pri
-vrstevniciach stráži `workers/lint/zoom-floor.py`, len o mape sveta:
+Ten istý pár čísel na dvoch miestach ako pri vrstevniciach (`zoom-floor.py`):
+`world.yml` hovorí, čo sa vyrobí, `style.mjs`, čo sa nakreslí. A k tomu meno
+vrstvy – zlý `source-layer` MapLibre nekomentuje, v mape len nič nie je.
 
-    workers/world/world.yml    `min_zoom`  – ČO SA VYROBÍ (Planetiler)
-    workers/world/style.mjs    `minzoom`   – ČO SA NAKRESLÍ (MapLibre)
+  1. každý `source-layer` v štýle je vrstva schémy;
+  2. každá vrstva schémy je v štýle aspoň raz nakreslená;
+  3. najnižší `minzoom` v štýle sa rovná najnižšiemu `min_zoom` v schéme.
 
-A k tomu tretia vec, ktorá je ešte tichšia: MENO VRSTVY. Keď v štýle stojí
-`source-layer: downloads` a schéma vrstvu volá `download`, MapLibre nepovie
-nič – v mape jednoducho nebudú regióny sťahovania. Vyzerá to ako chýbajúce
-dáta, hoci v `.pmtiles` sú.
+Platí to pre každú podobu (`variant`) zvlášť; podoby si kontrola vypýta
+z `workers/world/variant.py`, takže nová je automaticky kontrolovaná.
 
-ČO SA KONTROLUJE:
-
-  1. každý `source-layer` v štýle je vrstva schémy (preklep = prázdno v mape),
-  2. každá vrstva schémy je v štýle aspoň raz nakreslená (inak sa platí za
-     dlaždice, ktoré nikto nevidí),
-  3. najnižší `minzoom` v štýle sa pri každej vrstve rovná najnižšiemu
-     `min_zoom` v schéme – nižší štýl znamená dieru v mape, vyšší dlaždice
-     pre zoomy, ktoré nikto nekreslí.
-
-A OD PODÔB (input `variant`) TO PLATÍ PRE KAŽDÚ ZVLÁŠŤ. `basic` je tá istá
-schéma bez vodstva a ten istý štýl bez jeho vrstiev – keby sa rozišli, mapa by
-kreslila `water`, ktoré v jej dlaždiciach nie je (a MapLibre by mlčalo), alebo
-by vyrábala vrstvu, ktorú jej štýl nekreslí. Podoby sú v
-`workers/data/world-variants.json` a rozoberá ich `workers/world/variant.py` –
-kontrola si ich vypýta odtiaľ, takže nová podoba je automaticky kontrolovaná
-a netreba na ňu myslieť tu.
-
-Bod 3 je zámerne o DNE vrstvy, nie o každej triede zvlášť: v schéme je
-staging po triedach (`level`, `rank`) a v štýle po vrstvách a filtroch, takže
-priradiť „táto trieda = táto vrstva štýlu" by kontrola musela hádať. Dno chytí
-to, čo naozaj bolí – že sa vrstva začne kresliť skôr, než vôbec vznikne.
-
-Vedľajší zisk: kontrola štýl SPUSTÍ, takže chyba v `style.mjs` sa nájde tu
-a nie až v behu, ktorý predtým pol hodiny počítal dlaždice.
-
-Spustiť sa dá aj lokálne:
-    python3 workers/lint/world.py
+Bod 3 je zámerne o dne vrstvy, nie o každej triede: v schéme je staging po
+triedach, v štýle po vrstvách a filtroch.
 """
 import json
 import os

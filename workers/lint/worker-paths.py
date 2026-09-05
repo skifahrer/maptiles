@@ -1,40 +1,18 @@
 #!/usr/bin/env python3
-"""
-Každá cesta na worker musí ukazovať na súbor, ktorý existuje.
+"""Každá cesta na worker musí ukazovať na súbor, ktorý existuje.
 
-PREČO TO JE KONTROLA. Pri presune `workers/` do priečinkov podľa jobu sa
-prepísali cesty napísané celé (`workers/<meno>.py` → `workers/<job>/<meno>.py`),
-ale nie tie, ktoré si skript skladá AŽ ZA BEHU:
+Pri presune `workers/` do priečinkov podľa jobu sa prepísali cesty napísané
+celé, ale nie tie, ktoré si skript skladá až za behu (`$HERE/x`). `bash -n`
+vidí syntax, nie cesty, a lokálne to nikto nespustí – spadlo to až na runneri,
+na štyroch joboch naraz.
 
-    HERE="$(dirname "$0")"
-    python3 "$HERE/<meno>.py"          # kým bol skript v workers/, sedelo to
+Stráži sa `$HERE/x`, `$WORKERS/x`, `$(dirname \"$0\")/x` a celé `workers/…`
+cesty vo workeroch aj workflowoch; komentáre sa vyhadzujú (texty o chybách
+píšu o zlých cestách zámerne).
 
-Po presune z toho bol `workers/<job>/<meno>.py` a taký súbor nie je. Nič to
-nechytilo: `bash -n` vidí syntax, nie cesty, a lokálne to nikto nespustí, lebo
-skript chce env z workflowu. Spadlo to až na runneri – a nie na jednom kroku,
-ale na štyroch jobov naraz (beh 31412152523: `check-dem`, `contours`,
-`terrain`, a `deploy` za nimi).
-
-ČO SA STRÁŽI: `$HERE/x`, `$WORKERS/x`, `$(dirname "$0")/x` a celé `workers/…`
-cesty vo všetkých workeroch aj workflowoch. Komentáre sa vyhadzujú – texty
-o chybách (aj tá hlavička hore) o zlých cestách píšu zámerne.
-
-A DRUHÁ POLOVICA TEJ ISTEJ OTÁZKY: skript, ktorý existuje, ale nemá príznak
-`+x`, dopadne rovnako – workflow ho púšťa priamo (`run: workers/<job>/x.sh`),
-takže bash vráti „Permission denied" a kód 126, súrodenca 127 od chýbajúceho
-súboru. Beh 31947366438 na tom zhodil mapu sveta v prvom kroku: nový
-`workers/world/build.sh` prišiel do repozitára ako `100644`, čo na ničom
-inom vidieť nie je – v diffe je to jeden riadok hlavičky a lokálne to nikto
-nespustí, lebo skript chce env z workflowu.
-
-VÝNIMKA SÚ KUSY, KTORÉ SA `source`-UJÚ. `.sh`, ktorý si iný skript číta cez
-`.`, nie je krok, ale kus toho skriptu: beží v jeho shelli a berie si jeho
-premenné (`contours-rocks/rocks.sh` je druhá polovica `build.sh`,
-`state/estafeta.sh` je jadro oboch štafiet). Sám by spadol na prvom riadku,
-takže `+x` na ňom nie je záruka, ale sľub, ktorý sa nedá dodržať – a preto sa
-od neho nevyžaduje.
-
-Spustiť sa dá aj lokálne: `python3 workers/lint/worker-paths.py`.
+Druhá polovica tej istej otázky: skript bez `+x` vráti „Permission denied"
+a kód 126, súrodenca 127 od chýbajúceho súboru. Výnimkou sú kusy, ktoré si iný
+skript číta cez `.` – tie nie sú krok, ale kus toho skriptu.
 """
 import glob
 import os

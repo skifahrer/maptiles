@@ -1,37 +1,16 @@
 #!/usr/bin/env python3
-"""
-GeoJSON výstup nesmie dostať SRS – inak metre ticho zmenia na stupne.
+"""GeoJSON výstup nesmie dostať SRS – inak metre ticho zmenia na stupne.
 
-PREČO TO EXISTUJE. Ovládač GeoJSON (aj GeoJSONSeq) PREPOČÍTAVA do WGS84 vždy,
-keď vrstva vie, v čom je. `-a_srs EPSG:3035` nad takým výstupom teda metre
-neoznačí, ale ich ZMENÍ NA STUPNE – a ogr2ogr pri tom skončí úspechom, bez
-jediného varovania. Overené lokálne (GDAL 3.8.4, dva dotýkajúce sa štvorce
-v EPSG:3035): s `-a_srs` vyšli súradnice 16,68 / 49,92, bez neho
-4800000 / 3000000.
+Ovládač GeoJSON prepočítava do WGS84 vždy, keď vrstva vie, v čom je, takže
+`-a_srs EPSG:3035` metre neoznačí, ale zmení na stupne – a ogr2ogr skončí
+úspechom. Pipeline na to doplatila dvakrát: skaly mali 1e-9 m² a filter ich
+všetky vyhodil; únia švov vyšla ako 0,00 km² z 3570 km² a zahodila sa.
 
-Pipeline na to už dvakrát doplatila a zakaždým bola zelená:
-
-  * `po_blokoch` preto z okna bloku `<SRS>` VYHADZUJE. Kým to tam raz nebolo,
-    mala každá skala rádovo 1e-9 m², filter najmenšej plochy vyhodil všetky
-    a mapa ostala bez skál (behy 31245134321 a 31426542010).
-  * `zlep_svy` ten istý `-a_srs` dostal o krok neskôr – na výstup únie švov.
-    Únia prebehla správne, ale vyšla v stupňoch, kontrola plochy ju prepočítala
-    ako 0,00 km² z 3570,56 km² a zahodila ju ako „stratenú". Varovanie pri tom
-    posielalo hľadať `TopologyException` v GEOSe, hoci v logu ani jedna nebola
-    (beh 32300347626). Švy sa tak nezlepili ani raz, odkedy sa počíta po
-    blokoch.
-
-Čo sa tu teda kontroluje:
-
-  1. ŽIADNY worker nepíše GeoJSON s `-a_srs` ani `-t_srs`.
-  2. Príkaz, ktorý GeoJSON píše, má prepínače NAPÍSANÉ, nie vlepené
-     z premennej. Práve cez `*srs_args` sa to sem raz dostalo – a čo kontrola
-     nevidí, to neustráži.
-  3. `po_blokoch` `<SRS>` z okna bloku naďalej vyhadzuje.
-  4. `zlep_svy` si výsledok únie overí (`skontroluj_metricke`), takže návrat
-     do stupňov by bol HLASNÝ, nie schovaný za „stratenú plochu".
-
-Spustiť sa dá aj lokálne: `python3 workers/lint/geojson-srs.py`.
+  1. žiadny worker nepíše GeoJSON s `-a_srs` ani `-t_srs`;
+  2. prepínače sú napísané, nie vlepené z premennej – práve cez `*srs_args`
+     sa to sem raz dostalo;
+  3. `po_blokoch` `<SRS>` z okna bloku vyhadzuje;
+  4. `zlep_svy` si výsledok únie overí, takže návrat do stupňov by bol hlasný.
 """
 import ast
 import os

@@ -1,40 +1,16 @@
 #!/usr/bin/env python3
-"""
-Tam, kde výškový model nemá dáta, sa NESMIE vyrobiť hladina mora.
+"""Tam, kde výškový model nemá dáta, sa nesmie vyrobiť hladina mora.
 
-PREČO TO EXISTUJE. Terrarium je RGB a nemá podobu „hodnota tu nie je" – do
-dlaždice sa teda niečo zapísať musí. `warp_level` na to dlho dával
-`-dstnodata 0`, čiže „model tu nemáme" = „nula metrov nad morom". Dve veci,
-ktoré z toho vyšli, a ani jedna nespadla:
-
-  * NA HRANICI DÁT VZNIKLA STENA. Hillshade je derivácia výšky, takže pokles
-    zo 600 m na 0 m medzi dvoma pixelmi je pre neho zvislý útes a nakreslí ho
-    ako ostrú svetlo-tmavú čiaru cez mapu – „divný orez" na mieste, kde
-    o žiadnu hranicu nejde. Namerané na publikovanom
-    `bratislavsky_test4-terrain.pmtiles`: najväčší skok 668 m na 407 m/px
-    (z8), teda sklon 59°; na z9 69°.
-  * ZA ŇOU BOLA ROVINA, čiže plocha BEZ tieňovania. Na z5 malo 99,6 % dlaždice
-    presne 0 m, na z9 43 %, na z10 35 %.
-
-A k tomu tretia vec, ktorá je z toho istého koreňa: keď je nodata zapísaná ako
-platná výška, dlaždice vzniknú aj tam, kde model nie je nič – a `pack.py` sa
-tými dlaždicami vykázal ako rozsahom. Hlavička hovorila 11,25 / 40,98 / 22,50 /
-48,92, kým mapa je 0,027° × 0,018°, teda rozsah 182-tisíckrát väčší než územie,
-ktoré popisuje. Rozsah je pritom sľub (pravidlo 2), rovnako ako meno assetu.
-
-ČO SA KONTROLUJE:
+`-dstnodata 0` znamenalo „model tu nemáme" = „nula metrov nad morom": na
+hranici dát z toho bola stena (668 m na 407 m/px, teda 59°) a za ňou rovina
+bez tieňovania. A dlaždice vznikli aj tam, kde model nie je nič, takže sa
+nimi `pack.py` vykázal ako rozsahom – 182-tisíckrát väčším než mapa.
 
   1. `terrain/vyska.py` má `NODATA` mimo rozsahu skutočných výšok a
-     `warp_level` v `terrain/tiles.py` ho dáva `gdalwarpu` – nie nulu ani inú
-     platnú výšku,
-  2. warpnutá mriežka ide cez `vypln_nodata` (bez toho by sentinel skončil
-     rovno v dlaždici, čo je stena stokrát vyššia než tá pôvodná),
-  3. dlaždica bez jediného platného pixela sa nezapíše,
-  4. `terrain/pack.py` vie `--clip-bbox` a `terrain/build.sh` mu ho DÁVA –
-     inak sa hlavička vykáže zjednotením celých dlaždíc a tá na z5 má 11,25°.
-
-Spustiť sa dá aj lokálne (je to statická kontrola, bez GDALu a bez dát):
-    python3 workers/lint/terrain-nodata.py
+     `warp_level` ho dáva `gdalwarpu`;
+  2. warpnutá mriežka ide cez `vypln_nodata`;
+  3. dlaždica bez jediného platného pixela sa nezapíše;
+  4. `pack.py` vie `--clip-bbox` a `terrain/build.sh` mu ho dáva.
 """
 import os
 import re

@@ -1,43 +1,25 @@
 #!/usr/bin/env node
 /**
- * Kontrola TURISTICKÝCH A CYKLISTICKÝCH ZNAČIEK pozdĺž trás.
+ * Kontrola turistických a cyklistických značiek pozdĺž trás.
  * Volá ju `Kontrola · lint workflowov`.
  *
- * Značka je jediná vec v mape, ktorej MENO OBRÁZKA sa skladá až z DÁT:
- * `workers/trails/tags.py` napíše do dlaždíc tvar, podklad a farbu
- * (`mark`, `mark_bg`, `mark_fg`), štýl z nich `concat`-om zloží meno
- * a `workers/assets/marks.mjs` musí presne to meno mať v sprite. Sú to tri
- * miesta a keď sa ktorékoľvek dve rozídu, NIČ NESPADNE: MapLibre neznámy
+ * Meno obrázka značky sa skladá až z dát: `trails/tags.py` napíše tvar,
+ * podklad a farbu, štýl z nich `concat`-om zloží meno a `assets/marks.mjs`
+ * ho musí mať v sprite. Tri miesta – rozídené znamená, že MapLibre neznámy
  * obrázok ticho preskočí a po trase nie je nič.
  *
- * ČO SA KONTROLUJE:
+ *   1. každý tvar z `OSMC_SHAPES` kreslí `poc/web/marks.js`;
+ *   2. dvojice podklad × farba (`MARK_FACES`) sú na oboch stranách tie isté;
+ *   3. farba pásu sa nerovná podkladu (taká značka je prázdny štvorec);
+ *   4. meno, ktoré skladá štýl, je to isté ako `markImage()`;
+ *   5. atribúty sú v schéme dlaždíc;
+ *   6. vrstva značiek je v štýle pre každý druh trasy a ikonka druhu sa
+ *      kreslí len tam, kde značka nie je;
+ *   7. značky dvoch trás sa stavajú nad seba – bez posunu podľa `side` a
+ *      `off` padnú na to isté miesto a kolízia nechá vždy tú istú;
+ *   8. značky sa naozaj upečú a žiadna nie je `sdf` (SDF by z troch farieb
+ *      spravil jednu).
  *
- *   1. TVARY: každý tvar, ktorý vie `tags.py` poslať (`OSMC_SHAPES`), kreslí
- *      `poc/web/marks.js`. Preklep v hodnote = trasa bez značky.
- *   2. DVOJICE podklad × farba sú na oboch stranách tie isté (`MARK_FACES`).
- *      Dvojica navyše v dátach = prázdno v mape; dvojica navyše v sprite =
- *      obrázok, ktorý nikto nepýta.
- *   3. FARBA PÁSU SA NEROVNÁ PODKLADU. Taká značka je prázdny štvorec –
- *      vyzerá ako chyba vykreslenia a nikto nevie prečo.
- *   4. MENO OBRÁZKA, ktoré skladá štýl, je to isté ako `markImage()`. Sú to
- *      dve cesty k jednému menu (výraz nad dátami vs. funkcia) a rozídený
- *      oddeľovač alebo predpona sa inak prejaví až v hotovej mape.
- *   5. ATRIBÚTY sú v schéme dlaždíc (`trails.yml`). Bez nich by výraz čítal
- *      prázdno a meno obrázka by bolo `mark---`.
- *   6. VRSTVA ZNAČIEK JE V ŠTÝLE pre každý druh trasy, a ikonka druhu trasy
- *      sa kreslí LEN tam, kde značka nie je – inak by na jednej čiare boli
- *      dva symboly a brali by si miesto navzájom.
- *   7. ZNAČKY DVOCH TRÁS SA STAVAJÚ NAD SEBA. Trasy majú v dlaždiciach tú istú
- *      geometriu (pásiky vedľa seba robí až `line-offset`, na symboly
- *      neplatí), takže bez posunu podľa `side` a `off` padnú značky na to isté
- *      miesto a kolízia nechá jednu jedinú – vždy tú istú, lebo poradie
- *      vrstiev je pevné. V mape to vyzerá, že tade druhá trasa nevedie.
- *   8. ZNAČKY SA NAOZAJ UPEČÚ. Skúša sa to na naozajstnom sprite: dopečú sa
- *      do malého atlasu a musí v ňom byť KAŽDÉ meno, ktoré vedia dáta zložiť
- *      – a žiadne z nich nesmie byť `sdf` (značka je farebný obrázok, SDF by
- *      z troch farieb spravil jednu).
- *
- * Spustenie (aj lokálne):
  *   node workers/lint/marks.mjs
  */
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";

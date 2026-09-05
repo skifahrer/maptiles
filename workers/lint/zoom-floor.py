@@ -1,22 +1,9 @@
 #!/usr/bin/env python3
-"""
-Vrstevnice a skaly sa nedláždia pod tým zoomom, od ktorého ich štýl kreslí.
+"""Vrstevnice a skaly sa nedláždia pod tým zoomom, od ktorého ich štýl kreslí.
 
-PREČO TO EXISTUJE. Dno zoomu je napísané na DVOCH miestach a inak to nejde:
-schéma Planetilera (`min_zoom` vo `workers/contours-rocks/{contours,rocks}.yml`)
-rozhoduje, ČO SA VYROBÍ, a štýl (`minzoom` vrstvy v `poc/web/themes.js`)
-rozhoduje, ČO SA NAKRESLÍ. Keď sa tie dve čísla rozídu, nikto nič nepovie:
-
-  schéma nižšie než štýl   dlaždice pre zoomy, ktoré nikto nekreslí – mapové
-                           podklady sú väčšie a nie je za čo
-  štýl nižšie než schéma    mapa má v tých zoomoch dieru a vyzerá, že tam
-                           vrstevnice ani skaly nie sú
-
-Preto to je pravidlo 1 z CLAUDE.md podané kontrolou: dve miesta, jedna
-odpoveď – a odpoveď sa porovná staticky.
-
-Spustiť sa dá aj lokálne:
-    python3 workers/lint/zoom-floor.py
+Dno zoomu je na dvoch miestach a inak to nejde: schéma rozhoduje, čo sa
+vyrobí, štýl, čo sa nakreslí. Schéma nižšie = dlaždice, ktoré nikto nekreslí;
+štýl nižšie = diera v mape. Ani jedno nikto nepovie.
 """
 import os
 import re

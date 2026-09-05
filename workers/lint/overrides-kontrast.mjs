@@ -1,26 +1,15 @@
 #!/usr/bin/env node
 /**
- * Kontrola: TMAVÝ VARIANT SA NEPOČÍTA STLMENÍM SVETLEJ FARBY.
+ * Kontrola: tmavý variant sa nepočíta stlmením svetlej farby.
  *
  * Štvrtá z vecí, ktoré stráži `workers/lint/overrides.mjs`; vo vlastnom
- * súbore preto, že ten prerástol 800 riadkov a nad tým ho „Kontrola · lint
- * workflowov" neprepustí (pravidlo 5 v CLAUDE.md). Rez vedie tam, kde sa mení
- * otázka: tam „prejde úprava normalizáciou celá", tu „nie je tmavá podoba
- * o rád nápadnejšia než svetlá".
+ * súbore, lebo ten je pri strope 800 riadkov.
  *
- * `paintDark` je farba pre TMAVÚ tému a jediné, s čím sa dá porovnať, je
- * TMAVÝ podklad. Kým sa robil tak, že sa svetlá hodnota trochu stlmila,
- * vychádzalo z bielej ulice `#ffffff` (proti svetlému podkladu kontrast
- * 1,15 : 1) skoro biele `#d0c8c8` – proti tmavému podkladu 10,5 : 1. Na
- * jednej čiare to nie je vidieť; v dedine a v meste sú tie čiary siete
- * a mesto z nich SVIETI. Presne to hlásil používateľ ako „plochy miest sú
- * príliš svetlé".
- *
- * Kontrola preto neporovnáva farby, ale VÁHU: koľkokrát viac vrstva
- * vyčnieva zo svojho podkladu v tmavej téme než vo svetlej. Prah je voľný
- * (šesťnásobný kontrast a štvornásobná váha), lebo v tmavej téme majú prvky
- * prirodzene vyššie číslo – zachytiť má tú triedu chyby, keď je tmavý
- * variant o RÁD nápadnejší, nie každý rozdiel.
+ * `paintDark` sa dá porovnať jedine s tmavým podkladom: z bielej ulice
+ * (kontrast 1,15 : 1 proti svetlému podkladu) vyšlo stlmením `#d0c8c8`,
+ * čo je proti tmavému 10,5 : 1 – a mesto z tej siete svietilo. Porovnáva sa
+ * preto váha dvojice, nie farby, a prah je voľný: zachytiť má tú triedu
+ * chyby, keď je tmavý variant o rád nápadnejší.
  */
 import { THEMES } from "../../poc/web/themes.js";
 

@@ -1,25 +1,10 @@
 #!/usr/bin/env python3
-"""
-Kontrola: každý sklad, ktorý si pipeline pýta, je v zozname známych skladov.
+"""Kontrola: každý sklad, ktorý si pipeline pýta, je v zozname známych skladov.
 
-PREČO. „Ktoré sklady existujú" si hovoria TRI miesta a musia si odpovedať
-rovnako (pravidlo 1):
-
-    workers/drive/store.py         KNOWN – čo pipeline pozná a pustí
-    workers/data/dem-sources.json  `store` / `store_area` pri každom zdroji
-    .github/workflows/*.yml        `env:` – `DEM_STORE`, `SONNY1_STORE`, …
-
-A KEĎ SA ROZÍDU, PADÁ TO AŽ PO PRÁCI. `dem-sonny1` v `KNOWN` chýbal od chvíle,
-čo pribudol zdroj `sonny1`. Doplnenie výšok stiahlo z Drive 12 dlaždíc, rozuzlilo
-skratky, prevzorkovalo ich – a spadlo na poslednom kroku, nahratí do skladu,
-lebo `known_or_die` to meno nepoznal. Hotová práca sa zahodila a joby, ktoré na
-ten sklad čakali (vrstevnice, skaly, tieňovanie), spadli za ním: štyri padnuté
-joby z jedného chýbajúceho riadku (beh 31533988137).
-
-Táto kontrola to povie pri pushi, nie po hodine čítania z Drive.
-
-Spustiť sa dá aj lokálne:
-    python3 workers/lint/stores.py
+„Ktoré sklady existujú" si hovoria tri miesta: `drive/store.py` (`KNOWN`),
+`data/dem-sources.json` a `env:` vo workflowoch. Keď sa rozídu, padá to až po
+práci – `dem-sonny1` v `KNOWN` chýbal, doplnenie stiahlo 12 dlaždíc,
+prevzorkovalo ich a spadlo na nahratí; za ním spadli štyri joby.
 """
 import glob
 import json

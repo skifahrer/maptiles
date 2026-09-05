@@ -1,59 +1,24 @@
 #!/usr/bin/env node
 /**
- * Značené trasy: čo o nich vie štýl, musí sedieť s tým, čo do dlaždíc píšu
- * dáta – a s tým, čo panel v developer móde ukazuje.
+ * Značené trasy: čo o nich vie štýl, musí sedieť s dátami v dlaždiciach
+ * aj s tým, čo ukazuje panel v developer móde.
  *
- * PREČO. Pásik trasy je jediná vec v mape, ktorá sa skladá z TROCH miest
- * naraz: `workers/trails/routes.py` rozhodne, na ktorú stranu cesty trasa
- * patrí a koľká je v rade, `workers/trails/trails.yml` to musí pustiť do
- * dlaždíc a `poc/web/themes.js` to prepočíta na `line-offset`. Keď sa
- * ktorékoľvek dve z nich rozídu, nič nespadne: mapa sa vykreslí, len sú
- * cyklotrasy na tej istej strane ako turistické, alebo sú pásiky odlepené od
- * cesty na polovicu obrazovky. To je tichý omyl (pravidlo 8 v CLAUDE.md).
+ * Pásik trasy sa skladá z troch miest naraz (`trails/routes.py`,
+ * `trails/trails.yml`, `poc/web/themes.js`) a rozídené znamená mapu, ktorá sa
+ * vykreslí – len sú pásiky na zlej strane alebo odlepené od cesty.
  *
- * ČO SA KONTROLUJE:
+ *   1. strana cesty je v `SIDE_BY_ROUTE` aj v `TRAIL_TYPES.side`;
+ *   2. krivky odstupu majú rovnaké zlomy ako `TRAIL_OFFSET_ZOOMS` – skladajú
+ *      sa po indexoch, takže posunutý zlom spáruje odstup zo z14 s rozostupom zo z16;
+ *   3. `TRAIL_GAP_DEFAULTS` sú naozaj hodnoty pri `TRAIL_GAP_ZOOM`;
+ *   4. vzor čiary je platná predvoľba z `patterns.js`;
+ *   5. `side`, `off` a `way` sú v schéme dlaždíc;
+ *   6. `orient_ways` sa zavolá a jeho výsledok sa podá do `Ways`;
+ *   7. rozostup je šírka pásika – tá istá krivka aj druh interpolácie;
+ *   8. odstup od cesty nepresiahne `TRAIL_OFFSET_LIMIT_M` metrov;
+ *   9. spoj v zákrute je `miter` a má `line-miter-limit`;
+ *  10. `EASE_ABOVE_DEG` v `routes.py` vychádza z toho limitu, nie z vlastného čísla.
  *
- *   1. STRANA CESTY je v `SIDE_BY_ROUTE` (routes.py) aj v `TRAIL_TYPES.side`
- *      (themes.js). Dáta podľa nej číslujú rady, developer mode podľa nej
- *      píše „vľavo / vpravo od cesty" – rozídené znamená panel, ktorý klame.
- *   2. KRIVKY ODSTUPU majú rovnaké zlomy ako `TRAIL_OFFSET_ZOOMS`. Skladajú sa
- *      do jedného `interpolate` PO INDEXOCH (`["zoom"]` smie byť len vstupom
- *      toho najvrchnejšieho), takže posunutý zlom v jednej z nich by ticho
- *      spároval odstup zo z14 s rozostupom zo z16.
- *   3. PREDVOLENÉ ODSTUPY (`TRAIL_GAP_DEFAULTS`) sú naozaj hodnoty pri
- *      `TRAIL_GAP_ZOOM` – z nich sa škáluje celá krivka, takže nesúlad by
- *      posunul pásiky aj bez jedinej úpravy.
- *   4. VZOR ČIARY každého druhu je platná predvoľba z `patterns.js` – vzor,
- *      ktorý neexistuje, sa ticho zmení na plnú čiaru.
- *   5. `side`, `off` a `way` sú v schéme dlaždíc (`trails.yml`). Bez nich by
- *      výraz čítal prázdno a všetky pásiky by si sadli na jednu kopu.
- *   6. SMER ČIAR sa naozaj reťazí. `orient_ways` sa musí zavolať a jeho
- *      výsledok podať do `Ways` – keby sa niekde po ceste stratil, cesty by
- *      sa kreslili v poradí, v akom ich nakreslil ten, kto ich zadával, a
- *      pásik by preskakoval z jednej strany chodníka na druhú. Nespadne to,
- *      len to vyzerá zle na mape.
- *   7. ROZOSTUP JE ŠÍRKA PÁSIKA – tá istá krivka aj ten istý druh
- *      interpolácie. Kým to boli dve krivky (jedna `linear`, druhá
- *      `exponential 1.5`), sedeli si len v šiestich zlomoch a medzi nimi sa
- *      rozchádzali: pri z18 bola medzi trasami medzera 0,65 px, presvital cez
- *      ňu ich podklad a vyzeralo to, že sú trasy od seba odsunuté.
- *   8. ODSTUP OD CESTY NEPRESIAHNE `TRAIL_OFFSET_LIMIT_M` METROV. Pixel je pri
- *      z13 dvanásť metrov, takže „2,6 px od chodníka" znamená 33 m – viac než
- *      je v horách rozostup ramien serpentíny. `line-offset` potom obieha
- *      vlásenku oblúkom širším než je zákruta a v mape je z pásika farebná
- *      plocha. Toto je to číslo, ktoré sa nesmie ticho vrátiť späť.
- *   9. SPOJ V ZÁKRUTE je `miter` a má `line-miter-limit`. So `round` sa pásik
- *      k zlomu dostane dvoma rovnobežkami, ktoré sa nestretnú: na vonkajšej
- *      strane ostane biely klin, na vnútornej sa prekryjú – čiže v každej
- *      zákrute je z pásika plocha inej hrúbky. Bez limitu zas z vlásenky
- *      vypadne výbežok dlhý ako pol obrazovky.
- *  10. DÁTA NENECHAJÚ ZLOM, KTORÝ SPOJ NEZOŠIJE. Hranica, od ktorej `routes.py`
- *      zlomy delí (`EASE_ABOVE_DEG`), nie je vlastné číslo – vychádza
- *      z `line-miter-limit` v štýle (limit 2 = zlom 120°, lebo posun vrcholu
- *      je `odstup / cos(zlom/2)`). Keď sa rozídu, pásik sa v ostrej zákrute
- *      zúži a nič to nepovie.
- *
- * Spustenie (aj lokálne):
  *   node workers/lint/trails.mjs
  */
 import { readFileSync } from "node:fs";
@@ -76,7 +41,7 @@ import {
 } from "../../poc/web/themes.js";
 import { DASH_IDS } from "../../poc/web/patterns.js";
 
-// Vlastný priečinok je `workers/lint`, koreň repozitára o dve úrovne vyššie.
+// koreň repozitára je o dve úrovne vyššie
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const ROUTES = join(ROOT, "workers", "trails", "routes.py");
 const SCHEMA = join(ROOT, "workers", "trails", "trails.yml");
@@ -189,9 +154,8 @@ for (const key of ["side", "off", "way"]) {
   }
 }
 
-// ---- 7. rozostup dvoch trás JE šírka pásika ----
-// Nie „rovnaké čísla v zlomoch", ale tá istá krivka aj ten istý druh
-// interpolácie – medzi zlomami sa `linear` a `exponential 1.5` rozchádzajú.
+// 7. rozostup dvoch trás je šírka pásika – tá istá krivka aj ten istý druh
+// interpolácie, nie len rovnaké čísla v zlomoch
 const sameStops = (a, b) =>
   a.length === b.length && a.every(([z, v], i) => z === b[i][0] && v === b[i][1]);
 if (!sameStops(TRAIL_PITCH, TRAIL_STRIPE)) {
@@ -233,10 +197,8 @@ if (!stripeLayer) {
   }
 }
 
-// ---- 8. odstup od cesty v METROCH ----
-// Pixel je pri z13 dvanásť metrov. Odstup, ktorý je v pixeloch nenápadný, je
-// v teréne širší než serpentína, po ktorej trasa ide – a `line-offset` z toho
-// urobí plochu namiesto čiary.
+// 8. odstup od cesty v metroch: pixel je pri z13 dvanásť metrov, takže
+// nenápadný odstup je v teréne širší než serpentína
 for (const [key, stops] of [["road", TRAIL_OFFSET_ROAD], ["path", TRAIL_OFFSET_PATH]]) {
   const limit = TRAIL_OFFSET_LIMIT_M[key];
   for (const [z, px] of stops) {
@@ -253,10 +215,8 @@ for (const [key, stops] of [["road", TRAIL_OFFSET_ROAD], ["path", TRAIL_OFFSET_P
   }
 }
 
-// ---- 9. spoj pásika v zákrute je `miter` ----
-// So `round` sa pásik k zlomu dostane dvoma rovnobežkami, ktoré sa nestretnú:
-// na vonkajšej strane zlomu ostane biely klin, na vnútornej sa prekryjú.
-// Nič nespadne, len je z pásika v každej zákrute plocha inej hrúbky.
+// 9. spoj pásika v zákrute je `miter` – so `round` ostane na vonkajšej strane
+// zlomu biely klin a na vnútornej sa rovnobežky prekryjú
 for (const layer of trailStyle.layers) {
   if (layer.type !== "line" || !layer.id.startsWith("trail-")) continue;
   const join = (layer.layout || {})["line-join"];
@@ -278,11 +238,9 @@ for (const layer of trailStyle.layers) {
   }
 }
 
-// ---- 10. dáta nenechajú zlom, ktorý spoj nezošije ----
-// `miter` posunie vrchol o `odstup / cos(zlom/2)` a MapLibre sa nad
-// `line-miter-limit` nedostane (posun pakuje do bajtu), takže ostrejší zlom
-// zreže a pásik v zákrute vyzerá zúžený. Hranica, od ktorej musí `routes.py`
-// zlomy deliť, teda NIE JE vlastné číslo – vychádza z limitu v štýle.
+// 10. dáta nenechajú zlom, ktorý spoj nezošije: `miter` posunie vrchol
+// o `odstup / cos(zlom/2)` a MapLibre nad `line-miter-limit` zreže. Hranica
+// teda vychádza z limitu v štýle, nie z vlastného čísla.
 const miterMaxTurn = (2 * Math.acos(1 / TRAIL_JOIN["line-miter-limit"]) * 180) / Math.PI;
 const num = (name) => {
   const m2 = py.match(new RegExp(`^${name}\\s*=\\s*([0-9.]+)`, "m"));

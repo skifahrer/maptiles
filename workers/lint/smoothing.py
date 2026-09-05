@@ -1,34 +1,15 @@
 #!/usr/bin/env python3
-"""
-Zaoblenie obrysu sa nesmie ticho pokaziť ani ticho vrátiť späť.
+"""Zaoblenie obrysu sa nesmie ticho pokaziť ani ticho vrátiť späť.
 
-PREČO TO EXISTUJE. Vrstevnice boli „vyhladené, ale v pravidelných
-intervaloch zubaté" a nikto to nemal ako povedať: dva prechody Chaikina
-z každého rohu urobili menší roh, nie oblúk, a keďže rohy ostali tam, kde ich
-nechal Douglas–Peucker, boli tie zvyšky PRAVIDELNE rozostupené. Build bol
-zelený, dlaždice vznikli, súbor mal správnu veľkosť – bolo to vidieť len okom
-(CLAUDE.md, pravidlo 8). Odvtedy sa zaobľuje limitnou krivkou a vzorkuje podľa
-mriežky dlaždice; toto sú tie miesta, na ktorých sa to dá nebadane rozbiť:
+Vrstevnice boli „vyhladené, ale pravidelne zubaté" a nikto to nemal ako
+povedať – build bol zelený a vidieť to bolo len okom. Zaobľuje sa limitnou
+krivkou; rozbiť sa to dá na týchto miestach:
 
-  1. CESTA K SKRIPTU. `smooth-shapes.py` leží v `contours-rocks/`, ale volajú
-     ho aj joby z iných priečinkov. `rocks-shading/vector.py` si ho skladal
-     z `dirname(__file__)`, čiže ukazoval do priečinka, kde ten súbor NIE JE –
-     a spadlo by to až po hodinách sťahovania dlaždíc.
-  2. KTORÁ MRIEŽKA. Bez `--maxzoom` sa vezme predvolených 16. Vrstva, ktorá
-     ide na z14, by sa vzorkovala 4× jemnejšie, než dlaždica unesie: nič by
-     nespadlo, len by bola väčšia a po zaokrúhlení schodíkovitá.
-  3. AKÝ PRIEHYB. Nad jedným krokom mriežky začne byť vzorkovanie samo väčšou
-     chybou než zaokrúhlenie do dlaždice (±pol kroku) – vtedy sú tetivy vidieť
-     ako fazety. Preto má `--sag` strop 4 (štvrtiny kroku).
-  4. KONCE A PRSTENCE. Otvorená čiara musí skončiť PRESNE tam, kde skončila
-     pôvodná – inak medzi dvomi kusmi tej istej vrstevnice na hranici dlaždice
-     vznikne medzera. Prstenec musí ostať uzavretý, inak z plochy vypadne
-     neplatný polygón.
-  5. STARÉ DÁTA. Zmena tvaru sa musí prejaviť v kľúči cache (`contours=`)
-     aj v mene assetu so skalami (`ROCK_ALGO`) – inak build zoberie hotové
-     zubaté dlaždice a bude zelený.
-
-Spustiť sa dá aj lokálne: `python3 workers/lint/smoothing.py`.
+  1. cesta k `smooth-shapes.py` z iného priečinka (nie cez `dirname(__file__)`);
+  2. bez `--maxzoom` sa vezme 16 a vrstva pre z14 sa vzorkuje 4× jemnejšie;
+  3. `--sag` má strop 4 – nad krokom mriežky sú tetivy vidieť ako fazety;
+  4. konce otvorenej čiary sa nesmú pohnúť, prstenec musí ostať uzavretý;
+  5. zmena tvaru sa musí prejaviť v kľúči cache aj v mene assetu so skalami.
 """
 import importlib.util
 import math
@@ -41,14 +22,11 @@ _WORKERS = os.path.dirname(_HERE)
 _ROOT = os.path.dirname(_WORKERS)
 SMOOTH = os.path.join(_WORKERS, "contours-rocks", "smooth-shapes.py")
 KEYS = os.path.join(_WORKERS, "plan", "cache-keys.sh")
-# Ladenie zaoblenia je v `env:` workflowu s VRSTVAMI Z VÝŠKOVÉHO MODELU –
-# z buildu mapy sa presťahovali do vlastného súboru, lebo ich potrebuje aj
-# pregenerovanie jednej vrstvy (dve kópie by boli dve pravdy o tom, ako
-# vrstevnica vyzerá).
+# ladenie zaoblenia je v `env:` workflowu s vrstvami z výškového modelu –
+# potrebuje ho aj pregenerovanie jednej vrstvy
 WF = os.path.join(_ROOT, ".github", "workflows", "dem-layers.yml")
 
-# Kto zaobľuje a čím sa v tom súbore volá `smooth-shapes.py`. Cesta je
-# relatívna k `workers/`; `volanie` je to, čím sa v tom súbore skladá príkaz.
+# kto zaobľuje; cesta je relatívna k `workers/`, `volanie` skladá príkaz
 VOLAJU = [
     ("contours-rocks/build.sh", "workers/contours-rocks/smooth-shapes.py"),
     ("contours-rocks/rock-areas.py", "smooth-shapes.py"),
@@ -70,7 +48,7 @@ def main():
     bad = []
     sm = load("smooth_shapes", SMOOTH)
 
-    # ---------- 1. cesta k skriptu a 2./3. čo sa mu podáva ----------
+    # 1. cesta k skriptu a 2./3. čo sa mu podáva
     for rel, _ in VOLAJU:
         src = open(os.path.join(_WORKERS, rel)).read()
         if "smooth-shapes.py" not in src:
@@ -86,8 +64,7 @@ def main():
                            f"a vrstva na nižšom zoome sa vzorkuje jemnejšie, "
                            f"než dlaždica unesie; bez `--sag` sa nedá vypnúť "
                            f"ani nastaviť priehyb.")
-    # Cesta z INÉHO priečinka nesmie ísť cez `dirname(__file__)` – tam ten
-    # súbor nie je. `rocks-shading/vector.py` na tom raz stál.
+    # cesta z iného priečinka nesmie ísť cez `dirname(__file__)`
     ext = open(os.path.join(_WORKERS, "rocks-shading", "vector.py")).read()
     m = re.search(r"os\.path\.join\(([^)]*?)\"smooth-shapes\.py\"", ext, re.S)
     if not m or "contours-rocks" not in m.group(1):
@@ -96,16 +73,9 @@ def main():
                    "súbor je tam a nikde inde. Krok by spadol na "
                    "FileNotFoundError až po hodinách sťahovania dlaždíc.")
 
-    # Ktorý maxzoom sa podáva ktorej vrstve. Zámena je tichá: vrstevnice by sa
-    # vzorkovali podľa mriežky skál a naopak. Hľadá sa PRIAMO ten argument,
-    # nie meno premennej kdekoľvek v okolí – to isté meno stojí aj v hláške
-    # o riadok vyššie, takže by kontrola prešla aj vtedy, keď sa argument
-    # stratí.
-    # `build.sh` a `rocks.sh` sú JEDEN skript rozdelený kvôli stropu 800
-    # riadkov (druhá polovica sa číta cez `.`): argument vrstevníc stojí
-    # v prvej, argument skál v druhej. Čítajú sa preto spolu – hľadať každý
-    # zvlášť by znamenalo vedieť, v ktorej polovici má ktorý byť, a to sa
-    # pri ďalšom delení rozíde.
+    # ktorý maxzoom sa podáva ktorej vrstve – zámena je tichá. Hľadá sa priamo
+    # ten argument, nie meno premennej v okolí. `build.sh` a `rocks.sh` sú
+    # jeden skript rozdelený kvôli stropu 800 riadkov, tak sa čítajú spolu.
     build = "".join(
         open(os.path.join(_WORKERS, "contours-rocks", n)).read()
         for n in ("build.sh", "rocks.sh"))
@@ -118,7 +88,7 @@ def main():
                        f"z16). Tichý rozdiel v hustote bodov, ktorý build nemá "
                        f"ako povedať.")
 
-    # ---------- 3. priehyb ostáva pod krokom mriežky ----------
+    # 3. priehyb ostáva pod krokom mriežky
     wf = open(WF).read()
     for kluc in ("CONTOUR_SMOOTH", "ROCK_SMOOTH"):
         m = re.search(rf'^\s*{kluc}:\s*"(\d+)"', wf, re.M)
@@ -134,10 +104,9 @@ def main():
                        f"väčšou chybou než zaokrúhlenie do dlaždice (±pol "
                        f"kroku) a tetivy vidno ako fazety.")
 
-    # ---------- 4. konce a prstence ----------
-    # Otvorená čiara: konce sa nesmú pohnúť ANI O MILIMETER. Keby sa hli,
-    # dva kusy tej istej vrstevnice by na hranici dlaždice prestali sadnúť
-    # na seba a v mape by bola medzera – a nikto by nič nepovedal.
+    # 4. konce a prstence
+    # konce otvorenej čiary sa nesmú pohnúť ani o milimeter – inak by dva kusy
+    # tej istej vrstevnice na hranici dlaždice prestali sadnúť na seba
     ciara = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (20.0, 10.0), (30.0, 0.0)]
     out = sm.curve_line(ciara, 0.05)
     if tuple(out[0]) != ciara[0] or tuple(out[-1]) != ciara[-1]:
@@ -147,17 +116,15 @@ def main():
     if len(out) <= len(ciara):
         bad.append("Zaoblenie čiary nepridalo ani bod – roh sa nezaoblil.")
 
-    # Prstenec: musí ostať uzavretý.
+    # prstenec musí ostať uzavretý
     prstenec = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)]
     ring = sm.curve_ring(prstenec, 0.05)
     if tuple(ring[0]) != tuple(ring[-1]):
         bad.append(f"Zaoblený prstenec nie je uzavretý ({ring[0]} vs "
                    f"{ring[-1]}) – z plochy vypadne neplatný polygón.")
 
-    # Priehyb naozaj drží pod toleranciou: hrubo vzorkovaná krivka sa nesmie
-    # od tej istej krivky vzorkovanej nahusto odchýliť viac, než sa žiadalo.
-    # Meria sa VZDIALENOSŤ OD KRIVKY, nie uhol medzi tetivami – uhol závisí od
-    # toho, ako husto body ležia, a práve to je tu premenná.
+    # priehyb naozaj drží pod toleranciou. Meria sa vzdialenosť od krivky,
+    # nie uhol medzi tetivami – ten závisí od hustoty bodov.
     def vzdialenost(bod, ciara):
         x, y = bod
         best = float("inf")
@@ -180,15 +147,14 @@ def main():
                        f"vzorkovanie nedrží priehyb, ktorý sľubuje, a v mape "
                        f"z toho budú fazety.")
 
-    # Jemnejšia tolerancia nesmie dať menej bodov (inak by „presnejšie"
-    # znamenalo hrubšie).
+    # jemnejšia tolerancia nesmie dať menej bodov
     hrubo = len(sm.curve_line([(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)], 1.0))
     jemne = len(sm.curve_line([(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)], 0.01))
     if jemne <= hrubo:
         bad.append(f"Desaťkrát jemnejšia tolerancia dala {jemne} bodov proti "
                    f"{hrubo} – vzorkovanie sa neriadi priehybom.")
 
-    # ---------- 5. krok mriežky je jedno číslo ----------
+    # 5. krok mriežky je jedno číslo
     for z in (11, 14, 16):
         krok = cell.tile_grid_m(z)
         cakane = cell.tile_m_per_px(z) * cell.TILE_PX / cell.TILE_EXTENT
@@ -200,10 +166,9 @@ def main():
                    f"`extent` meniť nevie, je to 4096 – iné číslo by znamenalo, "
                    f"že sa vzorkuje podľa mriežky, ktorá neexistuje.")
 
-    # ---------- 6. staré dáta sa nesmú vrátiť ----------
+    # 6. staré dáta sa nesmú vrátiť
     keys = open(KEYS).read()
-    # Číslo verzie stojí v `C_NASTAVENIA` – tam sa kľúč vrstevníc skladá
-    # (nastavenia dopredu, otlačky dozadu, viď hlavičku toho súboru).
+    # číslo verzie stojí v `C_NASTAVENIA`
     if not re.search(r'^C_NASTAVENIA="contours-v(\d+)-', keys, re.M):
         bad.append("V `workers/plan/cache-keys.sh` nie je verzia v kľúči "
                    "vrstevníc (`C_NASTAVENIA=\"contours-v<číslo>-…\"`). Zmena "
