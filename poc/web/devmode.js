@@ -1,62 +1,27 @@
 /**
  * Developer mode – ladenie mapy priamo v prehliadači.
  *
- * Čo vie:
- *   - vypísať **všetky** vrstvy štýlu po skupinách, s druhom (plocha / línia /
- *     bod / popisok / 3D / reliéf) a filtrom, zapnúť/vypnúť ich a nastaviť im
- *     rozsah zoomu – teda presne definovať, čo sa kedy zobrazuje,
- *   - robiť to **zvlášť pre každý typ mapy** (turistická, lyžiarska, cestná,
- *     historická, základná): prepínač *len táto mapa / všetky mapy* hovorí,
- *     kam sa úprava zapíše, takže „na cestnej mape toto nechcem" nemusí
- *     znamenať „nikde to nechcem",
- *   - prezerať mapu po zoomoch: nastavíš zoom a zoznam ukáže, ktoré vrstvy
- *     sú na ňom naozaj povolené a ktoré sa orežú – a jedným klikom sa dá na
- *     tom zoome vrstva zapnúť či vypnúť (pásik zoomov z0–z20 v detaile
- *     vrstvy, alebo štítok s rozsahom priamo v riadku),
- *   - kliknúť do mapy a dostať **všetko, čo je pod kurzorom** – každý prvok
- *     zo všetkých vrstiev naraz, aj so všetkými atribútmi z dlaždice, plus
- *     zoznam značených trás, ktoré tadiaľ vedú (ich pásiky sú posunuté vedľa
- *     cesty, takže do nich klik netrafí),
- *   - a **rovno tam ho aj ladiť**: pásik hovorí, na ktorých zoomoch sa prvok
- *     naozaj kreslí (a kde v ňom je práve mapa), šípka „o úroveň vyššie" ho
- *     posúva v poradí kreslenia dovtedy, kým nesedí, a odkazy vedú tam, kde
- *     sa nastavuje – pri **podkategórii** (`landcover-grass__var1`, teda
- *     „park" z „Trávy a lúk") do jej rámika, nie do celej kategórie; z rámika
- *     vedie odkaz späť hore na kategóriu a z kategórie na všetky jej
- *     podkategórie,
- *   - nastaviť **čokoľvek podľa zoomu jedným editorom**: každé číslo aj farba
- *     má pod sebou zoznam pásiem („z0–z13 takto, z14–z20 inak"), ktorý vždy
- *     pokrýva celý rozsah, a jedinú otázku navyše – či je hodnota **percentom
- *     z toho, čo počíta štýl** (zoomová krivka ostane, mení sa jej mierka:
- *     „na z19 nech je prvok o desatinu väčší, obrys o desatinu tenší"), alebo
- *     **pevnou hodnotou**. Jedno pásmo cez celý rozsah je to, čo bývalo
- *     „pevné číslo" a „× a +",
- *   - zmeniť farbu ktoréhokoľvek prvku: jedna farba je jeden riadok aj s jej
- *     tmavým variantom, „bez výplne" a rozpisom po zoomoch; farby celej palety
- *     naraz, vrátane hromadnej editácie výberu a kopírovania hodnôt – a to aj
- *     tam, kde si vrstva farbu vyberá **výrazom** (pásik trasy podľa značky
- *     z OSM): tie sa ladia z palety priamo v riadku vrstvy,
- *   - vymeniť **ikonu** symbolovej vrstvy za ktorúkoľvek zo sady – a to aj
- *     len pre prvky s konkrétnym `kľúč = hodnota` z OSM (studnička inak než
- *     prameň), spolu s ich vlastnou farbou, hrúbkou a okrajom,
- *   - ladiť **obrys** oboma cestami rovnako: či je obrys samostatná vrstva zo
- *     štýlu („Miestne cesty – obrys"; panel povie, čo obťahuje a koľko z neho
- *     na každej strane vidieť), alebo si ho vrstva pridá sama,
- *   - dať ploche alebo čiare opakujúci sa **vzor** a ľubovoľný **okraj**,
- *     čiare aj prerušovanie,
- *   - skryť konkrétne triedy POI a prepnúť celú sadu ikoniek,
- *   - **vrátiť vrstvu do pôvodného stavu celú** – nie len farbu po farbe:
- *     jedno tlačidlo v detaile vrstvy zahodí viditeľnosť, zoomy, farby,
- *     hrúbky, ikonu, vzor aj okraj (v tom rozsahu, ktorý je práve zvolený),
- *   - **skopírovať vzhľad jednej vrstvy do druhej** („nech sú múry ako
- *     ploty"): odfotí sa to, čo je v štýle NAOZAJ, nie len úprava nad ním,
- *     takže kopírovať sa dá aj z vrstvy, ktorú nikto neladil. Čo sa na cieľ
- *     nezmestí (obrys výplne na čiaru), sa nevloží a povie sa to,
- *   - všetko priebežne ukladá do prehliadača (localStorage), vie to
- *     exportovať do `style-overrides.json` a znovu načítať.
+ * Vypíše všetky vrstvy štýlu po skupinách (druh, filter, rozsah zoomu) a dá
+ * ich zapnúť, vypnúť aj preladiť – zvlášť pre každý typ mapy, alebo naraz pre
+ * všetky (prepínač hovorí, kam sa úprava zapíše).
  *
- * Ten istý JSON potom prevezme workflow „Mapa · úpravy štýlu",
- * uloží ho do repozitára a pipeline ho zapečie do mapy pre web aj iOS.
+ * Kliknutím do mapy vypíše všetko, čo je pod kurzorom, aj so značenými trasami
+ * (ich pásiky sú posunuté vedľa cesty, takže do nich klik netrafí), a rovno
+ * tam sa to dá ladiť: pásik zoomov, posun v poradí kreslenia a odkazy tam,
+ * kde sa vec nastavuje – pri podkategórii do jej rámika.
+ *
+ * Čokoľvek podľa zoomu sa ladí jedným editorom: každé číslo aj farba má pod
+ * sebou pásma pokrývajúce celý rozsah a otázku, či je hodnota percentom
+ * z toho, čo počíta štýl (krivka ostane, mení sa mierka), alebo pevná.
+ *
+ * Ďalej: farby vrstvy aj celej palety (vrátane tých, ktoré si vrstva vyberá
+ * výrazom), ikona symbolovej vrstvy aj pre konkrétne `kľúč = hodnota`, obrys
+ * oboma cestami, vzor, prerušovanie, skryté triedy POI, celá sada ikoniek
+ * a návrat vrstvy do pôvodného stavu vrátane kopírovania vzhľadu inej vrstvy.
+ *
+ * Všetko sa priebežne ukladá do `localStorage`, dá sa vyviezť do
+ * `style-overrides.json` a workflow „Mapa · úpravy štýlu" ho uloží do
+ * repozitára, odkiaľ ho pipeline zapečie do mapy pre web aj iOS.
  */
 import {
   THEMES,
@@ -126,12 +91,11 @@ import {
 } from "./dev-icons.js";
 
 /**
- * Atribúty, ktorými sa rozlišovať NEDÁ, hoci v dlaždici sú.
+ * Atribúty, ktorými sa rozlišovať nedá, hoci v dlaždici sú.
  *
  * Meno, číslo cesty ani id prvku nie sú kategórie – variant nad nimi by bol
- * jedna vrstva na jednu cestu. Zvyšok sa nefiltruje: čo v dlaždiciach naozaj
- * je, ponúkne `scanAttrs` aj s počtami, a atribút s jedinou hodnotou z ponuky
- * vypadne sám (nerozlíšil by nič).
+ * jedna vrstva na jednu cestu. Zvyšok sa nefiltruje: čo v dlaždiciach je,
+ * ponúkne `scanAttrs` aj s počtami.
  */
 const SKIP_ATTRS = new Set([
   "id", "osm_id", "ref", "ref_length", "network", "rel",
@@ -143,12 +107,11 @@ const SCOPE_KEY = "fricomaps.devscope";
 const KIND_LABELS = Object.fromEntries(LAYER_KINDS.map((k) => [k.id, k.label]));
 const GROUP_LABELS = Object.fromEntries(LAYER_GROUPS.map((g) => [g.id, g.label]));
 /**
- * MENÁ FARIEB PO ĽUDSKY – jedno miesto pre celý panel.
+ * Mená farieb po ľudsky – jedno miesto pre celý panel.
  *
  * `line-color` v riadku nepovie nič navyše oproti tomu, že vrstva je čiara,
- * a pri symbole stáli vedľa seba `text`, `text-halo` a `icon-halo`, čo je
- * trikrát to isté slovo. Meno vlastnosti ostáva v bublinke, v zozname je to,
- * čo tá farba v mape naozaj zafarbí.
+ * a pri symbole stáli vedľa seba `text`, `text-halo` a `icon-halo`. Meno
+ * vlastnosti ostáva v bublinke.
  */
 const COLOR_LABELS = {
   "fill-color": "výplň",
@@ -168,19 +131,14 @@ const COLOR_LABELS = {
 };
 
 /**
- * ČÍSLA, KTORÉ SA DAJÚ LADIŤ, a ich medze – jedna tabuľka pre celý panel.
+ * Čísla, ktoré sa dajú ladiť, a ich medze – jedna tabuľka pre celý panel.
  *
- * Bývali to dva zoznamy: zopár blokov ručne napísaných v detaile vrstvy
- * (hrúbka a krytie čiary, krytie plochy, sila tieňovania) a vedľa nich
- * `PAINT_RANGES` pre záložky Trasy a Štítky. Rozišli sa presne tak, ako sa
- * dva zoznamy toho istého rozísť musia: lem písma sa dal ladiť pri trasách,
- * ale nie v zozname vrstiev.
+ * Bývali to dva zoznamy (bloky v detaile vrstvy a `PAINT_RANGES` pre záložky)
+ * a rozišli sa: lem písma sa dal ladiť pri trasách, ale nie v zozname vrstiev.
  *
  * `on` je druh vrstvy, ktorý tú vlastnosť pozná – nedá sa uhádnuť predponou
- * (`fill-extrusion-opacity` sa začína rovnako ako `fill-opacity`, a nie sú to
- * tie isté vrstvy). `core` znamená „ponúkni to aj vtedy, keď to štýl
- * nenastavil": krytie má každá plocha, aj keď v `paint` nie je – bez toho by
- * sa nedalo zaviesť.
+ * (`fill-extrusion-opacity` sa začína rovnako ako `fill-opacity`). `core`
+ * znamená „ponúkni to aj vtedy, keď to štýl nenastavil".
  */
 const NUM_PROPS = {
   // NIE 0: nulová hrúbka je zmiznutá čiara, nie vypnutá vrstva (na to je 👁).
@@ -214,12 +172,11 @@ const numPropsFor = (layer) =>
 const TRAIL_MARK_KEYS = Object.fromEntries(TRAIL_MARK_COLOURS);
 
 /**
- * Obrázky, ktoré si do spritu pečieme sami – značky trás (`mark-…`), podklady
- * štítkov ciest (`shield-…`) a vzory plôch (`pat:…`, tie sú zároveň svojím
- * vlastným predpisom a nastavujú sa ako vzor, nie ako ikona). V zoznamoch „vyber ikonu" nemajú čo robiť: nie sú
- * to symboly, ale hotové farebné obrázky konkrétnej veci, a je ich viac než
- * samotných ikoniek (154 značiek proti pár stovkám ikon). Prepínajú sa tam, kam
- * patria – v záložke „Trasy" a „Štítky".
+ * Obrázky, ktoré si do spritu pečieme sami – značky trás, podklady štítkov
+ * a vzory plôch (tie sú zároveň svojím vlastným predpisom). V zoznamoch „vyber
+ * ikonu" nemajú čo robiť: nie sú to symboly, ale hotové farebné obrázky
+ * konkrétnej veci, a je ich viac než samotných ikoniek. Prepínajú sa v záložke
+ * „Trasy" a „Štítky".
  */
 const BAKED_IMAGE = /^(mark-|shield-|pat:)/;
 const pickableIcons = (set, extra) => {
@@ -276,7 +233,6 @@ export function serializeOverrides(overrides) {
   );
 }
 
-
 const isHex6 = (v) => /^#[0-9a-f]{6}$/i.test(v);
 /** Farba, akú berie štýl: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`. */
 const isHexColor = (v) =>
@@ -293,15 +249,12 @@ const toHex6 = (v) => {
 };
 
 /**
- * ALFA FARBY, ODDELENE OD ODTIEŇA – a je to kvôli tieňovaniu reliéfu.
+ * Alfa farby oddelene od odtieňa – kvôli tieňovaniu reliéfu.
  *
- * `hillShadow`, `hillHighlight` a `hillAccent` sú `#rrggbbaa` (prečo, je
- * v `themes.js` pri vrstve `hillshade`) a `input[type=color]` alfu nepozná:
- * vrátil by `#rrggbb`. Kým sa alfa nedržala bokom, stačilo ťuknúť do
- * farby tieňa a alfa TICHO zmizla – v mape z toho bola nepriehľadná plocha
- * cez celý svah a v `style-overrides.json` farba, ktorá vyzerá ako drobná
- * úprava odtieňa. Preto je alfa vlastná hodnota: pipetka mení odtieň
- * a alfu nesie ďalej, textové políčko ukazuje a berie celý zápis.
+ * `hillShadow`, `hillHighlight` a `hillAccent` sú `#rrggbbaa`
+ * a `input[type=color]` alfu nepozná. Kým sa nedržala bokom, stačilo ťuknúť
+ * do farby tieňa a alfa ticho zmizla – v mape z toho bola nepriehľadná plocha
+ * cez celý svah.
  */
 const alphaOf = (v) => {
   const s = String(v || "").trim();
@@ -378,12 +331,9 @@ const isHiddenLayer = (layer) => (layer.layout || {}).visibility === "none";
 /**
  * Aký rozsah zoomu má vrstva mať, keď sa na zoome `z` má (ne)kresliť.
  *
- * Rozsah je jeden súvislý interval `<minzoom, maxzoom)`, takže „na tomto
- * zoome áno / nie" znamená posunúť jeho koniec:
- *   - zapnutie mimo rozsahu natiahne bližší koniec až po `z`,
- *   - vypnutie vnútri rozsahu ustúpi tým koncom, ktorý je bližšie.
- * Keď by z rozsahu nič neostalo, vráti `{ hide: true }` – vtedy je poctivejšie
- * vrstvu vypnúť než jej nastaviť prázdny interval.
+ * Rozsah je jeden súvislý interval `<minzoom, maxzoom)`, takže „na tomto zoome
+ * áno / nie" znamená posunúť jeho koniec. Keď by z rozsahu nič neostalo, vráti
+ * `{ hide: true }` – poctivejšie než prázdny interval.
  *
  * @returns {{minzoom?: number|undefined, maxzoom?: number|undefined, hide?: boolean, show?: boolean}}
  */
@@ -410,19 +360,18 @@ function zoomRangeFor(layer, z, on) {
   return z <= mn ? { hide: true } : { maxzoom: z };
 }
 
-/**
- * @param {object} opts
- * @param {HTMLElement} opts.root      prázdny kontajner pre panel
- * @param {() => object} opts.getStyle aktuálny (už upravený) MapLibre štýl
- * @param {() => string} opts.getTheme kľúč aktuálnej témy
- * @param {(theme: string) => void} [opts.setTheme] prepne tému (hlavička
- *        panela ňou ponúka rýchly prepínač svetlá/tmavá, nech sa dá ladiť
- *        tmavý variant farieb bez toho, aby sa zatváral developer mode)
- * @param {() => string} [opts.getMapType] id práve zobrazeného typu mapy
- * @param {() => object} opts.getMap   inštancia mapy
- * @param {() => object[]} [opts.getIconSets] nasadené sady ikoniek
- * @param {(overrides: object) => void} opts.onChange  prekresli mapu
- */
+  /**
+   * @param {object} opts
+   * @param {HTMLElement} opts.root      prázdny kontajner pre panel
+   * @param {() => object} opts.getStyle aktuálny (už upravený) MapLibre štýl
+   * @param {() => string} opts.getTheme kľúč aktuálnej témy
+   * @param {(theme: string) => void} [opts.setTheme] prepne tému – nech sa dá
+   *        ladiť tmavý variant farieb bez zatvárania panela
+   * @param {() => string} [opts.getMapType] id práve zobrazeného typu mapy
+   * @param {() => object} opts.getMap   inštancia mapy
+   * @param {() => object[]} [opts.getIconSets] nasadené sady ikoniek
+   * @param {(overrides: object) => void} opts.onChange  prekresli mapu
+   */
 export function initDevMode({
   root,
   getStyle,
@@ -460,9 +409,8 @@ export function initDevMode({
    * Rozpísané rozlíšenie podľa atribútu: ktorý atribút je vybraný a ktoré
    * hodnoty sú naklikané, kým sa nepotvrdí „Pridať rozlíšenie".
    *
-   * NIE JE TO ÚPRAVA, a preto to nie je v `overrides`: polovica naklikaného
-   * variantu je stav panela, nie mapy – uložený by sa vyviezol do repozitára
-   * a pipeline by ho zahodila ako variant bez hodnôt.
+   * Nie je to úprava, preto to nie je v `overrides`: polovica naklikaného
+   * variantu je stav panela, nie mapy.
    */
   const variantAttr = new Map();
   const variantValues = new Map();
@@ -936,26 +884,21 @@ export function initDevMode({
   }
 
   /**
-   * Zahodí VŠETKY úpravy jednej vrstvy – nie len farbu.
+   * Zahodí všetky úpravy jednej vrstvy – nie len farbu.
    *
    * Rozsah je ten istý, aký hovorí prepínač hore: „len táto mapa" vyčistí
-   * priečinok tejto mapy, „všetky mapy" vyčistí spoločný AJ výnimky vo
-   * všetkých typoch máp. To druhé je rovnaké pravidlo ako pri `setVisible`:
-   * keď povieš „všetky", nesmie ostať mapa, v ktorej to platí inak.
+   * priečinok tejto mapy, „všetky mapy" spoločný aj výnimky vo všetkých.
    *
-   * Farby z palety sa NEMAŽÚ – tie sú vlastnosťou témy, nie vrstvy (jednu
-   * farbu zdieľa aj desať vrstiev) a majú vlastné `⟲` priamo pri sebe.
+   * Farby z palety sa nemažú – tie sú vlastnosťou témy, nie vrstvy, a majú
+   * vlastné `⟲` priamo pri sebe.
    */
   /**
-   * PORADIE KRESLENIA. Ukladá sa ako presun „túto vrstvu kresli tesne pod
-   * tamtú" (`overrides.order`, rozpis pri `applyLayerOrder`), a to JEDEN NA
-   * VRSTVU: pri každom ďalšom ťuknutí sa ten predošlý zahodí, takže sa
-   * zoznam nenafukuje a je z neho vidieť, kde vrstva skončí.
+   * Poradie kreslenia. Ukladá sa ako presun „túto vrstvu kresli tesne pod
+   * tamtú" (`overrides.order`), a to jeden na vrstvu: pri ďalšom ťuknutí sa
+   * predošlý zahodí, takže sa zoznam nenafukuje.
    *
-   * Poradie je SPOLOČNÉ pre všetky typy máp, aj keď sa práve zapisuje do
-   * priečinka jednej mapy: čo je nad čím, je stavba mapy, nie jej téma –
-   * a keby si každá mapa niesla vlastné poradie, ten istý presun by sa musel
-   * naklikať štyrikrát.
+   * Poradie je spoločné pre všetky typy máp, aj keď sa zapisuje do priečinka
+   * jednej: čo je nad čím, je stavba mapy, nie jej téma.
    */
   function setLayerOrder(id, before) {
     overrides.order = (overrides.order || []).filter((m) => m.id !== id);
@@ -980,17 +923,13 @@ export function initDevMode({
     layer.id;
 
   /**
-   * KATEGÓRIA JE VRSTVA, PODKATEGÓRIA JE JEJ ROZLÍŠENIE.
+   * Kategória je vrstva, podkategória je jej rozlíšenie.
    *
-   * „Tráva a lúky" je vrstva `landcover-grass`; „park" je jej rozlíšenie
-   * podľa `subclass = park`, ktoré sa v mape kreslí ako samostatná vrstva
-   * `landcover-grass__var1`. V ÚPRAVÁCH ale samostatná nie je – žije ako
-   * `variants[0]` svojej predlohy, a preto ju zoznam vrstiev nevypisuje.
-   *
-   * Inšpektor teda ukazoval id, ktoré sa nedalo nikde nájsť: ✎ do zoznamu
-   * vrstiev nenašlo nič a od „chcem prefarbiť len park" k tomu jedinému
-   * rámiku, kde sa park ladí, neviedla žiadna cesta. Tieto tri funkcie sú tá
-   * cesta – tam aj späť.
+   * „Tráva a lúky" je vrstva `landcover-grass`; „park" je jej rozlíšenie podľa
+   * `subclass = park`, ktoré sa v mape kreslí ako `landcover-grass__var1`.
+   * V úpravách ale samostatná nie je – žije ako `variants[0]` predlohy, takže
+   * ju zoznam vrstiev nevypisuje a inšpektor ukazoval id, ktoré sa nedalo
+   * nikde nájsť. Tieto tri funkcie sú tá cesta – tam aj späť.
    */
   const styleLayer = (id) => (getStyle()?.layers || []).find((l) => l.id === id) || null;
 
@@ -1259,13 +1198,10 @@ export function initDevMode({
   /**
    * Číselné políčko.
    *
-   * `stepFrom` je tá istá vec ako „auto" v placeholderi, len pre ŠÍPKY:
-   * prázdne políčko typu `number` skočí šípkou dole na spodnú medzu, čiže
-   * `line-width` na nulu – a vrstva ticho zmizne z mapy. Prvé stlačenie šípky
-   * preto políčko naplní tým, čo tá vlastnosť práve v mape má, a ďalej sa už
-   * kroky rátajú odtiaľ. (Natívne šípky myšou sa zachytiť nedajú, preto ich
-   * `.dev-num` v `index.html` nemá vôbec – ostávajú klávesové, tie prejdú
-   * cez tento handler.)
+   * `stepFrom` je to isté ako „auto" v placeholderi, len pre šípky: prázdne
+   * políčko typu `number` skočí šípkou dole na spodnú medzu, čiže `line-width`
+   * na nulu, a vrstva ticho zmizne z mapy. Prvé stlačenie ho preto naplní tým,
+   * čo tá vlastnosť práve v mape má.
    */
   function numberField({ label, value, min, max, step, onChange, placeholder, stepFrom, title }) {
     const input = el("input", {
@@ -1328,9 +1264,8 @@ export function initDevMode({
    * Zapnutie a vypnutie vrstvy.
    *
    * Zapnutie nie je vždy len „prestaň ju vypínať": vrstvu môže vypínať profil
-   * typu mapy (lyžiarske trasy na turistickej mape) alebo spoločná úprava –
-   * vtedy treba do tejto mapy zapísať výslovné `visible: true`, inak by sa
-   * odstránením úpravy nič nezmenilo.
+   * typu mapy alebo spoločná úprava – vtedy treba do tejto mapy zapísať
+   * výslovné `visible: true`.
    */
   function setVisible(ids, visible) {
     const byProfile = mapTypeHidden(getStyle()?.layers || [], mapTypeId());
@@ -1773,19 +1708,14 @@ export function initDevMode({
 
   // ---------- tab: poradie (stoh vrstiev) ----------
   /**
-   * CELÝ STOH VRSTIEV NARAZ – odhora nadol tak, ako sa kreslia.
+   * Celý stoh vrstiev naraz – odhora nadol tak, ako sa kreslia.
    *
-   * Záložka „Vrstvy" ich radí PO SKUPINÁCH (cesty, vodstvo, popisky), lebo
-   * tam sa hľadá „kde sa nastaví hrúbka chodníka". Poradie kreslenia je ale
-   * iná otázka – „čo je nad čím" – a v zozname po skupinách sa odpovedať
-   * nedá: násyp a cesta sú v ňom na dvoch rôznych miestach a z ničoho nie je
-   * vidieť, že násyp je vyššie. Tu je preto jeden dlhý zoznam v tom poradí,
-   * v akom MapLibre kreslí: PRVÝ RIADOK JE NAVRCHU.
+   * Záložka „Vrstvy" ich radí po skupinách, lebo tam sa hľadá „kde sa nastaví
+   * hrúbka chodníka". Poradie kreslenia je iná otázka a v zozname po
+   * skupinách sa odpovedať nedá. Tu je preto jeden dlhý zoznam v poradí, v akom
+   * MapLibre kreslí: prvý riadok je navrchu.
    *
-   * Presúva sa ťahaním (myšou aj prstom cez `draggable`) alebo šípkami; oboje
-   * zapisuje to isté, čo sekcia „Poradie kreslenia" v detaile vrstvy –
-   * `overrides.order`, teda presun „kresli tesne pod tamtú" (rozpis pri
-   * `applyLayerOrder`).
+   * Presúva sa ťahaním alebo šípkami; oboje zapisuje `overrides.order`.
    */
   function renderStack() {
     const poradie = drawOrder();
@@ -2090,14 +2020,12 @@ export function initDevMode({
     ]);
 
   /**
-   * Výber prerušovania čiary s náhľadom. Samotný názov („Čiarkovaná") o čiare
-   * veľa nepovie – vedľa výberu sa preto rovno kreslí, ako bude vyzerať.
+   * Výber prerušovania čiary s náhľadom – samotný názov („Čiarkovaná") o nej
+   * veľa nepovie.
    *
-   * `builtin` je to, čo má vrstva zo štýlu (`frico:dash` – predvoľba alebo
-   * rovno pole čísel). Keď je zadané, pribudne prvá položka „zo štýlu": to je
-   * odpoveď na „nechaj, ako to bolo", ktorú sa menom predvoľby povedať nedá –
-   * železnica má `rail`, brod vlastné `[1, 1]` a zúbky brala `[0.35, 2.2]`,
-   * ktoré medzi predvoľbami vôbec nie sú.
+   * `builtin` je to, čo má vrstva zo štýlu (`frico:dash`). Keď je zadané,
+   * pribudne položka „zo štýlu": odpoveď na „nechaj, ako to bolo", ktorú sa
+   * menom predvoľby povedať nedá – zúbky brala majú `[0.35, 2.2]`.
    */
   function dashField({ label, value, onChange, builtin }) {
     const preview = el("span", { class: "dev-dash" });
@@ -2126,32 +2054,24 @@ export function initDevMode({
   }
 
   /**
-   * „OD ZOOMU PO ZOOM TOTO" – JEDEN editor pre každé číslo aj farbu vrstvy.
+   * „Od zoomu po zoom toto" – jeden editor pre každé číslo aj farbu vrstvy.
    *
-   * PREČO JEDEN. Tá istá otázka („čo má vrstva robiť na ktorom zoome") mala
-   * v paneli ŠTYRI ovládania vedľa seba: pevné číslo, `× a +` hneď za ním,
-   * krivku zoomových zlomov a zoomové pásma – každé s vlastným tvarom
-   * hodnoty aj vlastným tlačidlom. Ktoré z nich použiť, sa nedalo uhádnuť
-   * a dve si priamo protirečili (pevné číslo zahodí krivku), takže sa jedno
-   * muselo ZAMYKAŤ, keď bolo vyplnené druhé. Panel tak mal štyri páky na
-   * jednu vec a tri z nich boli väčšinu času zhasnuté.
+   * Tá istá otázka mala v paneli štyri ovládania vedľa seba (pevné číslo,
+   * `× a +`, krivku zlomov, pásma), dve si priamo protirečili a jedno sa
+   * muselo zamykať, keď bolo vyplnené druhé.
    *
-   * TERAZ JE TO JEDEN ZOZNAM PÁSIEM, ktorý vždy pokrýva celý rozsah zoomov:
+   * Teraz je to jeden zoznam pásiem pokrývajúci celý rozsah zoomov:
    *
    *     z0 – z13    100 %
    *     z14 – z20   110 %
    *
-   * a k nemu jediná otázka navyše: či sa hodnota zadáva ako PERCENTO z toho,
-   * čo počíta štýl (zoomová krivka zo štýlu ostáva, mení sa jej mierka –
-   * „na z19 nech je to o desatinu väčšie"), alebo ako PEVNÁ hodnota. Jedno
-   * pásmo cez celý rozsah je presne to, čo bývalo „pevné číslo" a „× a +",
-   * takže sa nestratilo nič – len sa to prestalo pýtať štyrikrát.
+   * a k nemu jediná otázka: či je hodnota percentom z toho, čo počíta štýl
+   * (krivka ostáva, mení sa mierka), alebo pevná. Jedno pásmo cez celý rozsah
+   * je to, čo bývalo „pevné číslo" a „× a +".
    *
    * `smooth` je posledný zvyšok krivky: pri pevných hodnotách sa dá povedať,
-   * či sa medzi pásmami hodnota LÁME (schodisko, `step`), alebo PRECHÁDZA
-   * (krivka, `interpolate`). Je to zaškrtávacie políčko pod zoznamom, nie
-   * prepínač tvaru: riadky sú v oboch prípadoch tie isté. Percento je vždy
-   * plynulé – preškálovaná krivka je stále krivka.
+   * či sa medzi pásmami hodnota láme (`step`), alebo prechádza (`interpolate`).
+   * Percento je vždy plynulé – preškálovaná krivka je stále krivka.
    */
 
   /** Otvorené rozpisy podľa zoomu – kľúč je `${vrstva}:${kde}:${vlastnosť}`. */
@@ -2176,11 +2096,9 @@ export function initDevMode({
   /**
    * Uložená hodnota → riadky editora `[[od, do, hodnota], …]`.
    *
-   * `rows: null` znamená „úprava nie je" – vtedy platí, čo počíta štýl.
-   * Zoznam vždy vyjde SÚVISLÝ: `do` každého riadku je `od` nasledujúceho
-   * mínus jedna, posledný siaha po strop zobrazenia. Vďaka tomu sa medzera
-   * ani prekryv nedajú naklikať (`cleanPaintBands` by ich odmietol a s nimi
-   * celú vlastnosť).
+   * `rows: null` znamená „úprava nie je". Zoznam vždy vyjde súvislý: `do`
+   * každého riadku je `od` nasledujúceho mínus jedna, posledný siaha po strop
+   * zobrazenia – medzera ani prekryv sa tak nedajú naklikať.
    */
   function readRows(value) {
     if (value === undefined) return { rows: null, mode: null, smooth: false };
@@ -2510,18 +2428,15 @@ export function initDevMode({
   }
 
   /**
-   * KTORÉ `layout` VLASTNOSTI SA NA TEJTO VRSTVE DAJÚ LADIŤ.
+   * Ktoré `layout` vlastnosti sa na tejto vrstve dajú ladiť.
    *
-   * Nie „tie, ktoré už má". Kým sa ponúkali len tie, ktoré štýl NASTAVIL,
-   * nedala sa žiadna zaviesť – rozostup šípok jednosmeriek sa zmeniť dal
-   * (štýl mu dáva 120), ale miesto okolo ikony nie, lebo ho štýl nechal na
-   * predvolenom. Vyzeralo to, že tá páka neexistuje, hoci chýbal len riadok.
+   * Nie „tie, ktoré už má": kým sa ponúkali len nastavené, nedala sa žiadna
+   * zaviesť – rozostup šípok áno, miesto okolo ikony nie, hoci chýbal len
+   * riadok.
    *
-   * Ponúka sa preto to, čo na vrstve niečo ZNAMENÁ – a to sa dá prečítať
-   * z jej `layout`: veľkosť a odsadenie ikony má zmysel tam, kde ikona je,
-   * veľkosť písma tam, kde je text, a rozostup len pri symboloch kladených
-   * POZDĹŽ ČIARY (pri bodovom umiestnení je `symbol-spacing` bez účinku, teda
-   * by to bolo políčko, ktoré vyzerá, že niečo robí, a nerobí nič).
+   * Ponúka sa to, čo na vrstve niečo znamená, a to sa dá prečítať z jej
+   * `layout`: rozostup len pri symboloch pozdĺž čiary (pri bodovom umiestnení
+   * je `symbol-spacing` bez účinku).
    */
   function layoutPropsFor(layer) {
     const L = layer.layout || {};
@@ -2539,10 +2454,8 @@ export function initDevMode({
   /**
    * Panel nad detailom vrstvy: schránka na štýl a reset.
    *
-   * Sú tu spolu naschvál – oboje je o CELEJ vrstve, nie o jednej vlastnosti,
-   * a oboje dovtedy chýbalo: vrátiť sa dala len farba (každá zvlášť), takže
-   * „daj to naspäť, ako to bolo" znamenalo prejsť všetky sekcie po jednej,
-   * a „nech to vyzerá ako tamto" sa nedalo povedať vôbec.
+   * Spolu naschvál – oboje je o celej vrstve, nie o jednej vlastnosti, a oboje
+   * dovtedy chýbalo: vrátiť sa dala len farba, každá zvlášť.
    */
   function layerTools(layer) {
     const o = layerOverride(layer.id);
@@ -2614,13 +2527,12 @@ export function initDevMode({
   }
 
   /**
-   * DETAIL VRSTVY – zhora nadol tak, ako sa mapa ladí: čo je vidieť (zoom),
-   * akou farbou, aké hrubé, s akým obrysom a vzorom, a nakoniec výnimky
-   * podľa toho, čo je v OSM napísané.
+   * Detail vrstvy – zhora nadol tak, ako sa mapa ladí: čo je vidieť (zoom),
+   * akou farbou, aké hrubé, s akým obrysom a vzorom, a nakoniec výnimky podľa
+   * toho, čo je v OSM napísané.
    *
-   * Každé číslo aj farba idú tým istým editorom (`layerValueEditor`), takže
-   * „na týchto zoomoch inak" sa všade pýta rovnako a nikde nie sú dve páky
-   * na jednu vlastnosť.
+   * Každé číslo aj farba idú tým istým editorom, takže „na týchto zoomoch
+   * inak" sa všade pýta rovnako.
    */
   function layerDetails(layer) {
     const o = layerOverride(layer.id) || {};
@@ -2742,16 +2654,12 @@ export function initDevMode({
   }
 
   /**
-   * FARBY VRSTVY NA JEDNOM MIESTE.
+   * Farby vrstvy na jednom mieste.
    *
-   * Kým to bolo rozsypané, mala jedna farba až päť rôznych ovládaní na
-   * rôznych miestach detailu: pipetku v „Farbách", vlastný riadok „🌙 v tmavej
-   * téme", zaškrtávacie políčko „bez výplne", ďalší editor „podľa zoomu"
-   * a k tomu ešte raz tú istú pipetku dole pri vzore ako „Podklad" – dva
-   * ovládacie prvky nad tou istou vlastnosťou, každý s vlastným tlačidlom
-   * späť. Teraz je jedna farba jeden riadok: pipetka, jej tmavý variant,
-   * „bez výplne" tam, kde to má zmysel, a rozpis po zoomoch pod tým istým
-   * `▸ zoom`, aký majú čísla.
+   * Kým to bolo rozsypané, mala jedna farba až päť ovládaní na rôznych
+   * miestach detailu – vrátane dvoch pipetiek nad tou istou vlastnosťou.
+   * Teraz je jedna farba jeden riadok: pipetka, jej tmavý variant, „bez
+   * výplne" tam, kde to má zmysel, a rozpis po zoomoch pod tým istým `▸ zoom`.
    */
   function colorSection(layer) {
     const props = colorProps(layer);
@@ -2891,12 +2799,11 @@ export function initDevMode({
   }
 
   /**
-   * ČÍSLA VRSTVY – hrúbka, krytie, lem, veľkosť ikony, sila tieňovania.
+   * Čísla vrstvy – hrúbka, krytie, lem, veľkosť ikony, sila tieňovania.
    *
-   * Je to JEDEN zoznam podľa druhu vrstvy (`NUM_PROPS`), nie štyri bloky
-   * napísané zvlášť pre čiaru, plochu, symbol a reliéf. Kým to boli bloky,
-   * pribudla vlastnosť vždy len do toho jedného, na ktorý sa vtedy pozeralo:
-   * lem písma sa dal ladiť v záložke Trasy, ale nie v zozname vrstiev.
+   * Jeden zoznam podľa druhu vrstvy (`NUM_PROPS`), nie štyri bloky zvlášť pre
+   * čiaru, plochu, symbol a reliéf: kým to boli bloky, pribudla vlastnosť vždy
+   * len do toho, na ktorý sa vtedy pozeralo.
    */
   function numberSection(layer) {
     const parts = [];
@@ -2959,14 +2866,13 @@ export function initDevMode({
   }
 
   /**
-   * OPAKUJÚCI SA VZOR. Vzor môže mať vrstva ZABUDOVANÝ V ŠTÝLE
+   * Opakujúci sa vzor. Vrstva ho môže mať zabudovaný v štýle
    * (`frico:pattern` – kamienky v skalnej ploche), takže ovládanie pracuje
-   * s ÚČINNÝM vzorom, nie s úpravou: bez toho by rozbaľovačka nad skalami
-   * tvrdila „žiadny", hoci v mape vzor je.
+   * s účinným vzorom, nie s úpravou – inak by nad skalami tvrdilo „žiadny".
    *
    * Tri stavy, ktoré sa musia dať rozlíšiť:
    *   kľúč chýba  … platí to, čo je v štýle
-   *   `null`      … vzor zo štýlu je VYPNUTÝ (nie „nič nezmenené")
+   *   `null`      … vzor zo štýlu je vypnutý (nie „nič nezmenené")
    *   predpis     … vlastný vzor
    */
   function patternSection(layer, o) {
@@ -3107,18 +3013,16 @@ export function initDevMode({
   }
 
   /**
-   * OBRYS AKO SAMOSTATNÁ VRSTVA – „Miestne cesty – obrys".
+   * Obrys ako samostatná vrstva – „Miestne cesty – obrys".
    *
-   * V mape sú obrysy dvoma spôsobmi a treba ich vedieť rozlíšiť. Buď je obrys
-   * VLASTNÁ VRSTVA zo štýlu (širšia čiara pod cestou, `frico:border-of`),
-   * alebo si ho vrstva pridá sama (`outline` v úprave, nižšie). Ovládanie je
-   * v oboch prípadoch to isté – farba, šírka, prerušovanie, krytie – a šírka
-   * ide v oboch tým istým editorom, aby „obrys na 90 %" znamenalo to isté bez
-   * ohľadu na to, ktorou z tých dvoch ciest obrys vznikol.
+   * Obrysy sú v mape dvoma spôsobmi: buď vlastná vrstva zo štýlu
+   * (`frico:border-of`), alebo si ho vrstva pridá sama (`outline` v úprave).
+   * Ovládanie je v oboch prípadoch to isté, aby „obrys na 90 %" znamenalo to
+   * isté bez ohľadu na to, ktorou cestou vznikol.
    *
-   * Čo pri samostatnej vrstve treba povedať nahlas: jej hrúbka je CELÁ šírka
-   * aj s čiarou, ktorú obťahuje, nie prídavok k nej. Bez toho vyzerá „obrys
-   * 10,6 px pod cestou 9 px" ako preklep, hoci je to 0,8 px na každej strane.
+   * Pri samostatnej vrstve treba povedať nahlas, že jej hrúbka je celá šírka
+   * aj s čiarou pod ňou, nie prídavok – inak „obrys 10,6 px pod cestou 9 px"
+   * vyzerá ako preklep, hoci je to 0,8 px na každej strane.
    */
   function borderLayerBanner(layer) {
     const of = (layer.metadata || {})["frico:border-of"];
@@ -3272,17 +3176,12 @@ export function initDevMode({
   }
 
   /**
-   * AKÉ ATRIBÚTY A HODNOTY MÁ TÁ VRSTVA V MAPE PRÁVE TERAZ.
+   * Aké atribúty a hodnoty má tá vrstva v mape práve teraz.
    *
-   * Číta sa to Z DLAŽDÍC, nie zo zoznamu v zdrojáku, a je to rozhodnutie:
-   * schéma OpenMapTiles vydáva `surface` len pre niektoré triedy ciest a
-   * pri niektorých zoomoch, takže vymenovaný zoznam by ponúkal rozlíšenia,
-   * ktoré nikdy nič netrafia – a to sa prejaví až tým, že v mape sa nič
-   * nezmení. Takto sa ponúka to, čo naozaj je, aj s počtami, a hodnota,
-   * ktorá v tomto výreze nie je, sa ani nedá naklikať.
-   *
-   * Počty sú z NAČÍTANÝCH dlaždíc, teda z toho, čo je práve na obrazovke –
-   * a to je správna odpoveď na „ktoré hodnoty tu vlastne sú".
+   * Číta sa to z dlaždíc, nie zo zoznamu v zdrojáku: schéma OpenMapTiles vydáva
+   * `surface` len pre niektoré triedy a zoomy, takže by vymenovaný zoznam
+   * ponúkal rozlíšenia, ktoré nikdy nič netrafia. Počty sú z načítaných
+   * dlaždíc, teda z toho, čo je práve na obrazovke.
    */
   function scanAttrs(layer) {
     const m = getMap();
@@ -3368,19 +3267,15 @@ export function initDevMode({
   }
 
   /**
-   * ROZLÍŠENIE PODĽA `kľúč = hodnota` Z OSM – „studnička má inú ikonu než
+   * Rozlíšenie podľa `kľúč = hodnota` z OSM – „studnička má inú ikonu než
    * prameň", „nespevnená cesta bodkovane".
    *
-   * Je to ten istý zoznam, aký panel vypisuje v „Prvkoch" pod kurzorom: kľúč
-   * z dlaždice a hodnoty, ktoré v ňom naozaj sú. Vybrané hodnoty dostanú
-   * vlastnú vrstvu (`variants` v úprave) a z predlohy sa odoberú, takže sa
-   * prvok nakreslí práve raz.
+   * Ten istý zoznam, aký panel vypisuje v „Prvkoch" pod kurzorom. Vybrané
+   * hodnoty dostanú vlastnú vrstvu a z predlohy sa odoberú, takže sa prvok
+   * nakreslí práve raz.
    *
-   * IKONA JE TU NAJDÔLEŽITEJŠIA. Formát úprav ju vo variante vedel od
-   * začiatku (`cleanVariants` aj `variantLayers` s ňou počítajú), ale panel
-   * ju nemal kde vybrať – dala sa nastaviť len celej vrstve naraz, takže
-   * „vodný zdroj s `natural=spring` nech má prameň a zvyšok studňu" sa
-   * naklikať nedalo vôbec.
+   * Ikona je tu najdôležitejšia: formát úprav ju vo variante vedel od začiatku,
+   * ale panel ju nemal kde vybrať – dala sa nastaviť len celej vrstve naraz.
    */
   function variantSection(layer, o) {
     if (!layer["source-layer"]) return [];
@@ -3640,16 +3535,14 @@ export function initDevMode({
   }
 
   /**
-   * PORADIE KRESLENIA jednej vrstvy.
+   * Poradie kreslenia jednej vrstvy.
    *
-   * MapLibre kreslí vrstvy tak, ako idú v štýle za sebou – navrchu je tá
-   * POSLEDNÁ. Dovtedy sa to dalo zmeniť len v zdrojáku, takže „násyp má byť
-   * pod cestou" znamenalo commit a build. Tu je to presun a uloží sa do
-   * `style-overrides.json` ako všetko ostatné.
+   * MapLibre kreslí vrstvy tak, ako idú v štýle – navrchu je posledná.
+   * Dovtedy sa to dalo zmeniť len v zdrojáku, teda commitom a buildom.
    *
-   * Susedov treba VYPÍSAŤ: zoznam vrstiev je zoradený po skupinách, nie
-   * podľa kreslenia, takže z neho nie je vidieť, čo je nad čím – a po
-   * ťuknutí na „vyššie" by sa nedalo povedať, či sa niečo stalo.
+   * Susedov treba vypísať: zoznam vrstiev je zoradený po skupinách, nie podľa
+   * kreslenia, takže by sa po ťuknutí na „vyššie" nedalo povedať, či sa niečo
+   * stalo.
    */
   function orderSection(layer) {
     const head = orderHead(layer);
@@ -3818,22 +3711,16 @@ export function initDevMode({
   }
 
   /**
-   * ČO SA S PRVKOM POD KURZOROM DÁ UROBIŤ HNEĎ TU.
+   * Čo sa s prvkom pod kurzorom dá urobiť hneď tu.
    *
    * Inšpektor dovtedy vedel len povedať „toto nakreslila vrstva X" a ✎ hodilo
-   * človeka do zoznamu vrstiev. Pri PODKATEGÓRII (`landcover-grass__var1`) to
-   * ale nespravilo nič: taká vrstva v zozname nie je, lebo v úpravách nie je
-   * vrstvou, ale rozlíšením svojej predlohy – hľadanie nenašlo nič a panel
-   * ostal prázdny.
+   * človeka do zoznamu vrstiev – čo pri podkategórii nespravilo nič, lebo taká
+   * vrstva v zozname nie je (je rozlíšením svojej predlohy).
    *
-   * Tri otázky, ktoré nad prvkom v mape vznikajú, sú preto rovno tu:
-   *   - „na akých zoomoch to vlastne vidím" – pásik ukazuje rozsah TEJ
-   *     VRSTVY, ktorá prvok naozaj nakreslila, a v ňom zoom, na ktorom sa
-   *     práve pozerám,
-   *   - „chcem ladiť len park, nie celú trávu" – odkaz na podkategóriu aj na
-   *     nadradenú kategóriu, oboma smermi,
-   *   - „toto má byť nad tamtým" – o úroveň vyššie; poradie sa prekreslí,
-   *     takže ďalší klik posunie zase o jednu, až kým to nesedí.
+   * Tri otázky, ktoré nad prvkom vznikajú, sú preto rovno tu: na akých
+   * zoomoch to vidím (pásik tej vrstvy, ktorá prvok nakreslila), chcem ladiť
+   * len park a nie celú trávu (odkaz oboma smermi), a toto má byť nad tamtým
+   * (o úroveň vyššie; poradie sa prekreslí, takže ďalší klik posunie zase).
    */
   function pickTools(styled) {
     if (!styled) return [];
@@ -4181,16 +4068,15 @@ export function initDevMode({
   // nie je v `paint` a odstup od cesty je vlastnosť všetkých naraz
 
   /**
-   * ČO SA NA JEDNEJ TRASE DÁ LADIŤ PODĽA ZOOMU.
+   * Čo sa na jednej trase dá ladiť podľa zoomu.
    *
-   * Jeden druh trasy je v štýle NIEKOĽKO vrstiev a každá odpovedá na inú
+   * Jeden druh trasy je v štýle niekoľko vrstiev a každá odpovedá na inú
    * otázku: pásik „ako hrubo", značka „ako veľká a ako často", názov „aké
    * veľké písmo". Zoom a pásma sa preto nastavujú na tej vrstve, ktorej sa
-   * týkajú – je to tá istá úprava (`overrides.layers[<id>]`), akú robí
-   * záložka Vrstvy, len tu je pokope to, čo patrí k jednej trase.
+   * týkajú.
    *
    * `paint` a `layout` sú dve police MapLibre a nedajú sa zamieňať: hrúbka
-   * čiary je `paint`, veľkosť ikony `layout` (rozpis pri `LAYOUT_PROPS`).
+   * čiary je `paint`, veľkosť ikony `layout`.
    */
   const TRAIL_LAYER_ROLES = [
     {
@@ -4221,20 +4107,17 @@ export function initDevMode({
     }
   ];
 
-
   /** Jedna vrstva trasy – `layerBlock` nad jej id. */
   const trailLayerBlock = (role, typeId) =>
     layerBlock(`trail-${typeId}${role.suffix}`, role);
 
   /**
-   * JEDNA VRSTVA S ČÍSLAMI, KTORÉ K NEJ PATRIA: rozsah zoomu a k tomu každé
-   * číslo s krivkou alebo pásmami, teda „na týchto zoomoch takto, na týchto
-   * inak".
+   * Jedna vrstva s číslami, ktoré k nej patria: rozsah zoomu a k tomu každé
+   * číslo s krivkou alebo pásmami.
    *
-   * Je to tá istá úprava (`overrides.layers[<id>]`), akú robí záložka Vrstvy –
-   * rozdiel je len v tom, že tu je pokope to, čo patrí k jednej veci: štyri
-   * vrstvy jednej trasy, alebo štítok jednej triedy cesty. V zozname vrstiev
-   * ležia na štyroch rôznych miestach a bez farby a značky vedľa nich sa nedá
+   * Tá istá úprava (`overrides.layers[<id>]`), akú robí záložka Vrstvy – tu je
+   * len pokope to, čo patrí k jednej veci. V zozname vrstiev ležia štyri
+   * vrstvy jednej trasy na štyroch miestach a bez farby vedľa nich sa nedá
    * povedať, ktorá je ktorá.
    */
   function layerBlock(id, role) {
@@ -4705,15 +4588,13 @@ export function initDevMode({
   // prepnúť len tvar (všetky tvary sú v sprite naraz); farba sa mení v palete
 
   /**
-   * ČO SA NA ŠTÍTKU S ČÍSLOM CESTY DÁ LADIŤ PODĽA ZOOMU.
+   * Čo sa na štítku s číslom cesty dá ladiť podľa zoomu.
    *
-   * Tá istá otázka ako pri značke trasy („od akého zoomu, ako veľký, ako
-   * často"), takže tá istá odpoveď: je to jedna vrstva (`road-shield-<trieda>`)
-   * a nastavuje sa `layerBlock`-om, nie druhou pákou vedľa.
+   * Tá istá otázka ako pri značke trasy, takže tá istá odpoveď: je to jedna
+   * vrstva a nastavuje sa `layerBlock`-om, nie druhou pákou vedľa.
    *
-   * VEĽKOSŤ ŠTÍTKA JE VEĽKOSŤ PÍSMA, a nie je to zjednodušenie: podklad je
-   * obrázok s `icon-text-fit`, teda natiahnutý presne na číslo. Vlastnú
-   * `icon-size` nemá – keby ju dostal, prestal by číslu sedieť.
+   * Veľkosť štítka je veľkosť písma: podklad je obrázok s `icon-text-fit`,
+   * teda natiahnutý presne na číslo – vlastnú `icon-size` nemá.
    */
   const SHIELD_LAYER_ROLE = {
     label: "Štítok v mape",
@@ -5017,18 +4898,15 @@ export function initDevMode({
   // vlastné ikony: obrázok sa prevedie na PNG a leží priamo v úpravách,
   // takže ho má aj mapa v mobile (viď `poc/web/dev-icons.js`)
   /**
-   * NAHRATIE VLASTNÉHO OBRÁZKA AKO VZORU.
+   * Nahratie vlastného obrázka ako vzoru.
    *
-   * Obrázok sa uloží ako VLASTNÁ IKONA úprav (`own:…`) – to nie je obchádzka,
-   * ale celá pointa: taký obrázok sa nesie priamo v úpravách (funguje offline
-   * aj v balíku pre mobil), prehliadač ho dokreslí hneď a do každého spritu
-   * ho dopečie `workers/assets/custom-icons.mjs`. Druhá cesta pre „obrázky,
-   * ktoré sú vzory" by bola druhé miesto, ktoré sa raz rozíde s prvým.
+   * Uloží sa ako vlastná ikona úprav (`own:…`): taký obrázok sa nesie priamo
+   * v úpravách, prehliadač ho dokreslí hneď a do spritu ho dopečie
+   * `workers/assets/custom-icons.mjs`.
    *
-   * VEĽKOSŤ DLAŽDICE SA VYBERÁ TU, pri nahratí, a obrázok sa na ňu rovno
-   * prevzorkuje. `fill-pattern` sa v MapLibre neškáluje – dlaždicuje sa tak,
-   * ako je obrázok veľký –, takže „veľkosť až pri kreslení" by musel rovnako
-   * spraviť aj sprite. Čo je uložené, je to, čo mapa kreslí.
+   * Veľkosť dlaždice sa vyberá tu, pri nahratí, a obrázok sa na ňu rovno
+   * prevzorkuje: `fill-pattern` sa v MapLibre neškáluje, dlaždicuje sa tak,
+   * ako je obrázok veľký.
    */
   function patternUpload(layer) {
     const velkost = el("select", { class: "dev-select", title: "Strana dlaždice" },
@@ -5201,12 +5079,11 @@ export function initDevMode({
     new Set([...overrides.poi.hidden, ...(mapBucket()?.poi?.hidden || [])]);
 
   /**
-   * IKONA KATEGÓRIE. `undefined` = späť na ikonu podľa sady, `""` = žiadna –
-   * sú to tri odpovede a nedajú sa stlačiť do dvoch (tá istá úvaha ako pri
-   * značke druhu trasy).
+   * Ikona kategórie. `undefined` = späť na ikonu podľa sady, `""` = žiadna –
+   * sú to tri odpovede a nedajú sa stlačiť do dvoch.
    *
-   * Je to spoločné pre všetky typy máp, na rozdiel od skrývania: akou značkou
-   * sa kreslí studnička, je vlastnosť kategórie, nie mapy.
+   * Spoločné pre všetky typy máp, na rozdiel od skrývania: akou značkou sa
+   * kreslí studnička, je vlastnosť kategórie, nie mapy.
    */
   function setPoiIcon(cls, name) {
     overrides.poi.icons = { ...(overrides.poi.icons || {}) };

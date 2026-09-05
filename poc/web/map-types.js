@@ -1,23 +1,20 @@
 /**
- * Typy máp – **čo** mapa ukazuje (téma rieši, **ako** to vyzerá).
+ * Typy máp – čo mapa ukazuje (téma rieši, ako to vyzerá).
  *
- * Jedna mapa nemôže byť dobrá turistická aj dobrá cestná naraz: turista chce
- * skaly, chodníky a čo najviac detailu, vodič chce cesty, pumpy a odpočívadlá
- * a vrstevnice mu majú len naznačiť kopec. Preto sa z jedného zoznamu vrstiev
- * (`themes.js`) vyrába niekoľko máp – každá má svoj **profil**: sadu pravidiel,
+ * Jedna mapa nemôže byť dobrá turistická aj cestná naraz, tak sa z jedného
+ * zoznamu vrstiev vyrába niekoľko máp – každá má profil, teda sadu pravidiel,
  * ktoré vrstvy vypnú, posunú im zoom alebo ich stlmia.
  *
- * Profil je zámerne len „predvolený stav": developer mode ho vidí ako
- * východisko a jeho úpravy (`overrides.maps[<typ>]`) idú nad neho, zvlášť pre
- * každý typ mapy. Poradie je teda:
+ * Profil je len predvolený stav; úpravy z developer módu idú nad neho, zvlášť
+ * pre každý typ mapy:
  *
- *     vrstvy štýlu → profil typu mapy → úpravy pre všetky mapy → úpravy tejto mapy
+ *     vrstvy štýlu → profil typu mapy → úpravy pre všetky mapy → úpravy tejto
  *
  * Pravidlo má tvar `{ match, ...akcie }`:
- *   match: { id: string | string[] | RegExp, group, kind }  (všetko voliteľné)
- *   akcie: visible (bool), minzoom, maxzoom, minzoomFloor (zdvihne, neznižuje),
- *          opacity (vynásobí krytie vrstvy)
- * Pravidlá sa aplikujú v poradí, neskoršie prepíše skoršie.
+ *   match: { id: string | string[] | RegExp, group, kind }  (voliteľné)
+ *   akcie: visible, minzoom, maxzoom, minzoomFloor (zdvihne, neznižuje),
+ *          opacity (vynásobí krytie)
+ * Neskoršie pravidlo prepíše skoršie.
  */
 
 /**
@@ -248,11 +245,9 @@ export function normalizeMapType(id) {
 /**
  * Sedí vrstva na `match` pravidla? Prázdny match sedí na všetko.
  *
- * ODVODENÁ VRSTVA SA PÝTA ZA SVOJU PREDLOHU. Vzor nad plochou je vlastná
- * vrstva s vlastným id (`rock-area__pattern`), takže pravidlo `id: ROCKS`
- * by ju minulo – a na cestnej mape, kde sú skaly vypnuté, by ostali kamienky
- * bez skál: vzor visiaci nad prázdnym podkladom. Tichý omyl v čistej podobe,
- * lebo štýl je platný a MapLibre nepovie nič.
+ * Odvodená vrstva sa pýta za svoju predlohu: vzor nad plochou má vlastné id,
+ * takže by ho pravidlo `id: ROCKS` minulo a na cestnej mape by ostali
+ * kamienky bez skál.
  */
 function matchesLayer(layer, match = {}) {
   const meta = layer.metadata || {};
@@ -345,9 +340,8 @@ export function applyMapType(style, id) {
 }
 
 /**
- * Ktoré vrstvy vypína samotný profil (bez úprav z developer módu). Vďaka tomu
- * vie developer mode rozoznať „vypnuté profilom" od „vypnuté mnou" a uložiť
- * `visible: true` len tam, kde to naozaj niečo mení.
+ * Ktoré vrstvy vypína samotný profil (bez úprav z developer módu) – vďaka
+ * tomu vie panel rozoznať „vypnuté profilom" od „vypnuté mnou".
  *
  * @param {object[]} layers  vrstvy štýlu (stačí id a metadata)
  * @returns {Set<string>}

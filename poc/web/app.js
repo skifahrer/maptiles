@@ -67,9 +67,7 @@ mapTypeSelect.value = (() => {
 /**
  * Región z adresy (`#map=15/49.17/20.11&region=zilinsky`), alebo null.
  *
- * O polohu sa stará MapLibre (`hash: "map"`), ktorý ostatné parametre v hashi
- * necháva na pokoji – tento je jeden z nich. Neznámy kľúč sa ignoruje, nech
- * starý odkaz otvorí mapu a nie prázdnu stránku.
+ * Neznámy kľúč sa ignoruje, nech starý odkaz otvorí mapu a nie prázdnu stránku.
  */
 function regionFromHash(manifest) {
   const raw = location.hash.replace(/^#/, "");
@@ -170,11 +168,9 @@ let iconSets = [];
 /**
  * Hranice stiahnutých regiónov (`region.geojson`) podľa kľúča regiónu.
  *
- * Za hranicou mapa KONČÍ – dlaždice sú orezané len po celých dlaždiciach
- * a vodstvo s Natural Earth kreslí Planetiler na celom obdĺžniku bboxu, takže
- * bez tejto vrstvy mapa pokračuje ďaleko za región. Štýl sa skladá nanovo pri
- * každom prepnutí témy či vrstvy, preto sa súbory držia tu a neťahajú sa
- * zakaždým znova. Kľúčom je región, lebo manifest ich môže niesť viac.
+ * Za hranicou mapa končí – dlaždice sú orezané len po celých dlaždiciach
+ * a vodstvo kreslí Planetiler na celom obdĺžniku bboxu. Štýl sa skladá nanovo
+ * pri každom prepnutí témy, preto sa súbory držia tu.
  */
 const regionOutlines = {};
 
@@ -273,19 +269,13 @@ function initialBounds(region) {
 
 /** Kam sa mapa smie posunúť: presne po hranicu stiahnutého regiónu.
  *
- * Dlaždice existujú len pre región, ktorý build vyrobil (Prešovský kraj,
- * Žilinský…). Bez tohto sa dá odscrollovať kamkoľvek – a mimo regiónu nie je
- * nič, takže mapa vyzerá ako prázdna sivá plocha. To je presne ten dojem
- * „build nič nevyrobil", pred ktorým sa o pár riadkov nižšie chráni aj poloha
- * z adresy; toto je to isté, len pre posúvanie a oddialenie po štarte.
+ * Bez toho sa dá odscrollovať kamkoľvek, a mimo regiónu nie je nič – mapa
+ * vyzerá ako prázdna sivá plocha.
  *
- * Berie sa VŽDY celý `bbox` regiónu, nie `test_bbox`: rýchly test zmenšuje len
- * terénne vrstvy (vrstevnice, skaly, tieňovanie), kým mapa – cesty, trasy,
- * prvky – ostáva celý kraj. Obmedziť ju na testovací štvorec by schovalo
- * dlaždice, ktoré naozaj sú.
+ * Berie sa vždy celý `bbox`, nie `test_bbox`: rýchly test zmenšuje len terénne
+ * vrstvy, kým mapa ostáva celý kraj.
  *
- * MapLibre z `maxBounds` odvodí aj dolný strop zoomu, takže sa nedá ani
- * oddialiť na celý svet.
+ * MapLibre z `maxBounds` odvodí aj dolný strop zoomu.
  */
 function regionMaxBounds(region) {
   const [w, s, e, n] = region.bbox;
@@ -474,10 +464,8 @@ function applyStyle(manifest) {
 
 /** 3D terén používa ten istý raster-dem zdroj ako tieňovanie reliéfu.
  *
- * Prevýšenie sa berie zo ŠTÝLU, keď ho tam pipeline dala (`terrain` je
- * súčasť špecifikácie a `workers/styles/build.mjs` ho zapína, keď máme
- * vlastné výškové dlaždice). Web si ho tak nedrží druhýkrát – inak by sa
- * 3D na webe a v mape pre iOS raz rozišlo.
+ * Prevýšenie sa berie zo štýlu, keď ho tam pipeline dala – inak by sa 3D na
+ * webe a v mape pre iOS raz rozišlo.
  */
 function terrainExaggeration() {
   const zo_stylu = map?.getStyle?.()?.terrain?.exaggeration;
