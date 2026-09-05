@@ -19,6 +19,10 @@
  *                  (výška podjazdov a tunelov, šírka,
  *                  hmotnosť, maximálna rýchlosť), ktoré vrstva
  *                  `transportation` OpenMapTiles nenesie vôbec
+ *   --boundaries … hranice území; štýl z nich kreslí NÁZVY území – vrstva
+ *                  `boundary` OpenMapTiles je čiara bez mena
+ *   --water      … vodstvo; meno je tam na geometrii, takže odtiaľ idú názvy
+ *                  vôd namiesto `water_name` OpenMapTiles
  *   --features   … krajinné prvky (línie a plochy), ktoré schéma OpenMapTiles
  *                  nemá – násypy, múry, vedenia, zjazdovky (vlastný .pmtiles)
  *   --points     … body v krajine – pramene, jaskyne, rozhľadne, pamiatky
@@ -94,6 +98,11 @@ const hasPoints = args.points === "true" || args.points === "1";
 // obmedzenia na ceste – opäť vlastný .pmtiles a voliteľné
 const transportMaxzoom = Number(args["transport-maxzoom"] || 14);
 const hasTransport = args.transport === "true" || args.transport === "1";
+// hranice a vodstvo – vlastné .pmtiles, z ktorých štýl kreslí názvy území a vôd
+const boundariesMaxzoom = Number(args["boundaries-maxzoom"] || 12);
+const hasBoundaries = args.boundaries === "true" || args.boundaries === "1";
+const waterMaxzoom = Number(args["water-maxzoom"] || 14);
+const hasWater = args.water === "true" || args.water === "1";
 // zdroj výšok ovplyvňuje atribúciu vrstevníc a skál
 const demSource = DEM_SOURCES[args["dem-source"]]
   ? args["dem-source"]
@@ -330,6 +339,14 @@ for (const type of MAP_TYPES) {
         ? `pmtiles://${baseUrl}/tiles/${region}-transport.pmtiles`
         : null,
       transportMaxzoom,
+      boundariesUrl: hasBoundaries
+        ? `pmtiles://${baseUrl}/tiles/${region}-boundaries.pmtiles`
+        : null,
+      boundariesMaxzoom,
+      waterUrl: hasWater
+        ? `pmtiles://${baseUrl}/tiles/${region}-water.pmtiles`
+        : null,
+      waterMaxzoom,
       demSource,
       demTiles,
       demTilesSource,
@@ -368,6 +385,8 @@ console.log(
   `Krajinné prvky: ${hasFeatures ? `áno (do z${featuresMaxzoom})` : "nie"}, ` +
   `Body v krajine: ${hasPoints ? `áno (do z${pointsMaxzoom})` : "nie"}, ` +
   `Dopravná sieť (obmedzenia na ceste): ${hasTransport ? `áno (do z${transportMaxzoom})` : "nie"}, ` +
+  `Názvy území: ${hasBoundaries ? `áno (do z${boundariesMaxzoom})` : "nie"}, ` +
+  `Názvy vôd: ${hasWater ? `áno (do z${waterMaxzoom})` : "nie"}, ` +
   `Vrstevnice: ${
     hasContours ? `áno (do z${contoursMaxzoom}, výšky: ${DEM_SOURCES[demSource].label})` : "nie"
   }, ` +
