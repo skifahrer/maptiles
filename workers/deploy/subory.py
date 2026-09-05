@@ -20,6 +20,7 @@ Značené trasy sú v základnej mape z toho istého dôvodu ako hľadanie. `lin
 sa tým rozpadlo: kreslená sieť je balík `cesty`, trasy sú v mape a obmedzenia
 na ceste sú atribútmi tej siete.
 """
+import hashlib
 import importlib.util
 import json
 import os
@@ -309,3 +310,20 @@ def zaklad_subory(site, vylucit):
     """
     von = {os.path.abspath(p) for p in vylucit}
     return [p for p in vsetky_subory(site) if os.path.abspath(p) not in von]
+
+
+def obsah_sha(base, subory):
+    """sha256 obsahu balíka – tých istých súborov, nie archívu okolo nich."""
+    h = hashlib.sha256()
+    for rel, cesta in sorted((os.path.relpath(p, base), p) for p in subory):
+        h.update(rel.replace(os.sep, "/").encode() + b"\0")
+        h.update(_sha_suboru(cesta).encode() + b"\n")
+    return h.hexdigest()
+
+
+def _sha_suboru(cesta):
+    h = hashlib.sha256()
+    with open(cesta, "rb") as f:
+        for blok in iter(lambda: f.read(1 << 20), b""):
+            h.update(blok)
+    return h.hexdigest()
