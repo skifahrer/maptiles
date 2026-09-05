@@ -1,22 +1,12 @@
 #!/usr/bin/env python3
-"""
-Zoženie 1 m LiDAR od ÚGKK (DMR 5.0) pre jeden výrez – s viacerými cestami.
+"""Zoženie 1 m LiDAR od ÚGKK (DMR 5.0) pre jeden výrez – s viacerými cestami.
 
-ÚGKK nemá jeden zdokumentovaný spôsob, ako sa k DMR 5.0 dostať programovo:
-oficiálne sa dáva cez ZBGIS Mapový klient (interaktívny export do 400 km²)
-a cez vládny cloud. Namiesto hádania sa preto skúšajú cesty po poradí a prvá,
-ktorá dá skutočný výškový raster, vyhráva:
+ÚGKK nemá jeden zdokumentovaný spôsob, ako sa k DMR 5.0 dostať programovo, tak
+sa skúšajú cesty po poradí a prvá, ktorá dá skutočný výškový raster, vyhráva:
+ArcGIS ImageServer (`exportImage`), WCS (`GetCoverage`) a priame URL
+(`--direct-urls`) z vládneho cloudu alebo Mapového klienta.
 
-  1. **ArcGIS ImageServer** (`exportImage`) – to isté, čo má český ČÚZK.
-     Kandidáti sú vo workers/data/dem-sources.json, plus všetko, čo sa nájde
-     v ich adresári služieb.
-  2. **WCS** (`GetCoverage`) – štandardná OGC služba na rastre; geoportály
-     ju často majú aj tam, kde ArcGIS REST nie je verejný.
-  3. **Priame URL** (`--direct-urls`) – čo si stiahol ručne z vládneho cloudu
-     alebo z Mapového klienta. Toto funguje vždy, len to raz treba vypísať.
-
-Výsledok je JEDEN GeoTIFF (COG) pre celý výrez – ten sa potom zrkadlí do
-releasu `dem-ugkk`, takže ďalší build už len sťahuje, presne ako pri Sonnym.
+Výsledok je jeden GeoTIFF (COG) na výrez – ten sa zrkadlí do skladu.
 
 Použitie:
     python3 workers/dem/fetch-ugkk.py --bbox=W,S,E,N --out=ugkk.tif
@@ -37,9 +27,8 @@ import zipfile
 from importlib.machinery import SourceFileLoader
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-# Priečinok = job, súbor = krok; spoločné veci ležia o úroveň vyššie.
-_WORKERS = os.path.dirname(_HERE)          # workers/
-_DATA = os.path.join(_WORKERS, "data")     # číselníky (areas, regions, zdroje)
+_WORKERS = os.path.dirname(_HERE)
+_DATA = os.path.join(_WORKERS, "data")
 _probe = SourceFileLoader("probe", os.path.join(_HERE, "probe.py")).load_module()
 UA = _probe.UA
 
@@ -63,8 +52,7 @@ def download(url, path, timeout=300):
 def is_elevation_raster(path, min_cell_m=2.5):
     """Je to naozaj výškový raster s dostatočne jemnou mriežkou?
 
-    Bez tejto kontroly by ticho prešiel aj 10 m model alebo obrázok –
-    a to je horšie než čestné zlyhanie, lebo by sa to zistilo až na mape.
+    Bez tejto kontroly by ticho prešiel aj 10 m model alebo obrázok.
     """
     try:
         info = json.loads(run(["gdalinfo", "-json", path]).stdout)
@@ -89,12 +77,10 @@ def is_elevation_raster(path, min_cell_m=2.5):
 # ---------------------------------------------------------------- 1. ArcGIS
 def try_arcgis(bbox, tmp, sources, tile_px=4000):
     src = json.load(open(sources))["ugkk"]
-    # Keď hostiteľ neodpovedá, nemá zmysel skúšať šesť ciest na tom istom
-    # stroji – je to šesťkrát ten istý timeout a tá istá odpoveď.
+    # keď hostiteľ neodpovedá, nemá zmysel skúšať šesť ciest na tom istom stroji
     candidates = list(src["candidates"])
 
-    # Katalóg najprv: je to iný hostiteľ a dáva SKUTOČNÉ URL služieb namiesto
-    # uhádnutých názvov. Keď prejde, ďalej sa už nehádá.
+    # katalóg najprv: je to iný hostiteľ a dáva skutočné URL služieb
     if src.get("catalog"):
         print("  hľadám služby v metadátovom katalógu…")
         try:
@@ -208,8 +194,7 @@ def try_wcs(bbox, tmp, sources):
 def try_direct(urls, tmp):
     """Čo si stiahol ručne z vládneho cloudu alebo z Mapového klienta.
 
-    Toto funguje vždy – je to jediná cesta, ktorá nezávisí od toho, či ÚGKK
-    nejakú službu zverejnil. `.zip` sa rozbalí, `.tif` sa berie priamo.
+    Jediná cesta, ktorá nezávisí od toho, či ÚGKK nejakú službu zverejnil.
     """
     got = []
     for i, url in enumerate(u.strip() for u in urls if u.strip()):
@@ -261,18 +246,13 @@ def main():
     try:
         tiles, how = None, ""
         if args.direct_urls:
-            # Keď sú priame URL zadané, majú prednosť: používateľ vie lepšie,
-            # čo chce, než naše hádanie názvov služieb. Skúšajú sa aj vtedy,
-            # keď je skgeodesy mŕtvy – môžu viesť inam.
+            # priame URL majú prednosť: používateľ vie lepšie, čo chce, než
+            # naše hádanie názvov služieb
             print("── 0. priame URL (zadané ručne)")
             tiles, how = try_direct(args.direct_urls.split(","), tmp), "priame URL"
 
-        # Dostupnosť hostiteľa NAJPRV, nie až po neúspechu. Všetky služby
-        # (ImageServer aj WCS) sú na `skgeodesy.sk`, a keď ten neodpovedá,
-        # každá z nich vyčerpá štyri profily prehliadača plus curl – zopár
-        # minút čakania na odpoveď, ktorú dá jedna požiadavka za sekundy.
-        # Namerané workflowom „Test – lov na ÚGKK DMR 5.0“ (behy 31072215798,
-        # 31075806874, 31096745697): timeout zakaždým, aj pri 30 s.
+        # dostupnosť hostiteľa najprv, nie až po neúspechu: všetky služby sú
+        # na `skgeodesy.sk` a každá by vyčerpala štyri profily plus curl
         host_ok = True
         if not tiles:
             host_ok, why = _probe.host_reachable(
@@ -291,10 +271,8 @@ def main():
             print("::error::Ani jedna cesta k ÚGKK DMR 5.0 nevyšla.")
             print()
             if not host_ok:
-                # Toto je to podstatné zistenie: nie sú to zlé názvy služieb,
-                # ale celý hostiteľ je z GitHub runnera nedostupný. Sťahovanie
-                # priamo v pipeline teda nepomôže ani s inými URL na tej istej
-                # doméne – dáta musia prísť inou cestou.
+                # to podstatné zistenie: nie sú to zlé názvy služieb, ale celý
+                # hostiteľ je z GitHub runnera nedostupný
                 print("PRÍČINA: hostiteľ skgeodesy.sk z GitHub runnera vôbec")
                 print("neodpovedá – HTTPS požiadavka na jeho koreň neprejde.")
                 print("Nie sú to zle uhádnuté názvy služieb, nedá sa tam dostať.")
@@ -320,8 +298,7 @@ def main():
                 print("(Terén → Export údajov → DMR 5.0, do 400 km²).")
             return 1
 
-        # Zlepiť a uložiť ako COG – jeden súbor na výrez, aby sa dal odložiť
-        # do releasu a nabudúce len stiahnuť.
+        # zlepiť a uložiť ako COG – jeden súbor na výrez
         vrt = os.path.join(tmp, "all.vrt")
         run(["gdalbuildvrt", "-q", "-resolution", "highest", vrt] + tiles)
         run(["gdalwarp", "-q", "-overwrite", "-te", repr(w), repr(s), repr(e), repr(n),

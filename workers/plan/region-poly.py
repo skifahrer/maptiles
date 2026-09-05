@@ -1,63 +1,28 @@
 #!/usr/bin/env python3
-"""
-Polygón kraja (nie jeho obdĺžnik) do `data/region.geojson`.
+"""Polygón kraja (nie jeho obdĺžnik) do `data/region.geojson`.
 
-PREČO. Vrstvy z výškového modelu – vrstevnice, skaly, tieňovanie – sa doteraz
-počítali na BBOXE regiónu. Bbox Prešovského kraja je 19.865,48.745,22.585,49.48,
-čo je obdĺžnik ~199×82 km = 16 300 km², kým samotný kraj má 8 973 km². Takmer
-polovica práce teda padla mimo kraj – do susedných krajov, do Poľska, na Ukrajinu
-a do Maďarska. A nie je to len práca navyše:
+Vrstvy z výškového modelu sa počítali na bboxe regiónu – pri Prešovskom kraji
+je to 16 300 km² proti 8 973 km² kraja. A nie je to len práca navyše: za
+hranicou je DMR 5.0 nodata a hranica dát je pre `gdaldem slope` zvislá stena,
+takže z nej vychádzali falošné skaly a rovná hrana v tieňovaní.
 
-  * DMR 5.0 je LEN Slovensko, takže za hranicou je v modeli NODATA. Hranica
-    dát a nodaty je pre `gdaldem slope` zvislá stena – sklon 90°. V behu
-    31635772047 z toho vyšlo 13 403 km² „skalnej plochy" (bbox má 16 300 km²,
-    čiže skalou bolo označené skoro celé územie), zlepovanie švov to nedalo
-    dokopy a spadlo na náhradné riešenie s 375 nezlepenými plochami.
-  * Tieňovanie tie prázdne miesta vykreslí ako biele, takže mapa má rovnú
-    hranu tam, kde končia dáta.
+Hranica sa číta priamo z OSM (`workers/plan/boundary.py`): relácia
+`boundary=administrative` poskladaná `osmium export`-om z toho istého PBF, ako
+je mapa, a pretnutá so štátom. Susedné kraje zdieľajú tie isté cesty hranice,
+takže na seba nadväzujú presne – meria to `seam.py`.
 
-═══ HRANICA JE TERAZ PRESNÁ: Z OSM RELÁCIE, NIE Z `.poly` OSM.FR ═══
+`.poly` z osm.fr ostáva ako náhrada: je zaokrúhlený na ~550 m a okolo hranice
+rozšírený (susedné kraje sa v ňom prekrývajú o 2–4 km), tak sa použije len
+nahlas a keď sa relácia nenájde.
 
-Dlho sa brala z `.poly`, ktorý osm.fr zverejňuje vedľa svojich extraktov. Bola
-to tá istá čiara, ktorou je orezaný ich PBF, ale NEBOLA to hranica kraja: body
-sú zaokrúhlené na mriežku 0,005° (≈ 550 m) a osm.fr si polygón okolo hranice
-ešte sám ROZŠIRUJE – namerané na ôsmich krajoch SR sa susedné kraje v tých
-`.poly` prekrývajú o 2 až 4 km. Nad tým sa prekryv ešte zväčšoval o
-`BORDER_BUFFER_M` (2 500 m na stranu), aby medzi dvoma stiahnutými mapami
-neostala medzera. Výsledok: mapa kraja siahala kilometre do susedného kraja,
-do Poľska aj na Ukrajinu, a to isté robili vrstevnice, skaly aj tieňovanie.
-
-Teraz sa hranica číta PRIAMO Z OSM (`workers/plan/boundary.py`): relácia
-`boundary=administrative` s `admin_level` a `osm_name` z
-`workers/data/regions.json`, poskladaná `osmium export`-om z toho istého PBF,
-z akého je mapa. Kraj (`admin_level=4`) sa ešte PRETNE so štátom
-(`admin_level=2`), takže čo v relácii vytŕča za štátnu hranicu, do mapy kraja
-nejde. Prekryv so susedom sa tým nestráca, len prestáva byť potrebný: dva
-susedné kraje zdieľajú v OSM tie isté cesty hranice, takže na seba nadväzujú
-PRESNE – bez medzery a bez prekryvu. Že to tak naozaj je, meria `seam.py`
-v každom behu (a hovorí aj to, koľko z toho ukroja dve zjednodušenia hranice –
-rozpis pri `boundary.uprav`).
-
-`.poly` Z OSM.FR OSTÁVA AKO NÁHRADA – nič viac. Keď sa hranica v PBF nenájde
-(iné dáta, iné meno relácie), radšej sa reže po starom a nahlas
-(`::warning::`), než aby beh spadol; ale mapa vtedy o sebe vie, že je orezaná
-rozšíreným polygónom.
-
-`.poly` PRE PLANETILER A PRE `osmium extract` SA PÍŠE Z TÝCH ISTÝCH PRSTENCOV
-ako `.geojson` (`rings_to_poly_text`) – dva zápisy tej istej hranice by boli
-dve pravdy o nej (pravidlo 1). Bez tejto vrstvy to číta Planetiler
-(`--polygon=…`, „emit any tile that intersects the shape"), takže sa dlaždice
-mapy prestanú vyrábať na celom obdĺžniku bboxu, a `osmium extract --polygon`,
-ktorým sa kraj reže z rodičovského extraktu. Keď sa hranica nezíska vôbec,
-`.poly` NEVZNIKNE – náhradný obdĺžnik z bboxu je presne to, čo Planetiler robí
-aj bez neho, takže by len predstieral orez (a rez z rodiča vtedy zámerne
-padne, viď `workers/plan/pbf.sh`).
+`.poly` pre Planetiler aj pre `osmium extract` sa píše z tých istých prstencov
+ako `.geojson`. Keď sa hranica nezíska vôbec, `.poly` nevznikne – obdĺžnik
+z bboxu by orez len predstieral.
 
 Použitie:
     python3 workers/plan/region-poly.py --region=presovsky \
         --from-pbf=data/region.osm.pbf --out=data/region.geojson \
         --poly-out=data/region.poly --summary=$GITHUB_STEP_SUMMARY
-    python3 workers/plan/region-poly.py --region=presovsky --out=…   (náhrada z osm.fr)
 """
 import argparse
 import json
@@ -71,19 +36,15 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _WORKERS = os.path.dirname(_HERE)
 _DATA = os.path.join(_WORKERS, "data")
 
-# KOĽKO TERÉNU SA POČÍTA EŠTE ZA HRANICOU KRAJA – dnes 0, lebo sa reže presne
-# (rozpis v hlavičke tohto súboru aj pri `BORDER_BUFFER_M` v `area.py`). Číslo
-# je definované v `area.py` (bez pomlčky v mene, dá sa normálne `import`-núť)
-# a nafukuje okno, z ktorého sa čítajú vrstvy z výškového modelu
-# (`area.py::pad_bbox`); nesie sa aj v menách uložených vrstiev, aby sa po jeho
-# zmene nevrátila z Drive tá stará (`workers/lint/border-overlap.py`).
+# koľko terénu sa počíta ešte za hranicou kraja – dnes 0, lebo sa reže presne.
+# Číslo je definované v `area.py`, nafukuje okno pre vrstvy z DEM a nesie sa
+# v menách uložených vrstiev.
 sys.path.insert(0, _HERE)
 from area import BORDER_BUFFER_M  # noqa: E402
 import boundary  # noqa: E402  (presná hranica z OSM – rozpis v tom súbore)
 import seam  # noqa: E402  (šev so susedmi – meranie, rozpis v tom súbore)
 
-# Polygóny ležia vedľa extraktov, ale v inom priečinku a BEZ `-latest` v mene:
-# `extracts/europe/slovakia/presovsky-latest.osm.pbf` → `polygons/europe/slovakia/presovsky.poly`.
+# polygóny ležia vedľa extraktov, ale v inom priečinku a bez `-latest` v mene
 POLY_BASE = os.environ.get("OSMFR_POLYGONS",
                            "https://download.openstreetmap.fr/polygons")
 
@@ -153,8 +114,8 @@ def ring_area_km2(ring):
 
 
 def geojson(rings):
-    """Prstence → GeoJSON. Preklad je v `boundary.py` – tam ho potrebuje aj
-    čítanie hraníc z PBF a dve kópie by sa raz rozišli (pravidlo 1)."""
+    """Prstence → GeoJSON. Preklad je v `boundary.py`, kde ho potrebuje aj
+    čítanie hraníc z PBF."""
     return boundary.geojson_from_rings(rings)
 
 
@@ -166,13 +127,10 @@ def bbox_rect(bbox):
 
 
 def rings_to_poly_text(rings, name="region"):
-    """`[(prstenec, je_diera)]` → text `.poly` (ten istý formát, aký sťahuje
-    `poly_url`; parsuje ho späť `parse_poly` vyššie).
+    """`[(prstenec, je_diera)]` → text `.poly`.
 
-    Píše sa znova z prstencov, nie ukladá bajt po bajte to, čo prišlo zo
-    servera: hranica je zvyčajne z OSM relácie (`boundary.py`), pretnutá so
-    štátom a zjednodušená, takže „ako prišlo" by aj tak nesedelo – a boli by
-    to dve pravdy o tej istej hranici (pravidlo 1).
+    Píše sa znova z prstencov, nie ukladá to, čo prišlo zo servera: hranica je
+    zvyčajne z OSM relácie, pretnutá so štátom a zjednodušená.
     """
     lines = [name or "region"]
     for i, (ring, hole) in enumerate(rings, start=1):
@@ -187,14 +145,9 @@ def rings_to_poly_text(rings, name="region"):
 def stiahni_rings(reg, timeout=20):
     """`.poly` regiónu zo servera → prstence, alebo `None`.
 
-    Kratší `timeout` než pri vlastnom polygóne je zámer: toto je meranie
-    navyše, a keď osm.fr práve nedvíha, nemá to k trom hodinám buildu
-    pridať osem čakaní po minúte.
-
-    Bez `::warning::` a bez náhrady za bboxom: je to pomocník pre SUSEDOV
-    (`susedne_rings`), kde chýbajúci polygón nie je chyba behu – len sa
-    o toho suseda šev nedá zmerať. Región, ktorý sa práve stavia, si to
-    v `main` rieši sám a nahlas.
+    Kratší timeout je zámer: je to meranie navyše. Bez `::warning::` – je to
+    pomocník pre susedov, kde chýbajúci polygón nie je chyba behu; región,
+    ktorý sa práve stavia, si to v `main` rieši sám a nahlas.
     """
     url = poly_url(reg)
     if not url:
@@ -214,9 +167,8 @@ def osm_meno(reg, kluc=""):
 def presne_rings(reg, hranice, kluc=""):
     """Prstence regiónu z už poskladaných hraníc PBF, alebo `None`.
 
-    Jedno miesto, kde sa z `regions.json` (meno + `admin_level`) a zo zoznamu
-    hraníc stane polygón – pýta sa naň aj samotný región v `main`, aj každý
-    jeho súrodenec pri meraní švu, a dve kópie toho páru by sa raz rozišli.
+    Jedno miesto, kde sa z `regions.json` a zo zoznamu hraníc stane polygón –
+    pýta sa naň región aj každý jeho súrodenec pri meraní švu.
     """
     if not hranice:
         return None
@@ -225,25 +177,16 @@ def presne_rings(reg, hranice, kluc=""):
 
 
 def susedne_rings(regs, key, hranice=None):
-    """Polygóny SÚRODENCOV a RODIČA daného regiónu (na meranie švu).
+    """Polygóny súrodencov a rodiča daného regiónu (na meranie švu).
 
     Súrodenec = iný región s tým istým `osmfr.parent`, ktorého bbox sa toho
-    nášho aspoň dotýka. Zoznam susedov sa NIKDE NEPÍŠE RUČNE (pravidlo 1):
-    číselník by sa raz rozišiel s hranicami a chýbajúci sused by ticho
-    znamenal „šev je v poriadku", teda presne ten omyl, ktorý má meranie
-    odhaliť. Bboxy sú v `regions.json` a hranice v OSM – to stačí.
+    nášho aspoň dotýka. Zoznam susedov sa nikde nepíše ručne – číselník by sa
+    raz rozišiel s hranicami a chýbajúci sused by ticho znamenal „šev je
+    v poriadku".
 
-    ═══ VŠETKY HRANICE Z JEDNÉHO ZDROJA, ALEBO ŽIADNE ═══
-
-    Keď je našou hranicou presná relácia z PBF (`hranice`), musia byť presné
-    aj hranice susedov. Merať presnú hranicu proti ROZŠÍRENEJ z osm.fr by
-    ukázalo prekryv 2 – 4 km, ktorý v skutočnosti nikde nie je – a to nie je
-    meranie, to je porovnávanie dvoch rôznych otázok. Preto sa v tomto režime
-    NEsťahuje nič: sused, ktorý v PBF nie je, sa vynechá a POVIE SA TO.
-
-    Že tam susedia sú, zariaďuje `osmium extract -s smart -S
-    types=multipolygon,boundary`: susedný kraj má s tým naším spoločné cesty
-    hranice, takže sa jeho relácia doplní celá – aj v už rezanom PBF kraja.
+    Všetky hranice z jedného zdroja, alebo žiadne: merať presnú hranicu proti
+    rozšírenej z osm.fr by ukázalo prekryv 2–4 km, ktorý nikde nie je. Sused,
+    ktorý v PBF nie je, sa vynechá a povie sa to.
 
     Vracia `({kľúč: prstence}, prstence_rodiča, [kľúče, čo chýbajú])`.
     """
@@ -298,23 +241,19 @@ def main():
         return 1
     bbox = tuple(reg["bbox"])
 
-    # ═══ 1. PRESNÁ HRANICA Z OSM ═══ (rozpis v hlavičke súboru)
+    # ═══ 1. presná hranica z OSM ═══ (rozpis v hlavičke súboru)
     rings, zdroj, presna = None, "", False
     hranice, stav, ma_stat = [], {}, False
     if args.from_pbf:
         hranice = boundary.hranice_z_pbf(args.from_pbf)
         surove = presne_rings(reg, hranice, args.region)
         if surove:
-            # PRIENIK SO ŠTÁTOM: kraj nesmie vytŕčať za štátnu hranicu ani
-            # vtedy, keď je jeho relácia v OSM pokazená (rozpis pri
-            # `boundary.uprav`). Rodič je kľúč iného regiónu v tom istom
-            # číselníku – jeho `admin_level` je 2, takže sa nájde tá istá
-            # hranica, akou sa reže celé Slovensko.
+            # prienik so štátom: kraj nesmie vytŕčať za štátnu hranicu ani
+            # vtedy, keď je jeho relácia v OSM pokazená
             parent = ((reg.get("osmfr") or {}).get("parent") or "")
             stat = (presne_rings(regs[parent], hranice, parent)
                     if parent and parent in regs else None)
-            # Región BEZ rodiča je sám tá krajina (`slovensko`,
-            # `admin_level=2`) – nie je čím ho pretínať a nie je to chyba.
+            # región bez rodiča je sám tá krajina – nie je čím ho pretínať
             ma_stat = bool(parent)
             pred = sum(ring_area_km2(r) for r, hole in surove if not hole)
             rings, stav = boundary.uprav(surove, stat)
@@ -324,9 +263,7 @@ def main():
                      f"(admin_level={reg.get('admin_level') or 4}) "
                      f"z {args.from_pbf}")
             if stav.get("orezane") and pred - po > 1.0:
-                # Rule 4: čo sa orezalo, nie čo sa o to len skúsilo. Väčší
-                # rozdiel než pár km² znamená, že relácia kraja naozaj
-                # vytŕčala za štátnu hranicu – to sa má vedieť.
+                # čo sa orezalo, nie čo sa o to len skúsilo
                 print(f"::warning::Relácia kraja siahala {pred - po:,.0f} km² "
                       f"za štátnu hranicu; orezané prienikom so štátom.")
         else:
@@ -348,14 +285,12 @@ def main():
             rings = parse_poly(raw)
             zdroj = f"{url} (náhrada – nie je to hranica kraja, viď hlavičku)"
         except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-            # NIE JE TO CHYBA BEHU: bez polygónu sa dá počítať na bboxe ako
-            # doteraz. Musí to ale byť nahlas – ticho by to znamenalo hodiny
-            # počítania mimo kraj a rovnú hranu v tieňovaní.
+            # nie je to chyba behu: bez polygónu sa dá počítať na bboxe. Musí
+            # to ale byť nahlas – ticho by to znamenalo hodiny počítania mimo kraj.
             print(f"::warning::Polygón kraja sa nepodarilo stiahnuť "
                   f"({url}: {exc}) – vrstvy z DEM sa spočítajú na CELOM BBOXE "
                   f"regiónu, teda aj mimo kraj. Skús beh zopakovať.")
-    # `.poly` sa píše len vtedy, keď hranica NAOZAJ je – obdĺžnik z bboxu by
-    # orez len predstieral (rozpis v hlavičke).
+    # `.poly` sa píše, len keď hranica naozaj je – obdĺžnik by orez predstieral
     hranica_je = presna or bool(raw)
     if not rings:
         rings, zdroj = bbox_rect(bbox), "bbox regiónu (hranica nie je)"
@@ -373,21 +308,16 @@ def main():
         with open(args.poly_out, "w") as f:
             f.write(rings_to_poly_text(rings, args.region))
 
-    # ═══ 3. ŠEV SO SUSEDMI ═══
-    # Až TERAZ, keď je polygón na disku: je to MERANIE, nie výroba – keby
-    # padlo alebo trvalo, mapa už má z čoho vzniknúť.
-    #
-    # Odkedy je hranica presná, sa nemeria „zavrú dve nafúknutia medzeru",
-    # ale to hlavné, čo o susedovi treba vedieť: dotýkame sa ho, alebo je
-    # medzi mapami diera – a nelezieme doňho (rozpis vo `seam.py`).
-    # Zlyhanie merania nie je chyba behu – mapa je hotová, len sa o švíku
-    # nedozvieme; ticho to ale nebude.
+    # ═══ 3. šev so susedmi ═══
+    # Až teraz, keď je polygón na disku: je to meranie, nie výroba.
+    # Zlyhanie merania nie je chyba behu, len sa o švíku nedozvieme – ticho to
+    # ale nebude.
     sev = None
     if hranica_je and not args.no_seam:
         try:
             susedia, rodic, chyba = susedne_rings(regs, args.region, hranice)
             if chyba:
-                # Rule 8: chýbajúci sused nesmie znamenať „šev je v poriadku".
+                # chýbajúci sused nesmie znamenať „šev je v poriadku"
                 print(f"::warning::Hranicu susedov {', '.join(sorted(chyba))} "
                       f"sa nepodarilo získať z toho istého zdroja ako našu, "
                       f"takže sa s nimi šev NEMERAL – čísla nižšie hovoria len "
@@ -432,7 +362,7 @@ def main():
           f"{sum(len(r) for r, _ in rings)} bodov")
     print(f"  bbox polygónu        {pw:.3f},{ps:.3f},{pe:.3f},{pn:.3f}")
     print(f"  bbox regiónu         {bw},{bs},{be},{bn}")
-    # TOTO JE TO ČÍSLO, o ktoré ide: koľko práce padalo mimo kraj.
+    # toto je to číslo, o ktoré ide: koľko práce padalo mimo kraj
     print(f"  plocha kraja         {plocha:,.0f} km² z {bbox_km2:,.0f} km² "
           f"bboxu = {podiel:.0f} %")
     print(f"  mimo kraj            {bbox_km2 - plocha:,.0f} km² "
