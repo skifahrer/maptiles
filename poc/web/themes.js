@@ -3250,6 +3250,12 @@ export const SHIELD_DEFS = [
  * @param {string} [opts.transportUrl] dopravná sieť (balík `cesty`); štýl z nej
  *                                    kreslí len obmedzenia na ceste
  * @param {number} [opts.transportMaxzoom]
+ * @param {string} [opts.boundariesUrl] hranice území (balík `hranice`); štýl
+ *                                    z nich kreslí názvy území
+ * @param {number} [opts.boundariesMaxzoom]
+ * @param {string} [opts.waterUrl]    vodstvo (balík `vodstvo`); meno je na
+ *                                    geometrii, tak z neho idú názvy vôd
+ * @param {number} [opts.waterMaxzoom]
  * @param {string} [opts.demSource]   zdroj výšok – určuje atribúciu
  * @param {string|null} [opts.demTiles] raster-dem dlaždice (null = bez nich)
  * @param {string} [opts.demTilesSource] zdroj výšok pre tie dlaždice; nemusí
@@ -3287,6 +3293,10 @@ export function buildStyle({
   pointsMaxzoom = 15,
   transportUrl = null,
   transportMaxzoom = 14,
+  boundariesUrl = null,
+  boundariesMaxzoom = 12,
+  waterUrl = null,
+  waterMaxzoom = 14,
   demSource = DEFAULT_DEM_SOURCE,
   demTiles = DEFAULT_DEM_TILES,
   demTilesSource = null,
@@ -3420,6 +3430,28 @@ export function buildStyle({
       type: "vector",
       url: transportUrl,
       maxzoom: transportMaxzoom,
+      attribution:
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
+    };
+  }
+  // hranice území (balík `hranice`): vrstva `boundary` OpenMapTiles je čiara
+  // bez mena územia, ktoré ohraničuje – odtiaľto idú tie mená
+  if (boundariesUrl) {
+    style.sources.boundaries = {
+      type: "vector",
+      url: boundariesUrl,
+      maxzoom: boundariesMaxzoom,
+      attribution:
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
+    };
+  }
+  // vodstvo (balík `vodstvo`): v OpenMapTiles leží meno vody mimo geometrie,
+  // tu je na nej – popisky vôd preto idú odtiaľto
+  if (waterUrl) {
+    style.sources.water = {
+      type: "vector",
+      url: waterUrl,
+      maxzoom: waterMaxzoom,
       attribution:
         '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
     };
@@ -4845,6 +4877,8 @@ export function buildStyle({
   );
 
   // ================= popisky =================
+  // pri balíku `vodstvo` sa tie isté mená kreslia z neho (meno je tam na
+  // geometrii, nie vedľa nej) – dvakrát by sa prekrývali
   add(
     {
       id: "waterway-name",
@@ -4855,7 +4889,8 @@ export function buildStyle({
         "symbol-placement": "line",
         "text-field": nameExpr,
         "text-font": ITAL,
-        "text-size": zl([[13, 10], [18, 13]])
+        "text-size": zl([[13, 10], [18, 13]]),
+        ...(waterUrl ? { visibility: "none" } : {})
       },
       paint: {
         "text-color": c.waterText,
@@ -4879,7 +4914,8 @@ export function buildStyle({
         "text-field": nameExpr,
         "text-font": ITAL,
         "text-size": zl([[8, 10], [16, 14]]),
-        "text-max-width": 8
+        "text-max-width": 8,
+        ...(waterUrl ? { visibility: "none" } : {})
       },
       paint: {
         "text-color": c.waterText,
@@ -4894,6 +4930,135 @@ export function buildStyle({
       { "text-color": "waterText", "text-halo-color": "textHalo" }
     ]
   );
+
+  // vodstvo z vlastného .pmtiles: meno je na geometrii, takže meno dostane aj
+  // tok a plocha, ktorú `water_name` OpenMapTiles nemá
+  if (waterUrl) {
+    add(
+      {
+        id: "water-pkg-waterway-name",
+        type: "symbol",
+        source: "water",
+        "source-layer": "waterway",
+        minzoom: 13,
+        filter: ["has", "name"],
+        layout: {
+          "symbol-placement": "line",
+          "text-field": nameExpr,
+          "text-font": ITAL,
+          "text-size": zl([[13, 10], [18, 13]])
+        },
+        paint: {
+          "text-color": c.waterText,
+          "text-halo-color": c.textHalo,
+          "text-halo-width": 1
+        }
+      },
+      [
+        "popisky",
+        "Názvy vodných tokov (balík vodstvo)",
+        "text",
+        { "text-color": "waterText", "text-halo-color": "textHalo" }
+      ]
+    );
+    add(
+      {
+        id: "water-pkg-name",
+        type: "symbol",
+        source: "water",
+        "source-layer": "water",
+        minzoom: 9,
+        filter: ["has", "name"],
+        layout: {
+          "text-field": nameExpr,
+          "text-font": ITAL,
+          "text-size": zl([[9, 10], [16, 14]]),
+          "text-max-width": 8
+        },
+        paint: {
+          "text-color": c.waterText,
+          "text-halo-color": c.textHalo,
+          "text-halo-width": 1
+        }
+      },
+      [
+        "popisky",
+        "Názvy vodných plôch (balík vodstvo)",
+        "text",
+        { "text-color": "waterText", "text-halo-color": "textHalo" }
+      ]
+    );
+    // pramene, vodopády a studne – bodové vody, ktoré plocha nemá
+    add(
+      {
+        id: "water-pkg-point-name",
+        type: "symbol",
+        source: "water",
+        "source-layer": "water_point",
+        minzoom: 13,
+        filter: ["has", "name"],
+        layout: {
+          "text-field": nameExpr,
+          "text-font": ITAL,
+          "text-size": zl([[13, 9], [18, 12]]),
+          "text-max-width": 8
+        },
+        paint: {
+          "text-color": c.waterText,
+          "text-halo-color": c.textHalo,
+          "text-halo-width": 1
+        }
+      },
+      [
+        "popisky",
+        "Názvy bodových vôd (balík vodstvo)",
+        "text",
+        { "text-color": "waterText", "text-halo-color": "textHalo" }
+      ]
+    );
+  }
+
+  // názvy území z balíka `hranice`. Vrstva `boundary` OpenMapTiles je čiara bez
+  // mena, takže toto je jediný zdroj mena obce, okresu a kraja.
+  if (boundariesUrl) {
+    for (const [id, label, level, mz, size] of [
+      ["boundary-name-region", "Názvy krajov", 4, 7, [[7, 11], [10, 14]]],
+      ["boundary-name-district", "Názvy okresov", 6, 9, [[9, 10], [11, 13]]],
+      ["boundary-name-municipality", "Názvy obcí", 8, 11, [[11, 10], [13, 12]]]
+    ]) {
+      add(
+        {
+          id,
+          type: "symbol",
+          source: "boundaries",
+          "source-layer": "boundary",
+          minzoom: mz,
+          filter: ["all",
+            ["==", num("admin_level", 0), level],
+            ["has", "name"]],
+          layout: {
+            "text-field": nameExpr,
+            "text-font": REG,
+            "text-size": zl(size),
+            "text-max-width": 8,
+            "text-transform": "uppercase",
+            "text-letter-spacing": 0.08
+          },
+          paint: {
+            "text-color": c.placeText,
+            "text-halo-color": c.textHalo,
+            "text-halo-width": 1.4
+          }
+        },
+        [
+          "popisky",
+          label,
+          "text",
+          { "text-color": "placeText", "text-halo-color": "textHalo" }
+        ]
+      );
+    }
+  }
 
   add(
     {

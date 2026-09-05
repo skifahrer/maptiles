@@ -38,6 +38,8 @@ const rocksCheck = $("rocks");
 const trailsCheck = $("trails");
 const featuresCheck = $("features");
 const roadsCheck = $("roads");
+const boundariesCheck = $("boundaries");
+const waterCheck = $("water");
 const terrainCheck = $("terrain");
 const hillshadeCheck = $("hillshade");
 const devCheck = $("devmode");
@@ -242,6 +244,19 @@ function styleFor(manifest) {
         ? `pmtiles://${baseUrl}/${region.transport}`
         : null,
     transportMaxzoom: region.transport_maxzoom || 14,
+    // NÁZVY ÚZEMÍ (balík `hranice`) a NÁZVY VÔD (balík `vodstvo`). Obe vrstvy
+    // existujú kvôli menu: `boundary` OpenMapTiles je čiara bez mena územia
+    // a meno vody leží mimo jej geometrie.
+    boundariesUrl:
+      region.boundaries && boundariesCheck.checked
+        ? `pmtiles://${baseUrl}/${region.boundaries}`
+        : null,
+    boundariesMaxzoom: region.boundaries_maxzoom || 12,
+    waterUrl:
+      region.water && waterCheck.checked
+        ? `pmtiles://${baseUrl}/${region.water}`
+        : null,
+    waterMaxzoom: region.water_maxzoom || 14,
     demSource: region.dem_source || DEFAULT_DEM_SOURCE,
     demTiles,
     // Tieňovanie má vo formulári pipeline vlastný výber modelu, takže
@@ -607,6 +622,8 @@ async function main() {
     $("row-trails").hidden = !region.trails;
     $("row-features").hidden = !region.features;
     $("row-roads").hidden = !region.transport;
+    $("row-boundaries").hidden = !region.boundaries;
+    $("row-water").hidden = !region.water;
     $("row-terrain").hidden = manifest.dem === null;
     $("row-hillshade").hidden = manifest.dem === null;
   };
@@ -639,6 +656,12 @@ async function main() {
     applyStyle(manifest);
   });
   roadsCheck.addEventListener("change", () => {
+    applyStyle(manifest);
+  });
+  boundariesCheck.addEventListener("change", () => {
+    applyStyle(manifest);
+  });
+  waterCheck.addEventListener("change", () => {
     applyStyle(manifest);
   });
   trailsCheck.addEventListener("change", () => {

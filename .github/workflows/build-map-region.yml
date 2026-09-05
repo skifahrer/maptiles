@@ -1097,6 +1097,10 @@ jobs:
             --points-maxzoom='${{ needs.features.outputs.maxzoom || '15' }}' \
             --transport='${{ needs.transport.outputs.enabled || 'false' }}' \
             --transport-maxzoom='${{ needs.transport.outputs.maxzoom || '14' }}' \
+            --boundaries='${{ needs.hranice.outputs.enabled || 'false' }}' \
+            --boundaries-maxzoom='${{ needs.hranice.outputs.maxzoom || '12' }}' \
+            --water='${{ needs.vodstvo.outputs.enabled || 'false' }}' \
+            --water-maxzoom='${{ needs.vodstvo.outputs.maxzoom || '14' }}' \
             --dem-source='${{ needs.dem.outputs.contours_dem_source || 'sonny' }}' \
             --dem-tiles-source='${{ needs.dem.outputs.terrain_dem_source || needs.dem.outputs.contours_dem_source || 'sonny' }}' \
             --dem-bounds='${{ needs.plan.outputs.test_bbox }}' \

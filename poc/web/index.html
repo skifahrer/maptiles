@@ -600,6 +600,18 @@
       <input type="checkbox" id="roads" checked />
       <label for="roads" style="margin:0">Obmedzenia na ceste</label>
     </div>
+    <!-- Názvy území z balíka `hranice`: vrstva `boundary` OpenMapTiles je
+         čiara bez mena územia, ktoré ohraničuje. -->
+    <div class="row" id="row-boundaries" hidden>
+      <input type="checkbox" id="boundaries" checked />
+      <label for="boundaries" style="margin:0">Názvy území</label>
+    </div>
+    <!-- Názvy vôd z balíka `vodstvo`: v OpenMapTiles leží meno vody mimo
+         geometrie, takže ho nemá ani tok, ani menšia plocha. -->
+    <div class="row" id="row-water" hidden>
+      <input type="checkbox" id="water" checked />
+      <label for="water" style="margin:0">Názvy vôd</label>
+    </div>
     <div class="row" id="row-hillshade" hidden>
       <input type="checkbox" id="hillshade" />
       <label for="hillshade" style="margin:0">Tieňovanie reliéfu</label>
