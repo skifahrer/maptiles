@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
-"""
-Skaly z tieňovania, 2/3: z dlaždíc raster tmavosti.
+"""Skaly z tieňovania, 2/3: z dlaždíc raster tmavosti.
 
-ČO JE TU. Mozaika dlaždíc → pole „ako tmavé je to tu oproti okoliu": pásové
-čítanie, pole osvetlenia (pozadie) na zmenšenej mriežke, prahy a zápis rastra
-po pásoch. Sťahovanie dlaždíc je vo `shading-tiles.py`, obrysy vo
-`shading-vector.py`, plán a CLI v `shading-rocks.py`.
-
-PREČO ZVLÁŠŤ: `shading-rocks.py` mal 2023 riadkov (pravidlo 5 v CLAUDE.md).
-Rez je na hranici fázy, ktorá tam už bola vyznačená komentárom.
-
-Spúšťa sa ako modul, nie z príkazovej riadky:
-    raster = load("shading_raster", "raster.py")
+Mozaika dlaždíc → pole „ako tmavé je to tu oproti okoliu": pásové čítanie,
+pole osvetlenia na zmenšenej mriežke, prahy a zápis rastra po pásoch.
+Spúšťa sa ako modul: `load("shading_raster", "raster.py")`.
 """
 import importlib.util
 import math
@@ -36,31 +28,27 @@ def load(name, path):
     return mod
 
 
-# Mriežka, `run()` a `Heartbeat` sú z tej spodnej vrstvy – berú sa odtiaľ, nie
-# sa píšu druhýkrát (pravidlo 1).
+# mriežka, run() a Heartbeat sú zo spodnej vrstvy
 tiles = load("shading_tiles", "tiles.py")
 WEBMERC, R, TILE = tiles.WEBMERC, tiles.R, tiles.TILE
 run = tiles.run
 tile_res, ground_res = tiles.tile_res, tiles.ground_res
 
-# `watch.py` je spoločný (skaly zo sklonu aj z tieňovania, dlhé kroky
-# workflowu), tak leží vo `workers/lib/` a nie vedľa jedného z nich.
+# watch.py je spoločný pre oba druhy skál, preto vo workers/lib/
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
 from watch import hms, dir_mb, Heartbeat  # noqa: E402
 
-# Na akom zmenšení sa počíta pole osvetlenia (pozadie). Pozadie je hladká
-# funkcia – na 8× menšej mriežke vyzerá rovnako a je 64× lacnejšie.
+# zmenšenie, na ktorom sa počíta pole osvetlenia – je to hladká funkcia
 BG_DOWN = 8
 
 
-# ------------------------------------------------------------------ raster --
+# raster
 
 def block_mean(gray, k, chunk_rows=4096):
     """Priemer v blokoch k×k → k-krát menší obraz vo float32.
 
-    Po pásoch riadkov, aby float medzivýsledok nikdy nemal veľkosť celého
-    pásu – pri 78 000 px na šírku je to rozdiel medzi 80 MB a 2,5 GB.
+    Po pásoch riadkov, nech float medzivýsledok nie je veľký ako celý pás.
     """
     h, w = gray.shape
     h2, w2 = h // k, w // k
@@ -74,11 +62,7 @@ def block_mean(gray, k, chunk_rows=4096):
 
 
 def box_mean(a, r):
-    """Priemer v okne (2r+1)² cez integrálny obraz; okraje sa doplnia hranou.
-
-    Beží na zmenšenom obraze (BG_DOWN), takže float64 kumulatívny súčet je
-    lacný a presný – na plnom rozlíšení by to boli gigabajty.
-    """
+    """Priemer v okne (2r+1)² cez integrálny obraz; okraje sa doplnia hranou."""
     if r <= 0:
         return a.astype(np.float32)
     h, w = a.shape
@@ -93,12 +77,9 @@ def box_mean(a, r):
 
 
 def box_blur_u8(a, r):
-    """Priemer v malom okne (2r+1)² priamo na šedej – zmaže zrno JPEGu.
+    """Priemer v malom okne priamo na šedej – zmaže zrno JPEGu.
 
-    JPEG kóduje po blokoch 8×8 a na hladkom tieni z toho ostáva šum ±2
-    stupne šedej. Bez neho by izolínia okolo prahu vyrábala tisíce
-    odrobiniek, ktoré by aj tak vypadli na `--min-area` – len by ich najprv
-    musel niekto vektorizovať.
+    Inak by izolínia okolo prahu vyrábala tisíce odrobiniek.
     """
     if r <= 0:
         return a
@@ -115,11 +96,9 @@ def box_blur_u8(a, r):
 def load_band(fetcher, z, x0, x1, ty0, ty1, every=30):
     """Dlaždicové riadky [ty0, ty1) ako jeden obraz odtieňov šedej.
 
-    Chýbajúca dlaždica ostane 255 (= úplne svetlá, teda určite nie skala),
-    nie 0 – nula by sa vyhodnotila ako najtmavšie miesto v mozaike.
-
-    Dekódovanie tisícok JPEGov je najdlhšia tichá časť celého behu, preto
-    sa priebežne hlási, ktorý dlaždicový riadok je na rade.
+    Chýbajúca dlaždica ostane 255 (svetlá), nie 0 – nula by bola najtmavšie
+    miesto mozaiky. Dekódovanie JPEGov je najdlhšia tichá časť behu, preto
+    sa hlási dlaždicový riadok.
     """
     w = (x1 - x0) * TILE
     h = (ty1 - ty0) * TILE
@@ -153,13 +132,7 @@ def load_band(fetcher, z, x0, x1, ty0, ty1, every=30):
 
 
 def upsample(small, h, w, k=BG_DOWN):
-    """Zmenšené pole späť na plné rozlíšenie (opakovaním pixelov).
-
-    `block_mean` zaokrúhľuje rozmer nadol, takže keď šírka alebo výška nie je
-    násobkom `k`, chýba na okraji pár riadkov a stĺpcov – tie sa doplnia
-    hranou. V mozaike z celých dlaždíc (256 px) to nikdy nenastane, ale
-    funkcia nemá padať na tom, kde ju kto zavolá.
-    """
+    """Zmenšené pole späť na plné rozlíšenie; okraj sa doplní hranou."""
     full = np.repeat(np.repeat(small, k, axis=0), k, axis=1)
     if full.shape[0] < h or full.shape[1] < w:
         full = np.pad(full, ((0, max(0, h - full.shape[0])),
@@ -168,15 +141,10 @@ def upsample(small, h, w, k=BG_DOWN):
 
 
 def bright_background(small, r):
-    """Ako svetlý je tu OSVETLENÝ terén – priemer svetlejšej polovice okna.
+    """Ako svetlý je tu osvetlený terén – priemer svetlejšej polovice okna.
 
-    Obyčajný priemer sa nedá použiť: veľká tmavá plocha si stiahne vlastné
-    pozadie k sebe a potom sa nájde len jej okraj. Dva prechody to opravia –
-    najprv hrubý priemer, potom priemer len z tých pixelov, ktoré sú nad ním.
-    Tmavá plocha do druhého priemeru už nehlasuje.
-
-    Keď je v okne svetlých pixelov úplne minimum (okno celé vnútri steny),
-    padá sa späť na hrubý priemer – tam rozhoduje `--dark-always`.
+    Obyčajný priemer by si veľká tmavá plocha stiahla k sebe a našiel by sa
+    len jej okraj; druhý prechod počíta len z pixelov nad hrubým priemerom.
     """
     m1 = box_mean(small, r)
     lit = (small >= m1).astype(np.float32)
@@ -186,12 +154,7 @@ def bright_background(small, r):
 
 
 def _rank_box(a, r, ufunc):
-    """Bežiace min/max v okne (2r+1)² – separovateľne, po osiach.
-
-    Dva prechody po (2r+1) posunoch namiesto (2r+1)² ako v `box_blur_u8`:
-    pri r=4 je to 18 operácií na pixel a nie 81. Namerané 140 mil. px/s,
-    čiže na z17 nad Vysokými Tatrami (0,91 mld. px) okolo 7 sekúnd.
-    """
+    """Bežiace min/max v okne (2r+1)² – separovateľne, po osiach."""
     if r <= 0:
         return a
     for axis in (0, 1):
@@ -209,27 +172,12 @@ def _rank_box(a, r, ufunc):
 
 
 def open_mask(score, r):
-    """Morfologické OTVORENIE masky tmavosti: erózia, potom dilatácia.
+    """Morfologické otvorenie masky tmavosti: erózia, potom dilatácia.
 
-    ČO TO RIEŠI. Prah nad hillshade nenájde len steny – nájde aj hustú sieť
-    vlásočnicových rýh a mikrotieňov cez celý svah. Pri pohľade na pixely to
-    vyzerá správne (červená maska naozaj leží na rozčlenenom teréne), lenže
-    z tých vlákien sa vektorizáciou stane JEDEN prepojený polygón cez celý
-    výrez a v mape z neho pri z14 a nižšie nie je sieť, ale rovnomerná sivá
-    deka. Namerané na výreze pri Gerlachu (2 km², z17, dark=125):
-
-        bez otvorenia   21,6 % plochy, najväčší útvar 30,6 ha, pri z14 je
-                        20,7 % pixelov z väčšiny zaliatych → súvislý záves
-        r = 2 (1,6 m)   15,4 %
-        r = 4 (3,1 m)    9,5 %, pri z14 už čitateľné samostatné telesá
-
-    Erózia zmaže všetko užšie než 2r+1 pixelov, dilatácia vráti prežitým
-    jadrám ich pôvodný rozsah. Stena teda ostane stenou, vlásočnica zmizne –
-    a nie podľa plochy (na tú je celá sieť jeden veľký útvar), ale podľa
-    ŠÍRKY, čo je presne to, čím sa stena od ryhy líši.
-
-    Polomer je v METROCH na zemi (`--open`), takže to isté nastavenie platí
-    na každom zoome rovnako.
+    Prah nájde aj hustú sieť vlásočnicových rýh, z ktorej je pri nízkom zoome
+    rovnomerná sivá deka. Erózia zmaže všetko užšie než 2r+1, dilatácia vráti
+    prežitým jadrám rozsah – triedi sa teda podľa šírky, nie plochy.
+    Polomer je v metroch na zemi (`--open`), rovnako na každom zoome.
     """
     if r <= 0:
         return score
@@ -248,14 +196,8 @@ def score_band(gray, dark, always, local_px, rel, blur, fill_px=0, every=0,
     ref   = clip(pozadie − rel, always, dark)   (bez pozadia rovno `dark`)
     score = clip(ref − šedá, 0, 255)
 
-    `open_px` (input `open`) potom vyhodí všetko užšie než 2×open_px – to sú
-    vlásočnicové ryhy a mikrotiene, z ktorých je v mape sivá deka. Viď
-    `open_mask`; stena to nechá stenou.
-
-    `fill_px` (input `fill`, default vypnuté) navyše spriemeruje tmavosť
-    v okolí, takže sa z jemnej siete žliabkov stane súvislá plocha. Viď
-    hlavičku súboru – zámerne je to vypnuté, lebo tá jemná štruktúra JE
-    to, čo chceme.
+    `open_px` vyhodí všetko užšie než 2×open_px (viď `open_mask`), `fill_px`
+    (default vypnuté) spriemeruje tmavosť v okolí.
     """
     def faza(text, t0):
         if every:
@@ -291,19 +233,14 @@ def score_band(gray, dark, always, local_px, rel, blur, fill_px=0, every=0,
 
     if fill_px > 0:
         faza("vyplnenie", t_f)
-        # Priemerná tmavosť v okolí namiesto tmavosti pixela. Počíta sa na
-        # tom istom 8× zmenšení ako pozadie – pole hustoty je hladké, na
-        # jemnejšej mriežke vyzerá rovnako. Obrys je potom odkrokovaný po
-        # 8 px, čo Chaikin zahladí; komu ide o súvislé plochy, tomu to
-        # nevadí, a komu ide o detail, ten `fill` nezapína.
+        # priemerná tmavosť v okolí; na tom istom zmenšení ako pozadie
         out = upsample(box_mean(block_mean(out, BG_DOWN),
                                 max(1, int(round(fill_px / BG_DOWN / 2)))),
                        h, w).astype(np.uint8)
 
     if open_px > 0:
-        # Až tu, na hotovej maske: pred prahom by sa mazalo z plynulej
-        # tmavosti a `dark_always` by sa nemal ako uplatniť, po vektorizácii
-        # už je celá sieť jeden polygón a šírka sa z neho nedá vytiahnuť.
+        # až na hotovej maske: pred prahom by sa `dark_always` nemal ako
+        # uplatniť, po vektorizácii už je sieť jeden polygón
         faza(f"otvorenie {open_px} px", t_f)
         out = open_mask(out, open_px)
     return out, gray
@@ -325,15 +262,11 @@ VRT_RAW = """<VRTDataset rasterXSize="{w}" rasterYSize="{h}">
 def write_chunk(arr, ox, oy, res, out_tif):
     """numpy → georeferencovaný komprimovaný GTiff, bez python bindings GDALu.
 
-    Cesta je raw súbor + VRTRawRasterBand (to je len XML hlavička nad ním)
-    + `gdal_translate`. Raw sa hneď maže, na disku ostáva len komprimovaný
-    dlaždicovaný TIFF – pole tmavosti je väčšinou nula, takže z 800 MB
-    ostane pár desiatok.
+    Raw súbor + VRTRawRasterBand + `gdal_translate`; raw sa hneď maže.
     """
     h, w = arr.shape
-    # Cieľ sa píše cez `.part` a premenuje sa až hotový. Pri pokračovaní po
-    # páde sa totiž existencia súboru berie ako „tento pás je spočítaný" –
-    # polovičný TIFF by tichú dieru v mozaike zamkol navždy.
+    # cez `.part`: existencia súboru znamená „pás je spočítaný", takže by
+    # polovičný TIFF zamkol dieru v mozaike navždy
     final_tif, out_tif = out_tif, out_tif + ".part"
     raw = out_tif + ".raw"
     arr.tofile(raw)
@@ -379,20 +312,13 @@ def build_score_raster(fetcher, z, x0, y0, x1, y1, args, tmp, preview_rows):
         ty1 = min(ty + rows_per_band, y1)
         py0, py1 = max(y0, ty - pad_tiles), min(y1, ty1 + pad_tiles)
         tif = os.path.join(tmp, f"score{bi:04d}.tif")
-        # Hotový pás z predošlého (spadnutého) behu sa nepočíta znova. Súbor
-        # tam je len vtedy, keď sa dopísal celý – `write_chunk` ide cez
-        # `.part` a premenovanie, takže polovičný TIFF sa za hotový nikdy
-        # nevydá. Náhľad sa tým pádom skladá len z toho, čo sa naozaj
-        # počítalo; pri úplnom pokračovaní bude prázdny a to je v poriadku.
+        # hotový pás z predošlého behu sa nepočíta znova
         if os.path.exists(tif) and os.path.getsize(tif) > 0:
             tifs.append(tif)
             print(f"  … tmavosť: pás {bi + 1}/{n_bands} už je "
                   f"({dir_mb(tif):.0f} MB) – preskakujem", flush=True)
             continue
-        # Tep okolo celého pásu: dekódovanie aj numpy fázy sú dlhé a tiché,
-        # takže bez neho z logu nepoznáš „počíta" od „zaseklo sa". Toto je
-        # záruka, že ticho nikdy nepresiahne `--heartbeat` sekúnd; riadky
-        # nižšie k tomu hovoria, čo sa práve deje.
+        # tep okolo celého pásu – inak z logu nepoznáš „počíta" od „zaseklo sa"
         hb = Heartbeat(f"pás {bi + 1}/{n_bands}", every=args.heartbeat)
         hb.start()
         try:
@@ -412,8 +338,7 @@ def build_score_raster(fetcher, z, x0, y0, x1, y1, args, tmp, preview_rows):
         oy = R - ty * TILE * res
         write_chunk(np.ascontiguousarray(cut), ox, oy, res, tif)
         tifs.append(tif)
-        # Náhľad: zmenšený obraz sa skladá priebežne, nikdy sa nedrží celá
-        # mozaika v pamäti.
+        # náhľad sa skladá priebežne, celá mozaika sa nikdy nedrží v pamäti
         if preview_rows is not None:
             k = max(1, args.preview_down)
             vis = blurred[top:bot]
@@ -430,5 +355,3 @@ def build_score_raster(fetcher, z, x0, y0, x1, y1, args, tmp, preview_rows):
               f"{done}/{y1 - y0} riadkov, beží {hms(el)}, ostáva {hms(eta)}, "
               f"na disku {dir_mb(tmp):.0f} MB", flush=True)
     return tifs, time.time() - t0
-
-

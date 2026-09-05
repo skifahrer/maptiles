@@ -1,34 +1,11 @@
 #!/usr/bin/env python3
-"""
-Výškové dlaždice → JEDEN `.pmtiles` (raster, terrarium PNG).
+"""Výškové dlaždice → jeden `.pmtiles` (raster, terrarium PNG).
 
-PREČO NIE STROM PNG SÚBOROV. Doteraz išlo tieňovanie na Pages ako
-`terrain/{z}/{x}/{y}.png`, teda tisíce malých súborov, a do skladu na Drive
-ako `.tar.zst`. Boli s tým tri problémy naraz a všetky rieši ten istý formát,
-v ktorom už aj tak máme mapu, vrstevnice, skaly aj trasy:
+Jeden súbor namiesto stromu tisícov PNG: rovnaká podoba na Pages aj v sklade,
+rozsah a zoomy si nesie v hlavičke. Rovnaké dlaždice (rovina, hladina) sa
+vďaka hashovaniu uložia raz. Zapisuje sa v Hilbertovom poradí, aby bol archív
+„clustered".
 
-  1. POČET SÚBOROV. Jeden beh nahrával na Pages stovky až desaťtisíce
-     položiek; artefakty medzi jobmi ich prenášali po jednej a `upload-pages`
-     tiež. `.pmtiles` je jeden súbor a klient si z neho ťahá dlaždice cez
-     HTTP Range – presne ako z ostatných vrstiev.
-  2. DVE PODOBY TEJ ISTEJ VECI. Na Pages strom, v sklade `.tar.zst` – čiže
-     balenie a rozbaľovanie pri každom behu a dve cesty, ktoré sa môžu
-     rozísť. Teraz je to jeden súbor: čo je v sklade, to sa aj nasadí.
-  3. HRANICA ÚZEMIA. Raster zdroj v štýle nevie, kde dlaždice sú, takže sa
-     mu musela dopisovať `bounds` zvlášť (inak z každého posunu mapy padali
-     stovky 404). `.pmtiles` si rozsah aj zoomy nesie v hlavičke sám.
-
-ROVNAKÉ DLAŽDICE SA UKLADAJÚ RAZ. Writer si ich hashuje, a pri teréne to nie
-je maličkosť: rovina, hladina a územie za hranicou modelu dávajú identické
-PNG. Koľko sa tým ušetrilo, skript vypíše.
-
-PORADIE ZÁPISU JE HILBERTOVO, NIE PO RIADKOCH. `tileid` rastie po Hilbertovej
-krivke, a keď sa dlaždice zapíšu v tom poradí, archív je „clustered" –
-susedné dlaždice ležia v súbore vedľa seba a klient si ich vypýta jedným
-Range namiesto štyroch. Preto sa najprv pozbierajú cesty, zoradia sa podľa
-`tileid` a až potom sa čítajú; v pamäti je len zoznam ciest, nie dáta.
-
-Použitie:
     python3 workers/terrain/pack.py --in=terrain-out \\
         --out=_site/tiles/presovsky-terrain.pmtiles --name=presovsky
 """
@@ -54,11 +31,7 @@ def tile_bounds(z, x, y):
 
 
 def zbierka(src):
-    """Nájde `{z}/{x}/{y}.png` a vráti [(tileid, z, x, y, cesta)] zoradené.
-
-    Zoradenie podľa `tileid` je to, čo z archívu spraví „clustered" – viď
-    hlavičku súboru. Číta sa až potom, takže v pamäti je len zoznam ciest.
-    """
+    """Nájde `{z}/{x}/{y}.png` a vráti [(tileid, z, x, y, cesta)] zoradené."""
     out = []
     for zd in os.listdir(src):
         if not zd.isdigit():
@@ -105,17 +78,8 @@ def main():
 
     minz = min(d[1] for d in dlazdice)
     maxz = max(d[1] for d in dlazdice)
-    # Rozsah sa počíta z dlaždíc, ktoré NAOZAJ vznikli, nie z bboxu zadania:
-    # tie mimo kraja sa vynechávajú (viď `--poly` v tiles.py), takže bbox
-    # zadania by sľuboval územie, ktoré v archíve nie je. Meno je sľub
-    # o rozsahu a hlavička `.pmtiles` tiež – klient sa podľa nej rozhoduje,
-    # kde vôbec pýtať dlaždice.
-    #
-    # ZO VŠETKÝCH ZOOMOV, nie z maxzoomu. Kým sa vynechávali len dlaždice mimo
-    # kraja, bola množina na maxzoome tá najväčšia a stačila. `tiles.py` ale
-    # vynecháva aj dlaždice bez reliéfu – rovina má vlastnú dlaždicu len na
-    # nízkom zoome – takže by rozsah z maxzoomu opísal hory a klient by nad
-    # rovinou nepýtal dlaždice ANI na tých nízkych zoomoch, kde sú.
+    # rozsah z dlaždíc, ktoré naozaj vznikli – a zo všetkých zoomov: tiles.py
+    # vynecháva aj dlaždice bez reliéfu, takže maxzoom by opísal len hory
     w = s = e = n = None
     for _tid, z, x, y, _p in dlazdice:
         tw, ts, te, tn = tile_bounds(z, x, y)
@@ -124,17 +88,9 @@ def main():
         e = te if e is None else max(e, te)
         n = tn if n is None else max(n, tn)
 
-    # A POTOM SA TO OREŽE NA BBOX BEHU. Rozsah dlaždíc je zjednotenie CELÝCH
-    # dlaždíc, a dlaždica na z5 má 11,25° – pyramída nad jedným krajom sa ním
-    # teda vykáže ako pol Európy. Namerané na publikovanom
-    # `bratislavsky_test4-terrain.pmtiles`: hlavička hovorila
-    # 11,25 / 40,98 / 22,50 / 48,92, kým mapa je 17,167 / 48,321 / 17,195 /
-    # 48,340 – rozsah 350-tisíckrát väčší než územie, ktoré popisuje.
-    #
-    # Klientovi to NEUBERIE ani jednu dlaždicu: MapLibre porovnáva `bounds`
-    # s dlaždicou PRIENIKOM (`TileBounds.contains` si z bboxu spočíta rozsah
-    # x/y na danom zoome), takže dlaždica z5, do ktorej kraj padne, ostáva
-    # v rozsahu aj po orezaní. Ubudne len sľub o území, ktoré v archíve nie je.
+    # orez na bbox behu: dlaždica na z5 má 11,25°, takže by sa jeden kraj
+    # vykázal ako pol Európy. MapLibre porovnáva bounds prienikom, takže sa
+    # tým nestratí ani jedna dlaždica.
     if args.clip_bbox:
         cw, cs, ce, cn = (float(v) for v in args.clip_bbox.split(","))
         w, s = max(w, cw), max(s, cs)
@@ -156,8 +112,7 @@ def main():
         wr.finalize(
             {
                 "tile_type": TileType.PNG,
-                # PNG je už komprimovaný – druhé balenie by pridalo čas
-                # a nič neušetrilo.
+                # PNG je už komprimovaný
                 "tile_compression": Compression.NONE,
                 "min_zoom": minz,
                 "max_zoom": maxz,
@@ -172,15 +127,11 @@ def main():
             {
                 "name": args.name,
                 "format": "png",
-                # Bez tohto sa z archívu nedá zistiť, že farba je nadmorská
-                # výška – a `raster-dem` bez správneho `encoding` vykreslí
-                # namiesto reliéfu farebný šum.
+                # bez toho `raster-dem` vykreslí farebný šum namiesto reliéfu
                 "encoding": "terrarium",
                 "description": "Terrarium PNG – nadmorská výška v RGB "
                                "(v = R*256 + G + B/256 − 32768)",
-                # Z ČOHO to je. Atribúcia v mape ide zo štýlu, ale archív
-                # sa dá stiahnuť aj sám – a potom je toto jediné miesto,
-                # kde je napísané, ktorý model to vlastne bol.
+                # archív sa dá stiahnuť aj sám – inde model napísaný nie je
                 **({"source": args.source} if args.source else {}),
             },
         )

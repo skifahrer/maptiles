@@ -2,28 +2,14 @@
 # Tieňovanie a 3D terén: terrarium PNG dlaždice z vybraného výškového modelu.
 #
 # Poradie je „najlacnejšie najprv": cache behu → sklad na Drive → prepočet.
-# Hotové dlaždice sa ukladajú do skladu, takže ďalší beh nad tým istým
-# regiónom, modelom a maxzoomom ich už len stiahne. (Do GitHub releasov sa
-# nepublikuje nič – rozpis je vo `workers/drive/store.py`.)
 #
-# MENO ASSETU NESIE ZDROJ (`terrain-<kľúč>-<model>-z<maxzoom>-v<verzia>.pmtiles`):
-# tieňovanie zo Sonnyho a z DMR 3.5 nie je to isté a jedno sa nesmie vydávať
-# za druhé – preto sa meno pri ústupe na Sonnyho prepočíta.
+# Meno assetu nesie zdroj, maxzoom aj podobu kódovania
+# (`terrain-<kľúč>-<model>-z<maxzoom>-v<verzia>.pmtiles`): tieňovanie zo
+# Sonnyho a z DMR 3.5 nie je to isté a `v6` dopĺňa výšku za hranicou kraja
+# okolím, kým `v5` ju tam zrovnával na rovinu (zvislá stena po obvode).
+# Bez tej prípony by sa oprava na už spočítanom regióne neprejavila.
 #
-# A NESIE AJ PODOBU KÓDOVANIA (`-v6`). Meno je sľub, a pri sklade je to sľub
-# aj o tom, čo v tých dlaždiciach je: `v6` dopĺňa výšku za hranicou kraja
-# okolím (`v5` ju tam zrovnával na rovinu 0 m, čo bola po obvode regiónu
-# zvislá stena a v 3D múr), `v5` orezáva tieňovanie na kraj po pixeloch
-# (končí teda na hranici regiónu, nie až na hranici dlaždice, ktorá sa ho
-# dotkla), `v4` priemeruje až od dvojnásobku bunky modelu (rozpis vo
-# `workers/lib/cell.py`), `v3` mal zvislý krok podľa zoomu, ale tesne nad
-# bunkou ešte `average` – a s ním mriežku; staršie majú navyše výšku
-# zaokrúhlenú na celé metre.
-# Bez tej prípony by sa oprava na už spočítanom regióne neprejavila – sklad
-# by vrátil staré dlaždice a build by bol zelený. To isté číslo je v kľúči
-# cache (`workers/plan/cache-keys.sh`), lebo je to tá istá otázka.
-#
-# Použitie (hodnoty chodia z prostredia, aby sa dal skript spustiť aj ručne):
+# Použitie:
 #   REGION_KEY=presovsky_kraj DEM_BBOX=20,49,21,50 SHADING_SOURCE=sonny \
 #   TERRAIN_MAXZOOM=13 TERRAIN_STORE=dem-terrain GDRIVE_CREDENTIALS=… \
 #   workers/terrain/build.sh
@@ -34,14 +20,11 @@ TSRC="výpočet"
 FELL_BACK=false
 TZ="${TERRAIN_MAXZOOM:-}"
 case "$TZ" in ''|*[!0-9]*) TZ=13 ;; esac
-# Tieňovanie je vrstva z DEM, takže ide na `dem_bbox` – pri rýchlom
-# teste na testovací štvorec, nie na celý región.
+# tieňovanie je vrstva z DEM, takže ide na `dem_bbox` – pri teste na štvorec
 BBOX="${DEM_BBOX:?bbox pre DEM}"
 TDEM="${SHADING_SOURCE:?zdroj tieňovania}"
-# Rozpočet na tieňovanie: podiel z rozpočtu celej stránky. Bez neho sa
-# zmestenie riešilo až na konci behu, v kontrole pred nasadením – čiže po
-# celej práci. Jemný model (DMR 5.0 → z15) je pritom nad celým krajom
-# šestnásťkrát viac dlaždíc než z13, tak to musí vedieť ten, kto ich robí.
+# rozpočet na tieňovanie: podiel z rozpočtu stránky. Bez neho sa zmestenie
+# riešilo až v kontrole pred nasadením, čiže po celej práci.
 LIMIT_MB="${SIZE_LIMIT_MB:-900}"
 case "$LIMIT_MB" in ''|*[!0-9]*) LIMIT_MB=900 ;; esac
 TPCT="${BUDGET_TERRAIN_PCT:-12}"
@@ -49,34 +32,18 @@ case "$TPCT" in ''|*[!0-9]*) TPCT=12 ;; esac
 TBUDGET_MB=$(( LIMIT_MB * TPCT / 100 ))
 REBUILD="${TERRAIN_REBUILD:-false}"
 
-# Meno assetu nesie ZDROJ a MAXZOOM – tieňovanie zo Sonnyho a z DMR 3.5 nie
-# je to isté a z13 nie je z15. Skutočný maxzoom je ale známy až po výpočte
-# (strop veľkosti ho môže zraziť), takže sa meno skladá funkciou a volá sa
-# dvakrát: raz s tým želaným, keď sa hľadá v sklade, a raz s vyrobeným,
-# keď sa nahráva.
-# PODOBA KÓDOVANIA JE TU RAZ. Kým bola napísaná dvakrát – `-v4` v `asset_name`
-# a `-v3` v `sed`-e, ktorý sklad prehľadáva – hľadalo sa v sklade niečo iné, než
-# sa doň ukladalo: uložené `…-v4.pmtiles` sa nenašli NIKDY a tieňovanie sa pri
-# každom behu počítalo odznova (a keď v sklade ostala stará `-v3`, vytiahol sa
-# z nej zoom a stiahnuť sa skúsil súbor, ktorý neexistuje). Nič nespadlo, len
-# to trvalo – pravidlo 8 v čistej podobe.
+# meno assetu nesie zdroj aj maxzoom; skutočný maxzoom je známy až po výpočte
+# (strop veľkosti ho môže zraziť), tak sa meno skladá funkciou a volá dvakrát.
+# Podoba kódovania je tu raz – kým bola napísaná dvakrát, hľadalo sa v sklade
+# niečo iné, než sa doň ukladalo.
 ENC_VER=v6
-# A NESIE AJ PREKRYV SO SUSEDNÝM KRAJOM. `workers/plan/region-poly.py` nafúkne
-# polygón kraja o `BORDER_BUFFER_M` von, aby na našu mapu tá susedná
-# NADVIAZALA – lenže tieňovanie sa počíta na `--poly` a na `dem_bbox`, čiže
-# nafúknutie mení OBSAH aj ROZSAH týchto dlaždíc. Kým to číslo v mene nebolo,
-# sklad vrátil dlaždice spočítané ešte podľa PÔVODNEJ, tesnej hranice a oprava
-# sa na už postavenom kraji neprejavila NIKDY – namerané na balíku Trnavského
-# kraja z 3. 9. 2026: `trnavsky.pmtiles` a `region.geojson` v ňom už mali
-# nafúknutý rozsah (16,8812…48,9226), kým `trnavsky-terrain.pmtiles` z toho
-# istého balíka stále tesný bbox kraja (16,915…48,9). Mapa teda pokračovala
-# za hranicu, ale reliéf pod ňou nie. Pravidlo 8: meno musí hovoriť, čo
-# v súbore naozaj je.
+# a nesie aj prekryv so susedným krajom: nafúknutie polygónu mení obsah aj
+# rozsah dlaždíc. Kým to číslo v mene nebolo, sklad vrátil dlaždice spočítané
+# podľa pôvodnej tesnej hranice – mapa pokračovala za hranicu, reliéf pod ňou nie.
 BORDER_M=$(python3 -c "import sys; sys.path.insert(0, 'workers/plan'); import area; print(int(area.BORDER_BUFFER_M))")
 asset_name() { echo "terrain-${REGION_KEY}-${TDEM}-z${1}-${ENC_VER}-o${BORDER_M}.pmtiles"; }
 
-# Hotové = leží tu hotový archív. Kým to bol strom PNG, stačilo „priečinok
-# nie je prázdny" – lenže polovica stromu je tiež neprázdny priečinok.
+# hotové = leží tu hotový archív; polovica stromu PNG je tiež neprázdny priečinok
 have_tiles() { [ -s terrain-out/terrain.pmtiles ]; }
 
 if [ "$REBUILD" = 'true' ]; then
@@ -86,21 +53,16 @@ elif have_tiles; then
   echo "Výškové dlaždice sú v cache behu ✓"
   TSRC="cache"
 else
-  # Skús sklad – uložené dlaždice sú lacnejšie než ich prepočítať. Hľadá sa
-  # NAJVYŠŠÍ uložený zoom, ktorý nie je vyšší než želaný: keď minulý beh
-  # narazil na strop veľkosti a uložil z13, je to presne to, čo by sa znova
-  # vypočítalo – a hľadanie na presné meno „z15" by ho nenašlo a hodinu by
-  # počítalo to isté. Nižší zoom je platná odpoveď, vyšší nie (ten by dal
-  # jemnejšie dlaždice, než sa žiadalo, a stránka by sa nemusela zmestiť).
+  # skús sklad – uložené dlaždice sú lacnejšie než prepočet. Hľadá sa najvyšší
+  # uložený zoom, ktorý nie je vyšší než želaný: keď minulý beh narazil na strop
+  # a uložil z13, je to presne to, čo by sa znova vypočítalo.
   HAVE_Z=$(python3 workers/drive/store.py --names --store="$TERRAIN_STORE" \
       2>/dev/null \
     | sed -n "s/^terrain-${REGION_KEY}-${TDEM}-z\([0-9]\+\)-${ENC_VER}-o${BORDER_M}\.pmtiles$/\1/p" \
     | awk -v want="$TZ" '$1 <= want' | sort -n | tail -1)
   if [ -n "$HAVE_Z" ] && python3 workers/drive/store.py --get \
        --store="$TERRAIN_STORE" --name="$(asset_name "$HAVE_Z")" --dir=/tmp; then
-    # `.pmtiles` sa NEROZBAĽUJE – je to ten istý súbor, ktorý ide na Pages.
-    # Kým to bol `.tar.zst`, existovali dve podoby tej istej veci (strom na
-    # Pages, archív v sklade) a pri každom behu sa medzi nimi prepínalo.
+    # `.pmtiles` sa nerozbaľuje – je to ten istý súbor, ktorý ide na Pages
     mkdir -p terrain-out
     cp "/tmp/$(asset_name "$HAVE_Z")" terrain-out/terrain.pmtiles
     echo "$HAVE_Z" > terrain-out/maxzoom.txt
@@ -110,21 +72,14 @@ else
 fi
 
 if ! have_tiles; then
-  # Vlastný job = vlastný DEM. Vrstevnice si ho sťahujú tiež, ale
-  # bežia súbežne, takže sa oň nedá oprieť; skript je spoločný.
+  # vlastný job = vlastný DEM: vrstevnice bežia súbežne, tak sa oň nedá oprieť
   sudo apt-get update -qq
   sudo apt-get install -y -qq gdal-bin zstd
   python3 -m pip install --quiet numpy
-  # Model z výberu `shading_source`. Do podpriečinka podľa zdroja –
-  # rovnako ako v jobe s vrstevnicami, nech sa dve rôzne mozaiky
-  # nikdy neprebijú v jednom `all.vrt`. Kľúč výrezu sa nepodáva, tak
-  # `dmr5` vyjde na dlaždicovú 5 m verziu – tieňovanie sa robí vždy
-  # na celý región.
-  #
-  # KÓD 3 = „ten model pre toto územie nemáme". Vrstevnice to vedeli
-  # ustáť odjakživa, tieňovanie nie – a beh 31307163093 preto
-  # sčervenel na poslednom jobe, hoci mapa sa nasadila. Rovnaký
-  # fallback ako pri vrstevniciach, riadený tým istým prepínačom.
+  # model z výberu `shading_source`, do podpriečinka podľa zdroja. Kľúč výrezu
+  # sa nepodáva, tak `dmr5` vyjde na dlaždicovú 5 m verziu.
+  # Kód 3 = „ten model pre toto územie nemáme" – rovnaký fallback ako pri
+  # vrstevniciach, riadený tým istým prepínačom.
   set +e
   workers/dem/fetch.sh "$BBOX" "dem/$TDEM" steps-out/terrain.tsv "$TDEM"
   TRC=$?
@@ -137,54 +92,37 @@ if ! have_tiles; then
     echo "::warning::Model $TDEM pre tieňovanie nie je k dispozícii – tieňovanie sa počíta zo Sonnyho (20 m). Mapa bude, len s hrubším reliéfom, a atribúcia bude hovoriť Sonny."
     TDEM=sonny
     FELL_BACK=true
-    # Meno súboru nesie zdroj – `asset_name` ho skladá z premennej `TDEM`,
-    # takže sa prepísaním modelu opraví samo. Kým to bol reťazec napísaný
-    # druhýkrát, uložili sa Sonnyho dlaždice pod menom toho druhého modelu
-    # a nabudúce sa vydávali za neho.
+    # meno súboru nesie zdroj (`asset_name` ho skladá z `TDEM`), takže sa
+    # prepísaním modelu opraví samo
     workers/dem/fetch.sh "$BBOX" "dem/$TDEM" steps-out/terrain.tsv "$TDEM"
   elif [ "$TRC" -ne 0 ]; then
     exit "$TRC"
   fi
   echo "::group::Výškové dlaždice do z$TZ z modelu $TDEM (strop ${TBUDGET_MB} MB)"
-  # `--poly`: dlaždice mimo kraja sa nekreslia (smie prečnievať pol dlaždice)
-  # a v tých, čo cez hranicu prečnievajú, sa za hranicou výška dopĺňa okolím
-  # a dlaždica bez jediného pixela kraja sa nezapíše – tieňovanie sa tak
-  # zastaví na hranici regiónu a nie až na okraji dlaždice. Bez toho
-  # presahovalo na z10 na dvojnásobok plochy kraja (namerané v hlavičke
-  # `tiles.py`), a keď sa mimo kraja zrovnávalo na rovinu, bola z tej hranice
-  # zvislá stena.
-  # Keď súbor nie je (polygón sa nestiahol), `tiles.py` to povie a kreslí celý
-  # bbox ako predtým – vrstva teda nikdy nezmizne, len je väčšia.
+  # `--poly`: dlaždice mimo kraja sa nekreslia, za hranicou sa výška dopĺňa
+  # okolím a dlaždica bez pixela kraja sa nezapíše – tieňovanie sa tak zastaví
+  # na hranici regiónu. Keď polygón nie je, `tiles.py` to povie a kreslí celý
+  # bbox: vrstva teda nikdy nezmizne, len je väčšia.
   python3 workers/terrain/tiles.py --dem="dem/$TDEM/all.vrt" --bbox="$BBOX" \
     --poly=data/region.geojson \
     --minzoom=5 --maxzoom="$TZ" --budget-mb="$TBUDGET_MB" --out=terrain-png
-  # Vyrobený maxzoom píše `tiles.py` – strop veľkosti mohol ten želaný
-  # zraziť a asset sa MUSÍ volať podľa toho, čo v ňom naozaj je.
+  # vyrobený maxzoom píše `tiles.py` – strop veľkosti mohol želaný zraziť
   TZ=$(cat terrain-png/maxzoom.txt)
-  # Strom PNG je len medzikrok: von ide jeden `.pmtiles`, rovnako ako pri
-  # mape, vrstevniciach, skalách aj trasách. Rozpis je vo `workers/terrain/
-  # pack.py` – aj to, prečo sa zapisuje v Hilbertovom poradí.
+  # strom PNG je len medzikrok: von ide jeden `.pmtiles` (viď `pack.py`)
   python3 -m pip install --quiet pmtiles
   mkdir -p terrain-out
-  # `--clip-bbox`: hlavička `.pmtiles` má povedať územie behu, nie zjednotenie
-  # celých dlaždíc – tá na z5 má 11,25°, takže by pyramída nad jedným krajom
-  # sľubovala pol Európy. Rozpis vo `workers/terrain/pack.py`.
+  # `--clip-bbox`: hlavička má povedať územie behu, nie zjednotenie celých
+  # dlaždíc – tá na z5 má 11,25°
   python3 workers/terrain/pack.py --in=terrain-png \
     --out=terrain-out/terrain.pmtiles --name="$REGION_KEY" --source="$TDEM" \
     --clip-bbox="$BBOX"
   echo "$TZ" > terrain-out/maxzoom.txt
-  # Strom PNG sa maže hneď: pri kraji je to desaťtisíce súborov a disk
-  # runnera nemá dôvod ich držať, keď je archív hotový.
+  # strom PNG sa maže hneď: pri kraji sú to desaťtisíce súborov
   rm -rf terrain-png
   echo "::endgroup::"
 
-  # Ulož do skladu, nech ich nabudúce netreba počítať znova. Zlyhanie
-  # uloženia NESMIE zhodiť beh – dlaždice sú spočítané a v `terrain-out`,
-  # takže mapa bude; stratí sa len to, že sa nabudúce budú počítať znova.
-  #
-  # Do skladu ide TEN ISTÝ SÚBOR, ktorý sa nasadí – žiadne balenie do
-  # `.tar.zst` a rozbaľovanie pri každom behu. Dve podoby tej istej veci sa
-  # vždy raz rozídu.
+  # ulož do skladu, nech ich nabudúce netreba počítať znova; zlyhanie uloženia
+  # nesmie zhodiť beh. Do skladu ide ten istý súbor, ktorý sa nasadí.
   ASSET=$(asset_name "$TZ")
   cp terrain-out/terrain.pmtiles "/tmp/$ASSET"
   python3 workers/drive/store.py --put --store="$TERRAIN_STORE" \
@@ -195,20 +133,16 @@ if ! have_tiles; then
 fi
 
 TZ=$(cat terrain-out/maxzoom.txt 2>/dev/null || echo "$TZ")
-# Ide medzi ostatné `.pmtiles`, nie do vlastného priečinka: pre klienta je to
-# tá istá vec ako mapa či vrstevnice, len raster.
+# ide medzi ostatné `.pmtiles`: pre klienta je to tá istá vec ako mapa, len raster
 mkdir -p _site/tiles
 cp terrain-out/terrain.pmtiles "_site/tiles/${REGION_KEY}-terrain.pmtiles"
 echo "enabled=true" >> "$GITHUB_OUTPUT"
 echo "maxzoom=$TZ" >> "$GITHUB_OUTPUT"
-# Model ide do atribúcie výškových dlaždíc v štýle. Odkedy má
-# tieňovanie vlastný výber, nemusí to byť ten istý model ako
-# pri vrstevniciach – a mapa nesmie tvrdiť cudzí zdroj.
+# model ide do atribúcie výškových dlaždíc; tieňovanie má vlastný výber, tak
+# to nemusí byť ten istý model ako pri vrstevniciach
 echo "dem_source=$TDEM" >> "$GITHUB_OUTPUT"
-# Keď sa spadlo na Sonnyho, dlaždice sa NESMÚ uložiť pod kľúč cache
-# toho pôvodného modelu – kľúč nesie jeho meno a nabudúce by sa
-# z neho vrátili ako keby boli jeho. Do skladu ísť môžu, tam ich
-# meno súboru už hovorí pravdu.
+# keď sa spadlo na Sonnyho, dlaždice sa nesmú uložiť pod kľúč cache pôvodného
+# modelu – do skladu môžu, tam meno súboru už hovorí pravdu
 echo "fell_back=$FELL_BACK" >> "$GITHUB_OUTPUT"
 TER_MB=$(du -sm "_site/tiles/${REGION_KEY}-terrain.pmtiles" | cut -f1)
 echo "Výškové dlaždice: raster .pmtiles do z$TZ z modelu $TDEM, ${TER_MB} MB"

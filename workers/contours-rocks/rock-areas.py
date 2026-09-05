@@ -1,63 +1,28 @@
 #!/usr/bin/env python3
-"""
-DEM → skalné plochy ako vektor (GeoPackage).
+"""DEM → skalné plochy ako vektor (GeoPackage).
 
 „Husté vrstevnice = skala" je len iný pohľad na veľký sklon, ktorý navyše
-závisí od intervalu vrstevníc a od zoomu. Skaly sa preto počítajú priamo zo
-sklonu terénu:
+závisí od intervalu a zoomu, tak sa skaly počítajú priamo zo sklonu:
 
-    DEM → EPSG:3035 (metre) → gdaldem slope → mozaika sklonu →
-    gdal_contour -p (izolínie sklonu ako PLOCHY) → rozbitie na plochy →
-    filter najmenšej plochy → jedna trieda, diery ostávajú
+    hotová mozaika sklonu → gdal_contour -p (izolínie ako plochy) →
+    rozbitie na plochy → filter najmenšej plochy → jedna trieda
 
-TVAR PLÔCH: obrys je izolínia sklonu, čiže presne tá čiara, kde terén
-prekročí prah. Skala tak má taký tvar, aký naozaj má – zubatý pás pod
-hrebeňom, oblúk okolo žľabu, ostrov brala v suti.
+Obrys je izolínia sklonu, čiže presne tá čiara, kde terén prekročí prah.
+Diery ostávajú: miesto s menším sklonom vnútri steny sa nezafarbí a práve to
+robí tvar skaly čitateľným (`--zapln-diery=1` ich zaplní).
 
-JEDNA TRIEDA (predvolene, `--plne`): von ide jedno pásmo [prah, ∞), teda
-žiadna plocha vnútri inej plochy. `--plne=0` vráti aj druhé pásmo `cliff`
-(od `--cliff`), ktoré leží v diere pásma `steep`.
+Vektorizuje sa naraz nad celou mozaikou, nie po častiach územia: diera
+prerezaná hranicou časti sa zmení na zárez a späť sa nezlepí. Po častiach sa
+počíta len raster sklonu – robí to `slope-chunks.py` a ukladá ich do trvalého
+skladu, takže zrušený beh o hotové časti nepríde.
 
-DIERY: kde je vnútri steny miesto s menším sklonom (police, terasa, zarastený
-stupeň), vypadne z plochy **diera** – tá plocha sa nezafarbí, aj keď je
-dookola všade nad prahom. Presne to robí `gdal_contour -p`: pásmo [prah, ∞) je
-polygón s vnútornými prstencami tam, kde hodnota pod prah klesla. Práve tie
-diery robia tvar skaly čitateľným; `--zapln-diery=1` ich zaplní a zo skál
-budú súvislé klaksy.
+Sklon sa ukladá ako Int16 v stotinách stupňa: hrubší krok robí v poli sklonu
+plošiny a izolínia po nich chodí schodíkmi.
 
-PREČO SA VEKTORIZUJE NARAZ, A NIE PO ČASTIACH: keď sa každá časť územia
-vektorizovala zvlášť a výsledky sa lepili (`-clipsrc` + `ST_Union`), diera
-prerezaná hranicou časti sa zmenila na zárez v okraji a späť sa už nezlepila
-– overené, z dvoch plôch s dierami vyšli štyri bez dier. Preto sa **po
-častiach počíta len raster sklonu** (to je tá pamäťovo drahá časť), zapíše sa
-na disk a `gdal_contour` potom ide **jedným priechodom nad celou mozaikou**.
-Žiadne švy, žiadne zlepovanie, diery na správnych miestach.
+Skutočný detail nemôže byť lepší než zdrojový DEM – jemnejšia mriežka robí
+obrys hladším, nové detaily terénu nevymyslí.
 
-SKLON SEM CHODÍ HOTOVÝ. Počíta ho `workers/contours-rocks/slope-chunks.py` po častiach
-absolútnej mriežky a ukladá ich do trvalého skladu (cache + release), takže
-zrušený beh o hotové časti nepríde a ďalší dopočíta len zvyšok. Tu ostáva len
-ten jeden priechod, ktorý sa deliť nedá. Vedľajší zisk: zmena prahu `--slope`
-už NEznamená nové čítanie DEM – prahy sa uplatňujú až tu.
-
-Sklon sa ukladá ako **Int16 v stotinách stupňa**. Byte s krokom 0,5° by bol
-polovičný, ale robil obrys zubatý: pri hrubom kroku vznikajú v poli sklonu
-plošiny a izolínia po nich chodí po hranách buniek, teda schodíkmi. Int16
-0,01° dáva prakticky zhodný výsledok ako presný Float32 pri štvrtinovej
-veľkosti rastra.
-
-Aby sklon na okraji časti nebol zrezaný, každá sa počíta s presahom
-niekoľkých pixelov a zapíše sa až orezaná presne na svoju hranicu. Hranice
-častí sú prichytené na mriežku, takže dlaždice mozaiky na seba sadnú presne.
-
-AKÝ JE TO DETAIL: obrys sleduje mriežku sklonu (`--res`), ale skutočný detail
-nemôže byť lepší než zdrojový DEM – Sonny má pre Slovensko mriežku 20 m.
-Jemnejšia mriežka teda robí obrys hladším a presnejšie umiestneným (sklon sa
-medzi bunkami DEM interpoluje), nové detaily terénu však nevymyslí. Script to
-na konci vypíše aj s rozmerom buniek DEM.
-
-Použitie (mriežku aj mozaiku dáva slope-chunks.py, tak sa musia podať):
-    python3 workers/contours-rocks/slope-chunks.py --bbox=W,S,E,N --res=auto --drive \\
-        --out=slope-chunks --stats=slope.txt
+Použitie (mriežku aj mozaiku dáva slope-chunks.py):
     python3 workers/contours-rocks/rock-areas.py --slope-vrt=slope-chunks/slope-r2.vrt \\
         --bbox=W,S,E,N --res=2 --slope=50 --cliff=65 --out=data/rock.gpkg
 """
@@ -72,9 +37,8 @@ import sys
 import tempfile
 import time
 
-# Mriežka, rozsahy a odhady času sú vo `rock-plan.py` – tú istú odpoveď
-# potrebuje `slope-chunks.py` ešte PRED výpočtom, takže má vlastný modul
-# a nie kópiu (pravidlo 1). Sem sa preberajú hotové mená, neprepočítavajú sa.
+# mriežka, rozsahy a odhady času sú vo `rock-plan.py` – tú istú odpoveď
+# potrebuje `slope-chunks.py` ešte pred výpočtom
 def _load(name, path):
     """workers/*.py sa kvôli pomlčke v mene nedajú `import`-núť normálne."""
     spec = importlib.util.spec_from_file_location(
@@ -86,7 +50,7 @@ def _load(name, path):
 
 
 plan = _load("rock_plan", "rock-plan.py")
-# Obrysy po blokoch sú spoločné so skalami z tieňovania, tak sú v lib.
+# obrysy po blokoch sú spoločné so skalami z tieňovania, tak sú v lib
 bloky_mod = _load("contour_blocks", os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "lib", "contour-blocks.py"))
@@ -101,11 +65,8 @@ chunk_plan, intersects_bbox = plan.chunk_plan, plan.intersects_bbox
 pick_res, pick_vec_res = plan.pick_res, plan.pick_vec_res
 mosaic_cells, mosaic_info, clip_vrt = plan.mosaic_cells, plan.mosaic_info, plan.clip_vrt
 
-# Tep, progress GDALu a meranie sú vo `watch.py` – používajú ich aj kroky
-# workflowu, tak nech je to jedna implementácia a nie dve, ktoré sa časom
-# rozídu.
-# `watch.py` je spoločný (skaly zo sklonu aj z tieňovania, dlhé kroky
-# workflowu), tak leží vo `workers/lib/` a nie vedľa jedného z nich.
+# tep, progress GDALu a meranie sú vo `workers/lib/watch.py` – používajú ich
+# aj kroky workflowu
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
 from watch import hms, run_watched  # noqa: E402
@@ -121,15 +82,9 @@ def bbox_km2(bbox):
 def skontroluj_polohu(path, bbox, layer="rock"):
     """Ležia hotové skaly tam, kde je územie? Vráti hlášku, alebo None.
 
-    POSLEDNÁ POISTKA PRED MAPOU. Všetko pred týmto krokom môže vyzerať dobre –
-    plôch je 985, kilometre štvorcové sedia, `.pmtiles` sa vyrobí – a mapa je
-    aj tak prázdna, lebo geometria skončí na druhom konci sveta. Stalo sa to
-    v behu 31428413843: vrstva ostala bez CRS, `-t_srs EPSG:4326` nemal z čoho
-    prepočítať (`Warning 1: No SRS set on layer`) a Planetiler dostal
-    zemepisnú dĺžku 4 800 000. Výsledok: `rocks.pmtiles` s NULA dlaždicami
-    a zelený beh.
-
-    Porovnáva sa hrubo – stačí, že sa rozsahy prekrývajú. Ide o rozdiel medzi
+    Posledná poistka pred mapou: všetko môže vyzerať dobre a mapa je aj tak
+    prázdna, lebo geometria skončí na druhom konci sveta (vrstva bez CRS,
+    `-t_srs` nemá z čoho prepočítať). Porovnáva sa hrubo – ide o rozdiel medzi
     „o kúsok vedľa" a „o milión stupňov vedľa".
     """
     try:
@@ -141,8 +96,7 @@ def skontroluj_polohu(path, bbox, layer="rock"):
         return None
     x0, y0, x1, y1 = ext
     w, s, e, n = bbox
-    # Tolerancia 1° je veľkorysá: obrys môže presahovať výrez o kus, ale
-    # nikdy nie o rády.
+    # tolerancia 1°: obrys môže presahovať výrez o kus, ale nie o rády
     if x1 < w - 1 or x0 > e + 1 or y1 < s - 1 or y0 > n + 1:
         return (f"hotové skaly ležia na {x0:.4f},{y0:.4f} … {x1:.4f},{y1:.4f}, "
                 f"ale územie je {w},{s} … {e},{n} – to nie je posun, to sú iné "
@@ -168,8 +122,7 @@ def area_stats(metric_gpkg):
     """Počet plôch, celková/najväčšia/najmenšia/priemerná plocha v m² a koľko
     z nich ukrajujú diery.
 
-    Počíta sa nad metrickou verziou, takže ST_Area vracia rovno metre
-    štvorcové – v stupňoch by to bolo číslo bez významu.
+    Počíta sa nad metrickou verziou – v stupňoch by to bolo číslo bez významu.
     """
     sql = ("SELECT COUNT(*) AS n, SUM(ST_Area(geom)) AS total, "
            "MAX(ST_Area(geom)) AS amax, MIN(ST_Area(geom)) AS amin, "
@@ -181,7 +134,7 @@ def area_stats(metric_gpkg):
               zip(["n", "total", "max", "min", "avg"], out[1].split(","))}
     except Exception:
         return {}
-    # Koľko plochy ukrajujú diery = plocha vonkajšieho obrysu mínus skutočná.
+    # koľko plochy ukrajujú diery = plocha vonkajšieho obrysu mínus skutočná
     try:
         sql2 = ("SELECT SUM(ST_Area(ST_Buildarea(ST_ExteriorRing(geom)))) AS outer_, "
                 "SUM(CASE WHEN ST_NumInteriorRing(geom) > 0 THEN 1 ELSE 0 END) AS withholes "
@@ -198,10 +151,8 @@ def area_stats(metric_gpkg):
 
 def main():
     ap = argparse.ArgumentParser()
-    # Sklon už tento skript nepočíta – dostane ho hotový z `slope-chunks.py`,
-    # ktorý ho robí po častiach a ukladá do trvalého skladu. Vektorizácia tu
-    # ostáva JEDNÝM priechodom nad celou mozaikou; to je to podstatné, čo sa
-    # rozdeliť nedá (viď zápis o dierach hore).
+    # sklon tento skript nepočíta – dostane ho hotový zo `slope-chunks.py`.
+    # Vektorizácia tu ostáva jedným priechodom nad celou mozaikou.
     ap.add_argument("--slope-vrt", required=True,
                     help="mozaika sklonu z workers/contours-rocks/slope-chunks.py")
     ap.add_argument("--dem", default="",
@@ -217,8 +168,7 @@ def main():
     ap.add_argument("--slope", type=float, default=50.0, help="prah sklonu v stupňoch")
     ap.add_argument("--cliff", type=float, default=65.0,
                     help="prah triedy `cliff` (použije sa len bez `--plne`)")
-    # Plné plochy: jedno pásmo a zaplnené diery. Dokopy z toho je „jedna
-    # skala = jedna sivá plocha", nič v ničom a nič presvitajúce.
+    # plné plochy: jedno pásmo a zaplnené diery – „jedna skala = jedna sivá"
     ap.add_argument("--plne", type=int, default=1,
                     help="1 = jedno pásmo a jedna trieda (žiadna plocha "
                          "vnútri inej), 0 = pásma steep/cliff ako predtým")
@@ -238,14 +188,11 @@ def main():
                          "mriežky, a teda hustota bodov obrysu")
     ap.add_argument("--chunk-cells", type=float, default=150e6,
                     help="strop buniek na jednu časť pri počítaní sklonu")
-    # 0 = bez rozpočtu, a to je predvolené: „koľko som ochotný čakať" je
-    # voľba behu (`rock_res` vo formulári), nie konštanta pre všetkých.
-    # OBRYSY PO BLOKOCH. `gdal_contour -p` nad celou mozaikou naraz je
-    # superlineárny: čím viac rozpracovaných prstencov drží, tým drahšie je
-    # pridať ďalší (beh 31418794845 – tempo padlo z 2 na 0,26 %/min a beh
-    # nedobehol). Blok je malý raster, takže sa prstence poskladajú rýchlo,
-    # pamäť je zhora ohraničená a hotové bloky ostávajú na disku, takže
-    # zrušený beh nezahodí prácu. 0 = jeden priechod (staré správanie).
+    # 0 = bez rozpočtu, a to je predvolené: „koľko som ochotný čakať" je voľba
+    # behu, nie konštanta pre všetkých.
+    # Obrysy po blokoch: `gdal_contour -p` nad celou mozaikou je superlineárny
+    # a nedobehol. Blok je malý raster, pamäť je zhora ohraničená a hotové
+    # bloky ostávajú na disku. 0 = jeden priechod.
     ap.add_argument("--block-px", type=int, default=4096,
                     help="strana bloku v pixeloch pri vektorizácii "
                          "(0 = jeden priechod nad celou mozaikou)")
@@ -265,9 +212,8 @@ def main():
     dem_dx, dem_dy = (dem_cell_metres(args.dem, (bbox[1] + bbox[3]) / 2)
                       if args.dem else (None, None))
 
-    # Mriežku vyberá `slope-chunks.py` (musí ju poznať skôr, než začne
-    # počítať) a sem príde hotová. Dva výbery toho istého by sa raz rozišli
-    # a vektorizovalo by sa niečo iné, než sa počítalo.
+    # mriežku vyberá `slope-chunks.py` a sem príde hotová; dva výbery toho
+    # istého by sa rozišli a vektorizovalo by sa niečo iné, než sa počítalo
     if str(args.res).strip().lower() in ("auto", "", "0"):
         print("::error::--res musí byť konkrétne číslo: mriežku vyberá "
               "workers/contours-rocks/slope-chunks.py (`--print-res`) a tento skript ju "
@@ -275,28 +221,21 @@ def main():
         return 2
     res = float(args.res)
 
-    # Mriežka VEKTORIZÁCIE. Sklon ostáva v sklade taký, aký je – toto je len
-    # pohľad naň pri trasovaní, a nemusí byť rovnako jemný: pri z16 má pixel
-    # 1,57 m, takže obrys trasovaný na 1 m nesie len body, ktoré `--simplify`
-    # aj tak zmaže. ČAS TÝM NEUŠETRÍ (zmerané, beh 31360120952) – šetrí sa
-    # pamäť a veľkosť výstupu. `--vec-res=<res>` to prebije.
+    # mriežka vektorizácie nemusí byť rovnako jemná ako sklad: pri z16 má pixel
+    # 1,57 m, takže obrys na 1 m nesie body, ktoré `--simplify` aj tak zmaže.
+    # Čas tým neušetrí – šetrí sa pamäť a veľkosť výstupu.
     box = to_metric(bbox)
     plocha = (box[2] - box[0]) * (box[3] - box[1])
     if str(args.vec_res).strip().lower() in ("auto", "", "0"):
         vec_res = pick_vec_res(res)
     else:
         vec_res = max(res, float(args.vec_res))
-    # Štvrtina bunky: zmaže schodíky po hranách buniek, ale obrys neposunie
-    # o viac než štvrtinu mriežky. Namerané: bodov na obrys klesne 5,7×
-    # (423 763 → 74 395) a počet plôch sa nezmení vôbec. Ostré rohy, ktoré
-    # po ňom ostanú, zaobli `--smooth` na konci.
-    #
-    # Obe čísla idú z mriežky VEKTORIZÁCIE, nie zo skladu: geometria vzniká na
-    # nej, tak schodíky aj najmenšia zmysluplná plocha patria k nej.
+    # štvrtina bunky: zmaže schodíky po hranách buniek, ale obrys neposunie
+    # o viac než štvrtinu mriežky. Ostré rohy zaobli `--smooth`.
     if args.simplify < 0:
         args.simplify = vec_res / 4.0
-    # Najmenšia skala = jedna bunka mriežky. Pri `--res=auto` sa mriežka
-    # vyberá až tu, takže sa to nedá spočítať v shelli pred spustením.
+    # najmenšia skala = jedna bunka mriežky; pri `--res=auto` sa mriežka vyberá
+    # až tu, takže sa to nedá spočítať v shelli pred spustením
     if args.min_area < 0:
         args.min_area = round(vec_res * vec_res, 2)
     if dem_dx:
@@ -318,12 +257,9 @@ def main():
     tmp = tempfile.mkdtemp(prefix="rock-", dir=os.path.dirname(args.out) or ".")
     try:
         # ---------- 2. orez mozaiky na územie ----------
-        # Sklad má absolútnu mriežku častí, takže mozaika je zjednotenie CELÝCH
-        # častí – nie územia. Bez orezu sa vektorizuje aj to okolo a tie plochy
-        # potom skončia v mape mimo výrezu, ktorý si beh vypýtal. Viď `clip_vrt`.
-        #
-        # Reže sa PRED strážcom rozpočtu nižšie: ten má merať prácu, ktorá sa
-        # naozaj spraví, nie tú, ktorú sme sa práve rozhodli nerobiť.
+        # Sklad má absolútnu mriežku častí, takže mozaika je zjednotenie celých
+        # častí – nie územia. Reže sa pred strážcom rozpočtu: ten má merať prácu,
+        # ktorá sa naozaj spraví.
         treba = plocha / (vec_res * vec_res)
         if vec_res > res or (mbox and cells and treba and cells > treba * 1.05):
             vrt = clip_vrt(vrt, box, vec_res, tmp, src_res=res)
@@ -331,10 +267,8 @@ def main():
             orezane = float(cw) * ch
             preco = ("orez na územie" if vec_res == res else
                      f"orez na územie a mriežka {res:g} → {vec_res:g} m")
-            # „Menej buniek", nie „menej práce": orez prácu naozaj ušetrí
-            # (tie bunky sa neprečítajú), zhrubnutie NIE – prečítať sa musia
-            # tak či tak, len sa na ne trasuje hrubšie. Zmerané, beh
-            # 31360120952.
+            # „menej buniek", nie „menej práce": orez prácu naozaj ušetrí,
+            # zhrubnutie nie – prečítať sa musia tak či tak
             print(f"Pohľad na sklad ({preco}): {mw}×{mh} → {cw}×{ch} px, "
                   f"{cells / 1e9:.2f} → {orezane / 1e9:.2f} mld. buniek na "
                   f"trasovanie. Časti skladu ostávajú celé aj v plnom "
@@ -344,24 +278,14 @@ def main():
             print(f"Mozaika už sedí na územie ({treba / 1e9:.2f} mld. buniek "
                   f"treba) – nič sa neoreže.")
 
-        # KOĽKO SA PREČÍTA, nie koľko sa vytrasuje. To je to číslo, ktoré
-        # rozhoduje o čase (viď `CONTOUR_SRC_CELLS_PER_S`) – trasovanie na
-        # hrubšej mriežke zdrojové bunky neušetrí, `gdal_contour` ich musí
-        # prečítať a spriemerovať tak či tak. Počíta sa z toho, čo sa naozaj
-        # číta (okno po oreze), nie z bboxu.
+        # koľko sa prečíta, nie koľko sa vytrasuje: to je to číslo, ktoré
+        # rozhoduje o čase – trasovanie na hrubšej mriežke bunky neušetrí
         src_cells = cells * (vec_res / res) ** 2
 
-        # ROZPOČET JE ODHAD, NIE VYPÍNAČ. Nad ním sa POVIE, že to potrvá
-        # dlhšie, a počíta sa ďalej. Zastavovanie tu bolo dvakrát – pred
-        # spustením (`return 2`) aj počas behu (`max_s` podaný tepu) – a ani
-        # raz nič nezachránilo: vektorizácia je JEDEN nedeliteľný priechod nad
-        # celou mozaikou (viď zápis o dierach hore), takže zabitý
-        # `gdal_contour` nenechá ani neúplný výsledok. Zastavenie znamenalo
-        # presne to isté ako timeout jobu, len skôr – a bez šance, že by to
-        # dobehlo. Odhad pritom stojí na `CONTOUR_SRC_CELLS_PER_S`, ktorá bola
-        # už dvakrát rádovo vedľa (29× a 78×), takže vypínač na nej zavesený
-        # zháňal aj zadania, čo by v pohode dobehli. Ostáva strop PAMÄTE (OOM
-        # zabije runner a v logu nie je nič) a timeout jobu vo workflowe.
+        # rozpočet je odhad, nie vypínač: nad ním sa povie, že to potrvá dlhšie,
+        # a počíta sa ďalej. Zastavovanie nikdy nič nezachránilo – vektorizácia
+        # je jeden nedeliteľný priechod, takže zabitý `gdal_contour` nenechá ani
+        # neúplný výsledok. Ostáva strop pamäte a timeout jobu.
         odhad_s = src_cells / CONTOUR_SRC_CELLS_PER_S if src_cells else 0.0
         if args.budget_min > 0 and odhad_s > args.budget_min * 60:
             print(f"::warning::Vektorizácia prečíta {src_cells / 1e9:.2f} mld. "
@@ -373,11 +297,9 @@ def main():
                   f"(`area`); hrubšie trasovanie (`rock_vec_res`) na tomto "
                   f"nezmení nič. Sklon v sklade ostáva tak či tak.")
 
-        # ---------- 3. vektorizácia NARAZ nad celou mozaikou ----------
-        # Jediný priechod = žiadne švy a diery ostanú dierami. Prahy sú
-        # v jednotkách uloženého rastra (0,5° na krok).
-        # Plán PRED spustením: bez neho je v logu hodina ticha a spätne sa
-        # nedá povedať ani to, čo do toho išlo.
+        # ---------- 3. vektorizácia naraz nad celou mozaikou ----------
+        # Jediný priechod = žiadne švy a diery ostanú dierami. Plán pred
+        # spustením, inak je v logu hodina ticha.
         bands = os.path.join(tmp, "bands.gpkg")
         print("── Vektorizácia sklonu (gdal_contour -p) ────────────")
         print(f"  vstup           {vrt}")
@@ -400,58 +322,39 @@ def main():
                   f"– priechod sa nedá prerušiť a nadviazať, tak beží, kým nie je "
                   f"hotový (percentá po 2,5 %, tep každých {args.heartbeat:g} s)")
         print("─────────────────────────────────────────────────────", flush=True)
-        # PLNÉ PLOCHY (`--plne`, predvolene zapnuté): jediná úroveň, teda
-        # jediné pásmo „sklon nad prahom". Druhá úroveň (`cliff`) mala zmysel,
-        # kým sa kreslila tmavšie – ležala v diere pásma `steep` a spolu
-        # dláždili územie bez prekryvu. Odkedy sú všetky plochy jedna sivá bez
-        # priehľadnosti, je z nej len dvojnásobok prstencov na obtiahnutie.
+        # plné plochy (predvolene): jediné pásmo „sklon nad prahom". Druhá
+        # úroveň mala zmysel, kým sa kreslila tmavšie – odkedy sú všetky plochy
+        # jedna sivá bez priehľadnosti, je z nej len dvojnásobok prstencov.
         urovne = ([repr(args.slope * SCALE)] if args.plne else
                   [repr(args.slope * SCALE), repr(args.cliff * SCALE)])
         atributy = ["-amin", "smin", "-amax", "smax"]
         try:
             if args.block_px > 0:
-                # PO BLOKOCH. Hotový blok je na disku, takže zrušený beh
-                # nezahodí prácu – to je ten hlavný rozdiel oproti jednému
-                # priechodu, ktorý sa prerušiť ani nadviazať nedá.
+                # po blokoch: hotový blok je na disku, takže zrušený beh
+                # nezahodí prácu
                 _, _, mbox_v, _ = mosaic_info(vrt)
                 ox, oy = (mbox_v[0], mbox_v[3]) if mbox_v else (0.0, 0.0)
-                # ŽIADNY strop času ani pamäte: blok je malý raster, takže
-                # pamäť je zhora ohraničená sama, a zastaviť sa tu netreba –
-                # čo je hotové, je na disku a ďalší beh dopočíta zvyšok.
-                # (`--heartbeat` a `--max-rss-gb` sa sem dovtedy podávali
-                # a spodná vrstva ich ticho zahadzovala.)
+                # žiadny strop času ani pamäte: blok je malý raster, takže pamäť
+                # je ohraničená sama, a čo je hotové, je na disku
                 d, n_blokov = bloky_mod.po_blokoch(
                     vrt, os.path.join(tmp, "bloky"), urovne, atributy,
                     args.block_px, (ox, oy, vec_res))
                 seq = os.path.join(tmp, "bloky.geojsonl")
                 n_utvarov = bloky_mod.zlej(d, seq)
                 print(f"  {n_blokov} blokov → {n_utvarov} útvarov", flush=True)
-                # Švy: plocha aj diera preseknutá hranicou bloku sa spoja späť.
-                # `srs` sa NEPODÁVA a ani sa podať nedá: GeoJSON ovládač by
-                # podľa neho metre prepočítal do stupňov (viď `zlep_svy`).
-                # Metrické ostávajú tak, ako ich nechali bloky, a SRS im
-                # o pár riadkov nižšie vráti až prepis do GPKG.
+                # švy: plocha aj diera preseknutá hranicou bloku sa spoja späť.
+                # `srs` sa nepodáva – GeoJSON ovládač by metre prepočítal do stupňov.
                 seq = bloky_mod.zlep_svy(seq, tmp, klucovy_atribut="smin",
                                          heartbeat=args.heartbeat)
-                # `-a_srs`, nie `-t_srs`: súradnice sú UŽ metrické (z okna
-                # bloku sa vyhodil `<SRS>`, inak by ich GeoJSON prepočítal do
-                # stupňov). Toto ich len PREZNAČÍ, neprepočíta – a bez toho
-                # ostane vrstva bez CRS. Jednopriechodová cesta dostane SRS
-                # z rastra zadarmo; blokom ho treba vrátiť ručne.
-                #
-                # Bez tohto riadku sa nestane nič viditeľné až úplne na konci:
-                # `ogr2ogr -t_srs EPSG:4326` nižšie nemá z čoho prepočítať,
-                # GDAL povie len `Warning 1: No SRS set on layer` a nechá
-                # metre tak – Planetiler potom dostane zemepisnú dĺžku
-                # 4 800 000, zahodí všetko a `rocks.pmtiles` má NULA dlaždíc.
-                # Mapa je pritom zelená a bez skál (beh 31428413843).
+                # `-a_srs`, nie `-t_srs`: súradnice sú už metrické, toto ich len
+                # preznačí. Bez toho ostane vrstva bez CRS, `-t_srs` nižšie nemá
+                # z čoho prepočítať a Planetiler dostane dĺžku 4 800 000 –
+                # `rocks.pmtiles` má nula dlaždíc a mapa je zelená a bez skál.
                 run(["ogr2ogr", "-f", "GPKG", bands, seq, "-nln", "band",
                      "-a_srs", METRIC])
             else:
-                # ŽIADNY `max_s`: strop času tu nemá čo zachrániť (viď rozvahu
-                # nad odhadom vyššie). Tep dostane `--heartbeat`, aby sa dalo
-                # zhora nastaviť, ako často má byť počuť – dovtedy sa ten input
-                # bral a ticho zahadzoval.
+                # žiadny `max_s`: strop času tu nemá čo zachrániť. Tep dostane
+                # `--heartbeat`, nech sa dá zhora nastaviť, ako často má byť počuť.
                 run_watched(["gdal_contour", "-p", "-fl"] + urovne + atributy +
                             ["-f", "GPKG", "-nln", "band", vrt, bands],
                             "gdal_contour", tmp=tmp, every=args.heartbeat,
@@ -461,14 +364,12 @@ def main():
                   "územie cez rock_area alebo zvoľ hrubšiu mriežku rock_res.")
             return 2
 
-        # Mozaika sa tu ZÁMERNE NEMAŽE, hoci je vyše gigabajtu: sú to časti
-        # trvalého skladu (`slope-chunks.py`) a ukladajú sa do cache aj do
-        # releasu. Práve preto, aby ich ďalší beh nemusel počítať znova.
+        # mozaika sa zámerne nemaže, hoci je vyše gigabajtu: sú to časti
+        # trvalého skladu a ukladajú sa do cache aj do skladu
 
         # ---------- 4. rozbitie na plochy ----------
-        # gdal_contour zlepí každé pásmo do jedného multipolygónu; bez
-        # rozbitia by sa nedala merať plocha jednotlivej skaly. Diery
-        # rozbitie NErieši – vnútorné prstence ostávajú v svojej ploche.
+        # gdal_contour zlepí každé pásmo do jedného multipolygónu; bez rozbitia
+        # by sa nedala merať plocha jednotlivej skaly. Diery ostávajú.
         exploded = os.path.join(tmp, "rock-exploded.gpkg")
         lo, hi = int(args.slope), int(args.cliff)
         trieda = ("'steep' AS class" if args.plne else
@@ -485,13 +386,9 @@ def main():
             return 1
 
         # ---------- 5. filter najmenšej plochy + atribúty ----------
-        # DIERY OSTÁVAJÚ: miesto pod prahom vnútri steny (polica, terasa,
-        # zarastený stupeň) sa nezafarbí, aj keď je dookola všade sklon nad
-        # prahom. Práve ony robia tvar skaly čitateľným.
-        #
-        # `--zapln-diery=1` ich zaplní (von ide len vonkajší prstenec). Bolo
-        # to kedysi súčasťou `--plne` a bola to chyba – zo skál vyšli súvislé
-        # klaksy, v ktorých nebolo vidieť žiaden detail.
+        # Diery ostávajú: miesto pod prahom vnútri steny sa nezafarbí a práve
+        # ony robia tvar skaly čitateľným. `--zapln-diery=1` ich zaplní – bolo
+        # to kedysi súčasťou `--plne` a zo skál vyšli súvislé klaksy.
         stage = exploded
         final_metric = os.path.join(tmp, "rock-final.gpkg")
         geom = ("ST_BuildArea(ST_ExteriorRing(geom))"
@@ -505,9 +402,8 @@ def main():
             run(["ogr2ogr", "-f", "GPKG", final_metric, stage, "-nln", "rock",
                  "-dialect", "SQLITE", "-sql", sql] + simplify)
         except subprocess.CalledProcessError:
-            # `ST_BuildArea` je zo spatialite a nemusí byť. Skaly s dierami sú
-            # lepšie než žiadne skaly, tak sa najprv skúsi vynechať zapĺňanie
-            # a až potom celý filter.
+            # `ST_BuildArea` je zo spatialite a nemusí byť; skaly s dierami sú
+            # lepšie než žiadne skaly
             if args.zapln_diery:
                 print("::warning::Zapĺňanie dier (ST_BuildArea) nefunguje – "
                       "spatialite pravdepodobne chýba. Skaly idú s dierami.")
@@ -528,13 +424,10 @@ def main():
                      "rock", "-dialect", "SQLITE", "-sql", sql] + simplify)
 
         # ---------- 6. zaoblenie obrysu ----------
-        # Zjednodušenie vyššie zmaže schodíky, ale to, čo po ňom ostane, sú
-        # ostré rohy – priemerný lom medzi segmentmi vyskočí zo 4,6° na 28,5°
-        # a práve tak vyzerá skala pri max zoome „zubatá". Zaobli ich limitná
-        # krivka (kvadratický B-spline), vzorkovaná podľa kroku mriežky
-        # dlaždice na `--maxzoom` – rozpis v hlavičke `smooth-shapes.py`.
-        # Robí sa to ešte v metroch, aby tolerancie sedeli, a pred prepočtom
-        # do EPSG:4326.
+        # Po zjednodušení ostávajú ostré rohy (lom zo 4,6° na 28,5°) a práve tak
+        # vyzerá skala pri max zoome zubatá. Zaobli ich limitná krivka
+        # vzorkovaná podľa kroku mriežky dlaždice. Ešte v metroch, nech sedia
+        # tolerancie.
         if args.smooth > 0:
             smoothed = os.path.join(tmp, "rock-smooth.gpkg")
             script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -558,12 +451,9 @@ def main():
             print(f"::error::{zle}")
             return 1
         n = int(st.get("n", ogr_count(args.out)))
-        # NULA SKÁL PO FILTRI NIE JE VÝSLEDOK, JE TO PODOZRENIE. Nad prahom
-        # sklonu niečo bolo (inak by sme sem nedošli – `exploded` sa kontroluje
-        # vyššie), a filter najmenšej plochy to celé zmietol. Buď je `min_area`
-        # privysoká, alebo sú súradnice v iných jednotkách, než z akých sa
-        # plocha počíta – presne to sa stalo v behu 31426542010, kde mapa ticho
-        # ostala bez skál a beh bol zelený.
+        # nula skál po filtri nie je výsledok, je to podozrenie: nad prahom
+        # niečo bolo a filter to celé zmietol – buď je `min_area` privysoká,
+        # alebo sú súradnice v iných jednotkách
         if n == 0:
             print(f"::error::Nad prahom sklonu {args.slope:g}° niečo bolo, ale "
                   f"po filtri najmenšej plochy ({args.min_area:g} m²) neostala "
@@ -579,11 +469,8 @@ def main():
               f"prečítaných {src_cells/1e9:.2f} mld. buniek skladu → "
               f"{naozaj/1e3:.0f} tis. buniek/s; trasovalo sa "
               f"{cells/1e9:.2f} mld. na {vec_res:g} m)")
-        # Odhady sa robia z konštánt hore a tie sa časom rozídu s realitou –
-        # a keď sa rozídu, prestane platiť aj výber mriežky (`--res=auto`),
-        # ktorý na nich stojí. Nech to teda beh povie sám, nech sa nemusí
-        # hľadať. Obe strany: model, ktorý prestreľuje, zbytočne zhrubne
-        # mriežku, ten podstreľujúci zase sľúbi štvrťhodinu a beží hodinu.
+        # odhady stoja na konštantách hore a tie sa časom rozídu s realitou –
+        # a s nimi aj výber mriežky (`--res=auto`). Nech to beh povie sám.
         if naozaj and max(CONTOUR_SRC_CELLS_PER_S / naozaj,
                           naozaj / CONTOUR_SRC_CELLS_PER_S) > 3:
             print(f"::warning::Vektorizácia prečítala {naozaj/1e3:.0f} tis. "
@@ -598,12 +485,8 @@ def main():
             print(f"  spolu {st['total']/1e6:.2f} km², najväčšia "
                   f"{st['max']/10000:.1f} ha, najmenšia {st['min']:.0f} m², "
                   f"priemer {st['avg']:.0f} m²")
-            # PLÔCH MÔŽE BYŤ VEĽA A PLOCHY NIJAKÁ. Presne tak vyzeral beh
-            # 31434520563: 44 útvarov, spolu 0,00 km² nad celými Vysokými
-            # Tatrami – zlepenie švov ticho zahodilo 22 z 24 plôch a ostali
-            # len omrvinky. Počet teda o zdraví výsledku nehovorí nič, podiel
-            # na území áno. Je to VAROVANIE, nie chyba: rovinaté územie smie
-            # mať skál naozaj málo.
+            # plôch môže byť veľa a plochy nijaká – tak vyzeral beh, v ktorom
+            # zlepenie švov ticho zahodilo 22 z 24 plôch
             uzemie_km2 = bbox_km2(bbox)
             podiel = st["total"] / 1e6 / uzemie_km2 * 100 if uzemie_km2 else 0.0
             # PRAH 0,05 %, NIE 0,01 %. Bratislavský kraj vyšel na 0,014 %

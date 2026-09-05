@@ -1,54 +1,13 @@
 #!/usr/bin/env python3
-"""
-Koľko hladenia vrstevníc je akurát – merané, nie odhadnuté.
+"""Koľko hladenia vrstevníc je akurát – merané, nie odhadnuté.
 
-NIE JE TO ČASŤ PIPELINE. Nevolá to žiadny workflow; je to nástroj, ktorým sa
-vyberali tri hodnoty v `env:` build-map-region.yml (`CONTOUR_DEM_LOWPASS`,
-`CONTOUR_SIMPLIFY`, `CONTOUR_SMOOTH`). Leží tu preto, že bez neho sa čísla
-v tých komentároch nedajú overiť – a raz sa to už vypomstilo (nižšie).
+Nie je to časť pipeline: nástroj, ktorým sa vyberali `CONTOUR_DEM_LOWPASS`,
+`CONTOUR_SIMPLIFY` a `CONTOUR_SMOOTH` v build-map-region.yml. Model terénu má
+aj tvary široké pár metrov, aby bolo vidieť, čo z nich hladenie zmaže.
+Meria sa aj po mriežke dlaždice – zaokrúhlené súradnice sú tie schodíky,
+ktoré vidno pri max zoome. Zaobľovanie sa berie priamo zo smooth-shapes.py.
 
-PREČO VZNIKOL. Nastavenie sa ladilo trikrát a zakaždým podľa inej tabuľky,
-ktorú nebolo z čoho zopakovať. Druhé ladenie meralo na teréne, ktorý mal
-LEN hladký svah a šum – vyhladenie DEM v okne 5×5 tam vyšlo ako čistý zisk,
-lebo v takom teréne nie je čo pokaziť. V skutočnom teréne sú aj tvary široké
-pár metrov (rebro, žľab, terasa) a práve tie okno 5×5 zmazalo: vrstevnice
-z toho boli oblé a nedržali sa terénu. Preto tu terén tvary MÁ a meria sa,
-koľko z nich na čiare ostane.
-
-ČO SA MERIA (`--help` vypíše aj nastavenia):
-  bodov     … koľko bodov má výsledná čiara (≈ veľkosť dlaždíc)
-  lom       … priemerný uhol zlomu medzi susednými segmentmi
-  >30°      … PODIEL ostrých lomov zo všetkých vrcholov
-  zub/km    … ostré lomy TVARU na kilometer: čiara sa najprv prevzorkuje
-              rovnomerne (0,5 m) a až potom sa merajú lomy. Bez toho sa
-              porovnávajú neporovnateľné veci – uhol medzi susednými bodmi
-              závisí od toho, ako husto tie body ležia, takže riedko
-              vzorkovaná HLADKÁ krivka vyjde „zubatejšia" než hustá krivka
-              so skutočnými rohmi. Zub je lom, ktorý má krivka SAMA
-  odchýlka  … vzdialenosť od izolínie toho istého terénu BEZ šumu (vernosť)
-  tvar      … koľko % z amplitúdy reálneho tvaru na čiare ostalo
-
-A NAKONIEC TO ISTÉ PO MRIEŽKE DLAŽDICE. Vektorová dlaždica má súradnice
-v celých číslach na mriežke `extent` (4096, Planetiler ju meniť nevie), takže
-hotová čiara sa pri zápise zaokrúhli – pri z14 na 0,391 m, pri z16 na 0,098 m.
-Nad svojím maxzoomom sa vrstevnice už len naťahujú (overzoom), a práve tie
-zaokrúhlené súradnice vidno pri max zoome mapy ako schodíky: čiara, ktorá má
-sama 1,6 % ostrých lomov, ich má po mriežke z14 rovných 11,5 %. Bez tohto
-stĺpca tabuľka tvrdí, že je všetko hladké, kým v mape je vidieť zuby – a presne
-tak to raz dopadlo.
-
-MODEL PIPELINE. Vyhladenie DEM (priemer v okne a späť na mriežku),
-`gdal_contour` (marching squares s lineárnou interpoláciou na hrane bunky),
-`-simplify` (Douglas–Peucker) a zaoblenie. Zaobľovanie sa NEKOPÍRUJE: berie sa
-priamo zo `smooth-shapes.py` (`curve_line`), takže tu nemôže vyjsť iná krivka
-než v pipeline. Chaikin ostal len ako to, s čím sa porovnáva – to je pár
-riadkov a je to minulý stav, nie druhá pravda o dnešku. GDAL netreba, aby sa
-to dalo spustiť aj mimo runnera; rozdiel oproti `cubicspline` v gdalwarpe je
-pod úrovňou toho, o čom tieto čísla rozhodujú.
-
-Použitie:
-    python3 workers/contours-rocks/measure-smoothing.py             # tabuľka pre default a okolie
-    python3 workers/contours-rocks/measure-smoothing.py --seed=7    # iný šum (čísla sú stabilné)
+    python3 workers/contours-rocks/measure-smoothing.py [--seed=7]
 """
 import argparse
 import importlib.util
@@ -58,9 +17,7 @@ import sys
 
 import numpy as np
 
-# Zaobľovanie sa sem NEPÍŠE druhýkrát – je to tá istá krivka, akú do dlaždíc
-# posiela pipeline (pravidlo 1 v CLAUDE.md). Pomlčka v mene súboru sa cez
-# `import` načítať nedá, tak cez `importlib`.
+# tá istá krivka, akú posiela pipeline; pomlčka v mene sa cez import nedá
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -73,8 +30,7 @@ def _load(name, fname):
 
 
 shapes = _load("smooth_shapes", "smooth-shapes.py")
-# Krok mriežky dlaždice hovorí `lib/cell.py` – tá istá odpoveď, akou sa riadi
-# vzorkovanie v pipeline.
+# krok mriežky dlaždice hovorí lib/cell.py
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "lib"))
 import cell  # noqa: E402
 
@@ -82,8 +38,7 @@ NX, NY = 640, 320          # 1 m mriežka
 LAT = 49.1                 # zemepisná šírka (Tatry) – kvôli mriežke dlaždice
 EXTENT = cell.TILE_EXTENT  # súradnicová mriežka vektorovej dlaždice
 SLOPE = 0.10               # 10 % svah – izolínia je potom graf y(x)
-# Reálne tvary terénu: (vlnová dĺžka v metroch, amplitúda výšky v metroch).
-# Na 10 % svahu robí amplitúda 1,2 m výkyv čiary 12 m do strany.
+# reálne tvary terénu: (vlnová dĺžka m, amplitúda m)
 FEATS = [(60.0, 1.20), (25.0, 0.50), (12.0, 0.22)]
 NOISE = 0.15               # mikroreliéf: kry, balvany, šum merania
 LEVEL = 16.0
@@ -118,7 +73,7 @@ def lowpass(Z, win):
         for col in tmp.T])
 
 
-# ---------- marching squares: tak trasuje izolíniu aj gdal_contour ----------
+# marching squares: tak trasuje izolíniu aj gdal_contour
 def _edge(p, q, zp, zq, level):
     t = (level - zp) / (zq - zp)
     return (p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1]))
@@ -179,7 +134,7 @@ def longest_chain(segs):
     return best
 
 
-# ---------- to isté, čo robí ogr2ogr -simplify a smooth-shapes.py ----------
+# to isté, čo robí ogr2ogr -simplify a smooth-shapes.py
 def simplify(pts, tol):
     if tol <= 0 or len(pts) < 3:
         return list(pts)
@@ -206,12 +161,7 @@ def simplify(pts, tol):
 
 
 def chaikin(pts, passes):
-    """Orezávanie rohov – TO, ČO TU BOLO DO AUGUSTA 2026, na porovnanie.
-
-    V pipeline sa už nepoužíva (nechávalo pravidelné zuby, viď hlavičku
-    `smooth-shapes.py`), ale bez neho sa nedá ukázať, o koľko je limitná
-    krivka lepšia – a to je celý zmysel tejto tabuľky.
-    """
+    """Orezávanie rohov – bývalý stav pipeline, len na porovnanie."""
     pts = list(pts)
     for _ in range(passes):
         out = [pts[0]]
@@ -224,22 +174,14 @@ def chaikin(pts, passes):
 
 
 def limit(pts, sag, maxzoom):
-    """Limitná krivka zo `smooth-shapes.py` – to, čo robí pipeline dnes.
-
-    `sag` je v štvrtinách kroku mriežky dlaždice, presne ako `CONTOUR_SMOOTH`;
-    model počíta v metroch, takže sa tolerancia berie rovno v metroch.
-    """
+    """Limitná krivka zo smooth-shapes.py; `sag` v štvrtinách kroku mriežky."""
     tol = tile_step(maxzoom) * sag / 4.0
     return shapes.curve_line([tuple(p) for p in pts], tol)
 
 
-# ---------- metriky ----------
+# metriky
 def tile_step(z, lat=LAT):
-    """Krok mriežky dlaždice v metroch pri danom zoome.
-
-    Počíta to `lib/cell.py` – to isté miesto, ktoré sa pýta pipeline, keď
-    vyberá hustotu vzoriek. Tabuľka a beh tak nemôžu merať inú mriežku.
-    """
+    """Krok mriežky dlaždice v metroch pri danom zoome."""
     return cell.tile_grid_m(z, lat)
 
 
@@ -283,21 +225,14 @@ def metrics(pts):
     return dev, tvary
 
 
-# Krok, na ktorý sa čiara prevzorkuje pred meraním zubov. Je to TÁ ISTÁ
-# hodnota pre všetky riadky tabuľky – o to práve ide: merať tvar, nie hustotu
-# bodov. Pol metra je pod všetkým, čo v pipeline rozhoduje (bunka DEM má meter
-# a viac), a nad krokom mriežky dlaždice na max zoome.
+# krok prevzorkovania pred meraním zubov – rovnaký pre všetky riadky tabuľky
 SHAPE_STEP = 0.5
 
 
 def na_km(pts, thr=30.0):
-    """Ostré lomy TVARU na kilometer – po rovnomernom prevzorkovaní.
+    """Ostré lomy tvaru na kilometer – po rovnomernom prevzorkovaní.
 
-    Uhol medzi susednými bodmi sám o sebe nič nehovorí, kým sa nevie, ako
-    husto tie body ležia: limitná krivka je zámerne vzorkovaná redšie (jemnejší
-    detail mriežka dlaždice aj tak zahodí), takže jej tetivy zvierajú väčšie
-    uhly než body hustej Chaikinovej čiary – hoci sa od hladkého priebehu
-    odchyľujú menej. Prevzorkovanie ten rozdiel odstráni.
+    Bez neho by sa merala hustota bodov, nie zubatosť.
     """
     R = resample(pts, SHAPE_STEP)
     ang = bends([tuple(p) for p in R])
@@ -312,7 +247,7 @@ def run(Z, win, quarters, how, label, maxzoom):
            else limit(simp, how[1], maxzoom))
     ang = bends(pts)
     dev, tvary = metrics(pts)
-    # A to isté po mriežke dlaždice – tak, ako to skončí v .pmtiles.
+    # a to isté po mriežke dlaždice – tak to skončí v .pmtiles
     qpts = quantize(pts, tile_step(maxzoom))
     qang = bends(qpts)
     print(f"{label:50s} {len(pts):5d} {ang.mean():6.1f}° "
