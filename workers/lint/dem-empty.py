@@ -37,6 +37,11 @@ def main():
             bad.append(f"workers/dem/tiles.py nemá konštantu {const} – prázdna "
                        f"dlaždica sa potom nedá ani podpísať, ani spoznať.")
 
+    if not re.search(r"^EMPTY_MAX_BYTES\s*=", tiles, re.M):
+        bad.append("workers/dem/tiles.py nemá prah EMPTY_MAX_BYTES – "
+                   "`workers/dem/trust.py` ho číta a kontrola skladu "
+                   "spadne na AttributeError (beh 33944842274).")
+
     if 'f"{EMPTY_TAG}={EMPTY_CHECK}"' not in tiles:
         bad.append("workers/dem/tiles.py nepodpisuje prázdnu dlaždicu "
                    "(`gdal_translate -mo EMPTY_CHECK=…`). Bez podpisu sa "
