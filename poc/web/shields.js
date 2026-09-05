@@ -1,44 +1,28 @@
 /**
- * ŠTÍTOK ČÍSLA CESTY – „D1", „R1", „I/18".
+ * Štítok čísla cesty – „D1", „R1", „I/18".
  *
- * Číslo cesty je na mape iná vec než jej meno: meno beží pozdĺž cesty a číta
- * sa ako text, číslo je ZNAČKA – krátka, opakuje sa po celej dĺžke a musí byť
- * čitateľná aj cez les, tieňovanie a vrstevnice. Preto má podklad.
+ * Číslo je na mape iná vec než meno cesty: meno beží pozdĺž nej a číta sa ako
+ * text, číslo je značka – krátka, opakuje sa a musí byť čitateľná aj cez les
+ * a vrstevnice. Preto má podklad.
  *
- * TU JE LEN OBRÁZOK PODKLADU, nie to, ktorá cesta ho dostane; kto ho dostane
- * a akú farbu, rozhoduje `SHIELD_DEFS` v `themes.js` – tam sú aj triedy ciest
- * a paleta. Rozdelené je to takto preto, že tento súbor potrebuje pipeline
- * (`workers/assets/shields.mjs` z neho dopečie obrázky do spritu) a nemá čo
- * vedieť o triedach OSM.
+ * Tu je len obrázok podkladu; ktorá cesta ho dostane a akú farbu, rozhoduje
+ * `SHIELD_DEFS` v `themes.js`. Rozdelené preto, že tento súbor potrebuje
+ * pipeline a nemá čo vedieť o triedach OSM.
  *
- * PREČO SDF A NIE HOTOVÝ FAREBNÝ OBRÁZOK. SDF obrázok sa v MapLibre dá
- * zafarbiť (`icon-color`) a orámovať (`icon-halo-color`, `icon-halo-width`),
- * takže na štyri témy × štyri triedy ciest stačí JEDEN obrázok namiesto
- * šestnástich – a farba štítka sa dá doladiť v developer móde ako každá iná,
- * bez prebuildovania spritu.
+ * SDF, nie hotový farebný obrázok: SDF sa dá zafarbiť aj orámovať, takže na
+ * štyri témy × štyri triedy stačí jeden obrázok namiesto šestnástich a farba
+ * sa dá ladiť v developer móde bez prebuildovania spritu.
  *
- * NEROZŤAHUJE SA (žiadne `stretchX`/`stretchY`), a je to opravená chyba.
+ * Nerozťahuje sa (žiadne `stretchX`/`stretchY`), a je to opravená chyba:
+ * SDF nesie vzdialenosť v pixeloch, takže natiahnutím pásma sa pole rozladí
+ * voči novej geometrii a na švíkoch hodnoty nenadviažu – v mape z toho bol
+ * rozmazaný kríž namiesto štítka (89 × 85 px proti ~20 × 14 px bez nich).
+ * Deväťdielne naťahovanie je robené na bežný raster, nie na vzdialenostné pole.
  *
- * Kedysi tu stálo, že „rozťahovanie SDF nekazí, lebo v naťahovanom pásme je
- * vzdialenostné pole rovnobežné s hranou". Tá úvaha platí pre HRANY, ale nie
- * pre celok, a v mape z toho bol ROZMAZANÝ KRÍŽ namiesto štítka: SDF nesie
- * vzdialenosť V PIXELOCH, takže natiahnutím pásma sa pole rozladí voči novej
- * geometrii (gradient sa zriedi a prah 0,75 rozmaže), a na švíkoch medzi
- * naťahovaným pásmom a pevným rohom na seba hodnoty nenadviažu – obrys sa
- * pretrhne a rohy odpadnú. Deväťdielne naťahovanie je robené na BEŽNÝ raster,
- * nie na vzdialenostné pole.
- *
- * Namerané (MapLibre 4.7.1, `icon-text-fit: both`, text-size 11, „D1"):
- *   so `stretchX`/`stretchY`  … 89 × 85 px, rozmazaný kríž
- *   bez nich                  … ~20 × 14 px, ostrý zaoblený obdĺžnik
- *
- * CENA: `icon-text-fit` teraz škáluje obrázok CELÝ, takže sa s dĺžkou čísla
- * škáluje aj polomer zaoblenia – z „D1" je zaoblený obdĺžnik, z „III/3059"
- * kapsula. Je to viditeľne horšie než pravý obdĺžnik, ale nesúmerne lepšie
- * než kríž, ktorý tam bol. Pravý obdĺžnik pri každej dĺžke by chcel obrázok
- * BEZ SDF (deväťdielne naťahovanie na ňom funguje, ako má) a s farbou
- * zapečenou pri builde – čo je iná pipeline a stojí za samostatné rozhodnutie,
- * lebo farba štítka sa tým prestane dať ladiť v developer móde.
+ * Cena: `icon-text-fit` škáluje obrázok celý, takže sa s dĺžkou čísla škáluje
+ * aj polomer zaoblenia – z „III/3059" je kapsula. Pravý obdĺžnik pri každej
+ * dĺžke by chcel obrázok bez SDF a s farbou zapečenou pri builde, čím sa
+ * farba prestane dať ladiť v developer móde.
  */
 
 /**
@@ -49,17 +33,13 @@
 export const SHIELD_PAD = 1;
 
 /**
- * Hrúbka JEDNÉHO prstenca v pixeloch pri `pixelRatio` 1. Prstence sú dva
- * a sú ROVNAKO HRUBÉ: vnútri farebné pole s číslom, okolo neho biely
- * prstenec a úplne navrchu ešte jeden vo farbe poľa – tak, ako to má
- * úradná značka D1/R1.
+ * Hrúbka jedného prstenca v pixeloch pri `pixelRatio` 1. Prstence sú dva
+ * a rovnako hrubé, ako to má úradná značka D1/R1.
  *
- * POZOR NA VZŤAH K POLOMERU. Pásma vznikajú ODSADENÍM vonkajšieho tvaru
- * dovnútra a pri odsadení sa polomer zaoblenia ZMENŠUJE o to isté – takže
- * vnútorné pole má polomer `shape.radius - 2 * SHIELD_RING`. Keď to vyjde
- * nula alebo menej, vnútorné pole má OSTRÉ rohy, hoci vonkajší tvar je
- * zaoblený; presne to sa raz stalo (prstenec 2, polomer 3 → vnútro −1).
- * Stráži to `workers/lint/shields.mjs`.
+ * Pásma vznikajú odsadením vonkajšieho tvaru dovnútra a polomer sa pri tom
+ * zmenšuje o to isté, takže vnútro má `shape.radius - 2 * SHIELD_RING`. Keď
+ * to vyjde nula alebo menej, má vnútorné pole ostré rohy pri zaoblenom
+ * vonkajšku – stráži to `workers/lint/shields.mjs`.
  */
 export const SHIELD_RING = 1.5;
 
@@ -71,18 +51,13 @@ const SDF_RADIUS = 8;
 const SDF_CUTOFF = 0.25;
 
 /**
- * Tvary štítka. `radius` je polomer zaoblenia rohov v pixeloch pri
- * `pixelRatio` 1; `SHIELD_BOX / 2` je už úplný ovál.
+ * Tvary štítka. `radius` je polomer zaoblenia rohov pri `pixelRatio` 1;
+ * `SHIELD_BOX / 2` je už úplný ovál.
  */
-// Polomer je ODMERANÝ Z NAOZAJSTNEJ ZNAČKY, nie odhadnutý: na úradnom
-// slovenskom štítku D1/R1 (Wikimedia Commons `D1-SVK-2020.svg`) má zaoblenie
-// 8 % výšky červeného poľa. Dovtedy tu boli 4 px na 18 px poli, teda 22 % –
-// takmer trojnásobok, a štítok preto pôsobil ako pilulka, nie ako dopravná
-// značka. Pri dlhom čísle to bolo ešte vypuklejšie: `icon-text-fit` škáluje
-// obrázok v oboch osiach zvlášť, takže sa vodorovný polomer natiahol s ním
-// a z „III/3059" bola kapsula. S malým polomerom to ostane obdĺžnik.
-//
-// 8 % z 18 px = 1,44 px; 1,5 je najbližšie, čo má na mriežke zmysel.
+// polomer je odmeraný z úradnej značky D1/R1 (8 % výšky poľa), nie odhadnutý:
+// dovtedy tu bolo 22 % a štítok pôsobil ako pilulka. Pri dlhom čísle to bolo
+// horšie – `icon-text-fit` škáluje v oboch osiach, takže z „III/3059" bola
+// kapsula. 8 % z 18 px = 1,44; 1,5 je najbližšie, čo má na mriežke zmysel.
 export const SHIELD_SHAPES = [
   // 4,5 nie je od oka: `4,5 − 2 × 1,5 = 1,5`, takže zaoblené je aj vnútorné
   // pole (prostredný prstenec má 3). Menší vonkajší polomer by vnútro
@@ -118,8 +93,7 @@ function roundedRectDistance(px, py, w, h, r) {
  * @param {number} pixelRatio   1 alebo 2 (varianta @2x)
  * @returns {{width:number, height:number, data:Uint8Array,
  *            stretchX:number[][], stretchY:number[][], content:number[]}}
- *          `data` je RGBA (biela, SDF v alfe) – presne to, čo do atlasu
- *          zapisuje `workers/assets/sprite.mjs`.
+ *          `data` je RGBA (biela, SDF v alfe).
  */
 /** `#rrggbb` → `[r, g, b]`. */
 function rozlozFarbu(hex) {
@@ -129,30 +103,20 @@ function rozlozFarbu(hex) {
 }
 
 /**
- * Vykreslí štítok ako HOTOVÝ FAREBNÝ OBRÁZOK (nie SDF) s tromi pásmami:
- *
- *     ┌──────────────┐  vonkajší prstenec – farba poľa
- *     │ ┌──────────┐ │  vnútorný prstenec – kontrastná farba (biela)
- *     │ │   D1     │ │  pole s číslom
- *     │ └──────────┘ │
- *     └──────────────┘
- *
+ * Vykreslí štítok ako hotový farebný obrázok (nie SDF) s tromi pásmami:
+ * vonkajší prstenec vo farbe poľa, vnútorný kontrastný a pole s číslom.
  * Oba prstence sú rovnako hrubé (`SHIELD_RING`).
  *
- * PREČO NIE SDF. SDF vie zafarbiť tvar (`icon-color`) a dať mu JEDEN
- * prstenec (`icon-halo-*`) – dva prstence sa ním spraviť nedajú. A druhá vec:
- * deväťdielne naťahovanie (`stretchX`/`stretchY`) je robené na bežný raster,
- * na vzdialenostnom poli rozladí hodnoty a pretrhne obrys. Hotový obrázok
- * rieši oboje naraz: má toľko pásem, koľko treba, a naťahuje sa správne,
- * takže je štítok OBDĹŽNIK pri každej dĺžke čísla (aj „III/3059").
+ * Nie SDF: to vie zafarbiť tvar a dať mu jeden prstenec, dva sa ním spraviť
+ * nedajú. A deväťdielne naťahovanie je robené na bežný raster – na
+ * vzdialenostnom poli rozladí hodnoty a pretrhne obrys. Hotový obrázok rieši
+ * oboje, takže je štítok obdĺžnik pri každej dĺžke čísla.
  *
- * CENA: farba sa pečie pri builde, takže sa nedá meniť za behu
- * (`icon-color`) – preto sa pečie jeden obrázok na KAŽDÚ dvojicu
- * trieda × téma. V developer móde sa farba štítka zmení až po prebuildovaní
- * spritu, nie hneď v prehliadači.
+ * Cena: farba sa pečie pri builde, takže sa pečie jeden obrázok na každú
+ * dvojicu trieda × téma a v developer móde sa zmení až po prebuildovaní.
  *
  * @param {object} shape   položka zo `SHIELD_SHAPES` (polomer zaoblenia)
- * @param {object} colors  `{ field, ring }` – farba poľa a kontrastný prstenec
+ * @param {object} colors  `{ field, ring }`
  * @param {number} pixelRatio
  */
 export function renderShield(shape, colors, pixelRatio = 1) {
@@ -209,4 +173,3 @@ export function renderShield(shape, colors, pixelRatio = 1) {
     content: [pad + 2 * ring, pad + 2 * ring, size - pad - 2 * ring, size - pad - 2 * ring]
   };
 }
-

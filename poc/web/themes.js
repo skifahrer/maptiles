@@ -1,23 +1,16 @@
 /**
- * Farebné témy a generátor MapLibre štýlu pre OpenMapTiles schému
- * (výstup Planetileru). Zdieľané medzi webom (prehliadač) a pipeline
- * (workers/styles/build.mjs generuje statické style.json aj pre iOS).
+ * Farebné témy a generátor MapLibre štýlu pre schému OpenMapTiles.
+ * Zdieľané medzi webom a pipeline (`workers/styles/build.mjs` z toho robí
+ * statické `style.json` aj pre iOS).
  *
- * Filozofia detailu:
- *   - do zoomu DETAIL_Z (14) sa mapa postupne "oreže" – nižšie zoomy
- *     ukazujú len dôležité prvky, aby bola čitateľná,
- *   - od DETAIL_Z vyššie sa nič nefiltruje: všetky body, línie aj plochy,
- *     ktoré OpenMapTiles schéma obsahuje, sú viditeľné,
- *   - dlaždice končia na zoome 16 (tvrdý limit Planetileru), vyššie zoomy
- *     (až po MAX_DISPLAY_Z = 20) rieši MapLibre overzoomom.
+ * Do zoomu DETAIL_Z (14) sa mapa postupne oreže, aby bola čitateľná; vyššie sa
+ * nefiltruje nič. Dlaždice končia na z16 (limit Planetileru), vyššie rieši
+ * MapLibre overzoomom (po MAX_DISPLAY_Z = 20).
  *
- * Developer mode:
- *   Každá vrstva nesie `metadata` (`frico:group`, `frico:label`, `frico:kind`,
- *   `frico:palette`), takže sa dá v prehliadači vypísať, zapnúť/vypnúť a
- *   prefarbiť bez toho, aby sa zoznam vrstiev musel udržiavať dvakrát.
- *   Úpravy z developer módu prichádzajú späť ako `overrides` – ten istý
- *   objekt sa dá uložiť do zdrojáku (poc/web/style-overrides.json) a potom
- *   ho použije aj pipeline pre statické štýly pre iOS.
+ * Každá vrstva nesie `metadata` (`frico:group`, `frico:label`, `frico:kind`,
+ * `frico:palette`), takže sa dá v developer móde vypísať, prepnúť a prefarbiť
+ * bez druhého zoznamu vrstiev. Úpravy prichádzajú späť ako `overrides` a ten
+ * istý objekt použije aj pipeline.
  */
 
 import {
@@ -69,15 +62,12 @@ export const MAX_TILE_Z = 16;
  * Zoom, od ktorého sú v mape vrstevnice a skaly – a pod ktorým nie sú vôbec.
  *
  * Na prehľadovej mierke sa nedá prečítať ani jedna vrstevnica a zo skál je
- * sivá škvrna, ale dlaždice s nimi si prehliadač aj tak sťahuje – čiže sa za
- * ten závoj platí veľkosťou podkladov. Od tohto zoomu je z vrstevníc LEN
- * hlavná trieda (`contour-major`), polovičná od z12 a základná od z13.
+ * sivá škvrna, ale dlaždice si prehliadač aj tak sťahuje. Od tohto zoomu je
+ * z vrstevníc len hlavná trieda, polovičná od z12 a základná od z13.
  *
- * To isté číslo je aj v schémach Planetilera (`min_zoom` vo
- * `workers/contours-rocks/{contours,rocks}.yml`), lebo tam rozhoduje, čo sa
- * vôbec VYROBÍ – tu len to, čo sa NAKRESLÍ. Keď sa tie dve čísla rozídu, nikto
- * nič nepovie: buď platíme dlaždice, ktoré nikto nevidí, alebo je v mape diera.
- * Stráži to `workers/lint/zoom-floor.py`.
+ * To isté číslo je v schémach Planetilera (tam rozhoduje, čo sa vyrobí, tu čo
+ * sa nakreslí) – rozídené znamená buď dlaždice, ktoré nikto nevidí, alebo
+ * dieru v mape. Stráži to `workers/lint/zoom-floor.py`.
  */
 export const TERRAIN_MIN_Z = 11;
 
@@ -104,12 +94,10 @@ export const DEFAULT_DEM_MAXZOOM = 15;
 export const DEFAULT_TERRAIN_EXAGGERATION = 1.3;
 
 /**
- * Zdroje výšok, z ktorých pipeline počíta vrstevnice, skalné plochy
- * a tieňovanie. Kľúče sú tie isté ako vo `workers/data/dem-sources.json` a ako
- * v troch výberoch vo formulári „Build map" (`contour_source`, `rock_source`,
- * `shading_source`) – každá vrstva môže mať iný model.
- * Licencia každého z nich vyžaduje uvedenie zdroja, preto ide atribúcia
- * priamo do zdroja v štýle (MapLibre ju zobrazí v rohu mapy).
+ * Zdroje výšok, z ktorých pipeline počíta vrstevnice, skaly a tieňovanie.
+ * Kľúče sú tie isté ako vo `workers/data/dem-sources.json` a vo formulári –
+ * každá vrstva môže mať iný model. Licencia každého vyžaduje uvedenie zdroja,
+ * preto ide atribúcia priamo do zdroja v štýle.
  */
 export const DEM_SOURCES = {
   sonny: {
@@ -147,36 +135,24 @@ export const DEM_SOURCES = {
 export const DEFAULT_DEM_SOURCE = "sonny";
 
 /**
- * TERÉNNA TROJICA – odkiaľ sa berú `background`, `rock` / `rockArea`
- * a `contour*`. Sú to farby papierovej horskej mapy, nie ozdoba:
+ * Terénna trojica – odkiaľ sa berú `background`, `rock`/`rockArea`
+ * a `contour*`. Sú to farby papierovej horskej mapy:
  *
  *   podklad     #f0efeb   bielosivá – holý terén nad lesom, sneh, kamenie
- *   skaly a suť #9c9286   teplá stredná sivohnedá – skalnaté partie, sutiny
- *   vrstevnice  #8b8676   tenké olivovosivé línie s popiskom výšky
+ *   skaly a suť #9c9286   teplá stredná sivohnedá
+ *   vrstevnice  #8b8676   tenké olivovosivé línie
  *
- * PODKLAD JE BIELOSIVÝ, NIE ZELENKASTÝ – a je to rozhodnutie o tom, čo v mape
- * znamená zelená. V horách je nad hranicou lesa hola, kameň a sneh; keď mal
- * podklad zelený nádych, vyzeralo to celé ako riedka vegetácia a les sa od
- * neho odlíšil len o odtieň. **Zelená je odteraz vyhradená lesu** (`forest`)
- * – jediná sýta zelená v mape. Lúka, kosodrevina, záhrada či ihrisko sú
- * odstupňované do olivovo-khaki: vegetácia áno, les nie.
+ * Podklad je bielosivý, nie zelenkastý: zelená je vyhradená lesu – jediná sýta
+ * zelená v mape. Lúka, kosodrevina či ihrisko sú odstupňované do olivovo-khaki.
+ * Sivá pritom nie je neutrálna, má ten istý teplý zemitý nádych ako skaly
+ * a vrstevnice; neutrálna sivá vedľa zemitých hnedých vyzerá domodra.
  *
- * Sivá pritom nie je neutrálna: má ten istý teplý zemitý nádych ako skaly
- * a vrstevnice (odtieň okolo 45°, sýtosť do 6 %). Neutrálna sivá vedľa
- * zemitých hnedých vyzerá domodra a mapa z toho vyjde studená.
+ * Každá téma má svoj odtieň, len veľmi jemne iný – rozdiel je pár krokov, aby
+ * sa dali rozoznať, ale aby žiadna nevyzerala ako iná mapa.
  *
- * KAŽDÁ TÉMA MÁ SVOJ ODTIEŇ, LEN VEĽMI JEMNE INÝ. Nie sú to štyri kópie
- * jednej hodnoty: „Svetlá" je tá neutrálna, „Outdoor" o odtieň teplejšia
- * a tmavšia (je to turistická mapa), „Retro" o odtieň svetlejšia, a „Tmavá"
- * má tú istú **rodinu** preloženú do tmy – teda neutrálne teplú, nie
- * domodra ako predtým. Rozdiel medzi témami je pár krokov, aby sa dali od
- * seba rozoznať, ale aby žiadna nevyzerala ako iná mapa.
- *
- * POZOR NA VÝPLNE, KTORÉ PODKLAD DOBIEHA. `rock` (suť z OSM) sa kreslí
- * s krytím 0,8, takže sa s podkladom mieša – hodnota je preto tmavšia než
- * to, čo je vidieť: 0,8 × #807b6d nad #d9d6cc dá #928d80, čiže tú tmavšiu
- * sivohnedú o odtieň svetlejšie než počítané skalné plochy (`rockArea`,
- * krytie 1). To je zámer: suť je sypká a svetlejšia než stena.
+ * Pozor na výplne, ktoré podklad dobieha: `rock` sa kreslí s krytím 0,8,
+ * takže je hodnota tmavšia než to, čo je vidieť. Suť je sypká a svetlejšia
+ * než stena – to je zámer.
  */
 export const THEMES = {
   svetla: {
@@ -982,11 +958,9 @@ const FALLBACK_ICONS = [
 /**
  * Triedy, pre ktoré má sada ikonu `<trieda><prípona>`.
  *
- * Je to funkcia, a nie riadok v `buildStyle`, lebo tú istú otázku si kladie
- * aj developer mode: bez nej by v paneli pri každej kategórii svietilo
- * „bez ikony" alebo naopak ikona, ktorú sada nemá – teda niečo iné, než je
- * v mape. Čisto geometrické tvary (kruh, štvorec…) sa vynechávajú: POI bez
- * vlastnej ikony nemá dostať kruh, ale zostať len s popiskom.
+ * Funkcia, a nie riadok v `buildStyle`, lebo tú istú otázku si kladie aj
+ * developer mode – inak by v paneli svietilo niečo iné, než je v mape. Čisto
+ * geometrické tvary sa vynechávajú: POI bez vlastnej ikony nemá dostať kruh.
  */
 export function iconClassesOf(icons, suffix) {
   return (
@@ -1003,14 +977,11 @@ export function iconClassesOf(icons, suffix) {
 }
 
 /**
- * IKONA JEDNEJ KATEGÓRIE – jedna otázka, jedna odpoveď.
+ * Ikona jednej kategórie – jedna otázka, jedna odpoveď.
  *
- * Poradie je to isté, aké má výraz v štýle: najprv to, čo si vybral developer
- * mode (`overrides.poi.icons`, prázdny reťazec = „žiadna"), potom
- * `<trieda><prípona>` zo sady, a keď ju sada nemá, nič – žiadne náhradné
- * koliesko. Pýta sa na to štýl (aby vedel, čo nakresliť) aj panel (aby vedel,
- * čo ukázať), a keby si to počítali zvlášť, panel by raz ukazoval inú ikonu,
- * než je v mape.
+ * Poradie je to isté ako vo výraze v štýle: najprv `overrides.poi.icons`
+ * (prázdny reťazec = „žiadna"), potom `<trieda><prípona>` zo sady, inak nič –
+ * žiadne náhradné koliesko. Pýta sa na to štýl aj panel.
  *
  * @param {string} cls  `subclass` alebo `class` z dlaždíc
  * @param {{classes: string[], suffix: string, overrides?: object}} opts
@@ -1037,9 +1008,9 @@ const DEFAULT_FONTS = {
 /**
  * Interpolácia šírky čiary podľa zoomu: zw([[z, w], …]).
  *
- * Pozn.: `["zoom"]` smie byť podľa MapLibre style-spec iba priamym vstupom
- * najvrchnejšieho `interpolate`/`step`. Preto sa šírky obrysov (casing)
- * počítajú pripočítaním k jednotlivým stopom (`widen`), nie výrazom `["+", …]`.
+ * `["zoom"]` smie byť podľa style-spec iba priamym vstupom najvrchnejšieho
+ * `interpolate`/`step`, preto sa šírky obrysov počítajú pripočítaním
+ * k jednotlivým zlomom (`widen`), nie výrazom `["+", …]`.
  */
 const zw = (stops) => [
   "interpolate",
@@ -1052,32 +1023,20 @@ const zw = (stops) => [
 const zl = (stops) => ["interpolate", ["linear"], ["zoom"], ...stops.flat()];
 
 /**
- * ZOOMOVÉ PÁSMA: `zs([[9, 11, 2], [12, 12, 4], [13, 17, 6]])` – „od z9 do z11
+ * Zoomové pásma: `zs([[9, 11, 2], [12, 12, 4], [13, 17, 6]])` – „od z9 do z11
  * takto, na z12 takto, od z13 vyššie takto".
  *
- * PREČO POPRI KRIVKE EŠTE PÁSMA. Krivka (`zw`/`zl`) odpovedá na otázku „ako
- * hodnota RASTIE", pásmo na otázku „čo platí v tomto rozsahu". Kým bola
- * k dispozícii len krivka, druhá otázka sa musela písať cez prvú: „od z9 do
- * z11 hrúbka 2" znamenalo napísať zlom `[9, 2]` A EŠTE `[11, 2]`, inak sa
- * hodnota medzi nimi plynulo menila – teda tú istú hodnotu dvakrát, na každej
- * hranici pásma, a pri troch pásmach šesť zlomov namiesto troch riadkov. Pri
- * strope {@link MAX_PAINT_STOPS} sa do toho zmestili štyri pásma.
+ * Krivka (`zw`/`zl`) odpovedá na „ako hodnota rastie", pásmo na „čo platí
+ * v tomto rozsahu". Cez krivku by „od z9 do z11 hrúbka 2" znamenalo napísať
+ * tú istú hodnotu dvakrát, na každej hranici pásma.
  *
- * SÉMANTIKA (jedna veta, aby sa nedala pochopiť dvoma spôsobmi):
- * pásmo `[od, do, hodnota]` platí pre zoomy `od ≤ z < do + 1`, teda `do` je
- * VRÁTANE aj s desatinami (na z11,7 ešte platí pásmo `do 11`). Pásma musia
- * ísť za sebou BEZ MEDZIER a BEZ PREKRYVOV (`ďalšie od = predošlé do + 1`)
- * a zadávajú sa v CELÝCH zoomoch – desatiny sú otázka pre krivku, nie pre
- * pásmo. Pod prvým `od` a nad posledným `do` platí krajné pásmo (rovnako
- * ako `interpolate` drží krajné hodnoty za svojimi krajnými zlomami).
+ * Pásmo `[od, do, hodnota]` platí pre zoomy `od ≤ z < do + 1`, teda `do` je
+ * vrátane aj s desatinami. Pásma musia ísť za sebou bez medzier a prekryvov
+ * a zadávajú sa v celých zoomoch; pod prvým a nad posledným platí krajné.
  *
- * PREČO `step` A NIE `interpolate` S DVOMA ZLOMAMI NA PÁSMO. Vnútri pásma je
- * hodnota KONŠTANTNÁ a na hranici SKOČÍ – to je celý zmysel pásma. Cez
- * `interpolate` sa to zapísať nedá: susedné pásma `[9,11]` a `[12,12]` by
- * potrebovali zlomy 9, 11, 12, 12 a dva zlomy na tom istom zoome MapLibre
- * odmietne aj s celým štýlom. A `["zoom"]` smie byť podľa style-spec iba
- * priamym vstupom najvrchnejšieho výrazu, takže sa krivka DO pásma vnoriť
- * nedá ani obchádzkou – kto chce plynulý prechod, píše krivku.
+ * `step` a nie `interpolate`: vnútri pásma je hodnota konštantná a na hranici
+ * skočí. Susedné pásma by potrebovali dva zlomy na tom istom zoome, a to
+ * MapLibre odmietne aj s celým štýlom. Kto chce plynulý prechod, píše krivku.
  */
 const zs = (bands) => {
   const s = sortBands(bands);
@@ -1098,29 +1057,20 @@ const str = (prop) => ["coalesce", ["get", prop], ""];
 const num = (prop, fallback) => ["coalesce", ["get", prop], fallback];
 
 /**
- * IBA PLOCHY – povinná stráž pre `fill` vrstvu nad vrstvou so ZMIEŠANOU
+ * Iba plochy – povinná stráž pre `fill` vrstvu nad vrstvou so zmiešanou
  * geometriou.
  *
- * MapLibre `fill` vrstve NEPRESKOČÍ čiary. Prvok pustí do výplne bez ohľadu
- * na typ geometrie a otvorenú lomenú čiaru pošle earcutu, ako keby to bol
- * uzavretý prstenec – vypadne z toho sebaprekrývajúci sa mnohouholník, ktorý
- * s tou čiarou nemá nič spoločné. `fill-outline-color` mu k tomu obtiahne
- * hrany, takže to v mape vyzerá ako útvar „prerezaný" cez krajinu.
+ * MapLibre `fill` vrstve nepreskočí čiary: otvorenú lomenú čiaru pošle
+ * earcutu, ako keby to bol uzavretý prstenec, a vypadne z toho
+ * sebaprekrývajúci sa mnohouholník. `fill-outline-color` mu k tomu obtiahne
+ * hrany, takže to vyzerá ako útvar prerezaný cez krajinu.
  *
- * PRÁVE TO BOLI TIE ČUDNÉ POLYGÓNY OD ZOOMU 13 na obyčajnej mape (bez skál
- * a vrstevníc). Vinníkom bola `pedestrian-area`: `fill` nad vrstvou
- * `transportation` s `class in [pedestrian, path]` a `minzoom: 13`. Vo vrstve
- * `transportation` sú chodníky ČIARY a Planetiler ich pri
- * `--transportation_z13_paths=true` (workers/tiles/build.sh) púšťa do dlaždíc
- * práve od z13 – teda presne odtiaľ, odkiaľ tie útvary pribúdali. A prečo bolo
- * „vnútri len podklad": farba `pedestrian` je od `background` na nerozoznanie
- * (svetlá téma #f2efe9 vs #f8f4f0), takže z toho bola plocha v barve podkladu,
- * ktorá prekryla les aj lúku pod sebou, a `roadCasing` jej obtiahol obrys.
+ * Presne to boli tie čudné polygóny od z13: `pedestrian-area` je `fill` nad
+ * `transportation`, kde sú chodníky čiary, a farba `pedestrian` je od
+ * `background` na nerozoznanie – takže plocha prekryla les aj lúku pod sebou.
  *
- * Pri `fill` nad `transportation`, `aeroway`, `park` a `piste` teda platí:
- * `class` NESTAČÍ, treba aj typ geometrie. (Ten istý druh omylu ako
- * `LINE_CLASSES` nižšie, len z druhej strany: tam symbolová vrstva umiestnila
- * bod na líniu, tu výplňová vrstva vyplnila líniu.)
+ * Pri `fill` nad `transportation`, `aeroway`, `park` a `piste` teda `class`
+ * nestačí, treba aj typ geometrie.
  */
 const POLYGON_ONLY = ["==", ["geometry-type"], "Polygon"];
 const polygonOnly = (filter) =>
@@ -1134,11 +1084,10 @@ const polygonOnly = (filter) =>
 const RANGE_CLASSES = ["ridge", "arete", "massif", "range", "mountain_range"];
 
 /**
- * Triedy `mountain_peak`, ktoré prídu ako **línia**, nie ako bod.
- * `natural=cliff`, `ridge` a `arete` mapuje Planetiler do tej istej vrstvy
- * ako vrcholy, ale s líniovou geometriou (MountainPeak.java, od z13). Bez
- * tohto zoznamu dostane bralná hrana doprostred trojuholníček vrcholu aj
- * s popiskom – symbolová vrstva totiž líniu umiestni ako bod.
+ * Triedy `mountain_peak`, ktoré prídu ako línia, nie ako bod.
+ * `natural=cliff`, `ridge` a `arete` mapuje Planetiler do tej istej vrstvy ako
+ * vrcholy, ale s líniovou geometriou. Bez tohto zoznamu dostane bralná hrana
+ * doprostred trojuholníček vrcholu aj s popiskom.
  */
 const PEAK_LINE_CLASSES = ["ridge", "arete", "cliff"];
 
@@ -1168,18 +1117,12 @@ export const TRAIL_MARK_COLOURS = [
 export const TRAIL_OFFSET_ZOOMS = [9, 11, 13, 14, 16, 20];
 
 /**
- * ŠÍRKA PÁSIKA – a zároveň ROZOSTUP dvoch trás na tej istej ceste.
+ * Šírka pásika – a zároveň rozostup dvoch trás na tej istej ceste.
  *
- * Je to JEDNA krivka naschvál: rozostup nie je vlastné číslo, ktoré by sa
- * dalo naladiť, je to šírka pásika. Kým to boli dve krivky, rozišli sa –
- * nie v hodnotách pri zlomoch, ale MEDZI nimi: šírka sa interpoluje
- * `exponential 1.5` (ako všetky hrúbky v štýle), rozostup sa interpoloval
- * lineárne, takže pri z18 bol rozostup 4,3 px na pásik široký 3,65 px.
- * Tá sedmina pixela medzery nie je biela – je v nej vidieť podklad pásikov
- * (`trail-halo`), čiže medzi červenou a modrou trasou viedla tmavá čiara
- * a vyzeralo to, že sú trasy od seba odsunuté. Preto ju teraz kreslí tá istá
- * krivka aj s tým istým druhom interpolácie a pásiky sa dotýkajú na KAŽDOM
- * zoome, nie len na tých šiestich, kde sú zlomy.
+ * Jedna krivka naschvál: rozostup nie je vlastné číslo, je to šírka pásika.
+ * Kým to boli dve krivky, rozišli sa medzi zlomami – šírka sa interpolovala
+ * `exponential 1.5`, rozostup lineárne, takže pri z18 bola medzi pásikmi
+ * sedmina pixela, v ktorej presvital ich podklad.
  */
 export const TRAIL_STRIPE = [
   [9, 0.9], [11, 1.11], [13, 1.54], [14, 1.9], [16, 2.6], [20, 6]
@@ -1202,31 +1145,22 @@ export const TRAIL_OFFSET_PATH = [
 export const TRAIL_OFFSET_LIMIT_M = { road: 12, path: 8 };
 
 /**
- * SPOJ PÁSIKA V ZÁKRUTE. `miter`, nie `round` – a je to tá vec, ktorá drží
- * pásik v ostrej zákrute rovnako tenký ako na rovine.
+ * Spoj pásika v zákrute: `miter`, nie `round`.
  *
- * MapLibre kreslí `line-offset` tak, že KAŽDÝ VRCHOL posunie po osi jeho
- * zlomu, a dĺžku toho posunu berie z toho, aký spoj je nastavený:
+ * MapLibre kreslí `line-offset` tak, že každý vrchol posunie po osi zlomu:
  *
- *   `round`  posunie vrchol o odstup po NORMÁLE každého ramena zvlášť. Pásik
- *            sa teda k zlomu dostane dvoma rovnobežkami, ktoré sa nestretnú:
- *            na vonkajšej strane ostane medzi nimi KLIN (v mape biely zárez
- *            uprostred farebného pásika) a na vnútornej sa prekryjú. Pri troch
- *            značkách na jednej ceste si k tomu farby ešte prelezú cez seba.
- *   `miter`  posunie vrchol po OSI zlomu o `odstup / cos(zlom/2)`, čo je
- *            presne roh rovnobežky – pásik má v zákrute ten istý ostrý uhol
- *            ako chodník pod ním a rovnakú hrúbku.
+ *   `round`  posunie o odstup po normále každého ramena zvlášť, takže sa
+ *            rovnobežky nestretnú – na vonkajšej strane ostane biely klin,
+ *            na vnútornej sa prekryjú;
+ *   `miter`  posunie po osi zlomu o `odstup / cos(zlom/2)`, čo je presne roh
+ *            rovnobežky – pásik má rovnakú hrúbku ako na rovine.
  *
  * `line-miter-limit` je poistka pre vlásenky: `odstup / cos(zlom/2)` rastie
- * nad všetky medze (pri zlome 173° je to 16-násobok odstupu, teda výbežok cez
- * pol obrazovky), takže nad dvojnásobok – čo je zlom 120° – MapLibre spoj
- * zreže (`bevel`). Špička vlásenky je potom useknutá rovno; obe ramená ostanú
- * rovnobežné so svojím chodníkom a nič sa neroztiahne. Je to predvolená
- * hodnota MapLibre, ale píše sa sem naschvál: je to poistka, nie detail.
+ * nad všetky medze, takže nad dvojnásobok (zlom 120°) MapLibre spoj zreže.
+ * Je to predvolená hodnota, ale píše sa sem naschvál – je to poistka.
  *
- * Geometria sa pritom NEUPRAVUJE. Pásik má presne tie body, ktoré má cesta
- * v OSM – zaobliť zlom v dátach by znamenalo, že pásik zákrutu odreže a ide
- * inokade než chodník pod ním.
+ * Geometria sa pritom neupravuje: pásik má presne tie body, ktoré má cesta
+ * v OSM.
  */
 export const TRAIL_JOIN = { "line-join": "miter", "line-miter-limit": 2 };
 /** Metrov na pixel pri z0 v strede Slovenska (48,7° s. š.). */
@@ -1276,56 +1210,36 @@ export const TRAIL_MARK_SIZE = [[12, 0.5], [14, 0.75], [16, 1], [20, 1.3]];
 export const TRAIL_MARK_ZOOM = 16;
 
 /**
- * ZNAČKY DVOCH TRÁS NA JEDNEJ CESTE SA STAVAJÚ NAD SEBA, nie na seba.
+ * Značky dvoch trás na jednej ceste sa stavajú nad seba, nie na seba.
  *
- * Po jednom chodníku vedie bežne červená aj modrá turistická a k tomu
- * cyklotrasa – a všetky majú V DLAŽDICIACH TÚ ISTÚ GEOMETRIU (pásiky vedľa
- * seba robí až `line-offset`, ktorý na symboly neplatí). Kým bola značka
- * priamo na čiare, padli všetky na to isté miesto a MapLibre nechala jednu:
- * ostatné cez kolíziu ZAHODILA. Vždy tie isté, lebo poradie vrstiev je pevné –
- * modrá značka nebola v mape skoro nikde a vyzeralo to, že tade nevedie.
- * (Namerané v prehliadači: z troch trás na jednom chodníku bolo vidieť dve.)
+ * Po chodníku vedie bežne červená aj modrá a k tomu cyklotrasa – a všetky majú
+ * v dlaždiciach tú istú geometriu (pásiky robí až `line-offset`, ktorý na
+ * symboly neplatí). Kým bola značka priamo na čiare, padli všetky na to isté
+ * miesto a kolízia nechala vždy tú istú (z troch trás bolo vidieť dve).
  *
- * Značka sa preto posunie `icon-offset`-om podľa toho, KOĽKÁ JE TRASA V RADE
- * (`off`) a na ktorej strane cesty je jej pásik (`side`): pešie idú nahor,
- * kolesové nadol, a v rámci strany každá o svoju výšku ďalej. Vzniká z toho
- * stĺpik značiek nad rozcestím – presne tak, ako sú na strome nad sebou.
+ * Značka sa preto posunie `icon-offset`-om podľa toho, koľká je trasa v rade
+ * (`off`) a na ktorej strane je jej pásik (`side`): pešie nahor, kolesové
+ * nadol. Vzniká z toho stĺpik značiek nad rozcestím, ako sú na strome.
  *
- * `icon-offset` je v PIXELOCH, ktoré MapLibre násobí `icon-size` – takže sa
- * stĺpik škáluje so značkami sám, ale zadáva sa v pixeloch obrázka, nie
- * v jeho výškach. (Kým tu boli „výšky značky", teda 0,9 a 2,05, bol posun
- * v mape pod jeden pixel: značky ostali na čiare, kolízia z troch trás
- * nechala jednu a vyzeralo to, že tade ostatné nevedú. Overené v prehliadači
- * na chodníku s červenou, modrou a cyklotrasou.)
+ * `icon-offset` je v pixeloch obrázka, ktoré MapLibre násobí `icon-size` –
+ * stĺpik sa teda škáluje sám, ale zadáva sa v pixeloch, nie vo výškach značky.
  *
- * `base` je odstup prvej značky od čiary (nech nezakrýva pásiky pod sebou),
- * `step` rozostup v stĺpiku.
+ * `base` je odstup prvej značky od čiary, `step` rozostup v stĺpiku. Značky
+ * stoja tesne na sebe: obrázok je `MARK_BOX` plus priehľadný pixel na každej
+ * strane, takže krok `MARK_BOX` položí viditeľné štvorce presne na seba.
  *
- * ZNAČKY STOJA TESNE NA SEBE, BEZ MEDZERY – tak, ako sú na strome. Obrázok
- * značky je `MARK_BOX` plus jeden priehľadný pixel na každej strane
- * (`MARK_PAD` – v atlase drží hranu od susedného obrázka), takže krok
- * `MARK_BOX` položí VIDITEĽNÉ štvorce presne na seba: priehľadné okraje sa
- * prekryjú a medzi tabuľkami nie je nič. Krok `MARK_IMAGE` by nechal medzeru
- * dvoch pixelov, krok 26 (ten tu bol) medzeru dvanástich.
- *
- * CENA JE `icon-allow-overlap`, A BEZ NEJ TO NEJDE. Kolízny obdĺžnik je celý
- * obrázok VRÁTANE priehľadného okraja plus `icon-padding`, takže sa dve
- * susedné priečky o dva pixely prekrývajú – a MapLibre by druhú značku
- * zahodila. Presne to sa dialo predtým z opačnej strany (pri kroku 16 bola
- * z červenej a modrej vidieť len červená) a riešilo sa to medzerou; odteraz
- * sa to rieši tým, že sa stĺpik kreslí bez ohľadu na kolízie. Je to bezpečné
- * práve pri ňom: rad je krátky (`TRAIL_MARK_STACK_MAX`), stojí kolmo na
- * trasu a čo si prekrýva, je jeho vlastná priečka. Stráži to
- * `workers/lint/marks.mjs`.
+ * Cena je `icon-allow-overlap`, a bez nej to nejde: kolízny obdĺžnik je celý
+ * obrázok vrátane priehľadného okraja, takže by MapLibre druhú značku zahodil.
+ * Pri stĺpiku je to bezpečné – rad je krátky, stojí kolmo na trasu a čo si
+ * prekrýva, je jeho vlastná priečka. Stráži to `workers/lint/marks.mjs`.
  */
 export const TRAIL_MARK_STACK = { base: MARK_BOX + 4, step: MARK_BOX };
 
 /**
  * Miesto okolo značky, ktoré si drží voľné (v pixeloch obrazovky).
  *
- * NULA, lebo stĺpik má stáť na sebe (viď `TRAIL_MARK_STACK`) a padding sa
- * na rozdiel od odstupu NEŠKÁLUJE s `icon-size` – pri malej značke by preto
- * vážil dvojnásobne a rad by rozhodil práve tam, kde je najtesnejší.
+ * Nula, lebo stĺpik má stáť na sebe – a padding sa na rozdiel od odstupu
+ * neškáluje s `icon-size`, takže by pri malej značke vážil dvojnásobne.
  */
 export const TRAIL_MARK_PADDING = 0;
 
@@ -1345,14 +1259,11 @@ export const TRAIL_MARK_DEFAULTS = {
 };
 
 /**
- * Medze tých troch čísel – JEDNO miesto pre normalizáciu, štýl aj políčka
- * v paneli. Kým boli napísané pri každom z nich zvlášť, mohli sa rozísť:
- * panel by pustil hodnotu, ktorú zápis do repozitára potom odmietne.
+ * Medze tých troch čísel – jedno miesto pre normalizáciu, štýl aj políčka
+ * v paneli; inak by panel pustil hodnotu, ktorú zápis potom odmietne.
  *
- * Rozostup NESMIE byť nula (to nie je „žiadne značky", ale nekonečne veľa na
- * čiare – vypínajú sa tvarom „žiadna" pri druhu trasy), odstup v stĺpiku
- * nulu SMIE: vtedy sedia značky presne na sebe, čo je platná odpoveď na
- * „nechcem stĺpik".
+ * Rozostup nesmie byť nula (to nie je „žiadne značky", ale nekonečne veľa na
+ * čiare), odstup v stĺpiku nulu smie – vtedy sedia značky presne na sebe.
  */
 export const TRAIL_MARK_RANGES = {
   spacing: [20, 2000],
@@ -1377,19 +1288,16 @@ export function trailMarkPx(overrides) {
 }
 
 /**
- * Druhy značených trás. Jeden zoznam pre štýl (vrstvy, ikony, prerušovanie),
- * developer mode aj popup vo viewri – inak by sa tri kópie časom rozišli.
+ * Druhy značených trás. Jeden zoznam pre štýl, developer mode aj popup vo
+ * viewri.
  *
- * `palette` je farba, ktorá sa použije, keď trasa značku bez farby nemá;
- * `icons` sú kandidáti na ikonu v poradí, prvý existujúci v sade vyhráva.
+ * `palette` je farba pre trasu bez vlastnej; `icons` sú kandidáti v poradí,
+ * prvý existujúci v sade vyhráva. `dash` je id predvoľby z `patterns.js`, nie
+ * pole čísel – tú istú predvoľbu ponúka panel.
  *
- * `dash` je ID predvoľby z `patterns.js`, nie pole čísel – tú istú predvoľbu
- * ponúka developer mode v záložke „Trasy", takže sa dá vzor čiary prepnúť bez
- * zásahu do kódu a uložený vzor znamená to isté tu aj tam.
- *
- * `side` je strana cesty (+1 / −1). Musí sedieť so `SIDE_BY_ROUTE`
- * vo `workers/trails/routes.py`, ktorý podľa nej číslu je rady – tu je len na
- * to, aby developer mode vedel povedať, čo kde uvidíš; posúva sa podľa dát.
+ * `side` je strana cesty (+1 / −1) a musí sedieť so `SIDE_BY_ROUTE` vo
+ * `workers/trails/routes.py`; tu je len na to, aby panel vedel povedať, čo kde
+ * uvidíš – posúva sa podľa dát.
  */
 export const TRAIL_TYPES = [
   {
@@ -1455,13 +1363,10 @@ const TRAIL_BY_ID = Object.fromEntries(TRAIL_TYPES.map((t) => [t.id, t]));
 
 /**
  * Účinné nastavenie druhu trasy: zoznam vyššie + to, čo prepísal developer
- * mode (`overrides.trails.types`). Pýtajú sa naň štýl aj developer mode, tak
- * je odpoveď na jednom mieste – inak by panel ukazoval jedno a mapa kreslila
- * druhé.
+ * mode. Pýtajú sa naň štýl aj panel, tak je odpoveď na jednom mieste.
  *
- * Farba tu NIE JE zámerne: tá ide cez paletu (`palette`), lebo z nej žije aj
- * pásik, aj ikona, aj názov trasy. Druhá cesta k tej istej farbe by sa raz
- * rozišla.
+ * Farba tu zámerne nie je – ide cez paletu, lebo z nej žije aj pásik, aj
+ * ikona, aj názov trasy.
  */
 export function trailTypeDef(type, overrides) {
   const own = overrides?.trails?.types?.[type.id] || {};
@@ -1479,12 +1384,11 @@ export function trailTypeDef(type, overrides) {
 }
 
 /**
- * Tvar štítka s číslom cesty pre jednu triedu (`SHIELD_DEFS`), aj s tým, čo
- * na ňom prepísal developer mode (`overrides.shields[<trieda>].shape`).
+ * Tvar štítka s číslom cesty pre jednu triedu, aj s tým, čo naň prepísal
+ * developer mode.
  *
- * Prepnúť sa dá preto, že sprite nesie VŠETKY tvary naraz (pečie ich
- * `workers/assets/shields.mjs`) – v prehliadači sa tým mení len meno obrázka,
- * nič sa neprebuildováva. Neznámy tvar sa ticho ignoruje: obrázok, ktorý
+ * Prepnúť sa dá preto, že sprite nesie všetky tvary naraz – v prehliadači sa
+ * mení len meno obrázka. Neznámy tvar sa ticho ignoruje: obrázok, ktorý
  * v sprite nie je, by nechal číslo cesty bez podkladu.
  */
 export function shieldShapeFor(id, fallback, overrides) {
@@ -1498,13 +1402,11 @@ const isTunnel = ["==", ["get", "brunnel"], "tunnel"];
 const isBridge = ["==", ["get", "brunnel"], "bridge"];
 const isSurface = ["all", ["!=", ["get", "brunnel"], "tunnel"], ["!=", ["get", "brunnel"], "bridge"]];
 
-
 /**
  * Prázdna sada úprav z developer módu.
  *
- * `layers` a `poi` platia pre **všetky** typy máp, `maps[<typ>]` len pre jeden.
- * Vďaka tomu sa dá povedať aj „táto farba všade" aj „na cestnej mape toto
- * nechcem" bez toho, aby sa úpravy museli držať štyrikrát.
+ * `layers` a `poi` platia pre všetky typy máp, `maps[<typ>]` len pre jeden –
+ * takže sa dá povedať aj „táto farba všade", aj „na cestnej mape toto nechcem".
  */
 export function emptyOverrides() {
   return {
@@ -1542,19 +1444,15 @@ const clampZoom = (v) => {
 };
 
 /**
- * „BEZ VÝPLNE" – plocha, ktorá nemá farbu pozadia, ale ostane jej vzor
- * aj okraj.
+ * „Bez výplne" – plocha, ktorá nemá farbu pozadia, ale ostane jej vzor aj okraj.
  *
- * PREČO VLASTNÁ HODNOTA A NIE `krytie 0`. Krytie sa dá nastaviť na nulu už
- * dlho, ale robí niečo iné: `fill-opacity` násobí VŠETKO, čo tá vrstva kreslí
- * – teda aj obrys z `fill-outline-color` (má ho `pedestrian-area` a `building`).
- * Nulou by teda z budovy zmizla aj jej hrana a ostalo by prázdno. Priehľadná
- * FARBA vypne len výplň; `fill-outline-color` je vlastná vlastnosť a kreslí sa
- * ďalej. A nie je to ani `visible: false`: tým by zmizla celá vrstva vrátane
- * vzoru, ktorý na nej visí (odvodená vrstva drží viditeľnosť predlohy).
+ * Nie `krytie 0`: `fill-opacity` násobí všetko, čo vrstva kreslí, teda aj obrys
+ * z `fill-outline-color` – nulou by z budovy zmizla aj jej hrana. Priehľadná
+ * farba vypne len výplň. A nie je to ani `visible: false`: tým by zmizla celá
+ * vrstva vrátane vzoru, ktorý na nej visí.
  *
- * V súbore úprav je to čitateľné slovo, nie `#00000000`, aby bolo pri čítaní
- * jasné, že je to zámer.
+ * V súbore úprav je to čitateľné slovo, nie `#00000000`, aby bolo jasné, že je
+ * to zámer.
  */
 export const NO_FILL = "none";
 /** Kde má „bez výplne" zmysel – čiara sa vypína cez `visible`, nie farbou. */
@@ -1563,30 +1461,21 @@ const NO_FILL_PROPS = new Set(["fill-color", "fill-extrusion-color"]);
 export const MAX_PAINT_STOPS = 8;
 
 /**
- * VLASTNOSTI Z `layout`, ktoré sa dajú prepísať – a ich medze.
+ * Vlastnosti z `layout`, ktoré sa dajú prepísať – a ich medze.
  *
- * `paint` je „ako to vyzerá", `layout` je „ako to je rozložené", a MapLibre
- * ich drží zvlášť: veľkosť ikony ani rozostup symbolov po čiare v `paint`
- * nie sú. Práve tie dve pritom rozhodujú o tom, ako husto sedia turistické
- * značky po trase a aké sú veľké – teda o veci, ktorá sa ladí okom
- * a po jednom zoome, nie zmenou zdrojáku.
+ * `paint` je „ako to vyzerá", `layout` „ako to je rozložené", a MapLibre ich
+ * drží zvlášť: veľkosť ikony ani rozostup symbolov po čiare v `paint` nie sú.
+ * Práve tie dve pritom rozhodujú, ako husto sedia značky po trase.
  *
- * Je to VYMENOVANÝ zoznam, nie „čokoľvek z layoutu": `symbol-placement`
- * alebo `icon-rotation-alignment` sú rozhodnutia štýlu (značka stojí
- * narovno, lebo natočená tabuľka už nie je tabuľka), nie ladenie – a
- * prepísané by tichým spôsobom rozbili to, čo je pri nich napísané.
+ * Je to vymenovaný zoznam, nie „čokoľvek z layoutu": `symbol-placement` je
+ * rozhodnutie štýlu, nie ladenie.
  *
- * VŠETKY SÚ ZO SYMBOLOVEJ VRSTVY. Iný druh vrstvy ich nepozná a MapLibre by
- * taký štýl ODMIETOL CELÝ (neznáma vlastnosť v `layout` je tvrdá chyba, na
- * rozdiel od neznámej v `paint`), takže `applyLayerOverrides` ich inde než
- * na `symbol` nenasadí.
+ * Všetky sú zo symbolovej vrstvy – neznáma vlastnosť v `layout` je tvrdá
+ * chyba a MapLibre by odmietol celý štýl, takže `applyLayerOverrides` ich
+ * inde než na `symbol` nenasadí.
  *
- * `def` je PREDVOĽBA MAPLIBRE – to, čo platí, keď vlastnosť v štýle nie je.
- * Panel podľa nej ukáže, z čoho sa vychádza, aj pri vrstve, ktorá tú vlastnosť
- * nemá nastavenú, a percento má z čoho počítať (`overrideValue`). Bez toho sa
- * dala vlastnosť len ZMENIŤ, nie ZAVIESŤ: rozostup šípok jednosmeriek áno
- * (štýl mu dáva 120), miesto okolo ikony nie – a vyzeralo to, že tá páka
- * neexistuje. Čísla sú zo style-spec, nie odhad.
+ * `def` je predvoľba MapLibre, teda to, čo platí, keď vlastnosť v štýle nie je.
+ * Bez nej sa dala vlastnosť len zmeniť, nie zaviesť. Čísla sú zo style-spec.
  */
 export const LAYOUT_PROPS = {
   "icon-size": { min: 0.05, max: 8, step: 0.05, def: 1, label: "veľkosť ikony" },
@@ -1597,14 +1486,12 @@ export const LAYOUT_PROPS = {
 export const LAYOUT_PROP_IDS = Object.keys(LAYOUT_PROPS);
 
 /**
- * PREDVOĽBY MAPLIBRE pre `paint` čísla – to isté, čo `def` pri `LAYOUT_PROPS`,
+ * Predvoľby MapLibre pre `paint` čísla – to isté, čo `def` pri `LAYOUT_PROPS`,
  * len pre druhú policu.
  *
- * Vlastnosť, ktorú štýl nenastavil, NIE JE „nič": `line-opacity` bez zápisu
- * je 1, `text-halo-width` je 0. Kým sa to tu nepísalo, percento nad takou
- * vlastnosťou nemalo čo násobiť a `overrideValue` vrátil `undefined` – teda
- * úprava, ktorá sa uložila, v paneli svietila ako zmena a v mape nespravila
- * NIČ. Tichý omyl v čistej podobe. Čísla sú zo style-spec.
+ * Vlastnosť, ktorú štýl nenastavil, nie je „nič": `line-opacity` je 1,
+ * `text-halo-width` 0. Bez toho nemalo percento nad takou vlastnosťou čo
+ * násobiť a úprava sa uložila, v paneli svietila a v mape nespravila nič.
  */
 export const PAINT_DEFAULTS = {
   "line-width": 1,
@@ -1620,59 +1507,44 @@ export const PAINT_DEFAULTS = {
 };
 
 /**
- * Zoradí zoomové zlomy podľa zoomu. JEDNA funkcia pre všetky tri cesty, ktoré
- * ich vyrábajú (import súboru, developer mode, skladanie štýlu) – poradie je
- * jedna otázka a musí mať jednu odpoveď.
+ * Zoradí zoomové zlomy podľa zoomu. Jedna funkcia pre všetky tri cesty, ktoré
+ * ich vyrábajú (import, developer mode, skladanie štýlu).
  *
- * PREČO NA TOM ZÁLEŽÍ VIAC, NEŽ SA ZDÁ: `interpolate` vyžaduje stopy v STRIKTNE
- * RASTÚCOM poradí a MapLibre pri porušení odmietne CELÝ ŠTÝL, nie len tú
- * vlastnosť – mapa sa nenačíta vôbec. Overené jeho vlastným validátorom:
- * „Input/output pairs for "interpolate" expressions must be arranged with input
- * values in strictly ascending order." V developer móde pritom zlomy vznikajú
- * v poradí, v akom ich niekto naklikal (najprv z18, potom z12), takže
- * nezoradené je NORMÁLNY stav vstupu, nie pokazený.
+ * `interpolate` vyžaduje stopy v striktne rastúcom poradí a MapLibre pri
+ * porušení odmietne celý štýl, nie len tú vlastnosť. V paneli pritom zlomy
+ * vznikajú v poradí, v akom ich niekto naklikal – nezoradené je normálny stav.
  */
 export const sortStops = (list) => [...list].sort((a, b) => a[0] - b[0]);
 
 /**
- * To isté pre ZOOMOVÉ PÁSMA `[[od, do, hodnota], …]` – zoraďuje sa podľa `od`.
+ * To isté pre zoomové pásma `[[od, do, hodnota], …]` – zoraďuje sa podľa `od`.
  *
- * Vlastná funkcia, hoci by `sortStops` zoradila to isté pole rovnako: pásmo
- * a zlom sú dva rôzne tvary a keby ich obsluhovala jedna funkcia, prvý, kto
- * do nej pridá čokoľvek o hodnote (napr. „jeden zlom nie je krivka"), to
- * spraví aj druhému.
+ * Vlastná funkcia, hoci by `sortStops` zoradila to isté: pásmo a zlom sú dva
+ * rôzne tvary a jedna funkcia by na oboch spravila to, čo je pravda o jednom.
  */
 export const sortBands = (list) => [...list].sort((a, b) => a[0] - b[0]);
 
 /**
- * Je to zoznam PÁSIEM (trojice), alebo zoznam ZLOMOV (dvojice)?
+ * Je to zoznam pásiem (trojice), alebo zlomov (dvojice)?
  *
- * Rozlišuje sa POČTOM PRVKOV V RIADKU, nie obalom navyše: `[9, 11, 2]` sa
- * číta ako „od 9 do 11 hodnota 2" a `[9, 2]` ako „na z9 hodnota 2" – v JSON
- * súbore úprav je to vidieť bez legendy. Miešať sa nesmú a `cleanPaintZoom`
- * to povie nahlas.
+ * Rozlišuje sa počtom prvkov v riadku, nie obalom navyše – v JSON súbore úprav
+ * je to vidieť bez legendy. Miešať sa nesmú a `cleanPaintZoom` to povie nahlas.
  */
 export const isBandList = (list) =>
   Array.isArray(list) && list.length > 0 &&
   list.every((row) => Array.isArray(row) && row.length === 3);
 
 /**
- * RELATÍVNA HODNOTA `{ "scale": 1.4, "add": 0.5 }` – „nechaj, čo štýl počíta,
+ * Relatívna hodnota `{ "scale": 1.4, "add": 0.5 }` – „nechaj, čo štýl počíta,
  * a preškáluj to".
  *
- * ŠTVRTÝ TVAR VEDĽA SKALÁRU, KRIVKY A PÁSIEM, a je tu preto, že ostatné tri
- * odpovedajú na inú otázku. Skalár, krivka aj pásma hovoria „hodnota JE
- * takáto" – teda ZAHODIA to, čo štýl o tej vlastnosti vie. Pri hrúbke čiary
- * to znamená, že „cesty o štvrtinu hrubšie" sa nedalo povedať inak než
- * prepísaním celej krivky ručne, zvlášť pre každú triedu cesty, a prvý zoom
- * navyše alebo zmena v štýle to ticho rozhodila.
+ * Štvrtý tvar vedľa skaláru, krivky a pásiem: tie tri hovoria „hodnota je
+ * takáto", teda zahodia to, čo štýl o vlastnosti vie. „Cesty o štvrtinu
+ * hrubšie" sa tak nedalo povedať inak než prepísaním celej krivky ručne.
  *
- * Relatívna hodnota je oproti tomu ÚPRAVA NAD KRIVKOU: zoomový priebeh ostáva
- * ten zo štýlu, mení sa len jeho mierka. Preto sa nedá zadať „podľa zoomu" –
- * to by boli dve odpovede na tú istú otázku.
- *
- * LEN NA ČÍSLA. Farba sa škálovať nedá a `{scale: 1.4}` nad hexom by nebola
- * chyba, ktorú by niekto videl – bola by to farba, ktorá sa nezmenila.
+ * Preto sa nedá zadať „podľa zoomu" – to by boli dve odpovede na tú istú
+ * otázku. A len na čísla: `{scale: 1.4}` nad hexom by bola farba, ktorá sa
+ * nezmenila.
  */
 export const isRelative = (v) =>
   !!v && typeof v === "object" && !Array.isArray(v) &&
@@ -1682,15 +1554,11 @@ export const isRelative = (v) =>
 const REL_LIMITS = { scale: [0.1, 10], add: [-20, 40] };
 
 /**
- * PERCENTO V PÁSME – „na z15–z20 nech je to 110 % toho, čo počíta štýl".
+ * Percento v pásme – „na z15–z20 nech je to 110 % toho, čo počíta štýl".
  *
- * Prečo to je vlastný tvar a nie ďalšia možnosť navyše: dovtedy sa dalo
- * povedať buď „preškáluj to VŠADE rovnako" (`{scale}` nad celou krivkou),
- * alebo „na týchto zoomoch je hodnota PRESNE takáto" (pásma s číslom).
- * To prvé nevie „až od z15", to druhé zahodí krivku zo štýlu – a odpoveď na
- * „na z19 chcem prvok o desatinu väčší" nebola ani jedna z nich. Pásmo
- * s relatívnou hodnotou je obe naraz: rozsah zoomov + mierka nad tým, čo
- * v štýle už je.
+ * Vlastný tvar preto, že `{scale}` nad celou krivkou nevie „až od z15"
+ * a pásma s číslom zahodia krivku zo štýlu. Toto je oboje naraz: rozsah
+ * zoomov + mierka nad tým, čo v štýle už je.
  */
 export const hasRelativeBand = (list) =>
   isBandList(list) && list.some((row) => isRelative(row[2]));
@@ -1700,21 +1568,17 @@ export const isScalarValue = (v) =>
   typeof v === "number" || (typeof v === "string" && v.startsWith("#")) || v === NO_FILL;
 
 /**
- * HODNOTA VLASTNOSTI NA DANOM ZOOME.
+ * Hodnota vlastnosti na danom zoome.
  *
- * Pozná to, čo štýl naozaj vyrába: číslo, `interpolate` podľa zoomu (lineárny
- * aj exponenciálny), `step` podľa zoomu a oba tvary zo súboru úprav – krivku
- * `[[zoom, hodnota], …]` aj pásma `[[od, do, hodnota], …]`. Na čokoľvek iné
- * (výraz podľa atribútu prvku) vráti `null` – „to sa jedným číslom povedať
- * nedá" je poctivejšia odpoveď než vymyslený priemer.
+ * Pozná číslo, `interpolate` aj `step` podľa zoomu a oba tvary zo súboru úprav.
+ * Na výraz podľa atribútu prvku vráti `null` – „to sa jedným číslom povedať
+ * nedá" je poctivejšie než vymyslený priemer.
  *
- * Farbu neinterpoluje: medzi dvoma zlomami vráti tú spodnú. Miešať hex
- * v sRGB by dalo inú farbu, než akú kreslí MapLibre (ten mieša inak), a tu
- * ide o to, S ČÍM ZAČAŤ, nie o presnú predlohu.
+ * Farbu neinterpoluje, vráti spodnú: miešať hex v sRGB by dalo inú farbu, než
+ * kreslí MapLibre, a tu ide o to, s čím začať.
  *
- * BÝVALO TO V `layer-style.js`. Presunulo sa sem, lebo tú istú odpoveď
- * potrebuje aj skladanie štýlu (percento v pásme sa počíta z toho, čo je na
- * tom zoome v štýle) – a dve kópie tej istej aritmetiky by sa raz rozišli.
+ * Je tu, a nie v `layer-style.js`, lebo tú istú odpoveď potrebuje aj skladanie
+ * štýlu (percento v pásme sa počíta z toho, čo je na tom zoome v štýle).
  */
 export function valueAtZoom(value, zoom) {
   if (isScalarValue(value)) return value;
@@ -1760,9 +1624,8 @@ function bandAt(bands, zoom) {
 /**
  * `["step", ["zoom"], v0, z1, v1, …]` → pásma `[[od, do, hodnota], …]`.
  *
- * Prvý výstup `step` platí od z0 (pod prvým zlomom nie je nič nižšie) a
- * posledný až po strop zobrazenia – pásma preto pokrývajú celý rozsah, tak
- * ako to `cleanPaintBands` vyžaduje. `null` = nie je to schodisko podľa zoomu.
+ * Prvý výstup platí od z0 a posledný po strop zobrazenia, takže pásma
+ * pokrývajú celý rozsah. `null` = nie je to schodisko podľa zoomu.
  */
 export function stepToBands(value) {
   const [, input, base, ...rest] = value;
@@ -1809,16 +1672,12 @@ function stopsAt(stops, zoom, base = 1) {
 /**
  * Hodnota z úprav → to, čo ide do štýlu.
  *
- * Skalár ostane skalárom, `none` sa zmení na priehľadnú farbu, POLE ZLOMOV
- * `[[zoom, hodnota], …]` na `interpolate` podľa zoomu a POLE PÁSIEM
- * `[[od, do, hodnota], …]` na `step` (v pásme konštanta, na hranici skok).
- * Jeden zlom nie je krivka a jedno pásmo nie je schodisko, takže z nich vyjde
- * obyčajná hodnota – jedna hodnota je čitateľnejšia než `interpolate`
- * s jediným stopom (ten by MapLibre prijal, ale nič nerobí).
+ * Skalár ostane skalárom, `none` sa zmení na priehľadnú farbu, pole zlomov na
+ * `interpolate` a pole pásiem na `step`. Jeden zlom nie je krivka a jedno
+ * pásmo nie je schodisko, takže z nich vyjde obyčajná hodnota.
  *
- * Zoradenie je tu ZÁMERNE, hoci ho robí aj kontrola pri importe a developer
- * mode pri zápise: toto je posledné miesto pred štýlom a jediný nevzostupný
- * pár tu zhodí celú mapu.
+ * Zoradenie je tu zámerne, hoci ho robí aj import a panel: toto je posledné
+ * miesto pred štýlom a jediný nevzostupný pár tu zhodí celú mapu.
  */
 export function paintValue(value) {
   if (value === NO_FILL) return "rgba(0,0,0,0)";
@@ -1848,16 +1707,13 @@ export function paintValue(value) {
 }
 
 /**
- * ÚPRAVA NAD TÝM, ČO V ŠTÝLE UŽ JE.
+ * Úprava nad tým, čo v štýle už je.
  *
- * `paintValue` samo nestačí, lebo relatívna hodnota potrebuje ZÁKLAD – a ten
- * pozná až miesto, kde je po ruke vrstva. Preto sú to dve funkcie a nie jedna
- * s voliteľným argumentom: `paintValue` odpovedá na „čo to je", táto na „čo sa
- * z toho stane nad touto vrstvou".
+ * `paintValue` nestačí, lebo relatívna hodnota potrebuje základ – a ten pozná
+ * až miesto, kde je po ruke vrstva.
  *
- * `fallback` je hodnota, ktorú by MapLibre použil, keby vlastnosť v štýle nebola
- * (`LAYOUT_PROPS[...].def`). Bez nej by percento nad nenastaveným rozostupom
- * nemalo z čoho počítať a ticho by nespravilo nič.
+ * `fallback` je hodnota, ktorú by MapLibre použil, keby vlastnosť v štýle
+ * nebola; bez nej by percento nad nenastaveným rozostupom nespravilo nič.
  */
 export function overrideValue(base, value, fallback) {
   if (hasRelativeBand(value)) return bandsOverBase(base, value, fallback);
@@ -1868,22 +1724,17 @@ export function overrideValue(base, value, fallback) {
 }
 
 /**
- * PÁSMA S PERCENTOM → jedna krivka podľa zoomu.
+ * Pásma s percentom → jedna krivka podľa zoomu.
  *
- * Percento v pásme je „to, čo počíta štýl, krát toľkoto – ale len na týchto
- * zoomoch", a to sa jedným `step` ani jedným `interpolate` nad pôvodnou
- * krivkou povedať nedá: `["zoom"]` smie byť len priamym vstupom najvrchnejšieho
- * výrazu (rozpis pri `zw`), takže sa nedá obaliť ani vnoriť. Preto sa hodnota
- * VYČÍSLI na každom celom zoome a výsledok je nová krivka.
+ * Percento v pásme sa jedným `step` ani `interpolate` nad pôvodnou krivkou
+ * povedať nedá: `["zoom"]` smie byť len priamym vstupom najvrchnejšieho
+ * výrazu. Preto sa hodnota vyčísli na každom celom zoome.
  *
- * `collapse` z nej vyhodí zlomy, ktoré ležia na spojnici susedov, takže
- * z nezmeneného úseku ostanú dva body a nie dvadsaťjeden. Na hranici pásiem
- * z toho vyjde prechod cez jeden zoom namiesto skoku – to je zámer: pásmo
- * s percentom drží tvar krivky zo štýlu a skok o desatinu šírky uprostred
- * plynulého priblíženia by bol vidieť viac než tá desatina sama.
+ * `collapse` z nej vyhodí zlomy na spojnici susedov, takže z nezmeneného
+ * úseku ostanú dva body. Na hranici pásiem z toho vyjde prechod cez jeden
+ * zoom namiesto skoku – to je zámer.
  *
- * Dátami riadenú hodnotu (`match` podľa atribútu) vyčísliť nemožno – vtedy
- * sa vráti `undefined` a vlastnosť ostane taká, akú ju spravil štýl.
+ * Dátami riadenú hodnotu vyčísliť nemožno; vtedy `undefined`.
  */
 function bandsOverBase(base, bands, fallback, apply = relApply) {
   const zaklad = base === undefined ? fallback : base;
@@ -1976,12 +1827,11 @@ function cleanPaintScalar(prop, value, id, problems, where, atZoom = "") {
 }
 
 /**
- * TMAVÝ VARIANT jednej farby (`paintDark`, `outline.colorDark`) – rozpis pri
- * `cleanLayers`. Vlastný čistič, a nie `cleanPaintScalar` s iným menom:
- * tmavý variant pozná LEN farbu (nikdy krivku, pásma ani percento – tie sa
- * tvárou vrstvy nemenia, len jej farbou), takže vlastnosť, ktorá nekončí na
- * "-color", je tu vždy chyba, kým `cleanPaintScalar` na tom istom mene prijme
- * aj krytie či hrúbku.
+ * Tmavý variant jednej farby (`paintDark`, `outline.colorDark`).
+ *
+ * Vlastný čistič: tmavý variant pozná len farbu (nikdy krivku, pásma ani
+ * percento), takže vlastnosť, ktorá nekončí na „-color", je tu vždy chyba –
+ * kým `cleanPaintScalar` na tom istom mene prijme aj krytie či hrúbku.
  */
 function cleanDarkColor(prop, value, id, problems, where) {
   const kde = `${where}Vrstva "${id}": ${prop} (tmavý variant)`;
@@ -2006,11 +1856,9 @@ function cleanDarkColor(prop, value, id, problems, where) {
 /**
  * Jedna hodnota vlastnosti z `layout` (bez zoomu).
  *
- * Oddelené od `cleanPaintScalar` preto, že sa pýta na inú vec: `paint`
- * pozná farbu, krytie a hrúbku podľa PRÍPONY mena, kým `layout` má
- * vymenovaný zoznam aj s medzami (`LAYOUT_PROPS`) – „rozostup 0" je
- * nekonečne veľa symbolov na čiare, „veľkosť 0" je neviditeľná ikona,
- * a ani jedno by nič nezhodilo.
+ * Oddelené od `cleanPaintScalar`: `paint` pozná farbu, krytie a hrúbku podľa
+ * prípony mena, kým `layout` má vymenovaný zoznam aj s medzami – „rozostup 0"
+ * je nekonečne veľa symbolov na čiare a „veľkosť 0" neviditeľná ikona.
  */
 function cleanLayoutScalar(prop, value, id, problems, where, atZoom = "") {
   const kde = `${where}Vrstva "${id}": ${prop}${atZoom}`;
@@ -2043,11 +1891,11 @@ function outlineWidthScalar(prop, value, id, problems, where, atZoom = "") {
 }
 
 /**
- * Skontroluje RELATÍVNU hodnotu `{ scale, add }` (rozpis pri `isRelative`).
+ * Skontroluje relatívnu hodnotu `{ scale, add }` (rozpis pri `isRelative`).
  *
  * `popis` je meno vlastnosti do hlásenia – pri okraji to nie je `line-width`,
- * ale „šírka okraja", a hláška o vlastnosti, ktorú v súbore úprav nikto
- * nenapísal, by hľadanie chyby predĺžila, nie skrátila.
+ * ale „šírka okraja", a hláška o vlastnosti, ktorú nikto nenapísal, by
+ * hľadanie chyby predĺžila.
  */
 function cleanRelative(prop, value, id, problems, where, popis = prop, allowNoop = false) {
   const kde = `${where}Vrstva "${id}": ${popis}`;
@@ -2079,12 +1927,10 @@ function cleanRelative(prop, value, id, problems, where, popis = prop, allowNoop
 
 /**
  * Jedna hodnota vlastnosti v ktoromkoľvek z tvarov, ktoré úpravy poznajú:
- * relatívna, zoznam podľa zoomu (krivka či pásma), alebo obyčajný skalár.
+ * relatívna, zoznam podľa zoomu, alebo obyčajný skalár.
  *
- * Je to JEDNA BRÁNA, lebo tá otázka je jedna a odpovedá sa na ňu na troch
- * miestach (`paint`, `layout`, šírka okraja). Keby si ju každé písalo samo,
- * raz by sa rozišli – a rozišli by sa ticho, lebo každý tvar je sám o sebe
- * platný vstup toho druhého.
+ * Jedna brána, lebo tá otázka je jedna a odpovedá sa na ňu na troch miestach.
+ * Rozišli by sa ticho – každý tvar je sám o sebe platný vstup toho druhého.
  */
 function cleanValue(prop, value, id, problems, where, scalar = cleanPaintScalar, popis) {
   if (isRelative(value)) return cleanRelative(prop, value, id, problems, where, popis);
@@ -2093,13 +1939,10 @@ function cleanValue(prop, value, id, problems, where, scalar = cleanPaintScalar,
 }
 
 /**
- * Zoznam podľa zoomu – KRIVKA alebo PÁSMA. Jedna brána pre oba tvary, aby
- * bolo na jednom mieste povedané, ktorý je ktorý a čo sa nesmie.
+ * Zoznam podľa zoomu – krivka alebo pásma. Jedna brána pre oba tvary.
  *
- * MIEŠANIE JE TVRDÁ CHYBA, nie „nejako to vyriešime". `[[9, 2], [12, 13, 4]]`
- * sa dá prečítať dvoma spôsobmi (je to zlom pri z12 s hodnotou 13? alebo
- * pásmo?) a ktorúkoľvek stranu by sme uhádli, tá druhá by ticho zmizla –
- * presne ten druh chyby, po ktorej mapa vyzerá skoro dobre.
+ * Miešanie je tvrdá chyba: `[[9, 2], [12, 13, 4]]` sa dá prečítať dvoma
+ * spôsobmi a ktorúkoľvek stranu by sme uhádli, tá druhá by ticho zmizla.
  */
 function cleanPaintZoom(prop, list, id, problems, where, scalar = cleanPaintScalar) {
   const kde = `${where}Vrstva "${id}": ${prop}`;
@@ -2121,17 +1964,14 @@ function cleanPaintZoom(prop, list, id, problems, where, scalar = cleanPaintScal
 }
 
 /**
- * Skontroluje pole ZOOMOVÝCH PÁSIEM `[[od, do, hodnota], …]`.
+ * Skontroluje pole zoomových pásiem `[[od, do, hodnota], …]`.
  *
- * Pásma musia pokrývať svoj rozsah SÚVISLE: `ďalšie od = predošlé do + 1`.
- * Medzera aj prekryv sú tvrdá chyba, a to z toho istého dôvodu ako pravidlo
- * „meno assetu je sľub o rozsahu" – „od 9 do 11" je sľub, že pásmo tam
- * naozaj končí. Keby sa medzera dopĺňala držaním predošlej hodnoty, `do 11`
- * by neplatilo a nikto by to nemal ako spozorovať; keby sa prekryv riešil
- * poradím, o tom istom zoome by rozhodovali dve pásma naraz.
+ * Pásma musia pokrývať svoj rozsah súvisle (`ďalšie od = predošlé do + 1`).
+ * Medzera aj prekryv sú tvrdá chyba: „od 9 do 11" je sľub, že pásmo tam
+ * naozaj končí – dopĺňanie medzery predošlou hodnotou by ho zrušilo
+ * a prekryv by nechal o jednom zoome rozhodovať dve pásma naraz.
  *
- * Zoomy sú CELÉ ČÍSLA. Pásmo je „na tomto zoome to vyzerá takto" a zoomy sa
- * v mape prepínajú po celých; desatina je otázka pre krivku, kde má zmysel.
+ * Zoomy sú celé čísla; desatina je otázka pre krivku.
  */
 function cleanPaintBands(prop, list, id, problems, where, scalar = cleanPaintScalar) {
   const kde = `${where}Vrstva "${id}": ${prop}`;
@@ -2182,10 +2022,9 @@ function cleanPaintBands(prop, list, id, problems, where, scalar = cleanPaintSca
 /**
  * Skontroluje pole zoomových zlomov `[[zoom, hodnota], …]`.
  *
- * Zoomy musia RÁSŤ a nesmú sa opakovať: `interpolate` s neusporiadanými
- * stopmi MapLibre odmietne a s ním celý štýl, takže by sa mapa nenačítala
- * vôbec. Namiesto odmietnutia sa preto zoradia – z developer módu môžu prijsť
- * v poradí, v akom ich niekto naklikal.
+ * Zoomy musia rásť a nesmú sa opakovať: `interpolate` s neusporiadanými stopmi
+ * MapLibre odmietne aj s celým štýlom. Namiesto odmietnutia sa zoradia –
+ * z panela môžu prísť v poradí, v akom ich niekto naklikal.
  */
 function cleanPaintStops(prop, list, id, problems, where, scalar = cleanPaintScalar) {
   const kde = `${where}Vrstva "${id}": ${prop}`;
@@ -2223,9 +2062,8 @@ function cleanPaintStops(prop, list, id, problems, where, scalar = cleanPaintSca
 }
 
 /**
- * Prečistí (a skontroluje) objekt úprav – rovnaká funkcia beží v prehliadači
- * pri importe súboru aj v pipeline pred zápisom do zdrojáku, takže do repa
- * sa nikdy nedostane nezmysel.
+ * Prečistí (a skontroluje) objekt úprav – tá istá funkcia beží v prehliadači
+ * pri importe aj v pipeline pred zápisom, takže sa do repa nedostane nezmysel.
  *
  * @returns {{overrides: object, problems: string[]}}
  */
@@ -2660,10 +2498,9 @@ const MAX_VARIANT_VALUES = 24;
 /**
  * Prečistí zoznam variantov jednej vrstvy (rozpis pri `variantLayers`).
  *
- * `attr` je meno tagu z dlaždice, takže sa kontroluje len TVAR – či taký
- * atribút vrstva naozaj nesie, vie povedať jedine mapa a hovorí to panel
- * (ponúka to, čo je v načítaných dlaždiciach). Vymyslený atribút nič nezhodí:
- * `str()` z neho spraví `""`, variant sa netrafí a všetko ostane v predlohe.
+ * `attr` je meno tagu z dlaždice, takže sa kontroluje len tvar. Vymyslený
+ * atribút nič nezhodí: `str()` z neho spraví `""`, variant sa netrafí
+ * a všetko ostane v predlohe.
  */
 function cleanVariants(raw, id, problems, where) {
   if (raw == null) return [];
@@ -2794,11 +2631,10 @@ export function hasOverrides(o) {
 
 /**
  * Úpravy pre jeden typ mapy: spoločné (`layers`, `poi`) a nad nimi tie, čo
- * platia len preň (`maps[<typ>]`). Vracia objekt v tvare, aký očakáva zvyšok
- * generátora – teda ako keby žiadne typy máp neexistovali.
+ * platia len preň. Vracia objekt v tvare, aký očakáva zvyšok generátora.
  *
  * Vlastnosť z konkrétnej mapy prebije spoločnú; `paint` sa mieša po
- * jednotlivých vlastnostiach, aby sa dala prepísať len jedna farba.
+ * vlastnostiach, aby sa dala prepísať len jedna farba.
  */
 export function resolveOverrides(overrides, mapType) {
   if (!overrides) return null;
@@ -2857,11 +2693,9 @@ export const CUSTOM_ICON_PREFIX = "own:";
 /**
  * Strop na jednu vlastnú ikonu a na ich počet.
  *
- * Obrázok leží priamo v úpravách, takže sa nesie všade, kde sa nesú ony:
- * v prehliadači, v `poc/web/style-overrides.json` v repozitári a odtiaľ do
- * každého spritu. 64 kB je pri 64 × 64 px veľkorysé (bežná ikona má
- * jednotky kB) a dvadsať ikon sa do repozitára aj do atlasu zmestí bez toho,
- * aby si to niekto všimol.
+ * Obrázok leží priamo v úpravách, takže sa nesie všade, kde sa nesú ony.
+ * 64 kB je pri 64 × 64 px veľkorysé a dvadsať ikon sa do repozitára aj do
+ * atlasu zmestí bez toho, aby si to niekto všimol.
  */
 export const CUSTOM_ICON_MAX_BYTES = 64 * 1024;
 export const CUSTOM_ICON_MAX_COUNT = 20;
@@ -2879,25 +2713,20 @@ export function mergedPalette(themeKey, overrides) {
 }
 
 /**
- * PREŠKÁLUJE ČÍSLO PODĽA ZOOMU – `v × scale + add` – aj vtedy, keď je zadané
- * krivkou alebo pásmami. Aritmetika sa robí NA JEDNOTLIVÝCH STOPOCH, nie
- * výrazom `["*", …]` nad hotovou hodnotou: `["zoom"]` smie byť podľa
- * style-spec iba priamym vstupom najvrchnejšieho `interpolate`/`step`
- * (rozpis pri `zw`), takže obal navyše by MapLibre odmietol aj s celým štýlom.
+ * Preškáluje číslo podľa zoomu (`v × scale + add`) aj vtedy, keď je zadané
+ * krivkou alebo pásmami. Aritmetika sa robí na jednotlivých stopoch, nie
+ * výrazom nad hotovou hodnotou: `["zoom"]` smie byť len priamym vstupom
+ * najvrchnejšieho `interpolate`/`step`, takže obal navyše by MapLibre odmietol.
  *
- * PREČO NÁSOBENIE, A NIE LEN PRIPOČÍTANIE. Konštanta pripočítaná ku krivke
- * mení pomer na každom zoome inak: obrys diaľnice s `+3` je pri z4 nad čiarou
- * 0,5 px sedemnásobný, pri z20 nad čiarou 60 px pridá päť percent a nie je ho
- * vidieť. To je presne to, čo na obrysoch vyzerá „rozbito na krajných zoomoch“.
- * Percento drží pomer všade rovnaký, konštanta sa hodí na jemný doplnok –
- * preto oboje naraz.
+ * Násobenie, nie len pripočítanie: konštanta mení pomer na každom zoome inak
+ * (`+3` je pri z4 nad čiarou 0,5 px sedemnásobok, pri z20 nad 60 px päť
+ * percent). Percento drží pomer všade, konštanta sa hodí na jemný doplnok.
  *
- * PÁSMA (`step`) SÚ TU ZÁMERNE. Kým to vedela len krivka, okraj nad čiarou,
- * ktorej šírka je v pásmach, dostal výraz nezmenený – čiže bol presne taký
- * široký ako čiara, teda neviditeľný. Nič nespadlo, štýl bol platný.
+ * Pásma (`step`) sú tu zámerne: kým to vedela len krivka, dostal okraj nad
+ * pásmovou čiarou výraz nezmenený, čiže bol presne taký široký ako čiara.
  *
- * Výraz, ktorý nie je ani jedno (napr. `match` nad dátami), sa vráti tak, ako
- * prišiel – prepisovať dátami riadenú hodnotu naslepo by bola tichá zmena mapy.
+ * Výraz, ktorý nie je ani jedno (`match` nad dátami), sa vráti tak, ako
+ * prišiel – prepisovať dátami riadenú hodnotu naslepo je tichá zmena mapy.
  */
 export function scaleExpr(expr, rel) {
   const { scale = 1, add = 0 } = rel || {};
@@ -2956,13 +2785,11 @@ export function patternLayerFor(layer) {
 }
 
 /**
- * Prerušovanie, ktoré má vrstva ZABUDOVANÉ V ŠTÝLE – teda to, na čo sa
- * v developer móde dá vrátiť. Vracia predvoľbu (`"rail"`), rovno pole čísel
- * (keď to žiadna predvoľba nie je) alebo `"solid"` pri plnej čiare.
+ * Prerušovanie, ktoré má vrstva zabudované v štýle – to, na čo sa dá vrátiť.
+ * Vracia predvoľbu, rovno pole čísel, alebo `"solid"` pri plnej čiare.
  *
- * Číta sa z metadát, NIE z `paint`: panel dostáva štýl, na ktorom už úprava
- * sedí, takže v `paint` je to, čo je nastavené TERAZ. Bez tohto ukazoval
- * výber pri každej čiare „Plná“ (rozpis v `add`).
+ * Číta sa z metadát, nie z `paint`: panel dostáva štýl, na ktorom už úprava
+ * sedí. Bez toho ukazoval výber pri každej čiare „Plná".
  */
 export function builtinDash(layer) {
   const d = (layer?.metadata || {})["frico:dash"];
@@ -2997,22 +2824,16 @@ function patternLayer(layer, pattern) {
 }
 
 /**
- * ŠÍRKA OKRAJA – z tvaru, ktorý prišiel v úprave, a z druhu vrstvy.
+ * Šírka okraja – z tvaru, ktorý prišiel v úprave, a z druhu vrstvy.
  *
- * Sú to dve rôzne otázky podľa toho, čo sa obťahuje:
+ * Plocha nemá vlastnú hrúbku, takže okraj je samostatná čiara a jeho šírka je
+ * absolútna; dávajú tam zmysel všetky tvary vrátane krivky a pásiem.
  *
- *   PLOCHA nemá vlastnú hrúbku, takže okraj je samostatná čiara a jej šírka
- *   je ABSOLÚTNA. Preto tu dávajú zmysel všetky tvary vrátane krivky a pásiem
- *   – práve tie sú odpoveď na „okraj, ktorý so zoomom nezhrubne do neslušna".
+ * Čiara hrúbku má, takže okraj je casing pod ňou a počíta sa od nej: skalár
+ * `w` znamená „`w` px na každej strane", relatívna úprava „toľkokrát hrubší".
  *
- *   ČIARA hrúbku má, takže okraj je casing POD ŇOU a jeho šírka sa počíta
- *   OD NEJ. Skalár `w` znamená „`w` px na každej strane", teda `2w` na šírke
- *   (obrys je centrovaný); relatívna úprava znamená „toľkokrát hrubší".
- *   Oboje drží krivku čiary, takže okraj škáluje s ňou.
- *
- * Krivka ani pásma sa k šírke ČIARY pripočítať nedajú – „výraz + výraz" nad
- * `["zoom"]` MapLibre nepozná (rozpis pri `zw`) – takže tam sú, tak ako pri
- * ploche, absolútnou šírkou casingu. Je to jediné čítanie, ktoré nie je hádanie.
+ * Krivka ani pásma sa k šírke čiary pripočítať nedajú („výraz + výraz" nad
+ * `["zoom"]` MapLibre nepozná), takže sú tam absolútnou šírkou casingu.
  */
 function outlineWidth(layer, width) {
   // Pri ploche nie je čo škálovať, takže základ relatívnej úpravy je 1 px.
@@ -3034,25 +2855,19 @@ function outlineWidth(layer, width) {
 }
 
 /**
- * ROZLÍŠENIE PODĽA ATRIBÚTU OSM – „nespevnená poľná cesta bodkovane,
+ * Rozlíšenie podľa atribútu OSM – „nespevnená poľná cesta bodkovane,
  * spevnená plnou čiarou s obrysom".
  *
- * PREČO TO NIE JE DRUHÁ VRSTVA V ZDROJÁKU. Dovtedy sa taká otázka dala
- * zodpovedať len tak, že sa do `themes.js` dopísala ďalšia `add(...)`
- * s ručne zloženým filtrom – teda commit, build a pol hodiny. Pritom je to
- * presne to, čo sa ladí okom nad mapou: ktoré hodnoty `surface` ešte znamenajú
- * „dá sa tadiaľ ísť autom" je otázka na kraj, nie na zdroják.
+ * Dovtedy sa taká otázka dala zodpovedať len ďalšou `add(...)` v zdrojáku,
+ * teda commitom a buildom – pritom ktoré hodnoty `surface` ešte znamenajú
+ * „dá sa tadiaľ ísť autom" je otázka na kraj.
  *
- * PRVOK SA SMIE NAKRESLIŤ RAZ. Variant dostane filter predlohy A test
- * atribútu, predloha si k svojmu filtru pridá NEGÁCIU toho testu. Bez toho
- * druhého by sa čiara kreslila dvakrát cez seba: hrubšia, tmavšia a s
- * prerušovaním, ktoré sa navzájom vypĺňa – teda tichý omyl, ktorý na mape
- * vyzerá skoro dobre. (Tá istá úvaha, akú si o dvoch blokoch píše
- * `workers/roads/roads.yml`.)
+ * Prvok sa smie nakresliť raz: variant dostane filter predlohy a test
+ * atribútu, predloha si k svojmu filtru pridá negáciu toho testu. Bez toho
+ * druhého by sa čiara kreslila dvakrát cez seba.
  *
- * Prvok, ktorý atribút vôbec NEMÁ, ostáva v predlohe: `str()` z chýbajúceho
- * tagu spraví `""` a to sa v zozname hodnôt netrafí. Tak to má byť – „nevieme,
- * aký je povrch" nie je to isté ako „je nespevnený".
+ * Prvok bez toho atribútu ostáva v predlohe: `str()` z chýbajúceho tagu spraví
+ * `""`. „Nevieme, aký je povrch" nie je to isté ako „je nespevnený".
  */
 function variantLayers(layer, variants, hasIcon) {
   const out = [];
@@ -3151,12 +2966,10 @@ function outlineLayer(layer, outline) {
  * ikonu, prerušovanie čiary a odvodené vrstvy (vzor, okraj).
  *
  * @param {(name: string) => boolean} [hasIcon] je taká ikona v sprite? Ikona,
- *        ktorú vybraná sada nemá, sa nenastaví – chýbajúci obrázok znamená
- *        nevykreslený symbol a v pipeline navyše zhodí kontrolu štýlu.
- * @param {string} [theme] kľúč aktuálnej témy – rozhoduje, či sa nad `paint`
- *        a `outline.color` naviac uplatní ich tmavý variant (`paintDark`,
- *        `outline.colorDark`, rozpis pri `cleanLayers`). Bez neho (staršie
- *        volania, kontroly) sa tmavý variant jednoducho nikdy nepoužije.
+ *        ktorú sada nemá, sa nenastaví – chýbajúci obrázok znamená
+ *        nevykreslený symbol a v pipeline zhodí kontrolu štýlu.
+ * @param {string} [theme] kľúč témy – rozhoduje, či sa nad `paint` uplatní aj
+ *        tmavý variant. Bez neho sa tmavý variant nikdy nepoužije.
  */
 function applyLayerOverrides(style, layerOverrides, hasIcon = () => true, theme) {
   if (!layerOverrides) return style;
@@ -3268,28 +3081,21 @@ function applyLayerOverrides(style, layerOverrides, hasIcon = () => true, theme)
 }
 
 /**
- * PORADIE KRESLENIA: presuny „túto vrstvu kresli tesne pod tamtú".
+ * Poradie kreslenia: presuny „túto vrstvu kresli tesne pod tamtú".
  *
- * MapLibre kreslí vrstvy v tom poradí, v akom sú v štýle – posledná je
- * navrchu. Čo je nad čím, je teda rozhodnutie štýlu, lenže vidieť ho je až
- * v mape: násyp nad cestou, popisok pod tieňovaním, plot cez chodník. Kým sa
- * to dalo zmeniť len v zdrojáku, znamenala každá taká otázka commit a build.
+ * MapLibre kreslí vrstvy v poradí, v akom sú v štýle. Čo je nad čím, je
+ * rozhodnutie štýlu, ale vidieť ho je až v mape – a kým sa to dalo zmeniť len
+ * v zdrojáku, znamenala každá taká otázka commit a build.
  *
- * FORMÁT JE ZOZNAM PRESUNOV, NIE CELÉ PORADIE. Uložiť všetkých ~250 id by
- * znamenalo, že sa úpravy rozsypú pri prvej vrstve, ktorá v štýle pribudne
- * alebo zmizne (iná téma, iný typ mapy, chýbajúci `featuresUrl`) – a rozsypú
- * sa TICHO. Presun je oproti tomu odpoveď na jednu otázku, dá sa prečítať
- * (`{"id": "feature-embankment", "before": "road-motorway"}`) a vrstvu, ktorú
- * v tomto štýle nikto nepozná, jednoducho preskočí.
+ * Formát je zoznam presunov, nie celé poradie: uložiť ~250 id by znamenalo,
+ * že sa úpravy ticho rozsypú pri prvej vrstve, ktorá v štýle pribudne alebo
+ * zmizne. Presun je odpoveď na jednu otázku a neznámu vrstvu preskočí.
  *
- * PRESÚVA SA CELÁ RODINA. Vzor aj okraj sú vlastné vrstvy odvodené od
- * predlohy (`frico:derived`) a musia ostať pri nej – inak by šrafovanie
- * ostalo kresliť tam, kde plocha už nie je.
+ * Presúva sa celá rodina: vzor aj okraj sú odvodené vrstvy a musia ostať pri
+ * predlohe, inak by šrafovanie kreslilo tam, kde plocha už nie je.
  *
- * MASKA REGIÓNU OSTÁVA POSLEDNÁ, nech si ju nikto nechtiac neprekryje:
- * vrstva za ňou by kreslila aj mimo stiahnutého regiónu a bola by to presne
- * tá tichá chyba, kvôli ktorej maska existuje (rozpis v CLAUDE.md, stráži to
- * `workers/lint/style.mjs`).
+ * Maska regiónu ostáva posledná – vrstva za ňou by kreslila aj mimo
+ * stiahnutého regiónu. Stráži to `workers/lint/style.mjs`.
  *
  * @param {object} style   hotový štýl (už s úpravami vrstiev)
  * @param {{id: string, before: string|null}[]} order  presuny v poradí,
@@ -3333,21 +3139,17 @@ export function applyLayerOrder(style, order) {
 export const REGION_MASK_LAYERS = ["region-outside", "region-border"];
 
 /**
- * Cesty: jeden riadok na triedu, ZORADENÉ OD NAJDÔLEŽITEJŠEJ.
+ * Cesty: jeden riadok na triedu, zoradené od najdôležitejšej.
  *
- * `[id, popis, triedy, farba výplne, farba obrysu, stopy šírky,
- *   prídavok obrysu, minzoom]`; šírky sú definované až po z20, aby
- * overzoomované dlaždice vyzerali správne.
+ * `[id, popis, triedy, farba výplne, farba obrysu, stopy šírky, prídavok
+ * obrysu, minzoom]`; šírky sú definované až po z20, aby overzoomované
+ * dlaždice vyzerali správne.
  *
- * **PORADIE V TOMTO POLI JE PORADIE DÔLEŽITOSTI, NIE PORADIE KRESLENIA.**
- * MapLibre kreslí vrstvy tak, ako idú v štýle za sebou, takže navrchu skončí
- * TÁ POSLEDNÁ – vrstvy sa preto pridávajú OD KONCA tohto poľa (`roadPass`).
- * Kým sa pridávali v tomto poradí, kreslila sa účelová cesta cez diaľnicu:
- * na každej križovatke bol cez diaľničný pás prúžok vo farbe tej malej cesty
- * a vyzeralo to, akoby bola diaľnica prerušená. Je to tichá chyba – štýl je
- * platný, mapa sa načíta a nikto nič nepovie – takže na ňu je kontrola
- * (`workers/lint/style.mjs`). Toto pole je jej jediný zdroj pravdy o tom, čo
- * je dôležitejšie; export je práve preto.
+ * Poradie v tomto poli je poradie dôležitosti, nie kreslenia: navrchu skončí
+ * posledná vrstva v štýle, takže sa pridávajú od konca poľa (`roadPass`).
+ * Kým sa pridávali v tomto poradí, kreslila sa účelová cesta cez diaľnicu.
+ * Je to tichá chyba, tak je na ňu kontrola (`workers/lint/style.mjs`) – toto
+ * pole je jej jediný zdroj pravdy a preto je exportované.
  */
 export const ROAD_DEFS = [
   ["motorway", "Diaľnice", ["motorway"], "motorway", "motorwayCasing",
@@ -3374,30 +3176,22 @@ export const ROAD_DEFS = [
 export const ROAD_PASSES = ["-tunnel", "", "-bridge"];
 
 /**
- * ŠTÍTKY S ČÍSLOM CESTY – „D1", „R1", „I/18", „II/537".
+ * Štítky s číslom cesty – „D1", „R1", „I/18", „II/537".
  *
  * `[id, popis, triedy OSM, kľúč palety podkladu, minzoom, tvar štítka]`
  *
- * Číslo cesty je iná vec než jej meno a preto je to iná vrstva: meno beží
- * pozdĺž cesty a je unikátne, číslo je ZNAČKA – opakuje sa po celej dĺžke,
- * je krátke a človek ho na mape HĽADÁ („kde je D1?"). Vrstva `road-name`
- * ho doteraz nekreslila vôbec: v jej `text-field` je meno a `ref` sa
- * v hlavných dlaždiciach nikde neobjavil.
+ * Číslo je iná vec než meno a preto je to iná vrstva: meno beží pozdĺž cesty
+ * a je unikátne, číslo je značka – opakuje sa, je krátke a človek ho hľadá.
  *
- * TRIEDY SÚ Z DLAŽDÍC, NIE Z ČÍSLA. Lákalo by rozlíšiť štítok podľa toho,
- * čím sa `ref` začína („D" = diaľnica, „R" = rýchlostná), ale to je pravidlo
- * o slovenskom číslovaní zapísané v štýle, ktorý sa dá postaviť nad
- * hocijakým regiónom – v Rakúsku je „A1" diaľnica a „B1" hlavná cesta, takže
- * by z toho vyšlo, že A1 je cesta I. triedy. `class` z dlaždíc hovorí to
- * isté a hovorí to všade rovnako.
+ * Triedy sú z dlaždíc, nie z čísla: rozlíšenie podľa písmena v `ref` je
+ * pravidlo o slovenskom číslovaní zapísané v štýle, ktorý sa dá postaviť nad
+ * hocijakým regiónom (v Rakúsku je „B1" hlavná cesta, nie rýchlostná).
  *
- * `D` a `R` majú JEDEN štítok. Sú to dve triedy OSM (`motorway`, `trunk`),
- * ale jedna sieť aj jedno značenie – rozlišuje ich samotné číslo.
+ * `D` a `R` majú jeden štítok: dve triedy OSM, ale jedna sieť aj jedno
+ * značenie – rozlišuje ich samotné číslo.
  *
- * MINZOOM JE VYŠŠÍ NEŽ PRI ČIARE. Diaľnica sa kreslí od z4, ale štítok má
- * veľkosť v pixeloch, nie v metroch: na z4 by ich cez celé Slovensko bolo
- * niekoľko sto a mapa by bola z nich. Od z7 je ich toľko, koľko sa dá
- * prečítať.
+ * Minzoom je vyšší než pri čiare: štítok má veľkosť v pixeloch, nie
+ * v metroch, takže na z4 by ich cez celé Slovensko boli stovky.
  */
 // `[id, popis, triedy, farba podkladu, minzoom, tvar, farba čísla, orámovanie]`
 //
@@ -3407,16 +3201,10 @@ export const ROAD_PASSES = ["-tunnel", "", "-bridge"];
 /**
  * Sieť európskych ciest v dlaždiciach – hodnota `route_*_network`.
  *
- * ODKIAĽ SA BERIE ČÍSLO. `ref` na ceste je číslo NÁRODNÉ („D2"); európske
- * („E 65") visí na RELÁCII a OpenMapTiles ho dáva do párov
- * `route_1_network`/`route_1_ref` … `route_6_*`. Poradie nie je zaručené,
- * takže sa musí prejsť všetkých šesť a vziať ten, ktorého sieť je `e-road`.
- *
- * Overené na hotových dlaždiciach Bratislavského kraja: `route_*_network` má
- * hodnoty `sk:national` (138×), `e-road` (109×), `sk:primary` (45×),
- * turistické `rwn`/`nwn`/`iwn`/`lwn` a niekoľko maďarských; E-čísla prišli
- * ako `{network: "e-road", ref: "E 65"}` na `class: motorway` s `ref: "D2"`.
- * Ref má MEDZERU („E 65") – tak sa aj vypíše, tak to má aj tabuľa.
+ * `ref` na ceste je číslo národné („D2"); európske („E 65") visí na relácii
+ * a OpenMapTiles ho dáva do párov `route_1_network`/`route_1_ref` …
+ * `route_6_*`. Poradie nie je zaručené, tak sa prejde všetkých šesť.
+ * Ref má medzeru („E 65") – tak sa aj vypíše, tak to má aj tabuľa.
  */
 export const EURO_NETWORK = "e-road";
 
@@ -3441,57 +3229,42 @@ export const SHIELD_DEFS = [
  *
  * @param {object} opts
  * @param {string} opts.theme       kľúč témy z THEMES
- * @param {string} opts.tilesUrl    napr. "pmtiles://https://…/tiles/slovensko.pmtiles"
+ * @param {string} opts.tilesUrl    pmtiles:// URL základných dlaždíc
  * @param {string} opts.spriteUrl   absolútna URL spritu (bez prípony)
  * @param {string} opts.glyphsUrl   URL šablóna glyfov {fontstack}/{range}
  * @param {string} [opts.name]      názov štýlu
  * @param {string[]} [opts.icons]   mená ikon dostupných v sprite
  * @param {string} [opts.iconSet]   id sady ikoniek (určuje príponu mien)
- * @param {object} [opts.fonts]     {regular, bold, italic} – názvy fontstackov
+ * @param {object} [opts.fonts]     {regular, bold, italic}
  * @param {number} [opts.maxzoom]   najvyšší zoom dlaždíc (default MAX_TILE_Z)
- * @param {string} [opts.contoursUrl]     pmtiles:// URL s vrstevnicami (voliteľné)
- * @param {number} [opts.contoursMaxzoom] najvyšší zoom dlaždíc s vrstevnicami
- * @param {string} [opts.trailsUrl]       pmtiles:// URL so značenými trasami
- * @param {number} [opts.trailsMaxzoom]   najvyšší zoom dlaždíc s trasami
- * @param {string} [opts.featuresUrl]     pmtiles:// URL s krajinnými prvkami
- *                                        (línie a plochy), ktoré schéma
- *                                        OpenMapTiles nemá
- * @param {number} [opts.featuresMaxzoom] najvyšší zoom dlaždíc s prvkami
- * @param {string} [opts.pointsUrl]       pmtiles:// URL s bodmi v krajine
- *                                        (pramene, jaskyne, rozhľadne, …) –
- *                                        DRUHÝ výstup toho istého jobu ako
- *                                        `featuresUrl` (workers/features/points.yml)
- * @param {number} [opts.pointsMaxzoom]   najvyšší zoom dlaždíc s bodmi
- * @param {string} [opts.transportUrl]    pmtiles:// URL s dopravnou sieťou
- *                                        (balík `cesty`); štýl z nej kreslí
- *                                        len obmedzenia na ceste, čiary ciest
- *                                        sú v základnej mape. null, keď ju
- *                                        beh nevyrobil
- * @param {number} [opts.transportMaxzoom] najvyšší zoom dlaždíc so sieťou
- * @param {string} [opts.demSource]       zdroj výšok (kľúč z DEM_SOURCES) –
- *                                        určuje atribúciu vrstevníc a skál
- * @param {string|null} [opts.demTiles]   raster-dem dlaždice pre hillshade
- *                                        a 3D terén (null = bez nich)
- * @param {string} [opts.demTilesSource]  zdroj výšok pre tie dlaždice; odkedy
- *                                        má tieňovanie vo formulári vlastný
- *                                        výber, nemusí to byť ten istý model
- *                                        ako pri vrstevniciach (default: je)
- * @param {number} [opts.demMaxzoom]      najvyšší zoom výškových dlaždíc
- * @param {number[]|null} [opts.demBounds] kde vlastné výškové dlaždice vôbec
- *                                        sú (`[w,s,e,n]`) – pri rýchlom teste
- *                                        je to štvorec s pár km², nie celý kraj
- * @param {object|string|null} [opts.regionOutline] hranica stiahnutého regiónu
- *                                  (`_site/region.geojson`) – buď rovno dáta,
- *                                  alebo URL na ne. Za ňou štýl nekreslí nič.
- * @param {boolean} [opts.hillshade] zapnúť tieňovanie reliéfu (default nie)
- * @param {boolean} [opts.terrain3d] vyzdvihnúť mapu do 3D z tých istých
- *                                   výškových dlaždíc (default nie)
+ * @param {string} [opts.contoursUrl] pmtiles:// URL s vrstevnicami
+ * @param {number} [opts.contoursMaxzoom]
+ * @param {string} [opts.trailsUrl]   pmtiles:// URL so značenými trasami
+ * @param {number} [opts.trailsMaxzoom]
+ * @param {string} [opts.featuresUrl] krajinné prvky (línie a plochy), ktoré
+ *                                    schéma OpenMapTiles nemá
+ * @param {number} [opts.featuresMaxzoom]
+ * @param {string} [opts.pointsUrl]   body v krajine – druhý výstup toho istého
+ *                                    jobu ako `featuresUrl`
+ * @param {number} [opts.pointsMaxzoom]
+ * @param {string} [opts.transportUrl] dopravná sieť (balík `cesty`); štýl z nej
+ *                                    kreslí len obmedzenia na ceste
+ * @param {number} [opts.transportMaxzoom]
+ * @param {string} [opts.demSource]   zdroj výšok – určuje atribúciu
+ * @param {string|null} [opts.demTiles] raster-dem dlaždice (null = bez nich)
+ * @param {string} [opts.demTilesSource] zdroj výšok pre tie dlaždice; nemusí
+ *                                    to byť ten istý model ako pri vrstevniciach
+ * @param {number} [opts.demMaxzoom]
+ * @param {number[]|null} [opts.demBounds] kde vlastné výškové dlaždice sú –
+ *                                    pri rýchlom teste je to pár km²
+ * @param {object|string|null} [opts.regionOutline] hranica regiónu (dáta alebo
+ *                                    URL); za ňou štýl nekreslí nič
+ * @param {boolean} [opts.hillshade]  tieňovanie reliéfu (default nie)
+ * @param {boolean} [opts.terrain3d]  3D z tých istých dlaždíc (default nie)
  * @param {number} [opts.terrainExaggeration] násobok prevýšenia (default 1.3)
- * @param {boolean} [opts.sdfIcons] sprite je SDF – ikonám sa dá nastaviť farba
- * @param {string} [opts.mapType]   typ mapy (turistická / lyžiarska / cestná /
- *                                  historická / základná) – určuje, ktoré
- *                                  vrstvy sa vôbec kreslia a od akého zoomu
- * @param {object|null} [opts.overrides]  úpravy z developer módu
+ * @param {boolean} [opts.sdfIcons]   sprite je SDF – ikonám sa dá dať farba
+ * @param {string} [opts.mapType]     typ mapy – určuje, ktoré vrstvy sa kreslia
+ * @param {object|null} [opts.overrides] úpravy z developer módu
  */
 export function buildStyle({
   theme,
@@ -3701,30 +3474,23 @@ export function buildStyle({
   /**
    * Pridá vrstvu spolu s metadátami pre developer mode.
    *
-   * `paletteExtra` sú kľúče palety, ktoré vrstva používa vo **výraze**
-   * (napr. farba pásika trasy sa vyberá podľa značky z OSM). Taká farba nie
-   * je v `paint` obyčajným hexom, takže by ju developer mode v riadku vrstvy
-   * nenašiel – odtiaľ sa potom ladí cez paletu.
+   * `paletteExtra` sú kľúče palety, ktoré vrstva používa vo výraze (farba
+   * pásika trasy sa vyberá podľa značky z OSM) – taká farba nie je v `paint`
+   * obyčajným hexom, takže by ju panel v riadku vrstvy nenašiel.
    *
-   * `pattern` je vzor ZABUDOVANÝ V ŠTÝLE – teda taký, ktorý má vrstva aj
-   * bez toho, aby ho niekto naklikal v developer móde (kamienky v skalnej
-   * ploche). Vzor sa v MapLibre nedá nakresliť do tej istej vrstvy ako
-   * výplň, takže z neho vzniká vrstva navyše hneď nad predlohou; predpis
-   * ostáva v metadátach, aby ho developer mode vedel ukázať, doladiť
-   * a vypnúť (`pattern: null` v úprave vrstvy).
+   * `pattern` je vzor zabudovaný v štýle. Vzor sa nedá nakresliť do tej istej
+   * vrstvy ako výplň, takže z neho vzniká vrstva navyše hneď nad predlohou;
+   * predpis ostáva v metadátach, aby ho panel vedel ukázať a vypnúť.
    *
    * @param {object} layer  vrstva podľa MapLibre style-spec
    * @param {[string,string,string,object?,string[]?,object?]} meta
    *        [skupina, popis, druh, {paintProp: kľúč palety},
    *         [kľúče palety vo výrazoch], {id,color,size,weight,opacity},
-   *         id vrstvy, ktorú táto OBŤAHUJE]
+   *         id vrstvy, ktorú táto obťahuje]
    *
-   * Posledná položka je „toto je OBRYS tamtej vrstvy" (`frico:border-of`).
-   * Obrys je v štýle vlastná vrstva – cesta a jej obrys sú dve čiary pod
-   * sebou –, ale nie je to samostatná vec: jeho hrúbka aj to, či je vôbec
-   * vidieť, sa čítajú od tej čiary, ktorú obťahuje. Bez tohto odkazu ho
-   * developer mode vypisoval ako hocijakú inú čiaru a „o kúsok širší obrys"
-   * sa muselo naklikať ako absolútne číslo zvlášť pre každý zoom.
+   * Posledná položka je `frico:border-of`: obrys je vlastná vrstva, ale nie
+   * samostatná vec – jeho hrúbka aj viditeľnosť sa čítajú od čiary, ktorú
+   * obťahuje.
    */
   const add = (layer, meta) => {
     const [group, label, kind, palette, paletteExtra, pattern, borderOf] = meta;
@@ -3759,13 +3525,9 @@ export function buildStyle({
   /**
    * „Táto vrstva patrí k tamtej a presúva sa s ňou."
    *
-   * Niektoré prvky sú v štýle DVE vrstvy, lebo MapLibre inak nevie, čo od
-   * nich chceme: hrana so zúbkami (druhá čiara odsunutá nabok) a železnica
-   * (tmavá čiara a na nej svetlé čiarkovanie). Pri farbe a hrúbke sa ladia
-   * zvlášť – to je v poriadku, sú to naozaj dve otázky –, ale PORADIE
-   * KRESLENIA je pri nich jedna: keby sa dala presunúť len polovica, ostali
-   * by zúbky nad cestou a hrana pod ňou. Zapisuje sa preto, ku ktorej vrstve
-   * tá druhá patrí, a `applyLayerOrder` ich presúva spolu.
+   * Niektoré prvky sú v štýle dve vrstvy (hrana so zúbkami, železnica). Pri
+   * farbe a hrúbke sa ladia zvlášť, ale poradie kreslenia je pri nich jedna
+   * otázka – inak by ostali zúbky nad cestou a hrana pod ňou.
    */
   const spolu = (parent) => {
     L[L.length - 1].metadata["frico:with"] = parent;
@@ -3959,13 +3721,9 @@ export function buildStyle({
           "hillshade-illumination-anchor": "map",
           // sila rastie so zoomom, nie naopak: krivka tu roky klesala, takže
           // práve tam, kde má model najviac detailu, bolo tieňovanie najslabšie.
-          //
-          // Strop drží alfa farieb, nie táto krivka. Tieňovanie mapu prekrýva
-          // krytím podľa sklonu, takže s nepriehľadnou farbou nad ~20° zmizne
-          // mapa a ostane samotná farba tieňovania (les → biela alebo hnedá).
-          // Preto majú tri farby v témach alfu; reliéf sa tým nestratí (rozdiel
-          // 41 L*). Stráži to `workers/lint/hillshade.mjs`.
-          // Doladiť sa dá cez `hillshade-exaggeration` v úpravách.
+          // Strop drží alfa farieb, nie táto krivka – s nepriehľadnou farbou
+          // nad ~20° sklonu zmizne mapa a ostane samotná farba tieňovania.
+          // Stráži to `workers/lint/hillshade.mjs`.
           "hillshade-exaggeration": zl([[6, 0.55], [10, 0.7], [12, 0.85], [16, 0.95]]),
           "hillshade-shadow-color": c.hillShadow,
           "hillshade-highlight-color": c.hillHighlight,
@@ -4106,12 +3864,10 @@ export function buildStyle({
   }
 
   /**
-   * Hrana so zúbkami – bralo, násyp, zárez. Kolmé čiarky MapLibre nevie,
-   * takže sa robia druhou čiarou: široká, prerušovaná a odsunutá nabok
-   * (`line-offset`), z čoho pri hrane ostanú krátke hrubé kúsky. Kladný
-   * offset je vpravo v smere čiary a presne tam je podľa konvencie OSM
-   * dolná strana – `natural=cliff` aj `man_made=embankment` sa kreslia
-   * so zúbkami dole.
+   * Hrana so zúbkami – bralo, násyp, zárez. Kolmé čiarky MapLibre nevie, tak
+   * sa robia druhou čiarou: širokou, prerušovanou a odsunutou nabok, z čoho
+   * ostanú krátke hrubé kúsky. Kladný offset je vpravo v smere čiary a presne
+   * tam je podľa konvencie OSM dolná strana.
    */
   const hachure = ({ id, label, group, source, sourceLayer, filter,
                      paletteKey, minzoom, width, teeth, opacity = 1 }) => {
@@ -4324,13 +4080,9 @@ export function buildStyle({
   /**
    * Cesty sa kreslia v troch priechodoch: tunely → povrch → mosty.
    *
-   * V každom priechode sa ide OD NAJMENEJ DÔLEŽITEJ CESTY, teda odzadu
-   * `ROAD_DEFS`: MapLibre kreslí vrstvy v poradí, v akom sú v štýle, takže
-   * navrchu skončí tá pridaná posledná. Kým sa pridávali od diaľnice,
-   * kreslila sa účelová cesta CEZ diaľnicu – na každej križovatke prúžok
-   * v jej farbe naprieč diaľničným pásom, čo vyzerá ako prerušená diaľnica.
-   * To isté platí zvlášť pre obrysy: motorway casing musí byť nad service
-   * casingom z toho istého dôvodu.
+   * V každom sa ide od najmenej dôležitej cesty, teda odzadu `ROAD_DEFS`:
+   * navrchu skončí tá pridaná posledná. Kým sa pridávali od diaľnice, kreslila
+   * sa účelová cesta cez diaľnicu. To isté platí zvlášť pre obrysy.
    */
   const roadPass = (suffix, passLabel, extraFilter, opts = {}) => {
     const layout = { "line-cap": opts.cap || "round", "line-join": "round" };
@@ -4781,11 +4533,9 @@ export function buildStyle({
     /**
      * Ikona podľa druhu trasy – prvá, ktorú vybraná sada naozaj má.
      *
-     * Meno sa skúša aj s príponou sady, aj holé: zo zoznamu v `TRAIL_TYPES`
-     * chodia holé mená (`bicycle`), z developer módu meno tak, ako je
-     * v sprite (a to už príponu má). Ikona, ktorú sada nemá, sa nenastaví –
-     * chýbajúci obrázok znamená nevykreslený symbol a v pipeline zhodí
-     * kontrolu štýlu.
+     * Meno sa skúša aj s príponou sady, aj holé: zo `TRAIL_TYPES` chodia holé
+     * mená, z panela meno tak, ako je v sprite. Ikona, ktorú sada nemá, sa
+     * nenastaví – v pipeline by zhodila kontrolu štýlu.
      */
     const pickIcon = (names) => {
       for (const n of names || []) {
@@ -5171,14 +4921,11 @@ export function buildStyle({
     ]
   );
 
-  // štítky s číslom cesty („D1", „R1", „I/18").
-  //
-  // Idú pred `road-name` zámerne: MapLibre umiestňuje popisky v poradí vrstiev
-  // a keď sa nezmestí meno aj číslo, má ostať číslo.
-  // Podklad je rozťahovateľný SDF obrázok zo spritu (`poc/web/shields.js`);
-  // keď v sprite nie je, číslo sa nakreslí s hrubým halom vo farbe štítka.
-  // Popisky stoja narovno – natočené by na serpentíne stáli na hlave.
-  // Číslo E-cesty nie je v `ref`, tak sa prejdú všetky sloty `route_*_ref`.
+  // štítky s číslom cesty. Idú pred `road-name` zámerne: MapLibre umiestňuje
+  // popisky v poradí vrstiev a keď sa nezmestí meno aj číslo, má ostať číslo.
+  // Podklad je rozťahovateľný SDF obrázok zo spritu; keď v sprite nie je,
+  // číslo sa nakreslí s hrubým halom. Číslo E-cesty nie je v `ref`, tak sa
+  // prejdú všetky sloty `route_*_ref`.
   const routeRef = (network) => {
     const vetvy = [];
     for (let i = 1; i <= ROUTE_SLOTS; i += 1) {

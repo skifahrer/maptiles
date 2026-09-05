@@ -1,19 +1,14 @@
 /**
  * Zdroje ikoniek pre POI, vrcholy a letiská.
  *
- * Každý zdroj je hotový MapLibre sprite (PNG + JSON index) z otvoreného
- * štýlu. Pipeline z každého vyrobí vlastný **SDF sprite** bez podkladov
- * (workers/assets/sprite.mjs) a nasadí ich všetky, takže sa dajú
- * v developer móde prepínať naživo a vybraná sada sa zapečie do štýlu
- * pre web aj iOS.
+ * Každý zdroj je hotový MapLibre sprite z otvoreného štýlu; pipeline z každého
+ * vyrobí SDF sprite bez podkladov a nasadí ich všetky, takže sa dajú prepínať
+ * naživo a vybraná sada sa zapečie do štýlu pre web aj iOS.
  *
- * Prečo práve tieto: schéma OpenMapTiles pomenúva POI cez `class`/`subclass`
- * (`restaurant`, `cafe`, `fuel`, …) a štýl z toho skladá meno ikony. Zdroj je
- * teda použiteľný len vtedy, keď jeho ikony nesú rovnaké mená. Preverené boli
- * aj sprity ostatných štýlov OpenMapTiles (positron, dark-matter, klokantech,
- * maptiler-basic, fiord) – tie majú v sprite 1–4 obrázky, teda žiadne POI
- * ikony – a sprite Protomaps v4, ktorý má vlastné pomenovanie a z bežných
- * tried OSM pokryje asi tretinu, navyše s rámčekom okolo symbolu.
+ * Prečo práve tieto: štýl skladá meno ikony z `class`/`subclass` OpenMapTiles,
+ * takže zdroj je použiteľný, len keď jeho ikony nesú rovnaké mená. Sprity
+ * ostatných štýlov OpenMapTiles majú 1–4 obrázky, Protomaps v4 má vlastné
+ * pomenovanie a pokryje asi tretinu tried.
  */
 
 import { DEFAULT_ARROW_IMAGE } from "./arrows.js";
@@ -57,16 +52,12 @@ export const ICON_SOURCES = [
 ];
 
 /**
- * VLASTNÁ SADA IKONIEK. Zdroje vyššie sú tie, ktoré má repozitár overené –
- * ale nie je dôvod, aby to bol uzavretý zoznam: sprite je verejný súbor
- * (`<niečo>.json` + `<niečo>.png`) a kto má vlastný, má ho vedieť skúsiť bez
- * zásahu do zdrojáku. Vlastné sady sú preto v úpravách z developer módu
- * (`overrides.iconSets`) a pipeline ich sťahuje a prerába na SDF presne tak
- * ako tie tri hore.
+ * Vlastná sada ikoniek. Sprite je verejný súbor (`<x>.json` + `<x>.png`), tak
+ * nie je dôvod, aby bol zoznam uzavretý – vlastné sady sú v úpravách
+ * z developer módu a pipeline ich prerába na SDF ako tie tri hore.
  *
- * `id` má PREDPONU `own-`, a to nie je kozmetika: podľa nej sa dá odlíšiť,
- * čo je z repozitára a čo dopísal človek – a zároveň sa tým nedá prepísať
- * overená sada tichou zhodou mien.
+ * `id` má predponu `own-`: podľa nej sa dá odlíšiť, čo je z repozitára,
+ * a nedá sa tichou zhodou mien prepísať overená sada.
  */
 export const CUSTOM_SET_PREFIX = "own-";
 

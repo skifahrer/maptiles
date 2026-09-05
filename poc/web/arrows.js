@@ -1,30 +1,22 @@
 /**
- * ŠÍPKY JEDNOSMERIEK – vlastné, aby boli v KAŽDEJ sade ikoniek.
+ * Šípky jednosmeriek – vlastné, aby boli v každej sade ikoniek.
  *
- * PREČO SI ICH KRESLÍME SAMI. Šípka bola dovtedy `arrow` z cudzieho spritu
- * a mala ju jediná z troch overených sád (osm-liberty). Pri ostatných
- * `hasIcon(SPECIAL.arrow)` neprešlo a vrstva `road-oneway` v štýle VÔBEC
- * NEVZNIKLA – takže sa nedalo nastaviť ani ako často sú šípky, ani akej sú
- * farby či veľkosti: v paneli nebolo čo nastavovať a v mape nebolo čo vidieť.
- * Nič pri tom nespadlo, čo je presne ten druh ticha, kvôli ktorému si
- * repozitár kreslí aj štítky ciest (`shields.js`) a značky trás (`marks.js`).
+ * Kým bola šípka `arrow` z cudzieho spritu, mala ju jediná z troch overených
+ * sád a pri ostatných vrstva `road-oneway` v štýle vôbec nevznikla – v paneli
+ * nebolo čo nastavovať a nič pri tom nespadlo.
  *
- * A ZÁROVEŇ TO DÁVA TVAR NA VÝBER. Cudzia sada má jednu šípku, akú má; tu je
- * to zoznam, takže „radšej dvojitý vtáčik a tenší" je voľba v paneli
- * (mriežka ikon zapíše `layers["road-oneway"].icon`), nie zmena zdrojáku.
+ * Zoznam tvarov navyše robí z „radšej dvojitý vtáčik" voľbu v paneli, nie
+ * zmenu zdrojáku.
  *
- * PREČO SDF, A NIE HOTOVÝ OBRÁZOK ako pri značkách trás. Šípka je JEDNOFAREBNÝ
- * tvar a tá farba je vlastnosťou mapy, nie terénu – patrí teda do palety
- * (`onewayIcon`) a musí ísť s témou. To vie práve SDF (`icon-color`); značka
- * na strome má tri farby naraz, a preto je pečená natvrdo.
+ * SDF, a nie hotový obrázok ako pri značkách trás: šípka je jednofarebný tvar
+ * a tá farba patrí do palety (`onewayIcon`), teda musí ísť s témou. Značka na
+ * strome má tri farby naraz, preto je pečená natvrdo.
  *
- * ŠÍPKA MIERI DOPRAVA (+u). `symbol-placement: line` natočí obrázok pozdĺž
- * čiary tak, že jeho os +x ide v smere kreslenia; štýl potom otočí o 180°
- * tam, kde je `oneway=-1`. Keby mierila hore, ukazovala by naprieč cestou.
+ * Šípka mieri doprava (+x): `symbol-placement: line` natočí obrázok pozdĺž
+ * čiary tak, že jeho os +x ide v smere kreslenia.
  *
- * Tento súbor je LEN OBRÁZOK: aké tvary existujú a ako sa volajú. Kedy sa
- * kreslia, rozhoduje `poc/web/themes.js`; do spritu ich pečie
- * `workers/assets/arrows.mjs`.
+ * Tento súbor je len obrázok – kedy sa kreslí, rozhoduje `themes.js`, do
+ * spritu ho pečie `workers/assets/arrows.mjs`.
  */
 
 /** Meno obrázka v sprite – predpona ako pri značkách (`mark-`) a štítkoch. */
@@ -102,11 +94,9 @@ export const arrowShape = (id) =>
 /**
  * Rozmery obrázka v pixeloch pri `pixelRatio` 1.
  *
- * Šírka je väčšia než výška, lebo šípka leží POZDĹŽ cesty – v štvorci by
- * okolo nej ostal prázdny pás, ktorý MapLibre počíta do kolízie, takže by sa
- * ich na cestu zmestilo menej, než z rozostupu vyzerá. Pomer 12 × 8 je blízko
- * maki `arrow` (10 × 7), aby nastavená veľkosť ikony sedela aj po prepnutí
- * sady ikoniek.
+ * Šírka je väčšia než výška, lebo šípka leží pozdĺž cesty – v štvorci by okolo
+ * nej ostal prázdny pás, ktorý MapLibre počíta do kolízie. Pomer 12 × 8 je
+ * blízko maki `arrow`, nech nastavená veľkosť sedí aj po prepnutí sady.
  */
 export const ARROW_W = 12;
 export const ARROW_H = 8;

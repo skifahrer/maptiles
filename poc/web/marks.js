@@ -1,51 +1,35 @@
 /**
- * TURISTICKÁ A CYKLISTICKÁ ZNAČKA – to, čo je na strome (SK aj CZ).
+ * Turistická a cyklistická značka – to, čo je na strome (SK aj CZ).
  *
- * Turistické značenie u nás aj v Česku má JEDEN tvar: štvorec 10 × 10 cm,
- * v ňom vodorovný pás vo farbe trasy a nad ním aj pod ním pás podkladu.
- * Podklad je pri pešej značke biely, pri cyklistickej žltý; okrem pásovej
- * značky sú aj tvarové (trojuholník na vrchol, „L" k zrúcanine, kruh
- * k prameňu) a česká cyklistická značka má na žltom podklade bicykel.
+ * Značenie u nás aj v Česku má jeden tvar: štvorec 10 × 10 cm s vodorovným
+ * pásom vo farbe trasy a pásmi podkladu nad ním aj pod ním. Podklad je pri
+ * pešej značke biely, pri cyklistickej žltý; k tomu tvarové značky
+ * (trojuholník na vrchol, „L", kruh) a český bicykel na žltom.
  *
- * PREČO NIE IKONA ZO SADY. Doteraz sa pozdĺž trasy kreslila ikonka zo sady
- * ikoniek (horský štít pri turistickej, bicykel pri cyklotrase). Tá povie
- * DRUH trasy, ale nie to, čo človek v teréne hľadá – akú značku má sledovať.
- * „Choď po červenej" sa z ikonky horského štítu nedá prečítať; z červeného
- * pásu na bielom štvorci áno, lebo je to tá istá vec, aká je namaľovaná na
- * strome.
+ * Nie ikona zo sady: tá povie druh trasy, ale nie to, čo človek v teréne
+ * hľadá. „Choď po červenej" sa z ikonky horského štítu prečítať nedá.
  *
- * PREČO HOTOVÝ FAREBNÝ OBRÁZOK A NIE SDF. Značka má TRI farby naraz
- * (podklad, pás, tenký lem) a SDF vie zafarbiť jednu (`icon-color`) plus
- * jedno halo. Je to tá istá úvaha, akou skončil ako pečený obrázok štítok
- * cesty (`poc/web/shields.js`) – len tu je dôvod ešte silnejší: pás a podklad
- * sú dva vnorené tvary, nie tvar a jeho obrys.
+ * Hotový farebný obrázok, nie SDF: značka má tri farby naraz (podklad, pás,
+ * lem) a SDF vie zafarbiť jednu plus halo.
  *
- * A PRETO SA FARBY ZNAČIEK NEMENIA S TÉMOU. Značka je obrázok naozajstnej
- * tabuľky, nie prvok mapy: červená značka je červená aj na tmavej mape,
- * inak by prestala byť tým, čo je v teréne. Pásik trasy pod ňou naopak témou
- * ide (`trailRed` a spol. v `themes.js`) – tam je farba prvkom mapy. Kto by
- * chcel značky témovať, zaplatí to štvornásobkom obrázkov v sprite.
+ * A preto sa farby značiek nemenia s témou – značka je obrázok naozajstnej
+ * tabuľky, nie prvok mapy. Pásik trasy pod ňou naopak témou ide.
  *
- * KOMBINÁCIE SÚ VYMENOVANÉ, NIE VŠETKY. Podklad × farba × tvar by bolo
- * niekoľko stoviek obrázkov a väčšina z nich neexistuje ani v teréne
- * (červený pás na červenom podklade je prázdny štvorec). `MARK_FACES` je
- * preto zoznam dvojíc, ktoré na značkách naozaj sú – a `workers/lint/marks.mjs`
- * stráži, že `workers/trails/routes.py` inú dvojicu do dlaždíc nenapíše;
- * meno obrázka totiž skladá štýl z dát (`concat`) a obrázok, ktorý v sprite
- * nie je, MapLibre ticho nenakreslí.
+ * Kombinácie sú vymenované, nie všetky: podklad × farba × tvar by bolo
+ * niekoľko stoviek obrázkov a väčšina neexistuje ani v teréne. `MARK_FACES`
+ * je zoznam dvojíc, ktoré na značkách naozaj sú, a `lint/marks.mjs` stráži,
+ * že routes.py inú do dlaždíc nenapíše – meno obrázka skladá štýl z dát
+ * a obrázok, ktorý v sprite nie je, MapLibre ticho nenakreslí.
  *
- * Tento súbor je LEN OBRÁZOK: aké tvary existujú, ako sa kreslia a ako sa
- * volajú. Ktorá trasa akú značku dostane, rozhoduje `workers/trails/routes.py`
- * (z `osmc:symbol`), a kedy sa kreslí, `poc/web/themes.js`. Pečie ich do
- * spritu `workers/assets/marks.mjs`.
+ * Tento súbor je len obrázok. Ktorá trasa akú značku dostane, rozhoduje
+ * `workers/trails/routes.py`, kedy sa kreslí `themes.js`, a do spritu ich
+ * pečie `workers/assets/marks.mjs`.
  */
 
 /**
- * Farby značiek. Sú to farby NÁTERU na strome, nie farby mapy – preto sú
- * tu, a nie v palete tém. Odtiene sú z fotiek značiek a z toho, čo KČT
- * (SK aj CZ značenie robí tá istá organizácia) používa na svojich mapách;
- * blízko k `trail*` farbám svetlej témy, aby pásik a značka nad ním
- * nevyzerali ako dve rôzne trasy.
+ * Farby značiek – farby náteru na strome, nie farby mapy, preto nie sú
+ * v palete tém. Blízko k `trail*` farbám svetlej témy, aby pásik a značka nad
+ * ním nevyzerali ako dve rôzne trasy.
  */
 export const MARK_COLOURS = {
   red: "#d42a2a",
@@ -59,16 +43,14 @@ export const MARK_COLOURS = {
 export const MARK_COLOUR_IDS = Object.keys(MARK_COLOURS);
 
 /**
- * Dvojice PODKLAD → FARBA ZNAČKY, ktoré sa pečú.
+ * Dvojice podklad → farba značky, ktoré sa pečú.
  *
- * Prvé dva riadky sú to, čo je v teréne: biely podklad s farebným pásom je
- * pešia značka, žltý je cyklistická (a v Česku aj lyžiarska). Tretí riadok
- * sú OBRÁTENÉ značky – náučný chodník má biely pás na farebnom podklade
- * (`osmc:symbol=green:green:white_bar`), takže bez neho by sa kreslil biely
- * pás na bielom štvorci, teda nič.
+ * Prvé dva riadky sú to, čo je v teréne: biely podklad je pešia značka, žltý
+ * cyklistická. Tretí sú obrátené značky – náučný chodník má biely pás na
+ * farebnom podklade, inak by sa kreslil biely pás na bielom štvorci.
  *
- * Rovnaká farba pásu ako podkladu tu byť NESMIE: taká značka je prázdny
- * štvorec a v mape vyzerá ako chyba vykreslenia. Stráži to lint.
+ * Rovnaká farba pásu ako podkladu tu byť nesmie: taká značka je prázdny
+ * štvorec. Stráži to lint.
  */
 export const MARK_FACES = [
   ["white", "red"], ["white", "blue"], ["white", "green"],
@@ -79,15 +61,13 @@ export const MARK_FACES = [
 ];
 
 /**
- * Tvary značiek.
+ * Tvary značiek – len to, ako tvar vyzerá.
  *
- * KTORÁ HODNOTA `osmc:symbol` znamená KTORÝ tvar, tu zámerne NIE JE: to je
- * otázka o tom, čo je v OSM napísané, a odpovedá na ňu `OSMC_SHAPES` vo
- * `workers/trails/routes.py` – tam, kde sa tag číta. Tu je len to, ako tvar
- * vyzerá. `workers/lint/marks.mjs` stráži, že routes.py nepošle do dlaždíc
- * tvar, ktorý tu nie je (v mape by po ňom ostalo prázdno).
+ * Ktorá hodnota `osmc:symbol` znamená ktorý tvar, je v `OSMC_SHAPES` vo
+ * `workers/trails/routes.py`, teda tam, kde sa tag číta. `lint/marks.mjs`
+ * stráži, že routes.py nepošle tvar, ktorý tu nie je.
  *
- * `label` je pre developer mode (dá sa v ňom tvar značky prepnúť ručne).
+ * `label` je pre developer mode.
  */
 export const MARK_SHAPES = [
   {
@@ -214,28 +194,24 @@ export function markImages() {
 /**
  * Strana štvorca značky v pixeloch pri `pixelRatio` 1 (bez lemu a okraja).
  *
- * 14 px nie je od oka: pri z16 je pásik trasy 2,6 px široký a značka má byť
- * to, čo pri nej na prvý pohľad vidno – teda výrazne väčšia, ale nie taká,
- * aby zakryla cestu pod sebou. `icon-size` v štýle ju od z13 po z20 škáluje.
+ * Pri z16 je pásik trasy 2,6 px, takže značka má byť výrazne väčšia, ale nie
+ * taká, aby zakryla cestu pod sebou.
  */
 export const MARK_BOX = 14;
 
 /**
  * Od akého zoomu má značka zmysel.
  *
- * Je tu, a nie v štýle, lebo sa na ňu pýtajú DVE miesta: `themes.js` (odkiaľ
- * vrstva začína) a `map-types.js` (turistická mapa púšťa pásiky trás už od
- * z8 a značky pri tom nesmie stiahnuť so sebou). Pod z12 je zo značky škvrna
- * a je ich toľko, koľko trás – z mapy by bol šum.
+ * Tu, a nie v štýle, lebo sa pýtajú dve miesta: `themes.js` a `map-types.js`
+ * (turistická mapa púšťa pásiky už od z8 a značky pri tom nesmie stiahnuť so
+ * sebou). Pod z12 je zo značky škvrna a je ich toľko, koľko trás.
  */
 export const MARK_MINZOOM = 12;
 /**
  * Priehľadný okraj okolo štvorca v pixeloch pri `pixelRatio` 1.
  *
- * Je tam preto, aby sa pri škálovaní neoprela hrana obrázka o susedný obrázok
- * v atlase a netiekla po nej jeho farba. Pýta sa naň ale aj štýl: kolízny
- * obdĺžnik značky je CELÝ obrázok vrátane tohto okraja, takže od neho závisí,
- * či sa stĺpik značiek zmestí (rozpis pri `TRAIL_MARK_STACK` v `themes.js`).
+ * Aby sa pri škálovaní neoprela hrana obrázka o susedný v atlase. Pýta sa naň
+ * aj štýl: kolízny obdĺžnik značky je celý obrázok vrátane tohto okraja.
  */
 export const MARK_PAD = 1;
 
@@ -259,12 +235,11 @@ function rozlozFarbu(hex) {
 }
 
 /**
- * Vykreslí značku ako HOTOVÝ FAREBNÝ OBRÁZOK (RGBA, nie SDF).
+ * Vykreslí značku ako hotový farebný obrázok (RGBA, nie SDF).
  *
  * Tvary sú predikáty nad jednotkovým štvorcom (`draw(u, v)`), nie cesty:
- * vyhladenie hrán je preto obyčajné 4 × 4 prevzorkovanie na pixel a nový
- * tvar je jeden riadok podmienky. Pri 154 obrázkoch veľkosti 16 px je to
- * pár milisekúnd.
+ * vyhladenie hrán je preto obyčajné 4 × 4 prevzorkovanie a nový tvar je jeden
+ * riadok podmienky.
  *
  * @param {object} shape       položka z `MARK_SHAPES`
  * @param {string} bgHex       farba podkladu
