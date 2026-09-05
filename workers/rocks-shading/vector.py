@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
-"""
-Skaly z tieňovania, 3/3: z rastra obrysy, švy a filter.
+"""Skaly z tieňovania, 3/3: z rastra obrysy, švy a filter.
 
-ČO JE TU. Všetko od hotového rastra tmavosti po vrstvu `rock` v GeoPackage:
-prahy pásiem, filter podľa plochy, zjednodušenie a vyhladenie. Samotné obrysy
-po blokoch, značenie švov a ich zlepenie sú spoločné so skalami zo sklonu
-a robí ich `workers/lib/contour-blocks.py`. Dlaždice sú vo `shading-tiles.py`,
-raster vo `shading-raster.py`, plán a CLI v `shading-rocks.py`.
+Od hotového rastra tmavosti po vrstvu `rock` v GeoPackage: prahy pásiem,
+filter podľa plochy, zjednodušenie a vyhladenie. Samotné obrysy po blokoch,
+značenie švov a ich zlepenie sú spoločné so skalami zo sklonu a robí ich
+`workers/lib/contour-blocks.py`.
 
-PREČO ZVLÁŠŤ: `shading-rocks.py` mal 2023 riadkov (pravidlo 5 v CLAUDE.md).
-Rez je na hranici fázy, ktorá tam už bola vyznačená komentárom – a je to tá
-istá hranica, na ktorej sa `shading-rocks.yml` delí na job `vektor` a `skaly`.
-
-Spúšťa sa ako modul, nie z príkazovej riadky:
-    vector = load("shading_vector", "vector.py")
+Rez je na tej istej hranici, na ktorej sa `shading-rocks.yml` delí na job
+`vektor` a `skaly`. Spúšťa sa ako modul, nie z príkazovej riadky.
 """
 import importlib.util
 import json
@@ -25,8 +19,7 @@ import sys
 import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-# `workers/` – hĺbka je vždy jedna úroveň (CLAUDE.md), takže to platí všade
-# rovnako. Cez toto sa siaha na skripty INÉHO jobu; vlastné idú cez `_HERE`.
+# cez toto sa siaha na skripty iného jobu; vlastné idú cez `_HERE`
 _WORKERS = os.path.dirname(_HERE)
 
 
@@ -41,30 +34,24 @@ def load(name, path):
     return mod
 
 
-# Mriežka, `run()` a rýchlosť contouru sú z tej spodnej vrstvy – berú sa
-# odtiaľ, nie sa píšu druhýkrát (pravidlo 1). `CONTOUR_CELLS_PER_S` je tam
-# preto, že podľa neho vyberá `probe_zoom` zoom; rozpis je pri ňom.
+# mriežka, `run()` a rýchlosť contouru sa berú z tej spodnej vrstvy;
+# `CONTOUR_CELLS_PER_S` je tam preto, že podľa neho vyberá `probe_zoom` zoom
 tiles = load("shading_tiles", "tiles.py")
 WEBMERC, R, TILE = tiles.WEBMERC, tiles.R, tiles.TILE
 run = tiles.run
 CONTOUR_CELLS_PER_S = tiles.CONTOUR_CELLS_PER_S
 
-# `watch.py` je spoločný (skaly zo sklonu aj z tieňovania, dlhé kroky
-# workflowu), tak leží vo `workers/lib/` a nie vedľa jedného z nich.
+# `watch.py` je spoločný pre obe cesty ku skalám, tak leží vo `workers/lib/`
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
 from watch import hms, dir_mb  # noqa: E402
 
-# Obrysy po blokoch, značenie švov a ich zlepenie sú to isté, čo robia skaly
-# zo sklonu – preto ležia vo `workers/lib/` a nie tu (pravidlo 1). Boli tu
-# druhýkrát vlastným kódom a tie dve kópie sa už stihli rozísť: oprava
-# prázdnej únie (beh 31434520563) aj zhrnutie varovania o SRS vznikli len
-# v tej druhej.
+# obrysy po blokoch, značenie švov a ich zlepenie sú to isté, čo robia skaly
+# zo sklonu, preto ležia vo `workers/lib/`. Boli tu druhýkrát vlastným kódom
+# a tie dve kópie sa už stihli rozísť.
 bloky_mod = load("contour_blocks", os.path.join(
     os.path.dirname(_HERE), "lib", "contour-blocks.py"))
 
-
-# ------------------------------------------------------------------ vektor --
 
 def bbox_km2(bbox):
     """Plocha bboxu v km² – len na kontrolu, či výsledok nepokrýva všetko."""
@@ -87,24 +74,13 @@ def filter_stream(src, dst, min_area, min_hole, cliff_level, merc_factor,
                   every=30, zapln_diery=False, min_level=0.5):
     """Prúdový filter nad GeoJSONSeq: odrobinky preč, dierky preč, triedy von.
 
-    Vstup je už rozbitý na samostatné plochy (`-explodecollections`), takže
-    jeden riadok = jedna skala. Bez toho by z celého pohoria vyšli DVA
-    útvary – pásmo `steep` a pásmo `cliff` – a atribút `area` by hovoril,
-    koľko je skál dokopy, nie aká veľká je tá jedna pod hrebeňom.
-
+    Vstup je už rozbitý na samostatné plochy, takže jeden riadok = jedna skala.
     Plocha sa počíta zo súradníc v EPSG:3857 a násobí `merc_factor`
-    (= cos²(šírka)). Mercator naťahuje mierku 1/cos(šírka), takže bez toho
-    by pri 49° vyšla plocha 2,3× väčšia, než v skutočnosti je.
+    (= cos²(šírka)) – bez toho by pri 49° vyšla 2,3× väčšia.
 
-    DIERY OSTÁVAJÚ. Sú to medzery medzi vláknami tej siete žliabkov a práve
-    ony sú tá štruktúra – bez nich je z pol pohoria jedna súvislá plocha,
-    v ktorej nie je vidieť nič (namerané: zapnuté zapĺňanie zožralo detail
-    úplne). Zahadzujú sa podľa VLASTNEJ plochy, nie podľa plochy celku:
-    svetlá polica vnútri steny je platná diera a má ostať, jednopixelová
-    dierka po zrne JPEGu nie.
-
-    `zapln_diery` ich zaplní – je to voľba pre prípad, že by niekto chcel
-    súvislé klaksy namiesto siete, nie predvolené správanie.
+    Diery ostávajú: sú to medzery medzi vláknami siete žliabkov a práve ony sú
+    tá štruktúra. Zahadzujú sa podľa vlastnej plochy, nie podľa plochy celku.
+    `zapln_diery` ich zaplní – voľba, nie predvolené správanie.
     """
     n_in = n_out = 0
     n_pozadie = 0
@@ -112,9 +88,8 @@ def filter_stream(src, dst, min_area, min_hole, cliff_level, merc_factor,
     total = 0.0
     n_cliff = 0
     biggest = 0.0
-    # Píše sa priebežne do `.part` a premenuje sa až hotové. Riadok = jedna
-    # skala, takže výstup rastie plynulo a je pri ňom počuť; nedopísaný
-    # súbor sa pritom nikdy nevydá za hotovú fázu (viď `hotove`).
+    # píše sa priebežne do `.part` a premenuje až hotové; riadok = jedna skala,
+    # takže výstup rastie plynulo a je pri ňom počuť
     part = dst + ".part"
     t0 = time.time()
     last = t0
@@ -137,15 +112,10 @@ def filter_stream(src, dst, min_area, min_hole, cliff_level, merc_factor,
                 dmin = float(dmin)
             except (TypeError, ValueError):
                 dmin = 0.0
-            # POZADIE PREČ. `gdal_contour -p -fl 0,5 -fl 256` nevyrobí len
-            # pásmo skál, ale VŠETKY pásma – vrátane toho pod prahom, teda
-            # „všetko, čo skala nie je". To je jeden obrovský polygón na blok
-            # a keď prejde ďalej, prekryje mapu súvislou plochou, v ktorej
-            # nie je vidieť ani skaly, ani obrysy. (Presne to sa dialo:
-            # skaly z tieňovania boli sivá plocha cez celý výrez.)
-            #
-            # Pri skalách z DEM to nikdy nenastalo – `rock-areas.py` má
-            # `WHERE smin >= prah` priamo v SQL. Tu ten filter chýbal.
+            # pozadie preč: `gdal_contour -p` nevyrobí len pásmo skál, ale
+            # všetky – vrátane toho pod prahom, čo je jeden obrovský polygón
+            # na blok. Keď prejde ďalej, prekryje mapu súvislou plochou.
+            # Skaly z DEM to majú vo `WHERE smin >= prah`; tu ten filter chýbal.
             if dmin < min_level:
                 n_pozadie += 1
                 continue
@@ -172,10 +142,8 @@ def filter_stream(src, dst, min_area, min_hole, cliff_level, merc_factor,
                     continue
                 fo.write(json.dumps({
                     "type": "Feature",
-                    # `ceil`, nie `round`: dolná hranica pásma je 0,5 (resp.
-                    # 0,5 + cliff) a `dark` má povedať „aspoň o toľko stupňov
-                    # šedej pod referenciou". Zaokrúhlenie by z 0,5 spravilo
-                    # nulu, čo sa číta ako „vôbec nie tmavé".
+                    # `ceil`, nie `round`: dolná hranica pásma je 0,5
+                    # a zaokrúhlenie by z nej spravilo nulu („vôbec nie tmavé")
                     "properties": {"class": cls, "dark": int(math.ceil(dmin)),
                                    "area": int(round(area))},
                     "geometry": {"type": "Polygon", "coordinates": rings},
@@ -197,8 +165,8 @@ def filter_stream(src, dst, min_area, min_hole, cliff_level, merc_factor,
             "max_m2": biggest, "holes": holes_kept, "holes_dropped": holes_drop}
 
 
-# Čísla o sťahovaní vedľa cache, nie v `_rozrobene`: sú o dlaždiciach, nie
-# o prahoch, takže sa nesmú stratiť pri zmene prahu ani pri `fresh=1`.
+# čísla o sťahovaní vedľa cache, nie v `_rozrobene`: sú o dlaždiciach, nie
+# o prahoch, takže sa nesmú stratiť pri zmene prahu ani pri `fresh=1`
 STIAHNUTE = "_stiahnute.txt"
 
 
@@ -219,7 +187,7 @@ def zapis_stiahnute(cache_dir, fetcher, n_tiles):
 
 
 def nacitaj_stiahnute(cache_dir, n_tiles):
-    """Čísla z fázy sťahovania. Keď chýbajú, radšej nuly než vymyslené hodnoty."""
+    """Čísla z fázy sťahovania; keď chýbajú, radšej nuly než vymyslené hodnoty."""
     dl = {"tiles": n_tiles, "tiles_missing": 0, "tiles_failed": 0,
           "mb_downloaded": "0", "ua_profiles": 0}
     cesta = os.path.join(cache_dir, STIAHNUTE)
@@ -240,10 +208,9 @@ def nacitaj_stiahnute(cache_dir, n_tiles):
 def hotove(path, label):
     """True = túto fázu spravil predošlý beh a netreba ju robiť znova.
 
-    Každá fáza sa píše do `.part` a premenuje sa až celá, takže existencia
-    súboru znamená „dokončené"; nedopísaný kus sa za hotový nikdy nevydá.
-    Zmysel to má vďaka tomu, že pracovný priečinok leží v cache dlaždíc –
-    prežije teda aj beh, ktorý spadol alebo ho zabil timeout.
+    Každá fáza sa píše do `.part` a premenuje až celá, takže existencia súboru
+    znamená „dokončené". Zmysel to má vďaka tomu, že pracovný priečinok leží
+    v cache dlaždíc.
     """
     if os.path.exists(path) and os.path.getsize(path) > 0:
         print(f"  {label}: hotové z predošlého behu "
@@ -253,13 +220,10 @@ def hotove(path, label):
 
 
 def urovne_pasiem(args, cliff_level):
-    """Prahy pre `-fl`. PLNÉ PLOCHY (`--plne`, predvolene) = jediné pásmo.
+    """Prahy pre `-fl`. Plné plochy (predvolene) = jediné pásmo.
 
-    Dve pásma (`steep` a `cliff`) mali zmysel, kým sa kreslili rôzne tmavo –
-    `cliff` ležal v diere `steep`u a spolu dláždili územie bez prekryvu.
-    Odkedy sú všetky plochy jedna sivá bez priehľadnosti, je z toho len
-    dvojnásobok prstencov na obtiahnutie (a `gdal_contour` je tá najdrahšia
-    fáza celého behu). Jedno pásmo = jedna plocha, nič v ničom.
+    Dve pásma mali zmysel, kým sa kreslili rôzne tmavo; odkedy sú všetky plochy
+    jedna sivá, je z toho len dvojnásobok prstencov na obtiahnutie.
     """
     return (["0.5", "256"] if args.plne else
             ["0.5", repr(cliff_level), "256"])
@@ -280,15 +244,13 @@ def obrysy(tifs, args, tmp, cliff_level):
     """Mozaika tmavosti → obrysy po blokoch v `tmp/bloky`. Vráti počet blokov.
 
     Prvá polovica vektorizácie a vo workflowe vlastný job: toto je tá drahá
-    časť (hodiny), zlepovanie a filter za ňou sú minúty. Rozdelené preto, aby
-    hotové bloky prežili, keď sa beh nezmestí do stropu času.
+    časť, zlepovanie a filter za ňou sú minúty.
     """
     vrt = os.path.join(tmp, "score.vrt")
     run(["gdalbuildvrt", "-q", vrt] + tifs)
     ox, oy, res = vrt_geo(vrt)
-    # Blok sa tu meria v DLAŽDICIACH, nie v pixeloch: raster tmavosti je
-    # z dlaždíc poskladaný, takže `block_tiles` je tá jednotka, v ktorej sa
-    # o ňom uvažuje. Spodná vrstva pozná len pixely.
+    # blok sa tu meria v dlaždiciach, nie v pixeloch: raster je z dlaždíc
+    # poskladaný. Spodná vrstva pozná len pixely.
     blok_px = max(1, args.block_tiles) * TILE
     _, n_blokov = bloky_mod.po_blokoch(
         vrt, os.path.join(tmp, "bloky"),
@@ -300,9 +262,8 @@ def obrysy(tifs, args, tmp, cliff_level):
 def spoj(args, tmp, out, cliff_level, merc, uzemie_km2=0.0):
     """Obrysy blokov → hotový rock.gpkg v EPSG:4326.
 
-    Druhá polovica vektorizácie: zlepenie blokov, plochy rozseknuté hranicou
-    bloku, filter, zjednodušenie a vyhladenie. Číta `tmp/bloky` – teda to, čo
-    nechal `obrysy()`, či už v tom istom behu alebo v predošlom jobe.
+    Druhá polovica vektorizácie: zlepenie blokov, švy, filter, zjednodušenie
+    a vyhladenie. Číta `tmp/bloky`, teda to, čo nechal `obrysy()`.
     """
     d_bloky = os.path.join(tmp, "bloky")
     if not os.path.isdir(d_bloky):
@@ -312,9 +273,9 @@ def spoj(args, tmp, out, cliff_level, merc, uzemie_km2=0.0):
             f"s rozrobeným. Pusti beh s `--phase=vsetko`.")
     n_blokov = len([f for f in os.listdir(d_bloky) if f.endswith(".geojsonl")])
 
-    # Zlepenie blokov do jedného prúdu. `-explodecollections` netreba –
-    # filter nižšie si MultiPolygon rozoberie sám a jeden `ogr2ogr` nad celým
-    # územím by bol práve tá fáza, ktorej sa chceme zbaviť.
+    # `-explodecollections` netreba – filter nižšie si MultiPolygon rozoberie
+    # sám a jeden `ogr2ogr` nad celým územím je práve tá fáza, ktorej sa
+    # chceme zbaviť
     seq = os.path.join(tmp, "bands.geojsonl")
     if not hotove(seq, "spojenie blokov"):
         part = seq + ".part"
@@ -322,16 +283,12 @@ def spoj(args, tmp, out, cliff_level, merc, uzemie_km2=0.0):
         os.replace(part, seq)
         print(f"  spojenie blokov: {n} útvarov z {n_blokov} blokov", flush=True)
 
-    # Zlepovanie plôch rozseknutých hranicou bloku je len kozmetika: odkedy
-    # majú všetky plochy tú istú sivú bez priehľadnosti, dva kusy vedľa seba
-    # vyzerajú ako jeden. Stojí pritom `ST_Union` nad všetkým, čo sa hranice
-    # dotýka, a spatialite navyše – preto predvolene vypnuté (`zlepit=1` ho
-    # vráti). Cena za to je, že `area` je plocha kusa, nie celej skaly.
+    # zlepovanie plôch rozseknutých hranicou bloku je len kozmetika: odkedy
+    # majú všetky plochy tú istú sivú, dva kusy vedľa seba vyzerajú ako jeden.
+    # Stojí `ST_Union` a spatialite navyše, tak je predvolene vypnuté.
     if args.zlepit:
         # `dmin` je trieda pásma – zlučovať sa smie len v rámci nej, inak by
-        # sa stena zlepila so svahom. `srs` sa NEPODÁVA: súradnice sú metrické
-        # práve preto, že sa z okna bloku vyhodil `<SRS>`, a `filter_stream`
-        # ich tak aj počíta.
+        # sa stena zlepila so svahom. `srs` sa nepodáva: súradnice sú metrické.
         seq = bloky_mod.zlep_svy(seq, tmp, klucovy_atribut="dmin",
                                  heartbeat=args.heartbeat,
                                  max_s=args.budget_min * 60,
@@ -352,18 +309,10 @@ def spoj(args, tmp, out, cliff_level, merc, uzemie_km2=0.0):
              if args.zapln_diery else
              f"diery {st['holes']} ostali, {st['holes_dropped']} pod "
              f"{args.min_hole:g} m² preč"), flush=True)
-    # Poistka proti návratu tej istej chyby: keď jedna plocha pokrýva
-    # väčšinu územia, nie je to skala, ale pozadie. Ticho by z toho bola
-    # zase sivá deka cez celú mapu.
-    # Súčet, nie najväčšia plocha: pozadie je jeden polygón NA BLOK, takže
-    # pri mnohých blokoch nie je ani jeden z nich veľký voči celku – ale
-    # dokopy pokryjú takmer všetko.
-    #
-    # Strop bol 60 % a bol privysoký: výrez pri Gerlachu vyšiel na 34 %,
-    # poistka mlčala a v mape bola pritom sivá deka. Kde treba naozaj byť,
-    # ukazuje ten istý výrez po otvorení – 9,5 %. 30 % teda nie je prísna
-    # hranica, je to hodnota, ktorú v skalnatom velehorskom kotle nedosiahne
-    # ani správny výsledok.
+    # poistka proti návratu tej istej chyby: keď plochy pokryjú väčšinu územia,
+    # nie je to skala, ale pozadie. Súčet, nie najväčšia plocha – pozadie je
+    # jeden polygón na blok, takže ani jeden z nich nie je veľký voči celku.
+    # 30 % nie je prísna hranica: správny výsledok na skalnatom výreze vyšiel 9,5 %.
     spolu_km2 = st.get("total_m2", 0) / 1e6
     if uzemie_km2 > 0 and spolu_km2 > 0.3 * uzemie_km2:
         print(f"::warning::Skaly pokrývajú {spolu_km2:.2f} km² z "
@@ -375,8 +324,8 @@ def spoj(args, tmp, out, cliff_level, merc, uzemie_km2=0.0):
 
     if not st["n"]:
         if st["n_in"] > 1000:
-            # Tisíce útvarov a ani jeden dosť veľký nie je „prísny prah" –
-            # taký prah by ich neprepustil vôbec. Skôr je zle jednotka plochy.
+            # tisíce útvarov a ani jeden dosť veľký nie je „prísny prah" –
+            # skôr je zle jednotka plochy
             print(f"::warning::Filter zahodil VŠETKÝCH {st['n_in']} útvarov "
                   f"ako menšie než {args.min_area:g} m². Pri takom počte to "
                   f"nevyzerá na prísny prah, ale na to, že plocha sa počíta "
@@ -395,11 +344,9 @@ def spoj(args, tmp, out, cliff_level, merc, uzemie_km2=0.0):
     smooth = os.path.join(tmp, "rock-smooth.gpkg")
     src = metric
     if args.smooth > 0:
-        # `smooth-shapes.py` je v `contours-rocks/` – zaobľuje obrysy skál AJ
-        # vrstevnice a dve kópie by sa raz rozišli (viď jeho hlavičku). Cesta
-        # sem preto nesmie ísť cez `dirname(__file__)`: tam ten súbor nie je
-        # a krok by spadol na `FileNotFoundError` až po hodinách sťahovania.
-        # Stráži to `workers/lint/layout.py`.
+        # `smooth-shapes.py` je v `contours-rocks/` (zaobľuje aj vrstevnice),
+        # takže cesta sem nesmie ísť cez `dirname(__file__)`. Stráži to
+        # `workers/lint/layout.py`.
         subprocess.run([sys.executable,
                         os.path.join(_WORKERS, "contours-rocks",
                                      "smooth-shapes.py"),
@@ -426,5 +373,3 @@ def empty_rock(out):
     run(["ogr2ogr", "-f", "GPKG", out, tmp, "-nln", "rock", "-nlt", "POLYGON",
          "-a_srs", "EPSG:4326", "-lco", "GEOMETRY_NAME=geom"])
     os.remove(tmp)
-
-

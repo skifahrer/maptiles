@@ -1,22 +1,10 @@
-# Planetiler custom schema – VRSTEVNICE z digitálneho modelu terénu.
+# Planetiler custom schema – vrstevnice z digitálneho modelu terénu.
 #
-# OpenStreetMap výškové dáta neobsahuje (okrem bodového tagu `ele` na
-# vrcholoch, prameňoch a pod.) a vrstevnice sa doň zámerne nenahrávajú.
-# Terén preto ide z externého DEM: Sonny's LiDAR DTM (presnejší, bez stromov
-# a budov) alebo Copernicus GLO-30 (celosvetový).
+# OSM výškové dáta nemá, terén ide z externého DEM (Sonny's LiDAR DTM alebo
+# Copernicus GLO-30). Vstup vyrába build-map-region.yml cez gdal_contour.
+# Skaly majú vlastný .pmtiles (rocks.yml) – iný maxzoom.
 #
-# Vstup vyrába workflow build-map-region.yml:
-#   gdal_contour → ogr2ogr (dopočíta `level`)        → data/contours.gpkg
-#
-# SKALY TU UŽ NIE SÚ – majú vlastný .pmtiles a vlastnú schému
-# (workers/contours-rocks/rocks.yml). Dôvod je jeden a jednoduchý: každý .pmtiles má jeden
-# maxzoom a tie dve vrstvy ho chcú úplne iný. Vrstevnice sú čiary cez celý
-# kraj a rozpočet stránky minú okolo z14; skaly sú plochy len tam, kde je
-# terén strmý, a do vyššieho zoomu sa zmestia. Kým boli spolu, museli sa obe
-# uskromniť na to nižšie.
-#
-# `level` rozdeľuje vrstevnice na tri triedy, aby sa dali zapínať postupne
-# podľa zoomu a hlavné vrstevnice sa dali kresliť hrubšie:
+# `level` delí vrstevnice na tri triedy:
 #   major = násobky 100 m, mid = násobky 50 m, minor = ostatné
 schema_name: FricoMaps vrstevnice
 schema_description: Vrstevnice a nadmorská výška z DEM
@@ -31,19 +19,9 @@ sources:
 layers:
   - id: contour
     features:
-      # Hlavné vrstevnice (100 m) – jediná trieda, ktorá ide pod z12.
-      #
-      # PREČO AŽ OD z11 A NIE OD z1. Do z10 sa vrstevnice v mape NEKRESLIA
-      # vôbec: na tej mierke sa nedá čítať ani jedna a mapa z nich má len
-      # sivý závoj, kým dlaždice s nimi si treba stiahnuť. Od z11 je z nich
-      # tvar pohoria a je to LEN TÁTO trieda – hlavná (pri štandardnom
-      # intervale po 100 m). Druhá by pri sebe na tejto mierke splynula do
-      # šmuhy a súbor by zdvojnásobila.
-      #
-      # `min_zoom` v schéme a `minzoom` v štýle musia dať to isté číslo –
-      # keby schéma dlaždice vyrábala a štýl ich nekreslil, platili by sme
-      # dáta, ktoré nikto nevidí (a naopak by v mape bola prázdna diera).
-      # Stráži to `workers/lint/zoom-floor.py`.
+      # hlavné vrstevnice (100 m) – jediná trieda pod z12; do z10 sa
+      # nekreslia vôbec (sivý závoj). `min_zoom` a `minzoom` v štýle sa musia
+      # zhodovať, stráži workers/lint/zoom-floor.py.
       - source: contours
         geometry: line
         min_zoom: 11

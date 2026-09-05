@@ -1,47 +1,29 @@
 #!/usr/bin/env bash
 # SKALY: najstrmšie úseky terénu → data/rock.gpkg.
 #
-# ČÍTA SA CEZ `.` (source) Z `workers/contours-rocks/build.sh`, nie ako vlastný
-# proces – je to DRUHÁ POLOVICA toho istého výpočtu, nie druhý skript. Obe
-# polovice stoja na tom istom výreze, tom istom DEM a tom istom rozpočte
-# (`ONLY` hovorí, ktorá sa má počítať), takže si podávajú premenné: odtiaľto
-# ide von `ROCK_SLOPE`, `ROCK_DEM_USED` a `RR` do mena assetu, do štatistiky
-# aj do súhrnu behu. Spustiť to samostatne by znamenalo podať si tie hodnoty
-# druhý raz – čiže mať ich napísané dvakrát (pravidlo 1 v CLAUDE.md).
+# Číta sa cez `.` z `workers/contours-rocks/build.sh` – je to druhá polovica
+# toho istého výpočtu, nie druhý skript: obe stoja na tom istom výreze, DEM
+# aj rozpočte a podávajú si premenné (`ROCK_SLOPE`, `ROCK_DEM_USED`, `RR`).
+# Oddelené preto, že `build.sh` prerástol 800 riadkov; rez vedie tam, kde sa
+# mení otázka – hore „aký je terén", tu „kde je strmý".
 #
-# ODDELENÉ JE TO PRETO, ŽE `build.sh` PRERÁSTOL 800 RIADKOV a v jednom takom
-# súbore sa nedá rýchlo nájsť, čo sa zmenilo alebo prečo to spadlo (pravidlo 5;
-# stráži to „Kontrola · lint workflowov"). Rez vedie tam, kde sa mení otázka:
-# hore „aký je terén" (výrez, model, izolínie), tu „kde je strmý".
-#
-# Premenné, ktoré sem chodia z `build.sh`: BBOX AREA_KEY AREA_NAME AREA_BBOX
-# AREA_KM2 CUT DEM_VRT ROCK_VRT ROCK_DEM_USED OPT_ROCKS OPT_ROCK_DEM
-# OPT_ROCK_SOURCE OPT_ROCK_PLNE OPT_ROCK_ZAPLN_DIERY OPT_ROCK_IMG_ASSET
-# OPT_ROCKS_REBUILD ROCK_SLOPE_IN ROCK_RES_IN SLOPE_DIR a `env:` workflowu
-# (ROCK_*, *_STORE). Funkcia `make_empty_gpkg` je tiež odtiaľ.
-#
-# `set -euo pipefail` sa tu NENASTAVUJE: platí to, čo si nastavil `build.sh`,
-# a druhé nastavenie by len tvrdilo, že tento súbor beží sám.
+# `set -euo pipefail` sa tu nenastavuje: platí to, čo si nastavil `build.sh`.
 
 # ---------- skaly: najstrmšie úseky terénu ----------
-# Celý výpočet je vo workers/contours-rocks/rock-areas.py – po častiach, aby sa
-# jemná mriežka zmestila do pamäte aj na disk. Bbox kraja má pri
-# 2 m vyše 3 miliardy buniek (~13 GB na jeden raster), takže naraz
-# sa to spočítať nedá.
+# Výpočet je vo `rock-areas.py`, po častiach: bbox kraja má pri 2 m vyše
+# 3 miliardy buniek.
 T_ROCK=$(date +%s)
 ROCK_SLOPE="$ROCK_SLOPE_IN"
 case "$ROCK_SLOPE" in ''|*[!0-9]*) ROCK_SLOPE=50 ;; esac
 ROCK_CLIFF=$(( ROCK_SLOPE + ROCK_CLIFF_PLUS ))
-# `auto` = mriežku vyberie rock-areas.py: najjemnejšiu, ktorá sa
-# zmestí do rozpočtu času a má pri danom DEM ešte zmysel. Nedá sa
-# to spočítať tu, lebo to závisí od plochy výrezu aj od bunky DEM.
+# `auto` = mriežku vyberie rock-areas.py; závisí od plochy výrezu aj od
+# bunky DEM, takže sa to nedá spočítať tu
 RR="$ROCK_RES_IN"
 case "$RR" in
   auto|'') RR=auto ;;
   *[!0-9.]*) RR="$ROCK_RES" ;;
 esac
-# Najmenšiu skalu (= jedna bunka mriežky) dopočíta rock-areas.py,
-# lebo pri `auto` sa mriežka vyberá až tam.
+# najmenšiu skalu (jedna bunka mriežky) dopočíta rock-areas.py
 
 make_empty_rock() { make_empty_gpkg data/rock.gpkg rock POLYGON; }
 
@@ -50,19 +32,14 @@ if [ "$OPT_ROCKS" = 'true' ]; then
   ROCK_SRC="výpočet"
 
   # ---------- skaly z tieňovaných dlaždíc (rock_source: tienovanie) ----------
-  # Tie sa v TOMTO jobe nepočítajú – spravil to job `shading-rocks`
-  # o kus vyššie v tom istom behu (stiahol tieňované dlaždice
-  # z freemap.sk a hotové polygóny nahral do skladu na Drive). Tu sa
-  # už len stiahne výsledok. Keď je vyplnený `rock_img_asset`, ten job
-  # nebežal a berie sa presne ten súbor.
+  # V tomto jobe sa nepočítajú – spravil to job `shading-rocks` v tom istom
+  # behu a tu sa už len stiahne výsledok.
   if [ "$OPT_ROCK_SOURCE" = 'tienovanie' ]; then
     IMG_ASSET="$OPT_ROCK_IMG_ASSET"
     echo "::group::Skaly z tieňovania – $AREA_NAME, sklad $ROCK_IMG_STORE"
     if [ -z "$IMG_ASSET" ]; then
-      # Najnovší súbor pre tento výrez. Zoradiť sa musí podľa času
-      # nahratia, nie podľa mena: v mene sú prahy, takže abecedne
-      # by vyhral ten s najväčším číslom, nie ten posledný. Robí to
-      # `--latest` v sklade, aby to poradie bolo napísané raz.
+      # najnovší súbor pre tento výrez. Zoradiť sa musí podľa času nahratia,
+      # nie podľa mena: v mene sú prahy, tak by abecedne vyhral iný.
       IMG_ASSET=$(python3 workers/drive/store.py --latest \
         --store="$ROCK_IMG_STORE" --prefix="rockimg-${AREA_KEY}-" \
         --suffix=".gpkg.zst" 2>/dev/null || true)
@@ -83,35 +60,20 @@ if [ "$OPT_ROCKS" = 'true' ]; then
     unzstd -q -f -o data/rock.gpkg "/tmp/rockimg/$IMG_ASSET"
     ROCK_READY=1
     ROCK_SRC="sklad $ROCK_IMG_STORE ($IMG_ASSET)"
-    # Výrez sa tu NEOREZÁVA na bbox regiónu zámerne: asset vznikol
-    # presne pre tento výrez a orezanie by len prerezalo polygóny
-    # na hranici. Keby výrez presahoval región, dlaždice mimo neho
-    # aj tak nikto nevykreslí.
+    # výrez sa tu zámerne neorezáva na bbox regiónu: asset vznikol presne
+    # pre tento výrez a orez by len prerezal polygóny na hranici
     echo "::endgroup::"
   fi
 
-  # Hotové skaly pre tento región a tieto nastavenia sú v sklade –
-  # nastavenia sú v mene súboru, takže sa nikdy nepomiešajú. Výpočet
-  # je na desiatky minút, stiahnutie na sekundy. `rocks_rebuild` ten
-  # súbor zahodí a počíta odznova.
-  # Výrez je v mene súboru: skaly len z Tatier sa nesmú nabudúce
-  # vydávať za skaly celého kraja.
-  # A PREKRYV SO SUSEDNÝM KRAJOM tiež (`o…`). Pri `area: cely_region` je
-  # oknom `dem_bbox`, ktorý `workers/plan/pbf.sh` nafukuje o
-  # `BORDER_BUFFER_M`, a orezáva sa polygónom kraja, ktorý je nafúknutý
-  # o to isté – nafúknutie teda mení, kam až skaly siahajú. Bez neho v mene
-  # by sklad na už postavenom kraji vrátil skaly orezané ešte podľa tesnej
-  # hranice a na hranici so susedom by končili skôr než mapa – presne to sa
-  # namerane stalo tieňovaniu (rozpis vo `workers/terrain/build.sh`).
+  # hotové skaly pre tento región a nastavenia sú v sklade – nastavenia sú
+  # v mene súboru, takže sa nikdy nepomiešajú. `rocks_rebuild` ich zahodí.
+  # V mene je aj výrez a prekryv so susedom (`o…`): nafúknutie mení, kam až
+  # skaly siahajú, a bez neho by sklad vrátil skaly orezané po starom.
   ROCK_BORDER_M=$(python3 -c "import sys; sys.path.insert(0, 'workers/plan'); import area; print(int(area.BORDER_BUFFER_M))")
   ROCK_ASSET="rock-${REGION_KEY}-${AREA_KEY}-${ROCK_DEM_USED:-none}-s${ROCK_SLOPE}-g${RR}-${ROCK_ALGO}-o${ROCK_BORDER_M}.gpkg.zst"
-  # TESTOVACÍ BEH SA SKLADU NESMIE DOTKNÚŤ. Pri `area: cely_region` totiž kľúč
-  # výrezu ostáva `cely` aj v teste (prípona `_test4` by prepla podobu DMR 5.0
-  # – viď workers/plan/area.py), takže by testovacie skaly zo 4 km² ležali
-  # v sklade pod menom skál CELÉHO KRAJA a ďalší ostrý beh by si ich stiahol
-  # ako hotové. To je ten istý druh tichého omylu ako dlaždica, ktorá sľubuje
-  # celý stupeň – meno musí hovoriť, čo v súbore naozaj je. Sklad častí sklonu
-  # to má rovnako (`--no-store` nižšie), lebo tam ide o to isté.
+  # testovací beh sa skladu nesmie dotknúť: pri `area: cely_region` ostáva kľúč
+  # výrezu `cely` aj v teste, takže by skaly zo 4 km² ležali v sklade pod menom
+  # skál celého kraja
   ROCK_STORE_OK=1
   if [ "${OPT_TEST_KM2:-0}" != '0' ]; then
     ROCK_STORE_OK=""
@@ -134,33 +96,23 @@ if [ "$OPT_ROCKS" = 'true' ]; then
 
   if [ -z "$ROCK_READY" ]; then
     echo "::group::Skaly z modelu $ROCK_DEM_USED – $AREA_NAME, sklon ≥ ${ROCK_SLOPE}° (steny od ${ROCK_CLIFF}°), mriežka ${RR}, zaoblenie ${ROCK_SMOOTH}×"
-    # Skaly sú bonus nad vrstevnicami: keby ich výpočet zlyhal (alebo
-    # v rovine nič nenašiel), nemá to zhodiť hodinový build.
-    # Exit 2 = „toto sa nedá spočítať" (nezmestí sa to do pamäte,
-    # alebo je zlé zadanie – priveľa častí, chýbajúca mozaika). To
-    # nie je bonus, ktorý sa dá preskočiť – build sa má zastaviť
-    # hneď, nie nasadiť mapu bez skál po hodine práce. Iný nenulový
-    # kód je skutočné zlyhanie výpočtu a tam prázdna vrstva stačí.
-    # ČAS MEDZI TÝMI DÔVODMI NIE JE: keď je vektorizácia nad
-    # rozpočtom, povie to a beží ďalej (viď workers/contours-rocks/rock-areas.py).
+    # skaly sú bonus nad vrstevnicami: zlyhanie ich výpočtu nemá zhodiť
+    # hodinový build. Výnimka je exit 2 = „toto sa nedá spočítať" (nezmestí sa
+    # do pamäte, zlé zadanie) – tam sa má build zastaviť hneď.
     # ---- 1. odkiaľ sa číta výška ----
-    # `dmr5` ide priamo z Drive po častiach; ostatné modely sú lokálne
-    # dlaždice, ktoré už stiahol `fetch_dem`.
+    # `dmr5` ide priamo z Drive po častiach; ostatné modely sú lokálne dlaždice.
     SRC_ARGS=(--dem "$ROCK_VRT")
     [ "$ROCK_DEM_USED" = 'dmr5' ] && SRC_ARGS=(--drive --dem-cell-m 1)
 
-    # Testovací beh a pregenerovanie sa skladu nesmú dotknúť: test počíta
-    # pár km² s inými nastaveniami a jeho časti by v sklade vyzerali ako
-    # plnohodnotné, `rocks_rebuild` zase znamená „never ničomu uloženému".
+    # testovací beh a pregenerovanie sa skladu nesmú dotknúť: test počíta pár
+    # km² a jeho časti by vyzerali ako plnohodnotné
     STORE_ARGS=()
     [ "${OPT_TEST_KM2:-0}" != '0' ] && STORE_ARGS+=(--no-store)
     [ "$OPT_ROCKS_REBUILD" = 'true' ] && STORE_ARGS+=(--rebuild)
 
     # ---- 2. mriežka ----
-    # Vyberá ju `slope-chunks.py`, lebo ju musí poznať skôr, než začne
-    # počítať; `rock-areas.py` ju potom dostane hotovú. Dva výbery toho
-    # istého by sa raz rozišli a vektorizovalo by sa niečo iné, než sa
-    # počítalo.
+    # Vyberá ju `slope-chunks.py` (musí ju poznať skôr, než začne počítať)
+    # a `rock-areas.py` ju dostane hotovú.
     set +e
     RES=$(python3 workers/contours-rocks/slope-chunks.py --bbox="$AREA_BBOX" --res="$RR" \
       "${SRC_ARGS[@]}" --budget-min="$ROCK_BUDGET_MIN" \
@@ -214,8 +166,8 @@ if [ "$OPT_ROCKS" = 'true' ]; then
       echo "Do skladu $ROCK_STORE sa neukladá – je to rýchly test."
     elif [ "$RC" -eq 0 ]; then
       ls -lh data/rock.gpkg
-      # Ulož ich, nech ich nabudúce netreba počítať znova. Zlyhanie
-      # uloženia NESMIE zhodiť beh – skaly sú spočítané a v `rock.gpkg`.
+      # ulož ich, nech ich nabudúce netreba počítať znova; zlyhanie uloženia
+      # nesmie zhodiť beh – skaly sú spočítané
       zstd -q -19 -T0 -f -o "/tmp/$ROCK_ASSET" data/rock.gpkg
       python3 workers/drive/store.py --put --store="$ROCK_STORE" \
           --file="/tmp/$ROCK_ASSET" \
@@ -229,12 +181,11 @@ if [ "$OPT_ROCKS" = 'true' ]; then
     echo "::endgroup::"
   fi
 
-  # Štatistika ide do contours-out, takže ju nesie aj cache – pri
-  # cache hite sa tento krok vôbec nespustí, ale súhrn čísla má.
+  # štatistika ide do contours-out, takže ju nesie aj cache – pri cache hite
+  # sa tento krok nespustí, ale súhrn čísla má
   ROCK_N=$(ogrinfo -so data/rock.gpkg rock 2>/dev/null \
     | awk -F': ' '/^Feature Count/ {print $2}')
-  # Skaly z tieňovania nemajú ani sklon, ani mriežku – písať ich do
-  # merania by bolo číslo, ktoré nikde nevzniklo.
+  # skaly z tieňovania nemajú ani sklon, ani mriežku
   if [ "$OPT_ROCK_SOURCE" = 'tienovanie' ]; then
     ROCK_HOW="tmavé plochy v tieňovaní"
   else
@@ -243,16 +194,14 @@ if [ "$OPT_ROCKS" = 'true' ]; then
   printf '%s\t%s\t%s\t%s\n' "40" "Skalné plochy" "$(( $(date +%s) - T_ROCK ))" \
     "${ROCK_N:-0} plôch, $AREA_NAME, ${ROCK_HOW} ($ROCK_SRC)" \
     >> steps-out/contours.tsv
-  # Keď skaly prišli z releasu, script nebežal a štatistiku nemá kto
-  # napísať – aspoň to základné, nech súhrn nie je plný otáznikov.
+  # keď skaly prišli zo skladu, skript nebežal a štatistiku nemá kto napísať
   if [ ! -s contours-out/rock-stats.txt ]; then
-    # `min_area_m2` sa tu nedopĺňa: dopočítava ho rock-areas.py
-    # z vybranej mriežky a ten práve nebežal. Súhrn si s chýbajúcou
-    # hodnotou poradí (`${min_area_m2:-?}`) – dosadiť sem premennú,
-    # ktorá nikde nevzniká, by pri `set -u` zhodilo celý build.
+    # `min_area_m2` sa tu nedopĺňa: dopočítava ho rock-areas.py a ten nebežal.
+    # Súhrn si s chýbajúcou hodnotou poradí; premenná, ktorá nikde nevzniká,
+    # by pri `set -u` zhodila build.
     if [ "$OPT_ROCK_SOURCE" = 'tienovanie' ]; then
-      # Skaly z tieňovania sú z iného sveta – ani sklon, ani mriežka
-      # pre ne neexistujú. Súhrn podľa `source` vypíše inú tabuľku.
+      # skaly z tieňovania sú z iného sveta – súhrn podľa `source` vypíše
+      # inú tabuľku
       { echo "source=tienovanie"; echo "count=${ROCK_N:-0}"
         printf "asset='%s'\n" "$ROCK_SRC"
       } > contours-out/rock-stats.txt
@@ -262,13 +211,10 @@ if [ "$OPT_ROCKS" = 'true' ]; then
       } > contours-out/rock-stats.txt
     fi
   fi
-  # Z ktorého modelu sú skaly – do súhrnu. Pri `tienovanie` je
-  # prázdny, lebo tam žiadny výškový model nefiguruje.
+  # z ktorého modelu sú skaly – do súhrnu; pri `tienovanie` prázdny
   printf "rock_dem='%s'\n" "$ROCK_DEM_USED" >> contours-out/rock-stats.txt
-  # Výrez do štatistiky, nech je v súhrne vidieť, že skaly nie sú
-  # všade – aj keď sa tento krok nabudúce vezme z cache.
-  # Hodnoty v apostrofoch: súhrn si súbor načíta cez `.` a meno
-  # výrezu má medzeru („celý región").
+  # výrez do štatistiky, nech je v súhrne vidieť, že skaly nie sú všade.
+  # Hodnoty v apostrofoch: súhrn si súbor načíta cez `.` a meno má medzeru.
   { printf "area_key='%s'\n" "$AREA_KEY"
     printf "area_name='%s'\n" "$AREA_NAME"
     printf "area_bbox='%s'\n" "$AREA_BBOX"; } >> contours-out/rock-stats.txt

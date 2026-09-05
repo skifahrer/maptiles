@@ -1,33 +1,12 @@
-# Planetiler custom schema – SAMOTNÉ skalné plochy, vlastný .pmtiles.
+# Planetiler custom schema – samotné skalné plochy, vlastný .pmtiles.
 #
-# PREČO ZVLÁŠŤ, A NIE SPOLU S VRSTEVNICAMI: každý .pmtiles má jeden maxzoom
-# a tie dve vrstvy ho chcú úplne iný. Vrstevnice sú čiary cez celý kraj –
-# každý zoom navyše ich zdvojnásobí a rozpočet stránky sa minie okolo z14.
-# Skaly sú plochy len tam, kde je terén strmý, takže sa do vyššieho zoomu
-# zmestia bez problémov – a práve pri priblížení je vidieť, či obrys sedí na
-# terén. Kým boli v jednom súbore, museli sa obe uskromniť na to nižšie.
+# Zvlášť od vrstevníc, lebo .pmtiles má jeden maxzoom a tie dve vrstvy ho
+# chcú iný. Nad maxzoom sa dlaždice naťahujú overzoomom.
 #
-# Nad `maxzoom` sa dlaždice naťahujú overzoomom, takže sa skaly zobrazujú až
-# do maximálneho zoomu mapy; z vyššieho maxzoomu je ostrejší tvar, nie väčší
-# rozsah zoomov.
-#
-# Vstup `data/rock.gpkg` vyrába jedna z dvoch ciest:
-#   gdaldem slope → gdal_contour -p → ogr2ogr   (workers/contours-rocks/rock-areas.py)
-#   tmavé plochy v hillshade JPG                (workers/rocks-shading/build.py)
-# Formát je ten istý, len atribúty sa líšia – skaly z DEM majú `slope`, skaly
-# z obrázka `dark`. Vždy je vyplnený len jeden z nich.
-#
-# JEDNA TRIEDA: obe cesty predvolene vyrábajú plochy v jedinej triede, teda
-# žiadnu plochu vnútri inej. Kým sa `steep` a `cliff` kreslili rôzne tmavo,
-# malo zmysel mať dve pásma – `cliff` ležal v diere `steep`u a spolu dláždili
-# územie bez prekryvu. Odkedy je všetko jedna sivá bez priehľadnosti, je
-# z dvoch pásiem len dvojnásobok práce a riziko, že sa niekde prekryjú
-# a plocha vyjde tmavšia. Atribút `class` ostáva (vždy `steep`), nech sa
-# schéma nemení pri každom preladení.
-#
-# DIERY V PLOCHÁCH SÚ SÚČASŤ TVARU: police vnútri stien a medzery medzi
-# vláknami siete žliabkov. Krátko sa zapĺňali a zo skál boli súvislé plochy
-# bez detailu; odvtedy ostávajú a zapĺňanie je vlastná (vypnutá) voľba.
+# Vstup data/rock.gpkg robí buď rock-areas.py (atribút `slope`), alebo
+# rocks-shading/build.py (`dark`); vždy je vyplnený len jeden.
+# Jedna trieda (`class` vždy `steep`) – všetko sa kreslí rovnako sivo.
+# Diery v plochách sú súčasť tvaru; zapĺňanie je vypnutá voľba.
 schema_name: FricoMaps skaly
 schema_description: Skalné plochy z výškového modelu alebo z tieňovaných dlaždíc
 attribution: <a href="https://sonny.4lima.de/">Sonny's LiDAR DTM</a> / <a href="https://spacedata.copernicus.eu/">Copernicus DEM</a> / <a href="https://www.freemap.sk/">freemap.sk</a>
@@ -39,20 +18,10 @@ sources:
     projection: EPSG:4326
 
 layers:
-  # min_zoom 11, nie 1. Kedysi tu bolo z1 s odôvodnením „veľká stena je
-  # čitateľná aj z prehľadu"; na prehľadovej mierke je ale zo skál sivá škvrna
-  # bez informácie a dlaždice s ňou si prehliadač sťahuje tak či tak – mapové
-  # podklady tým rástli za niečo, čo netreba. Od z11 skaly v mape sú, pod ním
-  # nie sú vôbec, a je to to isté dno, aké majú vrstevnice
-  # (workers/contours-rocks/contours.yml).
-  #
-  # Nad z11 sa malých plôch netreba báť: Planetiler zahodí všetko pod pixel sám
-  # (min_feature_size platí na každom zoome okrem najvyššieho, kde ho zámerne
-  # vypíname) a obrys si na každom zoome zjednoduší podľa veľkosti pixela.
-  #
-  # TO ISTÉ ČÍSLO MUSÍ BYŤ V ŠTÝLE (`minzoom` vrstvy `rock-area`), inak by sa
-  # vyrábali dlaždice, ktoré nikto nekreslí – alebo naopak by v mape bola diera
-  # tam, kde dlaždice nie sú. Stráži to `workers/lint/zoom-floor.py`.
+  # min_zoom 11: pod ním je zo skál sivá škvrna bez informácie. To isté dno
+  # majú vrstevnice. Nad z11 malé plochy zahodí Planetiler sám.
+  # To isté číslo musí byť v štýle (`minzoom` vrstvy `rock-area`) –
+  # stráži workers/lint/zoom-floor.py.
   - id: rock
     features:
       - source: rock

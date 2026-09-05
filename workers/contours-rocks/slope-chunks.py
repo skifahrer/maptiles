@@ -1,43 +1,24 @@
 #!/usr/bin/env python3
-"""
-Raster sklonu po častiach – s trvalým skladom, aby sa nič nepočítalo dvakrát.
+"""Raster sklonu po častiach – s trvalým skladom, aby sa nič nepočítalo dvakrát.
 
-ČO RIEŠI. Skaly pre pohorie sa dovtedy počítali takto: `mirror-dmr5-area`
-prečítal z Drive CELÝ výrez naraz a uložil ho ako jeden COG (`ugkk-<pohorie>
-.tif`), a až potom sa z neho rátal sklon. Jednotka práce aj jednotka
-uloženia bola „celé územie", takže to bolo všetko alebo nič – zrušený beh
-31310604408 čítal Vysoké Tatry hodinu a nechal po sebe NULU.
+Jednotkou práce aj uloženia je ČASŤ: každá sa z Drive prečíta, prevedie na
+sklon a uloží zvlášť, takže zrušený beh o hotové časti nepríde. Predtým bolo
+jednotkou celé územie, čiže všetko alebo nič.
 
-Tu je jednotkou ČASŤ. Každá časť sa z Drive prečíta, prevedie na sklon a
-uloží zvlášť; ďalší beh si ju už len stiahne. Beh, ktorý spadne alebo ho
-niekto zruší v polovici, teda o hotové časti nepríde a nasledujúci dopočíta
-len zvyšok.
+Jednotkou je sklon, nie hotové skaly: vektorizovať po častiach nejde (diera
+prerezaná hranicou časti sa zmení na zárez). Sklon je pritom tá drahá časť.
+Vedľajší zisk: zmena prahu `rock_slope` už neznamená nové čítanie z Drive.
 
-PREČO JE JEDNOTKOU SKLON, A NIE HOTOVÉ SKALY. Vektorizovať po častiach sa
-skúšalo a nefunguje to: diera prerezaná hranicou časti sa zmenila na zárez
-v okraji a späť sa už nezlepila – z dvoch plôch s dierami vyšli štyri bez
-dier (zápis v `rock-areas.py`). Sklon je pritom presne tá drahá časť
-(čítanie z Drive + warp + gdaldem), kým vektorizácia je jeden lacný priechod
-nad hotovou mozaikou. Vedľajší zisk: zmena prahu `rock_slope` už NEznamená
-nové čítanie z Drive – prahy sa uplatňujú až pri vektorizácii, takže sa
-prepočítajú len vektory.
+Hranice častí sú prichytené na mriežku ukotvenú v počiatku EPSG:3035, nie na
+bbox – tá istá zem tak padne vždy do tej istej časti a sklad trafí aj beh na
+iné, prekrývajúce sa územie.
 
-ABSOLÚTNA MRIEŽKA ČASTÍ. Hranice častí sú prichytené na mriežku ukotvenú
-v počiatku EPSG:3035, nie na bbox územia. To je ten rozdiel, vďaka ktorému
-má sklad zmysel: tá istá zem padne vždy do tej istej časti s tým istým
-menom, takže časti spočítané pre `vysoke_tatry` si vezme aj neskorší beh na
-`tatry`. Keby boli indexy relatívne k bboxu (ako v `chunk_plan`), každé
-územie by malo vlastnú mriežku a sklad by netrafil nikdy nič.
-
-GEOID SA TU ZÁMERNE NEPREVÁDZA. Výšky z Drive sú elipsoidické (o ~42,6 m nad
-Bpv), ale geoid sa mení plynulo – na ploche jednej časti je to prakticky
-konštantný posun a SKLON sa ním nemení. Vrstevnice by prevod potrebovali,
-sklon nie, takže sa ušetrí sťahovanie mriežky EGM2008 aj čas.
+Geoid sa tu zámerne neprevádza: mení sa plynulo, takže na ploche jednej časti
+je to konštantný posun a sklon sa ním nemení.
 
 Použitie:
     python3 workers/contours-rocks/slope-chunks.py --bbox=19.9,49.09,20.32,49.25 \\
         --res=2 --drive --out=slope-chunks --jobs=6
-    python3 workers/contours-rocks/slope-chunks.py --bbox=… --res=auto --print-res
 """
 import argparse
 import importlib.util
@@ -61,20 +42,16 @@ def load(name, path):
     return mod
 
 
-# Plánovanie, metrická sústava aj mierka sklonu sú v `rock-areas.py` a berú sa
-# odtiaľ – dve implementácie toho istého sa vždy raz rozídu (presne to zhodilo
-# beh 31307163093, keď si kontrola a sťahovanie odpovedali každý inak).
+# plánovanie, metrická sústava aj mierka sklonu sú v `rock-areas.py`
 rock = load("rock_areas", "rock-areas.py")
 METRIC, SCALE = rock.METRIC, rock.SCALE
 
-# Trvalý sklad častí je priečinok na Drive; celý formát, prihlásenie aj
-# „clobber" má `drive-store.py` a berie sa odtiaľ ako modul. Volať ho procesom
-# na každú z rádovo stovky častí by znamenalo stovku vypísaní priečinka.
+# trvalý sklad častí je priečinok na Drive; berie sa ako modul – volať ho
+# procesom na každú z rádovo stovky častí by znamenalo stovku vypísaní priečinka
 store = load("drive_store", os.path.join(os.pardir, "drive", "store.py"))
 
-# Strana časti v pixeloch. 4096² = 16,8 mil. buniek: pri 2 m je to 8,2 km na
-# stranu, čo je ~35 častí na Vysoké Tatry. Menšie časti = jemnejšie
-# obnovenie po páde a menšie súbory, väčšie = menej réžie okolo každej.
+# strana časti v pixeloch: menšie časti = jemnejšie obnovenie po páde a menšie
+# súbory, väčšie = menej réžie okolo každej
 CHUNK_PX = 4096
 MARGIN_PX = 8    # presah, aby sklon na okraji časti nebol zrezaný
 MAX_CHUNKS = 600  # nad tým prestáva byť sklad výhodou (viď poistku v main)
@@ -83,14 +60,11 @@ MAX_CHUNKS = 600  # nad tým prestáva byť sklad výhodou (viď poistku v main)
 def chunk_grid(bbox, res, chunk_px=CHUNK_PX):
     """Časti absolútnej mriežky, ktoré zasahujú do bboxu.
 
-    Vracia zoznam `(ix, iy, x0, y0, x1, y1)` v metroch EPSG:3035, kde `ix`,
-    `iy` sú indexy v mriežke ukotvenej v počiatku sústavy – teda nezávislé od
-    toho, pre aké územie sa práve počíta.
+    Vracia `(ix, iy, x0, y0, x1, y1)` v metroch EPSG:3035; indexy sú v mriežke
+    ukotvenej v počiatku sústavy, teda nezávislé od územia.
 
-    Prevod do stupňov ide JEDNÝM volaním `gdaltransform` nad všetkými rohmi
-    naraz. Volať ho na každú časť zvlášť vyzerá nevinne, ale je to jeden
-    proces na časť – pri jemnej mriežke ich sú tisíce a samotné plánovanie
-    potom trvá dlhšie než výpočet.
+    Prevod do stupňov ide jedným volaním `gdaltransform` nad všetkými rohmi:
+    jeden proces na časť by pri jemnej mriežke trval dlhšie než výpočet.
     """
     side = chunk_px * res
     mx0, my0, mx1, my1 = rock.to_metric(bbox)
@@ -102,9 +76,8 @@ def chunk_grid(bbox, res, chunk_px=CHUNK_PX):
     if not cand:
         return []
 
-    # Osem bodov na časť: rohy a stredy strán. Samotné rohy nestačia – hranica
-    # je po prevode krivka a pri veľkej časti by sa mohla do bboxu vydúvať
-    # stredom strany, kým rohy ostanú vonku.
+    # osem bodov na časť: hranica je po prevode krivka a pri veľkej časti by sa
+    # mohla do bboxu vydúvať stredom strany, kým rohy ostanú vonku
     pts = []
     for _, _, x0, y0, x1, y1 in cand:
         pts += [(x0, y0), (x1, y0), (x0, y1), (x1, y1),
@@ -130,12 +103,10 @@ def chunk_grid(bbox, res, chunk_px=CHUNK_PX):
 
 
 def chunk_name(ix, iy, res):
-    """Meno časti v sklade. Nesie všetko, čo mení jej obsah: mriežku aj
-    polohu. Prah sklonu v ňom NIE JE – ten sa uplatňuje až pri vektorizácii,
-    takže jeho zmena smie sklad použiť.
+    """Meno časti v sklade: nesie mriežku aj polohu. Prah sklonu v ňom nie je –
+    ten sa uplatňuje až pri vektorizácii, takže jeho zmena smie sklad použiť.
 
-    Znamienko ide do písmena (E/W, N/S) a nie do mínusu: mená assetov sa
-    porovnávajú aj očami a `slope-r2--615--358` sa číta zle.
+    Znamienko ide do písmena (E/W, N/S): `slope-r2--615--358` sa číta zle.
     """
     sx = f"E{ix:04d}" if ix >= 0 else f"W{-ix:04d}"
     sy = f"N{iy:04d}" if iy >= 0 else f"S{-iy:04d}"
@@ -151,16 +122,12 @@ NOTE = ("Medzivýsledok skál: sklon terénu v stotinách stupňa (Int16, "
 class Store:
     """Časti v adresári (cache behu) a v sklade na Drive (trvalé).
 
-    Dve vrstvy zámerne: cache je rýchla, ale prerieďuje sa (a kým bola
-    v GitHube, mala strop 10 GB a vyhadzovala si záznamy navzájom). Sklad na
-    Drive nevyprší sám, takže hodina čítania z Drive sa nemá ako stratiť.
-    Adresár je zároveň to, čo sa medzi behmi ukladá do cache, takže stiahnuté
-    časti sa doň vracajú.
+    Dve vrstvy zámerne: cache je rýchla, ale prerieďuje sa; sklad na Drive
+    nevyprší sám, takže hodina čítania sa nemá ako stratiť.
 
-    SKLAD JE PRIEČINOK NA DRIVE, nie GitHub release – do releasov sa už
-    nepublikuje nič. Rozpis je vo `workers/drive/store.py` a tento skript si
-    ho volá ako modul: pri stovkách častí je jedno vypísanie priečinka a potom
-    priame prenosy nesmierne lacnejšie než `gh` proces na každú časť.
+    Sklad si tento skript volá ako modul – pri stovkách častí je jedno
+    vypísanie priečinka a potom priame prenosy oveľa lacnejšie než proces
+    na každú časť.
     """
 
     def __init__(self, path, store_name, use_store=True):
@@ -177,14 +144,11 @@ class Store:
         self.use_store = False
         if not use_store:
             return
-        # BEZ TOKENU SA POKRAČUJE, ale nahlas. Časti sa dajú spočítať aj bez
-        # skladu (stojí to čas, nie správnosť) – a keby to bola tvrdá chyba,
-        # lokálny beh bez prihlásenia by sa nedal spustiť vôbec.
+        # bez tokenu sa pokračuje, ale nahlas: časti sa dajú spočítať aj bez
+        # skladu (stojí to čas, nie správnosť)
         try:
             self.creds = store.creds_or_die("sklad častí sklonu")
-            # JEDEN VÝPIS PRIEČINKA NA CELÝ BEH. Častí je rádovo stovka
-            # a vypísať pre každú z nich priečinok znovu by bola stovka
-            # zbytočných dopytov na Drive.
+            # jeden výpis priečinka na celý beh; častí je rádovo stovka
             self.items = store.index(self.creds, store_name)
             self.assets = set(self.items)
             self.use_store = True
@@ -218,17 +182,15 @@ class Store:
         return None
 
     def put(self, name):
-        """Hotovú časť do skladu. Zlyhanie uploadu NESMIE zhodiť beh – časť
-        je spočítaná a v adresári, takže build môže pokračovať; stratí sa len
-        to, že ju nabudúce netreba počítať."""
+        """Hotovú časť do skladu. Zlyhanie uploadu nesmie zhodiť beh – časť je
+        spočítaná a v adresári."""
         with self.lock:
             self.made += 1
         if not self.use_store:
             return
         try:
-            # `clobber=False`: časť sa nahráva len vtedy, keď v sklade podľa
-            # `self.items` nebola, takže niet čo prepisovať – a ušetrí to jedno
-            # vypísanie priečinka na každú časť.
+            # `clobber=False`: časť sa nahráva len vtedy, keď v sklade nebola,
+            # takže niet čo prepisovať
             store.upload(self.creds, self.store_name,
                          os.path.join(self.path, name), name, NOTE,
                          clobber=False)
@@ -241,15 +203,11 @@ class Store:
                 self.assets.add(name)
 
 
-# ---------- výpočet jednej časti ----------
-
 def slope_chunk(dem, chunk, res, out_path, work, env=None):
     """DEM → sklon pre jednu časť, orezaný presne na jej hranicu.
 
     Presah `MARGIN_PX` je preto, že `gdaldem slope` počíta z okolia bunky –
-    bez neho by mal každý okraj časti pás nezmyselného sklonu a v mozaike by
-    z toho boli šachovnicové švy. Zapisuje sa až orezané, takže dlaždice na
-    seba sadnú presne.
+    bez neho by mal každý okraj pás nezmyselného sklonu a v mozaike šachovnicu.
     """
     ix, iy, x0, y0, x1, y1 = chunk
     m = MARGIN_PX * res
@@ -257,9 +215,8 @@ def slope_chunk(dem, chunk, res, out_path, work, env=None):
     slope_tif = os.path.join(work, f"slope-{ix}-{iy}.tif")
 
     def run(cmd):
-        # Stderr MUSÍ byť v chybe. `capture_output` ho inak prehltne a
-        # z padnutého behu ostane len „returned non-zero exit status 1"
-        # a zoznam argumentov – teda presne to, čo sa nedá odladiť z logu.
+        # stderr musí byť v chybe: `capture_output` ho inak prehltne a z padnutého
+        # behu ostane len „returned non-zero exit status 1"
         r = subprocess.run(cmd, capture_output=True, text=True, env=env)
         if r.returncode:
             raise RuntimeError(
@@ -275,19 +232,17 @@ def slope_chunk(dem, chunk, res, out_path, work, env=None):
         run(["gdaldem", "slope", "-q", "-compute_edges",
              "-co", "COMPRESS=DEFLATE", "-co", "TILED=YES", dem_tif, slope_tif])
         # Float32 → Int16 v stotinách stupňa: mozaika celého pohoria sa vo
-        # Float32 na disk runnera nezmestí a 0,01° je od presného Float32
-        # nerozoznateľné (merané v rock-areas.py).
+        # Float32 na disk runnera nezmestí a 0,01° je nerozoznateľné
         tmp_out = out_path + ".part"
-        # `-of GTiff` výslovne: ovládač sa háda z prípony a `.part` GDAL
-        # nepozná („Cannot guess driver"). Prípona pritom musí ostať iná než
-        # `.tif`, inak by rozrobený súbor vyzeral ako hotová časť.
+        # `-of GTiff` výslovne: ovládač sa háda z prípony a `.part` GDAL nepozná.
+        # Prípona musí ostať iná než `.tif`, inak by rozrobený súbor vyzeral hotový.
         run(["gdal_translate", "-q", "-of", "GTiff", "-ot", "Int16",
              "-scale", "0", repr(90.0), "0", repr(90.0 * SCALE),
              "-projwin", repr(x0), repr(y1), repr(x1), repr(y0),
              "-co", "COMPRESS=DEFLATE", "-co", "PREDICTOR=2", "-co", "TILED=YES",
              slope_tif, tmp_out])
-        # Až premenovanie spraví časť „hotovou". Bez toho by prerušený beh
-        # nechal v cache useknutý súbor, ktorý ďalší beh vezme ako platný.
+        # až premenovanie spraví časť hotovou – inak by prerušený beh nechal
+        # v cache useknutý súbor
         os.replace(tmp_out, out_path)
     finally:
         for f in (dem_tif, slope_tif):
@@ -295,8 +250,6 @@ def slope_chunk(dem, chunk, res, out_path, work, env=None):
                 os.remove(f)
     return out_path
 
-
-# ---------- beh ----------
 
 def main():
     ap = argparse.ArgumentParser(
@@ -343,10 +296,8 @@ def main():
     if not dem_cell and args.dem:
         dem_cell = rock.dem_cell_metres(args.dem, (bbox[1] + bbox[3]) / 2)[0]
     if str(args.res).strip().lower() in ("auto", "", "0"):
-        # Tabuľka výberu ide na STDERR. Volajúci si berie mriežku cez
-        # `RES=$(… --print-res)`, takže na stdout smie byť len to číslo –
-        # inak sa mu do premennej dostane aj tých pätnásť riadkov rozvahy
-        # a `--res` potom dostane zmes textu.
+        # tabuľka výberu ide na stderr: volajúci si berie mriežku cez
+        # `RES=$(… --print-res)`, takže na stdout smie byť len to číslo
         import contextlib
         with contextlib.redirect_stdout(sys.stderr):
             res = rock.pick_res(x0, y0, x1, y1, args.chunk_cells, bbox,
@@ -362,11 +313,9 @@ def main():
     if not chunks:
         print(f"::error::Ani jedna časť nezasahuje do územia {args.bbox}.")
         return 2
-    # Poistka na počet častí. Každá časť je jeden asset v release a jedno kolo
-    # réžie navyše, takže pri niekoľkých tisícoch prestane byť sklad výhodou a
-    # stane sa z neho problém sám o sebe. Stane sa to ľahko: strana časti je
-    # `chunk_px × res`, takže jemná mriežka ju zmenší a počet rastie s
-    # druhou mocninou. Radšej to povedať hneď než po hodine.
+    # poistka na počet častí: strana časti je `chunk_px × res`, takže jemná
+    # mriežka ju zmenší a počet rastie s druhou mocninou. Nad tisíckami prestáva
+    # byť sklad výhodou.
     if len(chunks) > MAX_CHUNKS:
         side_km = args.chunk_px * res / 1000
         print(f"::error::Vyšlo {len(chunks)} častí po {side_km:g} km "
@@ -380,10 +329,8 @@ def main():
     os.makedirs(work, exist_ok=True)
     sklad = Store(args.out, args.store, use_store=not args.no_store)
 
-    # ČO TO BUDE STÁŤ – pred prvým gdalwarpom. Trojhodinový beh, ktorý spadne
-    # na timeout, je najhorší možný výsledok: minie celý rozpočet a nevyrobí
-    # nič. Odkedy je sklad po častiach, patrí do odhadu aj to, čo v ňom už je –
-    # druhý beh na tom istom pohorí nestojí nič a to má byť z plánu vidieť.
+    # čo to bude stáť – pred prvým gdalwarpom. Do odhadu patrí aj to, čo
+    # v sklade už je: druhý beh na tom istom pohorí nestojí nič.
     side_km = args.chunk_px * res / 1000
     names = [chunk_name(ix, iy, res) for ix, iy, *_ in chunks]
     have = 0 if args.rebuild else sum(
@@ -410,9 +357,7 @@ def main():
     env = None
     stats_drive = None
     if args.drive:
-        # Shim nad Drive, ID súborov aj prihlásenie vlastníka sú v
-        # `dmr5-drive.py` – sem sa neopisujú, nech je jedno miesto, kde sa dá
-        # vymeniť zdroj (a jedno miesto, ktoré vie, čím sa prihlasuje).
+        # shim nad Drive, id súborov aj prihlásenie sú v `drive/dmr5.py`
         dd = load("dmr5_drive", os.path.join(os.pardir, "drive", "dmr5.py"))
         base, sizes, stats_drive, creds = dd.serve_drive(0)
         dem = f"/vsicurl/{base}/{dd.TIF_NAME}"
@@ -436,16 +381,12 @@ def main():
     def compute(name, chunk, path):
         """Jedna časť – a keď spojenie vypadne, ešte raz.
 
-        Sieť medzi GDALom a shimom vypadne raz za desaťtisíce požiadaviek a
-        doteraz to znamenalo koniec celého behu: 31338803278 mal 45 častí zo
-        47 hotových a spadol na dvoch, ktoré sa k shimu vôbec nedostali
-        (`response_code=0`, čiže bez odpovede – nie chyba Drive). Časť sa
-        počíta minútu, takže druhý pokus stojí minútu; pád stojí celý job.
+        Sieť medzi GDALom a shimom vypadne raz za desaťtisíce požiadaviek
+        a doteraz to znamenalo koniec celého behu. Časť sa počíta minútu, takže
+        druhý pokus stojí minútu; pád stojí celý job.
 
-        Trvalé chyby (zlé zadanie, plný disk) sa opakovaním nespravia, tak sú
-        pokusy tri a čaká sa krátko. Po `slope_chunk` neostáva ani pri páde
-        nič rozrobené – dočasné súbory si upratuje sám a hotová je časť až po
-        premenovaní – takže ďalší pokus začína načisto.
+        Trvalé chyby sa opakovaním nespravia, tak sú pokusy tri a čaká sa krátko.
+        Po `slope_chunk` neostáva nič rozrobené, takže ďalší pokus začína načisto.
         """
         for attempt in range(1, tries + 1):
             with lock:
@@ -484,12 +425,9 @@ def main():
                   f"{rock.hms(el)} za sebou, zostáva ~{rock.hms(eta)}", flush=True)
         return path
 
-    # TEP. Riadok na hotovú časť stačí, kým časti trvajú desiatky sekúnd; len
-    # čo sa jedna zasekne, je v logu ticho a zaseknutý beh vyzerá presne ako
-    # pomalý. Beh 31338803278 mlčal 3,5 minúty a potom padol – a z logu sa
-    # nedalo povedať, či sa ešte číta, alebo sa už len čaká na spojenie.
-    # Počet požiadaviek na Drive je tu to hlavné číslo: keď rastie, číta sa;
-    # keď stojí, čaká sa a chyba je medzi GDALom a shimom, nie na Drive.
+    # tep: riadok na hotovú časť stačí, kým časti trvajú desiatky sekúnd – len
+    # čo sa jedna zasekne, vyzerá zaseknutý beh presne ako pomalý.
+    # Počet požiadaviek na Drive je tu hlavné číslo: keď rastie, číta sa.
     stop = threading.Event()
 
     def beat():
@@ -518,8 +456,8 @@ def main():
         with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as ex:
             tiles = list(ex.map(one, chunks))
     except Exception:
-        # Čo z toho ostalo. Sklad je celý zmysel tohto skriptu, takže pri páde
-        # musí byť z logu vidieť, že hotová práca sa nezahodila a čo zostáva.
+        # čo z toho ostalo: sklad je celý zmysel tohto skriptu, takže pri páde
+        # musí byť vidieť, že hotová práca sa nezahodila
         stop.set()
         with lock:
             bad = list(failed)

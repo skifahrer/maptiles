@@ -1,25 +1,12 @@
 #!/usr/bin/env python3
-"""
-Skaly z tieňovania, 1/3: stiahnutie dlaždíc z freemap.sk.
+"""Skaly z tieňovania, 1/3: stiahnutie dlaždíc z freemap.sk.
 
-ČO JE TU. Geometria dlaždicovej mriežky (ktoré dlaždice pretína bbox, aká je na
-zoome mriežka v metroch), `Fetcher` – sťahovanie s opakovaním, viacerými
-profilmi prehliadača a skladom hotového – a `probe_zoom`, ktorý zistí, po ktorý
-zoom tá služba vôbec dlaždice má. Raster tmavosti je vo `shading-raster.py`,
-obrysy vo `shading-vector.py`, plán a CLI v `shading-rocks.py`.
+Geometria dlaždicovej mriežky, `Fetcher` (sťahovanie s opakovaním, viacerými
+profilmi prehliadača a diskovou cache) a `probe_zoom`, ktorý zistí, po ktorý
+zoom tá služba dlaždice vôbec má.
 
-PREČO ZVLÁŠŤ. `shading-rocks.py` mal 2023 riadkov – v takom súbore sa nedá
-rýchlo nájsť, čo sa zmenilo ani prečo to spadlo (pravidlo 5 v CLAUDE.md, strop
-800 stráži `Kontrola · lint workflowov`). Rezy sú na hraniciach fáz, ktoré už v tom súbore
-boli vyznačené komentárom, a sedia aj s tromi jobmi v `shading-rocks.yml`.
-
-TU SÚ AJ SPOLOČNÉ ZÁKLADY, lebo sú z tejto vrstvy: `WEBMERC`, `R` a `TILE`
-popisujú tú istú mriežku ako funkcie nižšie, a `run()` je najspodnejší kus,
-ktorý potrebujú všetci. Ostatné moduly si ich berú odtiaľto – jedno miesto,
-jedna odpoveď (pravidlo 1).
-
-Spúšťa sa ako modul, nie z príkazovej riadky:
-    tiles = load("shading_tiles", "tiles.py")
+Sú tu aj spoločné základy (`WEBMERC`, `R`, `TILE`, `run()`) – ostatné moduly
+si ich berú odtiaľto. Spúšťa sa ako modul, nie z príkazovej riadky.
 """
 import gzip
 import http.client
@@ -33,37 +20,25 @@ import time
 import urllib.parse
 import zlib
 
-# Dlaždice sú vo Web Mercatore a mozaika sa v ňom aj počíta – žiadne
-# prevzorkovanie, jeden pixel dlaždice = jeden pixel rastra.
+# dlaždice sú vo Web Mercatore a mozaika sa v ňom aj počíta – žiadne
+# prevzorkovanie, jeden pixel dlaždice = jeden pixel rastra
 WEBMERC = "EPSG:3857"
 R = 20037508.342789244  # polovica strany sveta v metroch EPSG:3857
 TILE = 256
 
 TILES_PER_S = 25.0  # pri --jobs=12 a ~25 kB na dlaždicu
 
-# Koľko buniek za sekundu zvládne `gdal_contour` nad hotovou mozaikou.
+# koľko buniek za sekundu zvládne `gdal_contour` nad hotovou mozaikou.
+# Je to tu, hoci sa contour počíta až vo `vector.py`: podľa tohto čísla vyberá
+# `probe_zoom` zoom, na ktorom beh ešte dobehne. Opačne to nejde – vrstva
+# dlaždíc o vektore vedieť nesmie.
 #
-# JE TO TU, HOCI SA CONTOUR POČÍTA AŽ VO `shading-vector.py`: podľa tohto čísla
-# vyberá `probe_zoom` nižšie zoom, na ktorom beh ešte dobehne. Rozhoduje o tom
-# teda táto vrstva a `shading-vector.py` si to isté číslo berie odtiaľto – jedno
-# miesto, jedna odpoveď (pravidlo 1). Opačne to nejde: vrstva dlaždíc o vektore
-# vedieť nesmie, bol by z toho kruh.
-#
-# Bolo tu 3,5 mil./s, prevzaté z rock-areas.py – „rovnaký nástroj, rovnaký typ
-# vstupu". Nebola to pravda a stálo to celý beh 31222472790: Vysoké Tatry na
-# z18 (3,62 mld. buniek) mali podľa toho odhadu trvať 17 minút, v skutočnosti
-# contour bežal 2 h 41 min, nevypísal ani jeden megabajt výstupu a zabil ho
-# timeout jobu. Skutočná rýchlosť je teda POD 375 tis. buniek/s, čiže aspoň
-# 9× menej. Rozdiel oproti skalám z DEM je v dátach: tam je izolínia sklonu
-# nad hladkým rastrom, tu je izolínia tmavosti nad zrnitým JPEGom – tá má
-# rádovo viac segmentov a práve tie contour stoja.
-#
-# 3e5 je bezpečná strana toho merania. Radšej nech `auto` zvolí o zoom nižšie
-# a beh dobehne, než aby sľuboval detail, ktorý sa nikdy nedopočíta.
+# Bolo tu 3,5 mil./s prevzatých zo skál z DEM a nebola to pravda: izolínia
+# tmavosti nad zrnitým JPEGom má rádovo viac segmentov než izolínia sklonu nad
+# hladkým rastrom. 3e5 je bezpečná strana merania.
 CONTOUR_CELLS_PER_S = 3.0e5
 
-# `watch.py` je spoločný (skaly zo sklonu aj z tieňovania, dlhé kroky
-# workflowu), tak leží vo `workers/lib/` a nie vedľa jedného z nich.
+# `watch.py` je spoločný pre obe cesty ku skalám, tak leží vo `workers/lib/`
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
 from watch import hms  # noqa: E402
@@ -72,8 +47,6 @@ from watch import hms  # noqa: E402
 def run(cmd, **kw):
     return subprocess.run(cmd, check=True, capture_output=True, text=True, **kw)
 
-
-# ---------------------------------------------------------------- dlaždice --
 
 def lonlat_to_tile(lon, lat, z):
     """Súradnice → dlaždicové súradnice (desatinné)."""
@@ -101,22 +74,16 @@ def tile_res(z):
 
 
 def ground_res(z, lat):
-    """Skutočná veľkosť pixela na zemi. Mercator naťahuje mierku 1/cos(šírka),
+    """Skutočná veľkosť pixela na zemi: Mercator naťahuje mierku 1/cos(šírka),
     takže meter v EPSG:3857 je pri 49° len ~0,65 m terénu."""
     return tile_res(z) * math.cos(math.radians(lat))
 
 
-# Hlavičky, ktorými sa pipeline predstavuje. Každý profil je JEDEN skutočný
-# prehliadač – UA, `Sec-CH-UA` aj platforma musia sedieť dokopy. Chrome, ktorý
-# o sebe v `Sec-CH-UA` tvrdí, že je Firefox, nie je maskovanie, to je len
-# rozbitá hlavička. Firefox a Safari `Sec-CH-UA` neposielajú vôbec, preto majú
-# `None`.
-#
-# POZOR, ČO TO ROBÍ: predvolené je toto, lebo si to vypýtal input `ua`. Berie
-# to ale službe freemap.sk možnosť rozoznať, že ide o dávku a nie o človeka –
-# a to je dobrovoľnícky server. Preto ostáva `jobs` nízke (12) a dlaždice sa
-# cachujú: slušnosť má zabezpečiť objem, keď ju už nezabezpečuje meno.
-# `ua=project` vráti pôvodnú hlavičku, ktorá sa priznáva.
+# hlavičky, ktorými sa pipeline predstavuje. Každý profil je jeden skutočný
+# prehliadač – UA, `Sec-CH-UA` aj platforma musia sedieť dokopy.
+# Berie to ale freemap.sk možnosť rozoznať, že ide o dávku, a je to
+# dobrovoľnícky server: preto ostáva `jobs` nízke a dlaždice sa cachujú.
+# `ua=project` vráti hlavičku, ktorá sa priznáva.
 BROWSERS = (
     ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
      '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"', '"Windows"', "sk-SK,sk;q=0.9,en-US;q=0.8,en;q=0.7"),
@@ -140,9 +107,8 @@ BROWSERS = (
 
 PROJECT_UA = "fricomaps/shading-rocks (github.com/skifahrer/fricomaps)"
 
-# Prvé bajty formátov, ktoré vie PIL prečítať a ktoré dlaždicová služba môže
-# vrátiť. Slúži to na rozoznanie obrázka od chybovej stránky, nie na výber
-# dekodéra – ten si nájde PIL sám.
+# prvé bajty formátov, ktoré vie PIL prečítať – na rozoznanie obrázka od
+# chybovej stránky, nie na výber dekodéra
 IMAGE_MAGIC = (b"\xff\xd8\xff",          # JPEG
                b"\x89PNG\r\n\x1a\n",     # PNG
                b"GIF87a", b"GIF89a",     # GIF
@@ -154,7 +120,7 @@ def looks_like_image(body):
 
 
 def decode_body(body, encoding):
-    """Rozbalí telo, keď ho server zabalil. Prehliadačovité hlavičky pýtajú
+    """Rozbalí telo, keď ho server zabalil – prehliadačovité hlavičky pýtajú
     `gzip, deflate`, takže to treba vedieť aj prijať."""
     enc = (encoding or "").strip().lower()
     if not enc or enc == "identity":
@@ -173,14 +139,9 @@ def decode_body(body, encoding):
 
 
 class Fetcher:
-    """Sťahovanie dlaždíc s trvalým spojením a diskovou cache.
+    """Sťahovanie dlaždíc: thread-local trvalé spojenie + disková cache.
 
-    Trvalé spojenie nie je kozmetika: pri 12 000 dlaždiciach je nové TLS
-    handshake na každú z nich väčšina celého času. Spojenie je thread-local,
-    takže si vlákna neprekážajú.
-
-    Chýbajúca dlaždica (404) nie je chyba – tam jednoducho nie sú dáta.
-    Zapíše sa ako prázdny súbor, aby sa pri ďalšom behu neskúšala znova.
+    Pri 12 000 dlaždiciach je TLS handshake väčšina času. 404 nie je chyba.
     """
 
     def __init__(self, url_tmpl, cache_dir, jobs=12, retries=3, timeout=30,
@@ -198,8 +159,8 @@ class Fetcher:
         self.n_ok = self.n_miss = self.n_cached = self.n_fail = 0
         self.n_done = 0
         self.bytes = 0
-        # Proxy sa rieši tunelom (CONNECT), nie prepísaním URL – inak by sa
-        # trvalé spojenie zahodilo.
+        # proxy sa rieši tunelom (CONNECT), nie prepísaním URL – inak by sa
+        # trvalé spojenie zahodilo
         self.proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or ""
 
     def path(self, z, x, y):
@@ -208,23 +169,15 @@ class Fetcher:
     def headers(self):
         """Hlavičky na jeden request.
 
-        `ua=rotate` (predvolené): vyberie sa náhodný profil zo `BROWSERS`,
-        takže každý request vyzerá ako iný prehliadač. Ostatné hlavičky idú
-        z toho istého profilu, nech si neodporujú.
+        `ua=rotate` (predvolené) vyberie náhodný profil zo `BROWSERS`; ostatné
+        hlavičky idú z toho istého profilu, nech si neodporujú. `ua=project`
+        sa priznáva menom projektu.
 
-        `ua=project` sa priznáva menom projektu, hocičo iné sa pošle
-        doslova ako `User-Agent`.
-
-        Trvalé spojenie sa tým NEZAHADZUJE – server teda uvidí jedno TCP
-        spojenie, cez ktoré chodí viacero prehliadačov. To nie je dokonalé
-        maskovanie a ani sa oň nesnažíme; ide o to, aby dávka nevyzerala ako
-        jeden skript s jednou hlavičkou.
+        Trvalé spojenie sa tým nezahadzuje – nie je to dokonalé maskovanie
+        a ani sa oň nesnažíme.
         """
         # `Accept-Encoding` bez `br`/`zstd` zámerne: `http.client` telo
-        # nerozbaľuje, takže rozbaliť to musíme sami a v stdlib je len gzip
-        # a deflate. Sľúbiť brotli a potom ho nevedieť prečítať by znamenalo
-        # uložiť na disk nečitateľné bajty. (JPEG sa aj tak prakticky nikdy
-        # nekomprimuje druhýkrát.)
+        # nerozbaľuje a v stdlib je len gzip a deflate
         h = {"Accept": "image/avif,image/webp,image/jpeg,image/*,*/*;q=0.8",
              "Accept-Encoding": "gzip, deflate",
              "Connection": "keep-alive"}
@@ -280,9 +233,8 @@ class Fetcher:
         """Stiahne jednu dlaždicu do cache a povie, ako to dopadlo:
         `cache` / `stiahnuté` / `chýba` (404) / `zlyhalo`.
 
-        Stav ide von preto, aby sa pri každej dlaždici dalo vypísať, čo sa
-        s ňou stalo – z holého „2 %" sa nedá poznať, či server dáva dáta,
-        alebo len rýchlo odpovedá 404."""
+        Stav ide von preto, aby sa dalo poznať, či server dáva dáta, alebo len
+        rýchlo odpovedá 404."""
         dst = self.path(z, x, y)
         if os.path.exists(dst):
             with self.lock:
@@ -301,9 +253,8 @@ class Fetcher:
                 if status == 200 and looks_like_image(body):
                     break
                 if status == 200:
-                    # Chybová stránka s kódom 200 je pri dlaždicových
-                    # službách bežná – uložiť ju ako .jpg by znamenalo tichú
-                    # dieru v mozaike a v cache navždy. Skúsi sa znova.
+                    # chybová stránka s kódom 200 je pri dlaždicových službách
+                    # bežná – uložiť ju ako .jpg by bola tichá diera v mozaike
                     status, body = 0, None
                     self._drop()
                 elif status == 404:
@@ -355,10 +306,8 @@ class Fetcher:
                 x, y = jobs[i]
                 stav = self.fetch(z, x, y)
                 now = time.time()
-                # Riadok na dlaždicu (podľa `--log-every`): koľkátu práve
-                # máme, čo s ňou bolo, ktorá to je a koľko ešte zostáva.
-                # Časový strop je poistka: keď server spomalí na pár dlaždíc
-                # za minútu, log nesmie stíchnuť.
+                # riadok na dlaždicu (podľa `--log-every`); časový strop je
+                # poistka, nech log nestíchne, keď server spomalí
                 with self.lock:
                     self.n_done += 1
                     done = self.n_done
@@ -383,9 +332,8 @@ class Fetcher:
         print(f"  dlaždice: {self.n_ok} stiahnutých, {self.n_cached} z cache, "
               f"{self.n_miss} chýba (404), {self.n_fail} zlyhalo, "
               f"{self.bytes / 1048576:.0f} MB za {hms(dt)}", flush=True)
-        # Len keď sa naozaj niečo sťahovalo – pri behu celom z cache by
-        # „0 rôznych prehliadačov" vyzeralo ako porucha, a pritom nešiel
-        # von ani jeden request.
+        # len keď sa naozaj niečo sťahovalo – pri behu celom z cache by
+        # „0 rôznych prehliadačov" vyzeralo ako porucha
         if self.ua == "rotate" and self.ua_seen:
             print(f"  hlavičky: {len(self.ua_seen)} rôznych prehliadačov "
                   f"z {len(BROWSERS)} profilov", flush=True)
@@ -396,15 +344,11 @@ class Fetcher:
 
 
 def probe_zoom(fetcher, bbox, zmax, zmin, max_tiles, budget_s):
-    """Najvyšší zoom, ktorý server naozaj dá a ktorý sa STIHNE spočítať.
+    """Najvyšší zoom, ktorý server naozaj dá a ktorý sa stihne spočítať.
 
-    Dva stropy, lebo dve rôzne veci: `--max-tiles` chráni dobrovoľnícky server
-    (koľko requestov mu pošleme) a `--budget-min` chráni beh (koľko z toho
-    stihne `gdal_contour`). Ten druhý pribudol až po behu, ktorý sa na z18
-    nedopočítal ani za tri hodiny – dlaždíc bolo pritom pod stropom.
-
-    Zoom sa nedá prečítať z metadát – XYZ šablóna žiadne nemá. Skúša sa preto
-    jedna dlaždica v strede územia, zhora nadol.
+    Dva stropy: `--max-tiles` chráni dobrovoľnícky server, `--budget-min` chráni
+    beh. Zoom sa nedá prečítať z metadát (XYZ šablóna žiadne nemá), tak sa skúša
+    jedna dlaždica v strede územia zhora nadol.
     """
     w, s, e, n = bbox
     lon, lat = (w + e) / 2.0, (s + n) / 2.0
@@ -434,5 +378,3 @@ def probe_zoom(fetcher, bbox, zmax, zmin, max_tiles, budget_s):
           "(zdvihni --budget-min alebo zmenši area), alebo server nedal ani "
           "jednu skúšobnú dlaždicu (skontroluj --url).")
     return 0
-
-
