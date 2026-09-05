@@ -1,15 +1,11 @@
 # Predfilter PBF pre vyhľadávací index (`osmium tags-filter --expressions`).
 #
-# HĽADANIE je NADMNOŽINOU features filtera: všetko, čo kreslí mapu, je
-# aj hľadateľné. Navyše sem ide ešte veľa viac – osídlenia, konkrétne
-# menované trasy – všetko, čo má titul a berie sa do indexu.
+# Nadmnožina features filtra: všetko, čo kreslí mapu, je aj hľadateľné, a k tomu
+# osídlenia a menované trasy – všetko, čo má titul.
 #
-# Zoznam je zámerne ŠIRŠÍ než presná schéma: filter má byť hrubé sito,
-# presné rozhodovanie nech robí Python skript. Keď do schémy pribudne
-# trieda, musí pribudnúť aj sem – inak sa v indexe ticho neobjaví.
+# Zoznam je zámerne širší než schéma; presné rozhodovanie robí Python skript.
 #
-# `nwr/` = uzly, cesty aj relácie. Relácie kvôli multipolygónom a
-# viacčlenným trasám, osmium k nim dotiahne aj členov.
+# `nwr/` = uzly, cesty aj relácie (osmium k nim dotiahne členov).
 
 # --- násypy a zárezy (všetko, čo features kresli) ---
 nwr/man_made=embankment,cutline,pipeline,spoil_heap,tower,mast,water_tower,chimney,adit,mineshaft,survey_point

@@ -2,28 +2,20 @@
 /**
  * MapLibre štýl k mape sveta – jeden súbor na farebnú tému.
  *
- * PREČO VLASTNÝ GENERÁTOR A NIE `workers/styles/build.mjs`. Ten skladá štýl
- * nad schémou OpenMapTiles (`transportation`, `landcover`, `poi`, …) plus nad
- * našimi vrstvami vrstevníc, skál, trás a prvkov – dokopy stovky vrstiev,
- * z ktorých mapa sveta nemá ANI JEDNU. Mapa sveta má štyri vlastné
- * (`workers/world/world.yml`), takže by to nebolo „to isté s vypnutými
- * vrstvami", ale druhá vetva v tom istom súbore. Farby sú spoločné: berú sa
- * z `poc/web/themes.js`, aby svet a mapa kraja vyzerali ako jedna aplikácia.
+ * Vlastný generátor preto, že `workers/styles/build.mjs` skladá stovky vrstiev
+ * nad schémou OpenMapTiles, z ktorých mapa sveta nemá ani jednu; nebolo by to
+ * „to isté s vypnutými vrstvami", ale druhá vetva v tom istom súbore. Farby sú
+ * spoločné – berú sa z `poc/web/themes.js`.
  *
- * ODKAZY SÚ PREDVOLENE RELATÍVNE (`pmtiles://tiles/svet.pmtiles`). Táto mapa
- * sa nenasadzuje na Pages – ide na Drive ako `.zip` a `.aar`, ktorý si človek
- * (alebo appka) rozbalí k sebe, a tam žiadna adresa nie je. Keď ju niekto
- * chce hosťovať, `--base-url=` z nich spraví absolútne.
+ * Odkazy sú predvolene relatívne: táto mapa sa nenasadzuje na Pages, ide na
+ * Drive ako `.zip` a `.aar`, ktorý si človek rozbalí k sebe. `--base-url=`
+ * z nich spraví absolútne.
  *
- * ZOOMY MUSIA SEDIEŤ SO SCHÉMOU. `minzoom` vrstvy štýlu hovorí, čo sa KRESLÍ,
- * `min_zoom` v `world.yml`, čo sa VYROBÍ – a keď sa rozídu, mapa má buď dieru,
- * alebo platí za dlaždice, ktoré nikto nevykreslí. Je to ten istý pár čísel,
- * aký pri vrstevniciach stráži `workers/lint/zoom-floor.py`; tu ho stráži
+ * Zoomy musia sedieť so schémou (`minzoom` kreslí, `min_zoom` vyrába) – inak
+ * má mapa dieru alebo platí za dlaždice, ktoré nikto nevykreslí. Stráži to
  * `workers/lint/world.py`.
  *
- * Použitie:
  *   node workers/world/style.mjs --out=_site/styles --maxzoom=6
- *   node workers/world/style.mjs --out=_site/styles --base-url=https://…/svet
  */
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";

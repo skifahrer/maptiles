@@ -1,24 +1,18 @@
 #!/usr/bin/env node
 /**
- * Dopečie do spritu TURISTICKÉ A CYKLISTICKÉ ZNAČKY – to, čo je namaľované
- * na strome: biely (pešia) alebo žltý (cyklistická) štvorec s farebným pásom,
- * plus tvarové značky (trojuholník na vrchol, „L", kruh) a bicykel.
+ * Dopečie do spritu turistické a cyklistické značky – to, čo je namaľované na
+ * strome: biely alebo žltý štvorec s farebným pásom, tvarové značky a bicykel.
  *
- * Beží hneď po `workers/assets/sprite.mjs` a `shields.mjs`, teda nad hotovým
- * atlasom – preskladanie robí `workers/lib/sprite-bake.mjs` (jedno miesto pre
- * všetkých troch, čo do spritu pečú).
+ * Beží po `assets/sprite.mjs` a `shields.mjs`, nad hotovým atlasom;
+ * preskladanie robí `lib/sprite-bake.mjs`.
  *
- * ČO SA PEČIE, hovorí `poc/web/marks.js`: dvojice podklad × farba, ktoré na
- * značkách naozaj sú (`MARK_FACES`), krát tvary (`MARK_SHAPES`). Meno obrázka
- * skladá aj štýl, ale výrazom nad dátami (`concat` z `mark_bg`, `mark_fg`
- * a `mark`), takže obrázok, ktorý by tu chýbal, sa v mape ticho nenakreslí –
- * stráži to `workers/lint/marks.mjs`.
+ * Čo sa pečie, hovorí `poc/web/marks.js`: dvojice podklad × farba krát tvary.
+ * Meno obrázka skladá aj štýl, ale výrazom nad dátami, takže chýbajúci obrázok
+ * sa v mape ticho nenakreslí – stráži to `workers/lint/marks.mjs`.
  *
- * KEĎ SA ZNAČKY NEDOPEČÚ, mapa nespadne ani nestratí trasy: štýl vtedy
- * kreslí pozdĺž trasy ikonku zo sady (`hasIcon` v `poc/web/themes.js`), tak
- * ako pred tým, než značky pribudli.
+ * Keď sa nedopečú, mapa nespadne ani nestratí trasy: štýl vtedy kreslí pozdĺž
+ * trasy ikonku zo sady.
  *
- * Použitie:
  *   node workers/assets/marks.mjs --sprite=_site/sprites/osm-liberty
  */
 import { bakeIntoSprite } from "../lib/sprite-bake.mjs";

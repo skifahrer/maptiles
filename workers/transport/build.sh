@@ -1,23 +1,17 @@
 #!/usr/bin/env bash
 # Celá dopravná sieť z OSM → `{región}-transport.pmtiles`.
 #
-# ČO TO JE A PREČO: rozpis je v hlavičke `workers/transport/transport.yml`.
-# Krátko – všetko, po čom sa dá cestovať (cesty od diaľnice po schody,
-# železnice, trajekty, lanovky), v jednom archíve, ktorý sa dá stiahnuť bez
-# zvyšku mapy. Je to VRSTVA NA POUŽITIE, nie druhé kreslenie: štýl z nej
-# kreslí len obmedzenia na ceste (výška podjazdu, hmotnosť, rýchlosť) – samotnú
-# cestnú sieť už kreslí základná mapa (rozpis pri balíku `cesty` vo
-# `workers/deploy/subory.py`).
+# Rozpis je v hlavičke `transport.yml`. Krátko: všetko, po čom sa dá cestovať,
+# v jednom archíve, ktorý sa dá stiahnuť bez zvyšku mapy. Je to vrstva na
+# použitie, nie druhé kreslenie – štýl z nej kreslí len obmedzenia na ceste,
+# samotnú sieť kreslí základná mapa.
 #
-# PREČO SAMOSTATNÝ SKRIPT: `build-map-region.yml` má strop 128 kB a nad ním ho
-# GitHub ticho neprijme (stráži „Kontrola · lint workflowov").
+# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
 #
-# JEDEN PRIECHOD FILTROM – dôvod je v hlavičke `workers/transport/filter.txt`.
-# Obmedzenia na ceste (výška podjazdu, hmotnosť, rýchlosť) sú odteraz ATRIBÚTY
-# tejto siete a nie vlastná vrstva, takže druhý priechod netreba: `tags-filter`
-# berie objekt celý aj s nimi.
+# Jeden priechod filtrom (dôvod v hlavičke `filter.txt`): obmedzenia sú
+# atribúty tejto siete a `tags-filter` berie objekt celý aj s nimi.
 #
-# Podiel na veľkosti stránky berie z `BUDGET_TRANSPORT_PCT` (env workflowu).
+# Podiel na veľkosti stránky berie z `BUDGET_TRANSPORT_PCT`.
 
 set -euo pipefail
 mkdir -p _site/tiles data steps-out

@@ -1,27 +1,19 @@
 #!/usr/bin/env node
 /**
- * Dopečie do spritu VLASTNÉ IKONY z úprav developer módu.
+ * Dopečie do spritu vlastné ikony z úprav developer módu.
  *
- * Vlastná ikona je obrázok, ktorý si človek nahral v paneli („toto POI chcem
- * s vlastnou značkou"). Leží PRIAMO v `poc/web/style-overrides.json` ako PNG
- * v `data:` adrese – nie ako odkaz na cudzí server –, takže:
+ * Vlastná ikona leží priamo v `poc/web/style-overrides.json` ako PNG v `data:`
+ * adrese, nie ako odkaz na cudzí server – takže ju mapa má aj bez internetu
+ * a tento skript ju len dekóduje a vloží do atlasu (SVG rasterizoval
+ * prehliadač už pri nahratí).
  *
- *   * mapa ju má aj bez internetu a aj v balíku pre mobil,
- *   * a tento skript ju len dekóduje a vloží do atlasu; rasterizovať SVG
- *     v Node netreba, o to sa postaral prehliadač pri nahratí
- *     (`poc/web/dev-icons.js`).
+ * Beží po `sprite.mjs`, `shields.mjs` a `marks.mjs`; preskladanie robí
+ * `lib/sprite-bake.mjs`.
  *
- * Beží po `sprite.mjs`, `shields.mjs` a `marks.mjs` nad hotovým atlasom;
- * preskladanie robí `workers/lib/sprite-bake.mjs` – jedno miesto pre všetkých,
- * čo do spritu pečú.
+ * Bez `sdf`: je to hotový farebný obrázok, takže `icon-color` na ňom neplatí –
+ * kto chce inú farbu, nahrá iný obrázok.
  *
- * BEZ `sdf`: je to hotový farebný obrázok tak, ako ho človek nahral. Prefarbiť
- * sa teda nedá (`icon-color` na ňom neplatí) a je to zámer – kto chce inú
- * farbu, nahrá iný obrázok.
- *
- * Použitie:
- *   node workers/assets/custom-icons.mjs --sprite=_site/sprites/osm-liberty \
- *        [--overrides=poc/web/style-overrides.json]
+ *   node workers/assets/custom-icons.mjs --sprite=_site/sprites/osm-liberty
  */
 import { readFileSync, existsSync } from "node:fs";
 import { bakeIntoSprite } from "../lib/sprite-bake.mjs";

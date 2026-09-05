@@ -1,43 +1,27 @@
-# Planetiler custom schema – HRANICE ÚZEMÍ a ICH NÁZVY v jednom `.pmtiles`.
+# Planetiler custom schema – hranice území a ich názvy v jednom `.pmtiles`.
 #
-# PREČO VLASTNÝ SÚBOR, KEĎ HRANICE V MAPE UŽ SÚ. Vrstva `boundary` schémy
-# OpenMapTiles nesie `admin_level`, `disputed` a `maritime` – teda ČIARU, po
-# ktorej sa kreslí, a nič viac: hranica je tam rozsekaná na úseky medzi
-# susedmi, NEMÁ MENO územia, ktoré ohraničuje, a `admin_level` je v nej
-# orezaný (obce sa v OpenMapTiles kreslia až od vysokých zoomov). Kto sa pýta
-# „v ktorej obci som" alebo „ktorý okres to je", to z tých dlaždíc nevyčíta.
+# Vrstva `boundary` v OpenMapTiles nesie `admin_level`, `disputed` a `maritime`,
+# teda čiaru a nič viac: hranica je rozsekaná na úseky medzi susedmi, nemá meno
+# územia a `admin_level` je orezaný. „V ktorej obci som" sa z toho nevyčíta.
 #
-# Tento súbor je odpoveď na to: územia ako PLOCHY s menom a úrovňou, k tomu
-# body sídel, z ktorých sa mená kreslia. Štát, kraj, okres, obec – a to, ako
-# sa volajú.
+# Tu sú územia ako plochy s menom a úrovňou, k tomu body sídel. Tri tvary
+# jednej veci, a je to zámer:
 #
-# DVA TVARY TEJ ISTEJ VECI, A JE TO ZÁMER:
+#     `boundary`      plocha územia s menom a `admin_level` – odpovedá na
+#                     „čo je pod týmto bodom"
+#     `boundary_line` tá istá hranica ako čiara; kreslí sa táto, lebo výplň
+#                     cez celý kraj by prekryla mapu pod sebou
+#     `place`         bod sídla s menom a počtom obyvateľov
 #
-#     `boundary`      PLOCHA územia s menom a `admin_level`. Odpovedá na
-#                     „čo je pod týmto bodom" – hranica ako čiara na to
-#                     odpovedať nevie.
-#     `boundary_line` tá istá hranica ako ČIARA. Kreslí sa, plocha sa nie:
-#                     výplň cez celý kraj by prekryla mapu pod sebou.
-#     `place`         bod sídla (`place=city` … `hamlet`) s menom
-#                     a počtom obyvateľov – tam, kde sa meno má napísať.
+# Do dlaždice ide `admin_level` ako číslo, nie naše meno úrovne: v OSM je
+# celosvetový a v každom štáte znamená niečo iné (u nás 2/4/8/9, v Rakúsku
+# 4 spolková krajina, 6 okres, 8 obec).
 #
-# ÚROVNE SÚ SLOVENSKÉ, ALE ZOZNAM NIE JE. `admin_level` je v OSM celosvetový
-# a jeho význam je v každom štáte iný (u nás 2 štát, 4 kraj, 8 okres, 9 obec
-# a mestské časti sú 10; v Rakúsku 4 spolková krajina, 6 okres, 8 obec). Do
-# dlaždice sa preto dáva ČÍSLO, nie naše meno tej úrovne – kto stavia mapu
-# nad iným štátom, si ho vyloží po svojom, a keby sme sem napísali „kraj",
-# bola by to lož všade inde než doma.
+# Zoomy: štát z2, kraj z4, okres z6, obec z8 – obcí je rádovo najviac a na
+# prehľadovom zoome by z nich bola len sieť čiar.
 #
-# ZOOMY. Štát a kraj sú kostra a majú byť vidieť hneď (z2 a z4); okres od z6,
-# obec od z8. Nižšie by z obcí bola na prehľadovom zoome len sieť čiar, a je
-# ich rádovo najviac.
-#
-# POZOR NA `min_zoom` NAD MAXZOOMOM ARCHÍVU: čo má vyšší `min_zoom`, než je
-# maxzoom dlaždíc, Planetiler ZAHODÍ a nepovie o tom nič. Stráži to
-# `workers/boundaries/build.sh`.
-#
-# PREDFILTER (`workers/boundaries/filter.txt`) MUSÍ PUSTIŤ VŠETKO, ČO TU JE –
-# a musí pustiť aj ČLENOV relácií, inak Planetiler nemá z čoho zložiť polygón.
+# Čo má vyšší `min_zoom` než maxzoom dlaždíc, Planetiler zahodí a nepovie nič.
+# Predfilter musí pustiť aj členov relácií, inak nemá z čoho zložiť polygón.
 schema_name: FricoMaps hranice území
 schema_description: >-
   Hranice štátu, kraja, okresu a obce ako plochy aj ako čiary, s menom
