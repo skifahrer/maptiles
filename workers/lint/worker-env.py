@@ -1,27 +1,13 @@
 #!/usr/bin/env python3
-"""
-Kontrola: skript vo `workers/` dostáva env, ktoré naozaj číta.
+"""Kontrola: skript vo `workers/` dostáva env, ktoré naozaj číta.
 
-DVE TICHÉ CHYBY, PRE KTORÉ TO VZNIKLO. Keď sa veľký `run:` blok stiahne do
-skriptu (pravidlo 3 v CLAUDE.md), stane sa jedno z dvoch:
+Keď sa veľký `run:` blok stiahne do skriptu, stane sa jedno z dvoch:
+`${{ výraz }}` sa zmení na `$PREMENNÚ` a tá sa zabudne dopísať do `env:`
+(skript beží s prázdnym reťazcom a nespadne), alebo sa premenuje `id` kroku,
+na ktorý sa odkazujú výstupy jobu (job ticho vráti prázdno).
 
-  1. `${{ výraz }}` sa zmení na `$PREMENNÚ` a tá sa zabudne dopísať do `env:`
-     kroku. Skript potom beží s prázdnym reťazcom a **nespadne** – vyrobí
-     poloprázdny výsledok, ktorý vyzerá ako hotový.
-  2. Premenuje sa `id` kroku, na ktorý sa odkazujú výstupy jobu. Job vtedy
-     ticho vráti prázdno.
-
-Prvé chytá porovnanie „čo skript číta" × „čo mu krok dáva", druhé kontrola
-`steps.<id>.outputs` proti skutočným `id` krokov v tom jobe.
-
-Čo si skript nastaví sám (vrátane `local`, `read`, `for`, `mapfile`) sa neráta,
-a `${VAR:-default}` tiež nie – na ten prípad má predvolenú hodnotu. Keď skript
-sourcuje iný `workers/*.sh`, prečíta sa aj ten: `contours-build.sh` si takto
-berie `pmtiles_do_rozpoctu` z `pmtiles-budget.sh` a `PM_Z` po ňom nie je
-premenná z prostredia, ale výsledok funkcie.
-
-Použitie:
-    python3 workers/lint/worker-env.py
+Čo si skript nastaví sám a `${VAR:-default}` sa neráta. Sourcovaný
+`workers/*.sh` sa prečíta tiež.
 """
 import glob, os, re, sys, yaml
 

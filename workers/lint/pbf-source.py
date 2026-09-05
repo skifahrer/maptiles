@@ -1,43 +1,19 @@
 #!/usr/bin/env python3
-"""
-Kraj sa REŽE Z RODIČOVSKÉHO EXTRAKTU – hotový export kraja sa nesmie vrátiť.
+"""Kraj sa reže z rodičovského extraktu – hotový export kraja sa nesmie vrátiť.
 
-PREČO TO EXISTUJE, A PREČO OPAČNE, NEŽ PREDTÝM. Táto kontrola kedysi strážila
-pravý opak: že sa kraj sťahuje priamo z osm.fr a nereže sa z 373 MB Slovenska.
-Bolo to o krok kratšie a o 337 MB lacnejšie a vyzeralo to ako pravidlo 7
-(„nikdy nesťahuj viac, než treba"). Lenže hotový `{kraj}-latest.osm.pbf` NIE JE
-referenčne úplný: plocha, ktorá pokračuje do susedného kraja, v ňom nemá
-všetkých členov a Planetiler ju ZAHODÍ CELÚ – aj tú časť, čo v kraji leží.
+Hotový `{kraj}-latest.osm.pbf` nie je referenčne úplný: plocha pokračujúca do
+susedného kraja v ňom nemá všetkých členov a Planetiler ju zahodí celú.
+Namerané na Bratislavskom kraji: 250 z 3075 plošných relácií, medzi nimi tri
+CHKO. Po reze z rodiča ostane päť, všetky na hranici so zahraničím.
 
-Namerané na `bratislavsky-latest.osm.pbf`: z 3075 plošných relácií malo 250
-chýbajúceho člena, z toho 49 krajinnej pokrývky a ochrany prírody. Medzi nimi
-CHKO Malé Karpaty, CHKO Záhorie, CHKO Dunajské luhy, NPR Aluvium Moravy, les
-Záhoria (1011 členov) a Zdrž Hrušov. V mape kraja jednoducho neboli – a build
-bol pri tom zelený. To sťahovanie teda TREBA, takže pravidlo 7 porušené nie je;
-porušené bolo pravidlo 8 (tichý omyl je horší než pád).
+  1. každý región s `osmfr` má `dir` aj neprázdne `slugs`;
+  2. každý kraj má `osmfr.parent` na región, ktorý má vlastný `osmfr`;
+  3. `plan/pbf.sh` reže rodiča `osmium extract -s smart --polygon`;
+  4. a má pri tom `-S types=multipolygon,boundary` – `smart` inak dopĺňa
+     členov len `type=multipolygon`, kým CHKO je `type=boundary`;
+  5. rez sa nesmie ticho preskočiť, keď chýba hranica.
 
-Po reze z rodiča ostane z tých 49 päť a všetky sú na hranici so zahraničím.
-Rozpis aj s číslami je v hlavičke `workers/plan/pbf.sh`; koľko ich v konkrétnom
-behu je, počíta `workers/plan/pbf-areas.py` a píše to do súhrnu.
-
-ČO SA KONTROLUJE:
-
-  1. každý región s `osmfr` má `dir` aj neprázdne `slugs` – to sú jediné dva
-     údaje, z ktorých sa URL na osm.fr skladá,
-  2. každý kraj (`admin_level` > 2) má `osmfr.parent` a ten ukazuje na región,
-     ktorý v číselníku naozaj je a má vlastný `osmfr`,
-  3. `workers/plan/pbf.sh` reže rodiča `osmium extract -s smart --polygon`,
-  4. a má pri tom `-S types=multipolygon,boundary`: predvolene `smart` dopĺňa
-     členov len reláciám `type=multipolygon`, kým CHKO je `type=boundary` –
-     bez toho prepínača ostanú všetky tri CHKO rozbité aj po reze z rodiča
-     (namerané: 9 zvyšných plôch namiesto 5). Je to jedno slovo, ktoré sa dá
-     pri úprave stratiť, a nespadne po ňom nič.
-  5. rez sa nesmie ticho preskočiť, keď chýba hranica – práve na tom padla
-     prvá verzia tohto kroku: bez `data/region.poly` sa vrátil k priamemu
-     sťahovaniu kraja a beh bol zelený.
-
-Spustiť sa dá aj lokálne:
-    python3 workers/lint/pbf-source.py
+Rozpis s číslami je v hlavičke `workers/plan/pbf.sh`.
 """
 import json
 import re

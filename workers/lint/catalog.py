@@ -1,21 +1,9 @@
 #!/usr/bin/env python3
-"""
-Kontrola: katalóg `maps.json` drží tvar a nikto ho neobchádza.
+"""Kontrola: katalóg `maps.json` drží tvar a nikto ho neobchádza.
 
-PREČO. `maps.json` je jediný zoznam toho, ktoré mapy sú hotové a kde na Drive
-ležia. Je to súbor v repozitári, ktorý dopisuje BEH – a to je presne ten druh
-veci, ktorá sa rozíde ticho:
-
-  * mená v katalógu prestanú sedieť s menami balíkov, ktoré publikovanie
-    naozaj vyrába (`<kraj>[-<výsek>][-testNkm2]{,-vrstevnice-skaly,-tienovanie}
-    .zip`), a odkazy potom ukazujú na súbory, ktoré na Drive nie sú;
-  * katalóg sa zapíše aj vtedy, keď publikovanie zlyhalo – zoznam by tvrdil,
-    že mapa je hotová;
-  * build stratí právo zapisovať (`contents: write`) a katalóg sa ticho
-    prestane dopĺňať.
-
-Spustiť sa dá aj lokálne:
-    python3 workers/lint/catalog.py
+`maps.json` je jediný zoznam hotových máp a dopisuje ho beh, takže sa vie
+rozísť ticho: mená mimo balíkov na Drive, zápis po neúspešnom publikovaní,
+stratené právo commitovať.
 """
 import json
 import os
@@ -24,71 +12,47 @@ import sys
 
 import yaml
 
-# Druhy balíkov, ktoré sa naozaj vyrábajú, a tie, ktoré už NIE. Oboje drží
-# ČÍSELNÍK (`workers/data/packages.json`) – ten istý zoznam, z ktorého ich
-# skladá `publish-map.py`, takže balík, ktorý pipeline práve pridala, tu
-# nezhodí lint napriek tomu, že v katalógu je zo skutočného behu.
-#
-# ZRUŠENÝ DRUH SA BERIE TIEŽ: v katalógu ešte môže byť (kraj, ktorý sa odvtedy
-# nestaval), ale publikovanie ho už nevyrába – `search` sa presťahoval DOVNÚTRA
-# balíka `mapa` (veľkosť je pod ním v `casti`) a `linie` sa rozpadlo na balík
-# `cesty` (dopravná sieť), základnú mapu (značené trasy) a atribúty tej siete
-# (obmedzenia na ceste). Hlásiť ich ako neznámy druh by znamenalo červený lint
-# za starý zápis, ktorý najbližší build sám prepíše.
+# druhy balíkov drží číselník workers/data/packages.json – ten istý zoznam,
+# z ktorého ich skladá publish-map.py. Zrušené druhy sa berú tiež: v katalógu
+# ešte môžu byť z behu, ktorý bol pred ich zrušením.
 with open("workers/data/packages.json", encoding="utf-8") as _f:
     _CISELNIK = json.load(_f)
 DRUHY = {b["kluc"] for b in _CISELNIK.get("baliky") or []}
 ZRUSENE = set(_CISELNIK.get("zrusene") or ())
-# Meno balíka: `<kraj>[-<výsek>][-testNkm2]` + prípona druhu. Sedí to s
-# `zaklad()` a `meno()` vo `workers/deploy/publish-map.py`.
+# meno balíka; sedí so `zaklad()` a `meno()` v deploy/publish-map.py
 MENO = re.compile(r"^[a-z0-9_]+(-[a-z0-9_]+)*(-test[0-9.]+km2)?"
                   r"(-vrstevnice-skaly|-tienovanie|-wikipedia|-navigacia"
                   r"|-search)?\.zip$")
 CATALOG = "maps.json"
-# RÝCHLY TEST MÁ VLASTNÝ SÚBOR. `maps.json` je jediná odpoveď na „ktoré mapy sú
-# hotové" a mapa s terénom na 4 km² medzi ne nepatrí – uzol testu tam síce mal
-# vlastný kľúč (`…_test4km2`), ale v zozname stál vedľa ostrých máp a vyzeral
-# ako ďalší výsek. Zapisovať sa musí ďalej (balík `…-test4km2.zip` na Drive je
-# inak jediný, o ktorom sa bez tokenu nedá dozvedieť), tak sú z toho dva súbory
-# s tým istým tvarom.
+# rýchly test má vlastný súbor – v maps.json vyzeral ako ďalší výsek,
+# ale zapisovať sa musí (inak sa o balíku bez tokenu nedá dozvedieť)
 CATALOG_TEST = "maps-test.json"
 CATALOGS = (CATALOG, CATALOG_TEST)
 WORKFLOW = ".github/workflows/build-map-region.yml"
-# Samostatné pipeline, ktoré do TOHO ISTÉHO katalógu zapisujú tiež – tým istým
-# skriptom (`publish-map.py`, pri článkoch s `--only=wikipedia`). Platia na ne
-# tie isté dve pravidlá: musia mať právo commitnúť a nesmú zapísať po
-# neúspešnom nahratí. Zoznam je preto zoznam a nie jedno meno: pribudla k nemu
-# mapa sveta a bez toho by na ňu tieto kontroly ticho nedosiahli – čiže presne
-# to, čomu sa tento súbor venuje.
+# samostatné pipeline, ktoré zapisujú do toho istého katalógu tým istým
+# skriptom; platia na ne tie isté dve pravidlá
 WIKI_WORKFLOW = ".github/workflows/wiki.yml"
 WORLD_WORKFLOW = ".github/workflows/world-map.yml"
 PIPELINE = (WIKI_WORKFLOW, WORLD_WORKFLOW)
 PUBLISH_MAP = "workers/deploy/publish-map.py"
 MENA = "workers/deploy/mena.py"
-# Čo sa do katalógu zapíše, skladá vedľajší modul – `publish-map.py` prerástol
-# strop 800 riadkov a rezalo sa tam, kde sa mení otázka.
+# čo sa do katalógu zapíše, skladá vedľajší modul
 CATALOG_PY = "workers/deploy/catalog.py"
-# A `catalog.sh` ten súbor commitne – na ČERSTVÚ vetvu, nie na SHA, s ktorou
-# beh začal (inak druhý zapisujúci job v tom istom behu vždy skončí
-# konfliktom; beh 31782846262).
+# catalog.sh ten súbor commitne – na čerstvú vetvu, nie na SHA začiatku behu
+# (inak druhý zapisujúci job v behu vždy skončí konfliktom)
 CATALOG_SH = "workers/deploy/catalog.sh"
-# Nahrávanie na Drive. Katalóg stojí na tom, že id balíka prežije ďalší build
-# (rozpis pri `_skuska_stalych_id`), a rozhoduje o tom táto jedna funkcia.
+# nahrávanie na Drive: katalóg stojí na tom, že id balíka prežije ďalší build
 FOLDER_PY = "workers/drive/folder.py"
 
 bad = []
 
-# Obsah `publish-map.py` treba UŽ pri kontrole katalógov (zrušené druhy), a
-# ešte raz nižšie pri kontrole samotného skriptu. Číta sa preto raz, tu.
+# číta sa raz: treba to pri katalógoch aj nižšie pri kontrole skriptu
 try:
     pmap_text = open(PUBLISH_MAP, encoding="utf-8").read()
 except OSError:
     pmap_text = ""
-# `ZRUSENE` v `publish-map.py` UŽ NIE JE literál – berie sa z číselníka
-# (`workers/data/packages.json`, kľúč `zrusene`), takže je to tá istá množina
-# ako `ZRUSENE` vyššie. Kontrola „balík v katalógu je zrušený, ale packer to
-# nevie" tým nezaniká, len sa pýta číselníka: overuje sa, že si ho `publish-
-# map.py` naozaj berie odtiaľ a nezaviedol si vlastný zoznam.
+# `ZRUSENE` v publish-map.py už nie je literál – overuje sa, že si ho berie
+# z číselníka a nemá vlastný zoznam
 pmap_zrusene = ZRUSENE if "katalog_balikov.zrusene()" in pmap_text else set()
 for _m in re.findall(r"^ZRUSENE\s*=\s*\(([^)]*)\)", pmap_text, re.M):
     pmap_zrusene |= set(re.findall(r"[\"']([\w-]+)[\"']", _m))
@@ -108,12 +72,7 @@ def polozky(node, kde):
 
 
 def krajiny(data):
-    """Krajiny sú kľúče v KORENI – metadáta katalógu začínajú podčiarkovníkom.
-
-    Tá istá konvencia ako vo `workers/data/areas.json` (`_comment` medzi kľúčmi
-    pohorí). Kto to číta, preskočí `_*`; kontrola musí robiť to isté, inak by
-    `_comment` hlásila ako krajinu bez máp.
-    """
+    """Krajiny sú kľúče v koreni; metadáta začínajú podčiarkovníkom."""
     return {k: v for k, v in data.items()
             if not k.startswith("_") and isinstance(v, dict)}
 
@@ -149,9 +108,7 @@ for cesta in CATALOGS:
         bad.append(f"{cesta}: v koreni je kľúč, ktorý nie je ani krajina "
                    f"(objekt), ani metadáta (`_…`). Hlavný kľúč je krajina.")
     for kde, p in polozky({"regions": krajiny(data)}, ""):
-        # DVA SÚBORY, DVA OBSAHY. Testovací uzol v `maps.json` je presne to,
-        # čo sa touto zmenou riešilo: vyzerá ako ďalší výsek a to, že je v ňom
-        # terén na pár km², je vidieť až na `test_km2` v položke.
+        # testovací uzol vyzerá ako ďalší výsek – patrí do vlastného súboru
         posledny = kde.rsplit("/", 1)[-1]
         if je_test(posledny) and cesta != CATALOG_TEST:
             bad.append(f"{cesta}: {kde} je uzol rýchleho testu a patrí do "
@@ -160,10 +117,7 @@ for cesta in CATALOGS:
         if not je_test(posledny) and cesta == CATALOG_TEST:
             bad.append(f"{cesta}: {kde} nie je rýchly test (kľúč nekončí na "
                        f"`_test<N>km2`), takže patrí do {CATALOG}.")
-        # KEDY TÁ MAPA VZNIKLA – v oboch podobách. `updated_at` je ISO 8601
-        # v UTC na čítanie okom, `updated_ts` sekundy od epochy na počítanie
-        # veku bez parsovania dátumu; keď chýba jedno z nich, musí si ho
-        # čitateľ dopočítať sám a to je práca, ktorú má katalóg ušetriť.
+        # oboje: `updated_at` na čítanie okom, `updated_ts` na počítanie veku
         for pole in ("updated_at", "updated_ts"):
             if p.get(pole) in (None, ""):
                 bad.append(f"{cesta}: {kde} nemá `{pole}` – z katalógu sa "
@@ -207,8 +161,8 @@ if not katalog:
                f"a stratil sa s ním.")
 else:
     for s in katalog:
-        # Katalóg nesmie vzniknúť po neúspešnom publikovaní: ukazoval by na
-        # súbory, ktoré na Drive nie sú.
+        # katalóg po neúspešnom publikovaní by ukazoval na súbory, ktoré na
+        # Drive nie sú
         if "steps.publish.outcome == 'success'" not in str(s.get("if", "")):
             bad.append(f"{WORKFLOW}: krok „{s.get('name')}“ nemá podmienku "
                        f"`steps.publish.outcome == 'success'` – katalóg by "
@@ -217,11 +171,9 @@ if "--maps=" not in text:
     bad.append(f"{WORKFLOW}: `publish-map.py` sa volá bez `--maps=`, takže "
                f"katalóg nikto nedopíše.")
 
-# ---- ktorý katalóg sa commitne, hovorí ten, kto doň zapísal ----
-# `catalog.sh` dostáva meno súboru v `MAPS_JSON`. Keby tam stálo natvrdo
-# `maps.json`, rýchly test by zapísal `maps-test.json` a commitol `maps.json`:
-# na Drive by balík ležal, v repozitári by po ňom nezostalo nič a beh by bol
-# zelený. Preto sa to podáva VÝSTUPOM kroku, ktorý publikoval.
+# ktorý katalóg sa commitne, hovorí ten, kto doň zapísal
+# natvrdo `maps.json` by znamenalo: test zapíše maps-test.json, commitne
+# maps.json, a beh je pritom zelený
 for wf_path in (WORKFLOW,) + PIPELINE:
     try:
         wtext = open(wf_path, encoding="utf-8").read()
@@ -237,7 +189,7 @@ for wf_path in (WORKFLOW,) + PIPELINE:
                    f"`steps.publish.outputs.maps_file` – commitol by iný súbor, "
                    f"než ktorý `publish-map.py` práve zapísal.")
 
-# ---- samostatné pipeline zapisujú do toho istého katalógu ----
+# samostatné pipeline zapisujú do toho istého katalógu
 for wf_path in PIPELINE:
     try:
         wwf = yaml.safe_load(open(wf_path))
@@ -267,18 +219,15 @@ for wf_path in PIPELINE:
                    f"`--only=wikipedia`. Bez toho by publikovanie chcelo celý "
                    f"web (`_site`), ktorý táto pipeline nerobí, a katalóg by "
                    f"prepísalo položkou bez máp.")
-    # Mapa sveta naopak publikuje CELÚ mapu (`--site=_site`), takže položku
-    # svojho uzla prepisuje – ale musí povedať, čo v nej je. Bez `MAP_LAYERS`
-    # by si `publish-map.py` vypýtal vrstvy mapy kraja a do katalógu aj do
-    # `obsah.json` by napísal „bez_vrstevnic, bez_skal, bez_tienovania“:
-    # znie to ako mapa kraja s vypnutým terénom, a to táto mapa nie je.
+    # mapa sveta prepisuje položku svojho uzla, takže musí povedať, čo v nej
+    # je – bez `MAP_LAYERS` by sa vypýtali vrstvy mapy kraja
     if wf_path == WORLD_WORKFLOW and "MAP_LAYERS" not in wtext:
         bad.append(f"{WORLD_WORKFLOW}: nikde nenastavuje `MAP_LAYERS`, takže "
                    f"katalóg by o mape sveta tvrdil, že je to mapa kraja bez "
                    f"vrstevníc, skál a tieňovania.")
 
-# `--only` musí katalóg DOPĹŇAŤ, nie prepisovať: samostatná pipeline vie len
-# o svojom balíku a prepis by zmazal odkazy na mapu, o ktorej nič nevie.
+# `--only` musí katalóg dopĺňať, nie prepisovať: samostatná pipeline vie len
+# o svojom balíku
 try:
     MENA_PY = open(MENA, encoding="utf-8").read()
 except OSError:
@@ -292,14 +241,9 @@ except OSError as exc:
     kmap = ""
 if not pmap:
     bad.append(f"{PUBLISH_MAP} sa nedá prečítať.")
-# ČO SI ČITATEĽ NESMIE ODVODIŤ. Meno súboru s dlaždicami sa z kľúča uzla
-# poskladať NEDÁ – uzol je `bratislavsky_test4km2`, balík `bratislavsky-test4km2
-# .zip` a dlaždice v ňom `tiles/bratislavsky_test4-…`; pri výreze sa dokonca
-# volajú podľa kraja, nie podľa výseku. Kto by si cestu odvodil, dostane súbor,
-# ktorý v balíku nie je, a vrstva sa ticho nenačíta. A strop zoomu, ktorý
-# v katalógu nie je, si čitateľ dosadí z `maxzoom` mapy – trasy (z14) a prvky
-# (z15) by tak nad svojím stropom pýtali neexistujúce dlaždice a zmizli by
-# práve tie dve vrstvy, ktoré sa vyberajú ťuknutím do mapy.
+# čo si čitateľ nesmie odvodiť: meno súboru s dlaždicami sa z kľúča uzla
+# poskladať nedá (pri výreze sa volajú podľa kraja) a strop zoomu vrstvy nie
+# je maxzoom mapy – oboje by ticho zabilo vrstvu
 for kluc, preco in (
         ("tiles_paths", "cesty k `.pmtiles` sa do položky nezapisujú, takže "
                         "si ich čitateľ musí odvodiť z kľúča – a ten meno "
@@ -335,15 +279,9 @@ if kmap and "def zapis_katalog(path, parts, regions, baliky, man, iba=" not in k
                f"balík“ (parameter `iba`). Samostatná pipeline by položku "
                f"regiónu prepísala a odkazy na mapu by zmizli.")
 
-# RÝCHLY TEST SA ZAPISUJE, ALE DO VLASTNÉHO UZLA. Zapisovať sa musí – balík
-# `…-test4km2.zip` na Drive je inak jediný, o ktorom sa bez tokenu nedá
-# dozvedieť. Sadnúť na uzol ostrej mapy ale nesmie: terén je v ňom na pár km²
-# a kto si ho stiahne podľa katalógu, dostane mapu s dierou. Preto sa
-# kontroluje, že cesta v katalógu vzniká `cesta_katalog()` a podáva sa ako
-# `kat=` – bez toho by test ostrú mapu prepísal.
-# Napísaná je vo `workers/deploy/mena.py` (mená a cesty sú tam všetky spolu),
-# volaná v `publish-map.py` – kontrolujú sa obe strany, lebo chýbajúce
-# volanie je tá istá chyba ako chýbajúca funkcia.
+# rýchly test sa zapisuje, ale do vlastného uzla: na uzle ostrej mapy by
+# sľuboval mapu s dierou. Kontrolujú sa obe strany – funkcia v deploy/mena.py
+# aj jej volanie v publish-map.py.
 if pmap:
     if "def cesta_katalog(" not in MENA_PY:
         bad.append(f"{MENA}: chýba `cesta_katalog()` – rýchly test by "
@@ -355,9 +293,8 @@ if pmap:
     if "kat=kat" not in pmap:
         bad.append(f"{PUBLISH_MAP}: `zapis_katalog` sa volá bez `kat=`, takže "
                    f"uzol testu a uzol ostrej mapy sú ten istý.")
-    # RÝCHLY TEST ZAPISUJE INAM, NIE NIKAM. Bez tohto volania by `--maps=`
-    # z workflowu prešlo rovno do zápisu a testovacia mapa by sadla medzi
-    # hotové – vlastný uzol ju od nich odlíši, ale v zozname stojí vedľa nich.
+    # bez tohto volania by `--maps=` z workflowu prešlo rovno do zápisu
+    # a testovacia mapa by sadla medzi hotové
     if "catalog.katalog_subor(" not in pmap:
         bad.append(f"{PUBLISH_MAP}: `--maps` neprechádza cez "
                    f"`catalog.katalog_subor()`, takže rýchly test zapíše do "
@@ -373,9 +310,8 @@ if pmap:
                    f"preskakovať ho netreba – a balík, ktorý v zozname nie je, "
                    f"nikto nenájde.")
 
-# `.aar` doplní do katalógu druhý job – ten si musí vypýtať z vetvy a doplniť
-# TEN ISTÝ súbor, do ktorého zapísal `deploy`. Bash si to nemá ako spočítať,
-# tak sa pýta `catalog.py --subor`.
+# `.aar` doplní druhý job – musí doplniť ten istý súbor, do ktorého zapísal
+# `deploy`; bash si to nemá ako spočítať, tak sa pýta `catalog.py --subor`
 AAR_SH = "workers/deploy/apple-archive.sh"
 try:
     aar = open(AAR_SH, encoding="utf-8").read()
@@ -400,13 +336,8 @@ if csh and "reset --mixed" not in csh:
                f"niesol aj cudzí zápis, rebase by ho pridával druhýkrát "
                f"a katalóg by sa zakaždým ticho zahodil.")
 
-# ---- balík z INEJ pipeline prežije build mapy ----
-# Toto sa staticky prečítať nedá, a bola to presne tá tichá chyba: `wikipedia`
-# robí `wiki.yml`, ale položku regiónu prepisuje Build map – a ten ju pri
-# každom builde (teda pri každej zmene štýlu) z katalógu zmazal, hoci
-# `…-wikipedia.zip` na Drive ležal ďalej, lebo TAM sa balík, o ktorom beh
-# nerozhoduje, nemaže. Katalóg sa preto skúša naostro: zapíše sa mapa, doplní
-# sa cudzí balík a mapa sa zapíše znova.
+# balík z inej pipeline musí prežiť build mapy – staticky sa to prečítať nedá,
+# tak sa katalóg skúša naostro: zápis mapy, doplnenie cudzieho balíka, zápis znova
 def _skuska_katalogu():
     """Vráti zoznam chýb – prázdny, keď sa katalóg správa, ako má."""
     import contextlib
@@ -469,10 +400,8 @@ def _skuska_katalogu():
                      f"nevyrobil ho, ostal v katalógu – odkazoval by na "
                      f"súbor, ktorý ten istý beh na Drive zmazal.")
 
-    # ---- kedy tá mapa vznikla: dva zápisy jedného okamihu ----
-    # Staticky sa to prečítať nedá – `updated_ts` môže v module byť a do
-    # položky sa nedostať (napr. keď ho prepíše `merge`). Preto sa to skúša
-    # naostro, tým istým volaním, aké robí `publish-map.py`.
+    # kedy mapa vznikla: `updated_ts` môže v module byť a do položky sa
+    # nedostať, preto naostro
     import calendar
     import time as _time
     with tempfile.TemporaryDirectory() as tmp:
@@ -506,14 +435,9 @@ def _skuska_katalogu():
                      f"`updated_ts` – pri balíku z inej pipeline je to jediné, "
                      f"čo povie, ako je starý.")
 
-    # ---- odkaz, za ktorým na Drive už súbor nie je ----
-    # KAŽDÉ nahratie vyrobí NOVÉ id (`folder.upload_clobber` nahrá a starý
-    # súbor zmaže), takže odkaz v katalógu platí do ďalšieho behu tej mapy.
-    # Keď sa zápis nedostane do vetvy (rebase konflikt, spadnutý push – oboje
-    # `catalog.sh` len ohlási), ostane v `maps.json` id z behu, ktorý ten
-    # súbor práve zmazal. Preto sa položka pred zápisom porovnáva so
-    # skutočným priečinkom (`zive`) – a preto sa to skúša naostro: staticky
-    # sa nedá prečítať, či sa mŕtvy odkaz naozaj vyhodí a živý naozaj nechá.
+    # odkaz, za ktorým na Drive už súbor nie je: každé nahratie vyrobí nové
+    # id, takže odkaz platí do ďalšieho behu tej mapy. Skúša sa naostro –
+    # staticky sa nedá prečítať, či sa mŕtvy odkaz vyhodí a živý nechá.
     def _odkaz(fid):
         return {"file": f"{fid}.zip", "size": 1,
                 "link": f"https://drive.google.com/file/d/{fid}/view",
@@ -532,10 +456,8 @@ def _skuska_katalogu():
     with tempfile.TemporaryDirectory() as tmp:
         path = f"{tmp}/maps.json"
         with contextlib.redirect_stdout(io.StringIO()):
-            # Job s `.aar` položku NEPREPISUJE, ale dopĺňa (`merge`). Kým to
-            # vedel vyhodiť len prepis, prebral si balíky z katalógu aj so
-            # zrušeným `search` – a odkaz na súbor, ktorý ten istý beh z Drive
-            # zmazal, v `maps.json` ožil.
+            # job s `.aar` položku dopĺňa (`merge`), nie prepisuje – kým to
+            # vedel vyhodiť len prepis, mŕtve odkazy ožívali
             _polozka_s({"mapa": _odkaz("ziva"),
                         "search": _odkaz("zmazana")}, path)
             mod.zapis_katalog(path, parts, regions,
@@ -544,9 +466,7 @@ def _skuska_katalogu():
                               zrusene=tuple(ZRUSENE), zive={"ziva": "x"})
             po_aar = maps_v(path)
 
-            # Balík cudzej pipeline, ktorého súbor na Drive NIE JE, vypadne –
-            # a ten, ktorý tam je, ostane. Bez tohto rozlíšenia by overovanie
-            # buď nemazalo nič, alebo by zmazalo aj to, čo platí.
+            # cudzí balík bez súboru na Drive vypadne, ten so súborom ostane
             _polozka_s({"mapa": _odkaz("ziva"),
                         "wikipedia": _odkaz("zmazana")}, path)
             mod.zapis_katalog(path, parts, regions, [], man,
@@ -554,9 +474,7 @@ def _skuska_katalogu():
                               zrusene=tuple(ZRUSENE), zive={"ziva": "x"})
             po_overeni = maps_v(path)
 
-            # A keď sa priečinok vypísať nedá, nesiaha sa na nič: „neviem" a
-            # „nie je tam" sú dve rôzne odpovede a tá druhá by z katalógu
-            # vymazala hotovú mapu.
+            # „neviem" a „nie je tam" sú dve rôzne odpovede
             _polozka_s({"mapa": _odkaz("ziva"),
                         "wikipedia": _odkaz("ktovie")}, path)
             mod.zapis_katalog(path, parts, regions, [], man,
@@ -564,11 +482,8 @@ def _skuska_katalogu():
                               zrusene=tuple(ZRUSENE), zive=None)
             bez_overenia = maps_v(path)
 
-            # MŔTVY ODKAZ NA BALÍK, KTORÝ V PRIEČINKU JE POD INÝM ID, sa
-            # OPRAVÍ, nevyhodí. Je to ten častejší prípad: balík nahral build,
-            # ktorému sa zápis katalógu nedostal do vetvy (25. 8. 2026 tak bolo
-            # mŕtvych 14 z 24 odkazov). Vyhodiť ho znamená tvrdiť, že mapa
-            # neexistuje, hoci leží na Drive pripravená na stiahnutie.
+            # mŕtvy odkaz na balík, ktorý v priečinku je pod iným id, sa
+            # opraví – vyhodiť ho znamená tvrdiť, že mapa neexistuje
             _polozka_s({"mapa": _odkaz("stare"),
                         "wikipedia": _odkaz("zmazana")}, path)
             mod.zapis_katalog(path, parts, regions, [], man,
@@ -609,17 +524,15 @@ def _skuska_katalogu():
         chyby.append(f"{CATALOG_PY}: oživovanie nechalo v katalógu balík, "
                      f"ktorého súbor v priečinku nie je pod žiadnym id.")
 
-    # ---- ktorý súbor: `maps.json` vs `maps-test.json` ----
+    # ktorý súbor: maps.json vs maps-test.json
     stary = os.environ.get("TEST_KM2")
     try:
         os.environ["TEST_KM2"] = "0"
         ostry = mod.katalog_subor(CATALOG)
         os.environ["TEST_KM2"] = "4"
         testovy = mod.katalog_subor(CATALOG)
-        # Meno testovacieho katalógu prejde pipeline dvakrát – raz ho vyrobí
-        # `apple-archive.sh` a raz ten istý výpočet zopakuje `publish-map.py`
-        # nad tým, čo dostal v `--maps`. Druhé kolo teda dostáva na vstup UŽ
-        # testovacie meno a musí ho nechať tak.
+        # meno prejde pipeline dvakrát (apple-archive.sh a potom publish-map.py),
+        # druhé kolo ho už dostáva testovacie a musí ho nechať tak
         dvakrat = mod.katalog_subor(testovy)
     finally:
         if stary is None:
@@ -634,12 +547,8 @@ def _skuska_katalogu():
                      f"nie do `{CATALOG_TEST}` – mapa s terénom na pár km² by "
                      f"skončila medzi hotovými mapami.")
     if dvakrat != CATALOG_TEST:
-        # Toto NIE JE hypotetické: presne takto sa `.aar` z rýchleho testu
-        # nikdy nedostal do katalógu. `apple-archive.sh` si meno vypýta
-        # (`catalog.py --subor`) a podá ho `publish-map.py` v `--maps`; ten sa
-        # pýta znova, meno dostalo druhé `-test` a zápis skončil v súbore,
-        # ktorý nikto necommitne. Beh pritom zelený, balíky na Drive, katalóg
-        # bez `formats.aar` (beh 33677718750).
+        # takto sa `.aar` z rýchleho testu nikdy nedostal do katalógu: meno
+        # dostalo druhé `-test` a zápis skončil v súbore, ktorý nikto necommitne
         chyby.append(f"{CATALOG_PY}: `katalog_subor()` nie je idempotentná – "
                      f"z `{CATALOG_TEST}` spraví `{dvakrat}`. Meno katalógu "
                      f"putuje pipeline ďalej (`--subor` → `--maps`), takže sa "
@@ -652,16 +561,8 @@ def _skuska_katalogu():
 def _skuska_stalych_id():  # noqa: C901
     """Prepíše `upload_clobber` súbor, alebo mu vyrobí nové id?
 
-    PREČO TO STRÁŽI PRÁVE KONTROLA KATALÓGU. Celý `maps.json` stojí na tom, že
-    id balíka prežije ďalší build – odkaz v ňom je jediné, čím sa mapa dá
-    stiahnuť, a zapisuje sa RAZ, pri nahratí. Kým `upload_clobber` vyrábal nový
-    súbor a starý mazal, platil ten odkaz do najbližšieho buildu tej mapy a
-    stačilo, aby sa commit katalógu nedostal do vetvy (25. 8. 2026: pribudol
-    ruleset na `master`, štyri behy nahrali balíky, žiadny katalóg nezapísal a
-    14 z 24 odkazov ukazovalo na zmazané súbory).
-
-    Naostro, nie z AST: „vracia to to isté id" sa nedá prečítať z tvaru kódu.
-    Drive sa pritom nedotýkame – nahrávanie aj mazanie sú podstrčené.
+    Celý `maps.json` stojí na tom, že id balíka prežije ďalší build. Skúša sa
+    naostro; Drive sa nedotýkame, nahrávanie aj mazanie sú podstrčené.
     """
     import contextlib
     import importlib.util
@@ -690,8 +591,7 @@ def _skuska_stalych_id():  # noqa: C901
                                             "priecinok")
             return fid, stopa
 
-        # 1. Balík toho mena v priečinku UŽ JE – prepíše sa jeho obsah a id mu
-        #    ostane. To je celý zmysel tejto funkcie.
+        # 1. balík toho mena už v priečinku je – prepíše sa obsah, id ostane
         fid, stopa = skuska([{"id": "stale_id", "createdTime": "2026-01-01T00:00:00Z"}])
         if fid != "stale_id":
             chyby.append(f"{FOLDER_PY}: `upload_clobber` vrátil id "
@@ -706,8 +606,7 @@ def _skuska_stalych_id():  # noqa: C901
                          f"{stopa['delete']} – jediný súbor toho mena je ten, "
                          f"na ktorý ukazuje katalóg.")
 
-        # 2. Dva súbory jedného mena (dva behy naraz): prepíše sa NAJSTARŠÍ –
-        #    ten, na ktorý katalóg ukazuje – a duplikát ide preč.
+        # 2. dva súbory jedného mena: prepíše sa najstarší, duplikát ide preč
         fid, stopa = skuska([
             {"id": "novsi", "createdTime": "2026-02-02T00:00:00Z"},
             {"id": "starsi", "createdTime": "2026-01-01T00:00:00Z"}])
@@ -720,7 +619,7 @@ def _skuska_stalych_id():  # noqa: C901
                          f"({stopa['delete']}) – v priečinku by vedľa mapy "
                          f"ležala druhá s tým istým menom.")
 
-        # 3. Prvý build tej mapy – v priečinku nie je nič, súbor sa vyrobí.
+        # 3. prvý build tej mapy – súbor sa vyrobí
         fid, stopa = skuska([])
         if stopa["upload"] != 1 or fid != "nove_id":
             chyby.append(f"{FOLDER_PY}: prvý balík sa nenahral "

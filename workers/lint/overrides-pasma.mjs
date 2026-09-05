@@ -1,29 +1,18 @@
 #!/usr/bin/env node
 /**
- * Kontrola: PERCENTO V ZOOMOVOM PÁSME – „na z15–z20 nech je to 110 %".
+ * Kontrola: percento v zoomovom pásme – „na z15–z20 nech je to 110 %".
  *
  * Piata z vecí, ktoré stráži `workers/lint/overrides.mjs`; vo vlastnom
- * súbore preto, že ten je tesne pod stropom 800 riadkov, nad ktorým ho
- * „Kontrola · lint workflowov" neprepustí (pravidlo 5 v CLAUDE.md). Rez vedie
- * tam, kde sa mení otázka: tam „prejde úprava normalizáciou celá", tu „urobí
- * percento v pásme v mape naozaj to, čo sľubuje".
+ * súbore, lebo ten je pri strope 800 riadkov.
  *
- * ČO SA MÔŽE POKAZIŤ TICHO. Percento v pásme sa nedá zapísať ako výraz nad
- * krivkou zo štýlu – `["zoom"]` smie byť len priamym vstupom najvrchnejšieho
- * `interpolate`/`step` (rozpis pri `zw` v themes.js) –, takže sa hodnota
- * VYČÍSLI na každom celom zoome a výsledok je nová krivka
- * (`bandsOverBase`). Keby sa v tom pomýlila hoci len hranica pásma, štýl
- * ostane platný, mapa sa načíta a nikto nič nepovie: čiara bude len o kúsok
- * inde, než človek naklikal. Preto sa tu meria, čo z toho v mape naozaj
- * vyšlo, a nie to, či sa úprava uložila.
+ * `["zoom"]` smie byť len priamym vstupom najvrchnejšieho `interpolate`, tak
+ * sa hodnota vyčísli na každom celom zoome (`bandsOverBase`). Pomýlená
+ * hranica pásma štýl nezhodí – čiara bude len o kúsok inde, než človek
+ * naklikal. Meria sa preto, čo z toho v mape vyšlo.
  *
- * TRI VECI:
- *   1. `normalizeOverrides` percento v pásme prijme (a `{scale: 1}` v ňom
- *      NEZAHODÍ – „na týchto zoomoch ako v štýle" je platná veta, ktorou sa
- *      pásma dopĺňajú na celý rozsah),
- *   2. mimo pásma s percentom ostane hodnota zo štýlu nezmenená,
- *   3. vnútri pásma je presne v tom pomere – a to na KAŽDOM zoome, nie len
- *      na jeho začiatku (o to pri percente ide: krivka zo štýlu ostáva).
+ *   1. `normalizeOverrides` percento v pásme prijme a `{scale: 1}` v ňom nezahodí,
+ *   2. mimo pásma ostane hodnota zo štýlu nezmenená,
+ *   3. vnútri pásma je presne v tom pomere, a to na každom zoome.
  */
 import { buildStyle, normalizeOverrides, valueAtZoom, THEMES } from "../../poc/web/themes.js";
 

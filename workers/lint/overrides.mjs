@@ -2,48 +2,18 @@
 /**
  * Kontrola úprav z developer módu. Volá ju `Kontrola · lint workflowov`.
  *
- * ŠTYRI TICHÉ VECI, VŠETKY ZAPLATENÉ:
+ * Drží štyri veci, ktoré sa pokazili ticho (štýl ostal platný, mapa sa
+ * načítala, nikto nič nepovedal):
  *
- * 1. **Nulová hrúbka čiary.** Políčko „hrúbka" v developer móde ukazuje pri
- *    krivke podľa zoomu prázdne „auto" a prázdne `input[type=number]` skočí
- *    šípkou dole na spodnú medzu. Kým tou medzou bola nula, jedno ťuknutie
- *    zhaslo celú vrstvu – mapa sa načítala, štýl bol platný, MapLibre nepovedal
- *    nič a v mape jednoducho neboli chodníky. Odvtedy je `line-width: 0` TVRDÁ
- *    chyba v `normalizeOverrides` a políčko má medzu 0,1; táto kontrola drží
- *    oboje (a zároveň to, že `text-halo-width: 0` chybou NIE JE – tam nula
- *    znamená „bez lemu", čo je bežná hodnota zo štýlu).
+ *   1. `line-width: 0` je tvrdá chyba – šípka dole v prázdnom políčku inak
+ *      zhasla celú vrstvu. `text-halo-width: 0` chybou nie je.
+ *   2. Kopírovanie štýlu medzi vrstvami musí prejsť `normalizeOverrides`
+ *      celé, inak by pipeline úpravu pri zápise zahodila.
+ *   3. Prerušovanie zo štýlu sa dá vrátiť aj vypnúť (`frico:dash`, „solid“
+ *      cez normalizáciu, `applyLayerOverrides` vlastnosť zmaže).
+ *   4. Tmavý variant sa nesmie počítať stlmením svetlej farby – porovnáva sa
+ *      váha dvojice, nie farby. Vo vlastnom súbore `overrides-kontrast.mjs`.
  *
- * 2. **Kopírovanie štýlu medzi vrstvami.** „Sprav túto vrstvu takú, ako je
- *    tamtá" odfotí `paint` hotového štýlu a zapíše ho ako úpravu. Keby z toho
- *    vypadlo čokoľvek, čo `normalizeOverrides` neprijme (krivka s viac než
- *    `MAX_PAINT_STOPS` zlomami, „bez výplne" na čiare, vlastnosť, ktorú cieľ
- *    nepozná), úprava by sa v prehliadači tvárila, že platí, a pipeline by ju
- *    pri zápise do repozitára potichu zahodila – v mape na Pages by potom bolo
- *    niečo iné než v prehliadači. Kontrola preto skúsi odfotiť KAŽDÚ vrstvu
- *    každej témy a typu mapy, vložiť ju do vrstvy toho istého aj iného druhu
- *    a trvá na tom, že `normalizeOverrides` nemá ani jednu výhradu a nič
- *    nezahodí.
- *
- * 3. **Prerušovanie čiary, ktoré vrstva má zo štýlu.** Výber „Čiara" si
- *    predvoľbu čítal z ÚPRAVY, a tá je prázdna, kým sa niečo nezmení – takže
- *    pri železnici ukazoval „Plná", hoci je čiarkovaná. A voľba „Plná" sa
- *    zahadzovala ako „veď to je predvolené", čiže sa zabudované prerušovanie
- *    nedalo ani zmeniť späť, ani vypnúť. Kontrola drží všetky tri kusy, ktoré
- *    to opravili: metadáta `frico:dash`, „solid" cez `normalizeOverrides`
- *    a to, že `applyLayerOverrides` vlastnosť naozaj ZMAŽE.
- *
- * 4. **Tmavý variant vyrobený stlmením svetlej farby.** Biela ulica je vo
- *    svetlej téme čitateľná preto, že je skoro ako podklad (1,15 : 1) – nesie
- *    ju tmavý obrys. Keď z nej vznikne tmavý variant tak, že sa trochu stlmí
- *    (`#ffffff` → `#d0c8c8`), proti TMAVÉMU podkladu z toho je 10,5 : 1. Na
- *    jednej ceste to nevidno; ulice v dedine a v meste sú ale sieť a mesto
- *    z nej svieti ako škvrna – v tmavej téme boli miestne ulice nápadnejšie
- *    než diaľnica. Kontrola preto porovnáva VÁHU dvojice (koľkokrát viac
- *    vrstva vyčnieva zo svojho podkladu v tmavej téme než vo svetlej), nie
- *    farby samotné. Je vo vlastnom súbore (`overrides-kontrast.mjs`) – tento
- *    prerástol 800 riadkov, nad ktorými ho lint neprepustí.
- *
- * Použitie:
  *   node workers/lint/overrides.mjs
  */
 import {
@@ -81,7 +51,7 @@ const chyba = (subor, text) => {
   bad += 1;
 };
 
-// ---------- 1. nulová hrúbka ----------
+// 1. nulová hrúbka
 const width = (prop, value) =>
   normalizeOverrides({ layers: { x: { paint: { [prop]: value } } } });
 
@@ -110,13 +80,12 @@ for (const [prop, musiSpadnut] of [
   }
 }
 
-// Kladná hrúbka musí prejsť ďalej – kontrola vyššie sa nesmie zvrhnúť na
-// „zakážme hrúbku".
+// kladná hrúbka musí prejsť ďalej
 if (width("line-width", 1.5).overrides.layers.x?.paint?.["line-width"] !== 1.5) {
   chyba("poc/web/themes.js", "`line-width: 1.5` sa cez normalizeOverrides nedostalo.");
 }
 
-// ---------- 2. kopírovanie štýlu ----------
+// 2. kopírovanie štýlu
 const styles = [];
 for (const theme of Object.keys(THEMES)) {
   for (const mapType of MAP_TYPE_IDS) {
@@ -134,9 +103,7 @@ for (const theme of Object.keys(THEMES)) {
         featuresUrl: "pmtiles://x/f.pmtiles",
         pointsUrl: "pmtiles://x/p.pmtiles",
         roadsUrl: "pmtiles://x/r.pmtiles",
-        // Tieňovanie zapnuté NASCHVÁL: vrstva `hillshade` je jediná s
-        // vlastnosťou `hillshade-exaggeration` a bez nej by sa kopírovanie
-        // štýlu na túto vlastnosť vôbec neskúsilo.
+        // naschvál: `hillshade` je jediná vrstva s `hillshade-exaggeration`
         hillshade: true
       })
     });
@@ -186,7 +153,7 @@ function skus(snap, target, kde) {
 }
 
 for (const { kde, style } of styles) {
-  // Zástupca každého druhu vrstvy – do neho sa skúša vkladať naprieč druhmi.
+  // zástupca každého druhu vrstvy – vkladá sa naprieč druhmi
   const zastupca = new Map();
   for (const layer of style.layers) if (!zastupca.has(layer.type)) zastupca.set(layer.type, layer);
 
@@ -198,9 +165,8 @@ for (const { kde, style } of styles) {
   }
 }
 
-// ---------- 3. „čo to robí na tomto zoome" ----------
-// Hodnota, ktorou sa napĺňa prázdne políčko, musí sedieť so štýlom aspoň
-// v zlomoch – inak by šípka začínala inde, než mapa práve kreslí.
+// 3. „čo to robí na tomto zoome": napĺňaná hodnota musí sedieť so štýlom
+// aspoň v zlomoch
 const krivka = ["interpolate", ["exponential", 1.5], ["zoom"], 11, 0.4, 16, 2.2];
 for (const [z, cakane] of [[8, 0.4], [11, 0.4], [16, 2.2], [20, 2.2]]) {
   const dostal = valueAtZoom(krivka, z);
@@ -219,11 +185,8 @@ if (valueAtZoom(["match", ["get", "x"], "a", 1, 2], 14) !== null) {
   );
 }
 
-// ---------- 4. zoomové pásma ----------
-// „Od z9 do z11 takáto čiara, na z12 takáto" je vlastný tvar úpravy
-// (`[[od, do, hodnota], …]`) a stojí a padá s tým, že rad pásiem je SÚVISLÝ.
-// Medzera aj prekryv musia byť tvrdá chyba: keby sa medzera doplnila držaním
-// predošlej hodnoty, „do 11" by neplatilo a nikto by to nemal ako spozorovať.
+// 4. zoomové pásma: rad musí byť súvislý – medzera aj prekryv sú tvrdá chyba,
+// inak by „do 11" neplatilo a nikto by to nespozoroval
 const pasma = (value) =>
   normalizeOverrides({ layers: { x: { paint: { "line-width": value } } } });
 
@@ -249,8 +212,7 @@ for (const [popis, value, musiPrejst] of [
   }
 }
 
-// Hranica pásma je tam, kde hovorí – vrátane desatinných zoomov pod ňou.
-// (`do 11` znamená „ešte na z11,9", nie „po z11,0".)
+// hranica pásma platí vrátane desatinných zoomov pod ňou („do 11" = aj z11,9)
 const schodisko = paintValue([[9, 11, 2], [12, 12, 4], [13, 17, 6]]);
 for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6], [20, 6]]) {
   const dostal = valueAtZoom(schodisko, z);
@@ -261,9 +223,7 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
   }
 }
 
-// A to isté, čo pri kopírovaní štýlu: čo sa zo `step` vrstvy odfotí, musí
-// `normalizeOverrides` prijať CELÉ. Inak by úprava v prehliadači platila
-// a pipeline by ju pri zápise do repozitára potichu zahodila.
+// čo sa zo `step` vrstvy odfotí, musí normalizácia prijať celé
 {
   const vrstva = {
     id: "schody",
@@ -291,16 +251,10 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
   }
 }
 
-// ---------- 5. čo developer mode nastaví, to sa aj ULOŽÍ ----------
-// TICHÁ VEC, KTORÁ SA STALA: `workers/styles/overrides.mjs` skladá súbor pre
-// repozitár po kľúčoch (`palette`, `layers`, `poi`, `maps`…) a na `trails`
-// zabudol. Developer mode vedel odstup pásikov, vzor čiary aj značku
-// nastaviť, uložiť aj zobraziť – ale do `poc/web/style-overrides.json` z toho
-// neprišlo NIČ a ďalší build kreslil trasy po starom. Nespadlo pri tom nič:
-// zapísaný súbor bol platný, len o polovicu chudobnejší.
-//
-// Kontroluje sa to tak, ako to naozaj chodí: úpravy prejdú tým skriptom
-// (`--file`, bez `--check`, do dočasného repozitára) a musia sa vrátiť.
+// 5. čo developer mode nastaví, to sa aj uloží
+// workers/styles/overrides.mjs skladá súbor po kľúčoch a raz na `trails`
+// zabudol: zapísaný súbor bol platný, len o polovicu chudobnejší. Skúša sa
+// tak, ako to chodí – cez ten skript do dočasného repozitára.
 {
   const ukazka = {
     trails: {
@@ -309,38 +263,29 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
       marks: { spacing: 300, size: 1.2 }
     },
     shields: { motorway: { shape: "shield-round" } },
-    // Vlastná sada aj vlastná ikona: oboje ovplyvňuje BUILD (sťahovanie
-    // spritu a jeho dopečenie), takže sa musí dostať do repozitára celé –
-    // vrátane samotného obrázka, ktorý je tou najväčšou časťou súboru.
+    // vlastná sada aj ikona ovplyvňujú build, musia prejsť celé aj s obrázkom
     iconSets: [
       { id: "own-test", label: "Test", sprite: "https://example.org/sprites/test", suffix: "_11" }
     ],
     customIcons: [{ name: "own:test", png: PNG_1PX, pixelRatio: 2 }],
     palette: {},
-    // Poradie kreslenia je v súbore vlastný kľúč (`order`), nie vlastnosť
-    // vrstvy – teda presne ten druh položky, na ktorý `overrides.mjs` už raz
-    // pri skladaní súboru zabudol.
+    // poradie je vlastný kľúč (`order`), nie vlastnosť vrstvy
     order: [{ id: "feature-embankment", before: "road-minor" }],
-    // Ikony kategórií sedia v `poi` vedľa skrytých tried – ten kľúč sa
-    // zapisuje ako celok, takže sa pri ňom dá zabudnúť práve na polovicu.
+    // `poi` sa zapisuje ako celok – dá sa zabudnúť na polovicu
     poi: { hidden: ["fuel"], icons: { restaurant: "bar_11", spring: "" } },
-    // `layout` je druhá polica vedľa `paint` – veľkosť ikony a rozostup po
-    // čiare sa ňou ladia (značky trás), takže tá istá otázka: prežije zápis?
+    // `layout` je druhá polica vedľa `paint`
     layers: {
       "trail-hiking-mark": {
         layout: { "icon-size": 1.2, "symbol-spacing": [[12, 13, 120], [14, 20, 260]] }
       },
-      // Vzor z vlastného obrázka: obrázok je vlastná ikona vyššie, takže sa
-      // do repozitára musia dostať OBE polovice – meno vo vrstve aj samotný
-      // PNG. Keby prežila len jedna, mapa by ostala bez vzoru.
+      // vzor z vlastného obrázka má dve polovice: meno vo vrstve aj PNG
       "landcover-wood": { pattern: { image: "own:test", opacity: 0.8 } }
     }
   };
   const { overrides } = normalizeOverrides(ukazka);
   const dir = mkdtempSync(join(tmpdir(), "overrides-lint-"));
   try {
-    // Skript zapisuje do `poc/web/style-overrides.json` v koreni repozitára,
-    // tak dostane kópiu tých súborov, ktoré na to potrebuje.
+    // skript zapisuje do koreňa repozitára, tak dostane kópiu potrebných súborov
     const vstup = join(dir, "in.json");
     writeFileSync(vstup, JSON.stringify(ukazka));
     const zaloha = readFileSync(TARGET, "utf8");
@@ -386,18 +331,12 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
   }
 }
 
-// ---------- 6. prerušovanie čiary sa dá aj VRÁTIŤ ----------
-// TRETIA TICHÁ VEC: developer mode ukazoval pri každej čiare „Plná" – aj pri
-// železnici, ktorá má `rail` – lebo si predvoľbu čítal z úpravy, a tá je
-// prázdna, kým sa niečo nezmení. Voľba „Plná" sa navyše zahadzovala ako
-// „veď to je predvolené", takže sa čiarkovanie železnice nedalo ani zmeniť,
-// ani vypnúť: panel voľbu prijal, uložil z nej prázdno a v mape ostalo
-// pôvodné prerušovanie. Nespadlo nič.
-//
-// Držia to tri veci naraz a kontrola je na všetky tri: metadáta
-// (`frico:dash` – čo má vrstva zo štýlu), `normalizeOverrides` (nezahodí
-// „solid") a `applyLayerOverrides` („solid" vlastnosť ZMAŽE, nie nastaví
-// na `null`, ktoré by MapLibre neprijal).
+// 6. prerušovanie čiary sa dá aj vrátiť
+// Panel ukazoval pri železnici „Plná" (predvoľbu čítal z prázdnej úpravy)
+// a voľbu „Plná" zahadzoval, takže sa čiarkovanie nedalo ani zmeniť, ani
+// vypnúť. Držia to tri veci a kontrola je na všetky: `frico:dash`,
+// `normalizeOverrides` (nezahodí „solid") a `applyLayerOverrides` (zmaže
+// vlastnosť, nedá `null`).
 {
   let sChiarkou = 0;
   for (const { kde, style } of styles) {
@@ -443,7 +382,7 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
       "čiaru – voľba sa prijme a v mape sa nestane nič.");
   }
 
-  // …a v hotovom štýle to prerušovanie naozaj zmazať.
+  // …a v hotovom štýle prerušovanie naozaj zmazať
   const spolu = (o) => buildStyle({
     theme: "svetla",
     tilesUrl: "pmtiles://x/t.pmtiles",
@@ -470,8 +409,7 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
     chyba("poc/web/themes.js",
       "zmena prerušovania na `ties` sa na `rail-hatch` neprejavila.");
   }
-  // A poistka proti opačnému omylu: `dashIdOf` nesmie tvrdiť, že vlastné
-  // prerušovanie je niektorá z predvolieb.
+  // `dashIdOf` nesmie tvrdiť, že vlastné prerušovanie je niektorá predvoľba
   if (dashIdOf([0.35, 2.2]) !== null) {
     chyba("poc/web/patterns.js",
       "`dashIdOf` pomenovalo vlastné prerušovanie predvoľbou – panel by ho " +
@@ -479,17 +417,10 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
   }
 }
 
-// ---------- 7. poradie kreslenia ----------
-// Presun vrstvy je jediná úprava, ktorá mení ŠTRUKTÚRU štýlu, nie hodnoty
-// v ňom – a tri veci sa pri tom dajú pokaziť ticho:
-//
-//   * vrstva sa pri presune STRATÍ (alebo sa zdvojí) a v mape jednoducho nie
-//     je – štýl je pritom platný,
-//   * odvodená vrstva (vzor, okraj) alebo druhá polovica dvojice (zúbky
-//     hrany, čiarkovanie železnice) ostane, kde bola, takže sa prvok rozpadne
-//     na dve polovice na dvoch miestach,
-//   * niekto presunie vrstvu ZA masku regiónu a tá potom kreslí aj mimo
-//     stiahnutého regiónu – presne to, kvôli čomu maska existuje.
+// 7. poradie kreslenia
+// Jediná úprava, ktorá mení štruktúru štýlu. Ticho sa dá pokaziť trojako:
+// vrstva sa stratí alebo zdvojí; odvodená vrstva či druhá polovica dvojice
+// ostane, kde bola; niekto presunie vrstvu za masku regiónu.
 {
   const postav = (order) => buildStyle({
     theme: "svetla",
@@ -526,7 +457,7 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
     if (!(ids.indexOf("feature-embankment") < ids.indexOf("road-minor"))) {
       chyba("poc/web/themes.js", "presun `feature-embankment` pod `road-minor` sa neprejavil.");
     }
-    // Zúbky sú druhá polovica tej istej hrany (`frico:with`) – musia ísť s ňou.
+    // zúbky sú druhá polovica tej istej hrany (`frico:with`)
     if (ids.indexOf("feature-embankment-teeth") - ids.indexOf("feature-embankment") !== 1) {
       chyba("poc/web/themes.js",
         "`feature-embankment-teeth` ostali pri presune na mieste – hrana by bola pod " +
@@ -547,16 +478,13 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
     { id: "water", before: "tiez-neexistuje" }
   ], () => {});
 
-  // Presun ZA masku sa nesmie dať – kontroluje to `skus` vyššie pri každom
-  // volaní, tu je to napísané výslovne.
+  // presun za masku sa nesmie dať
   skus("pokus prekryť masku", [{ id: "background", before: null }], () => {});
 }
 
-// ---------- 8. každá záložka panela sa aj kreslí ----------
-// TICHÁ VEC, KTORÁ SA PONÚKA SAMA: zoznam záložiek (`TABS`) a prepínač
-// v `renderBody` sú dve miesta. Keď v prepínači nejaká chýba, nespadne nič –
-// ťuknutie na ňu prepadne do POSLEDNEJ vetvy (`renderFile`), takže sa
-// otvorí záložka „Súbor" s JSON-om a vyzerá to, že panel „nefunguje".
+// 8. každá záložka panela sa aj kreslí
+// `TABS` a prepínač v `renderBody` sú dve miesta; chýbajúca vetva prepadne
+// do `renderFile` a vyzerá to, že panel nefunguje.
 {
   const zdroj = readFileSync(join(ROOT, "poc", "web", "devmode.js"), "utf8");
   const blok = zdroj.match(/const TABS = \[([\s\S]*?)\];/);
@@ -567,8 +495,7 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
     if (ids.length < 2) {
       chyba("poc/web/devmode.js", "zo zoznamu `TABS` sa nedali prečítať id záložiek.");
     }
-    // Posledná záložka je zámerne bez podmienky – je to koncová vetva
-    // prepínača (`: renderFile()`), teda tá, do ktorej všetko prepadne.
+    // posledná záložka je zámerne bez podmienky – je to koncová vetva
     for (const id of ids.slice(0, -1)) {
       if (!zdroj.includes(`tab === "${id}"`)) {
         chyba(
@@ -581,15 +508,9 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
   }
 }
 
-// ---------- 8. relatívna hodnota `{scale, add}` ----------
-// „Nechaj krivku zo štýlu, len ju preškáluj". Dve veci sa tu strážia a obe
-// boli tiché:
-//
-//   * `scaleExpr` nad PÁSMAMI. Kým to vedela len krivka, obrys nad čiarou so
-//     šírkou v pásmach dostal výraz NEZMENENÝ – čiže bol presne taký široký
-//     ako čiara, teda neviditeľný. Štýl platný, mapa načítaná, nikto nič.
-//   * `{scale: 1, add: 0}` nesmie prejsť: uložené by bolo len šumom v súbore
-//     a v paneli by nad nezmenenou vrstvou svietilo „zmenené".
+// 8. relatívna hodnota `{scale, add}`
+// `scaleExpr` musí vedieť aj pásma (obrys nad pásmovou čiarou inak vyšiel
+// rovnako široký ako čiara), a `{scale: 1, add: 0}` nesmie prejsť.
 const rel = (value, prop = "line-width") =>
   normalizeOverrides({ layers: { x: { paint: { [prop]: value } } } });
 
@@ -616,8 +537,7 @@ for (const [popis, value, prop, musiPrejst] of [
   }
 }
 
-// Krivka si musí nechať DRUH interpolácie: `zw` je `exponential 1.5` a lineárna
-// náhrada by šírky medzi zlomami ticho posunula.
+// krivka si musí nechať druh interpolácie – lineárna náhrada posunie šírky
 const skalovana = scaleExpr(
   ["interpolate", ["exponential", 1.5], ["zoom"], 11, 0.4, 16, 2.2], { scale: 2 }
 );
@@ -630,7 +550,7 @@ for (const [z, cakane] of [[11, 0.8], [16, 4.4]]) {
       `scaleExpr nad krivkou dal pri z${z} ${valueAtZoom(skalovana, z)}, čakalo sa ${cakane}.`);
   }
 }
-// A to isté nad PÁSMAMI – práve tie `widenExpr` kedysi prepustil nezmenené.
+// a to isté nad pásmami – tie `widenExpr` kedysi prepustil nezmenené
 const pasmaSkalovane = scaleExpr(paintValue([[9, 11, 2], [12, 17, 5]]), { add: 3 });
 for (const [z, cakane] of [[9, 5], [12, 8]]) {
   if (valueAtZoom(pasmaSkalovane, z) !== cakane) {
@@ -639,14 +559,13 @@ for (const [z, cakane] of [[9, 5], [12, 8]]) {
       `čakalo sa ${cakane} – obrys nad takou čiarou by bol presne taký široký ako ona.`);
   }
 }
-// Výraz podľa atribútu prvku sa prepisovať NESMIE – naslepo zmenená farba či
-// šírka podľa dát je tichá zmena mapy.
+// výraz podľa atribútu prvku sa prepisovať nesmie
 const podlaDat = ["match", ["get", "x"], "a", 1, 2];
 if (JSON.stringify(scaleExpr(podlaDat, { scale: 2 })) !== JSON.stringify(podlaDat)) {
   chyba("poc/web/themes.js", "scaleExpr prepísal výraz podľa atribútu prvku.");
 }
 
-// Obrys nad čiarou so šírkou v PÁSMACH musí byť naozaj širší než čiara.
+// obrys nad pásmovou čiarou musí byť naozaj širší
 {
   const { overrides } = normalizeOverrides({
     layers: {
@@ -674,10 +593,8 @@ if (JSON.stringify(scaleExpr(podlaDat, { scale: 2 })) !== JSON.stringify(podlaDa
   }
 }
 
-// ---------- 9. rozlíšenie podľa atribútu OSM ----------
-// PRVOK SA SMIE NAKRESLIŤ RAZ. Variant si berie svoje hodnoty, predloha si
-// k filtru pridá ich negáciu – bez toho druhého by sa čiara kreslila dvakrát
-// cez seba a vyzeralo by to len „nejako hrubšie".
+// 9. rozlíšenie podľa atribútu OSM: prvok sa smie nakresliť raz – predloha
+// si k filtru pridá negáciu hodnôt variantu
 let variantov = 0;
 {
   const test = (v) => normalizeOverrides({ layers: { "road-track": { variants: v } } });
@@ -728,13 +645,12 @@ let variantov = 0;
       "filter predlohy nie je zúžený o negáciu variantu – prvok by sa nakreslil " +
       "dvakrát cez seba a v mape by to vyzeralo len „nejako hrubšie“.");
   }
-  // Obrys variantu sa musí hlásiť ku KOREŇU, inak ho presun poradia nechá
-  // stáť tam, kde predloha už nie je.
+  // obrys variantu sa musí hlásiť ku koreňu, inak ho presun poradia opustí
   if (!obrys || (obrys.metadata || {})["frico:derived"] !== "road-track") {
     chyba("poc/web/themes.js",
       "obrys variantu sa nehlási k predlohe – presun poradia by ho nechal za ňou.");
   }
-  // Obrys je 1,6× čiara, teda naozaj širší na KAŽDOM zoome (o to pri percente ide).
+  // obrys je 1,6× čiara, teda širší na každom zoome
   if (variant && obrys) {
     for (const z of [11, 16, 20]) {
       const a = valueAtZoom(variant.paint["line-width"], z);
@@ -751,18 +667,12 @@ let variantov = 0;
   }
 }
 
-// ---------- 4. tmavý variant sa nepočíta z bielej ----------
-// Vo vlastnom súbore (`overrides-kontrast.mjs`) – tento prerástol 800
-// riadkov, nad ktorými ho „Kontrola · lint workflowov" neprepustí (pravidlo 5
-// v CLAUDE.md). Rez vedie tam, kde sa mení otázka: hore „prejde úprava
-// normalizáciou celá", tam „nie je tmavá podoba o rád nápadnejšia než svetlá".
+// 4. tmavý variant sa nepočíta z bielej – vo vlastnom súbore, tento prerástol
+// strop 800 riadkov
 const dvojic = vahyUprav(JSON.parse(readFileSync(TARGET, "utf8")), chyba);
 
-// ---------- 5. percento v zoomovom pásme ----------
-// Tiež vo vlastnom súbore, a z toho istého dôvodu (rozpis v
-// `overrides-pasma.mjs`): „na z15–z20 o desatinu hrubšie" sa nedá zapísať
-// výrazom nad krivkou zo štýlu, takže sa vyčísluje – a keby sa to pomýlilo,
-// štýl ostane platný a čiara bude len o kúsok inde, než človek naklikal.
+// 5. percento v zoomovom pásme – tiež vo vlastnom súbore; nedá sa zapísať
+// výrazom nad krivkou, takže sa vyčísluje
 const zoomov = percentaVPasmach(chyba);
 
 console.log(

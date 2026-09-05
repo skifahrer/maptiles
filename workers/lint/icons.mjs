@@ -1,51 +1,23 @@
 #!/usr/bin/env node
 /**
- * Kontrola IKON: vlastných obrázkov, vlastných sád a `layout` vlastností.
+ * Kontrola ikon: vlastných obrázkov, vlastných sád a `layout` vlastností.
  * Volá ju `Kontrola · lint workflowov`.
  *
- * Je to sedem tichých vecí – nič z toho nič nezhodí a všetko sa prejaví až
- * v mape (alebo v nej naopak nebude vidieť nič):
+ * Sedem tichých vecí – nič z toho nespadne, prejaví sa to až v mape:
  *
- * 1. **Vlastná ikona, ktorá sa nedopečie.** Obrázok leží v úpravách ako PNG
- *    v `data:` adrese; `workers/assets/custom-icons.mjs` ho vkladá do každého
- *    spritu. Keby ho tam nevložil (iná predpona mena, pokazené PNG), MapLibre
- *    neznámy obrázok TICHO preskočí a vrstva ostane bez ikony. Skúša sa to
- *    na naozajstnom sprite: úprava prejde tým skriptom a meno musí byť
- *    v indexe.
+ *   1. vlastná ikona sa musí dopiecť do spritu (neznámy obrázok MapLibre
+ *      ticho preskočí); skúša sa na naozajstnom sprite;
+ *   2. štýl ju musí pustiť aj vtedy, keď v sprite ešte nie je;
+ *   3. vlastnú sadu musí `icons.sh` vypísať na stiahnutie a `deploy/site.sh`
+ *      do manifestu;
+ *   4. `layout` len na symbolovej vrstve – neznáma vlastnosť v `layout` je
+ *      tvrdá chyba a MapLibre odmietne celý štýl;
+ *   5. ikona pri POI kategórii sa nasadzuje ako holé meno obrázka; drží sa aj
+ *      práve nahratá vlastná ikona a voľba „žiadna";
+ *   6. vlastný obrázok ako vzor plochy (pečie ho ten istý skript);
+ *   7. šípka jednosmerky musí vzniknúť pri každej sade – kým bola z cudzieho
+ *      spritu, vrstva `road-oneway` pri dvoch z troch sád vôbec nevznikla.
  *
- * 2. **Vlastná ikona, ktorú štýl nepustí.** `hasIcon` v `poc/web/themes.js`
- *    ju musí pokladať za dostupnú aj vtedy, keď v sprite ešte nie je (prvé
- *    pridanie v prehliadači) – inak by sa dala vybrať, ale mapa by ju
- *    nenakreslila a vyzeralo by to, že sa vlastné ikony „nedajú".
- *
- * 3. **Vlastná sada, ktorú nikto nesťahuje.** Sadu z úprav musí `icons.sh`
- *    vypísať do zoznamu na stiahnutie a `deploy/site.sh` do manifestu –
- *    inak sa dá pridať a vybrať, ale sprite k nej nikdy nevznikne.
- *
- * 4. **`layout` na inej než symbolovej vrstve.** Neznáma vlastnosť v `layout`
- *    je pre MapLibre TVRDÁ chyba – neodmietne vrstvu, ale CELÝ štýl, takže by
- *    sa mapa nenačítala vôbec. `applyLayerOverrides` ich preto inde než na
- *    `symbol` nenasadzuje a toto to drží.
- *
- * 5. **Ikona vybraná pri POI kategórii.** Je to jediná hodnota v štýle, ktorá
- *    sa nasadzuje ako holé meno obrázka vo výraze – takže meno, ktoré sprite
- *    nemá, MapLibre preskočí a kategória ostane bez ikony. Kontroluje sa aj
- *    to, že práve nahratá vlastná ikona prejde (v sprite ešte nie je) a že sa
- *    voľba „žiadna" nestratí.
- *
- * 6. **Vlastný obrázok ako vzor.** Nahratý obrázok sa dá nasadiť aj ako vzor
- *    plochy – je uložený ako vlastná ikona, takže ho pečie ten istý skript.
- *    Meno, ktoré v úpravách nie je, by MapLibre ticho preskočil, a keby ho
- *    `collectPatternNames` vrátilo medzi kreslené vzory, prepísal by ho
- *    rasterizér šrafovaním.
- *
- * 7. **Šípka jednosmerky, ktorú sada nemá.** Kým bola `arrow` z cudzieho
- *    spritu, mala ju jediná z troch overených sád – pri ostatných sa vrstva
- *    `road-oneway` do štýlu vôbec nedostala, takže sa nedalo nastaviť ani ako
- *    často sú šípky, ani akej sú farby. Odvtedy si ich kreslíme sami
- *    (`poc/web/arrows.js`) a kontrola drží, že vrstva vznikne pri KAŽDEJ sade.
- *
- * Spustenie (aj lokálne):
  *   node workers/lint/icons.mjs
  */
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
@@ -97,7 +69,7 @@ for (const p of problems) {
   chyba("poc/web/themes.js", `ukážkové úpravy neprešli normalizáciou: ${p}`);
 }
 
-// ---------- 1. vlastná ikona sa dopečie do spritu ----------
+// 1. vlastná ikona sa dopečie do spritu
 const dir = mkdtempSync(join(tmpdir(), "icons-lint-"));
 try {
   const base = join(dir, "sprite");
@@ -133,7 +105,7 @@ try {
         `– v mape by bola dvojnásobne veľká.`);
     }
   }
-  // Pôvodné ikony sa pri tom nesmú stratiť.
+  // pôvodné ikony sa pri tom nesmú stratiť
   if (!index.test_11) {
     chyba("workers/lib/sprite-bake.mjs",
       "dopečenie vlastných ikon zahodilo ikonu, ktorá v sprite už bola.");
@@ -142,7 +114,7 @@ try {
   rmSync(dir, { recursive: true, force: true });
 }
 
-// ---------- 2. štýl vlastnú ikonu pustí, aj keď v sprite ešte nie je ----------
+// 2. štýl vlastnú ikonu pustí, aj keď v sprite ešte nie je
 {
   const meno = overrides.customIcons[0].name;
   const style = buildStyle({
@@ -150,7 +122,7 @@ try {
     tilesUrl: "pmtiles://x/t.pmtiles",
     spriteUrl: "https://x/sprite",
     glyphsUrl: "https://x/{fontstack}/{range}.pbf",
-    // Sprite zámerne BEZ tej ikony – presne stav po jej pridaní v paneli.
+    // sprite zámerne bez tej ikony – stav po jej pridaní v paneli
     icons: ["mountain_11"],
     iconSet: "osm-liberty",
     overrides: { ...overrides, layers: { "poi-major": { icon: meno } } }
@@ -165,7 +137,7 @@ try {
   }
 }
 
-// ---------- 3. vlastnú sadu naozaj niekto stiahne a zapíše do manifestu ----------
+// 3. vlastnú sadu naozaj niekto stiahne a zapíše do manifestu
 {
   const id = overrides.iconSets[0].id;
   if (!allIconSources(overrides).some((s) => s.id === id)) {
@@ -187,7 +159,7 @@ try {
   }
 }
 
-// ---------- 4. `layout` sa nasadí len na symbolovú vrstvu ----------
+// 4. `layout` sa nasadí len na symbolovú vrstvu
 {
   const style = buildStyle({
     theme: Object.keys(THEMES)[0],
@@ -196,8 +168,7 @@ try {
     glyphsUrl: "https://x/{fontstack}/{range}.pbf",
     icons: ["mountain_11"],
     overrides: normalizeOverrides({
-      // `road-path` je čiara – `icon-size` na nej je pre MapLibre neznáma
-      // vlastnosť a zhodil by CELÝ štýl.
+      // `road-path` je čiara – `icon-size` na nej zhodí celý štýl
       layers: { "road-path": { layout: { "icon-size": 2 } } }
     }).overrides
   });
@@ -211,18 +182,10 @@ try {
   }
 }
 
-// ---------- 5. ikona vybraná pri POI kategórii sa do mapy dostane ----------
-// PIATA TICHÁ VEC. Ikona kategórie je jediná hodnota v štýle, ktorá sa
-// nasadzuje ako HOLÉ MENO OBRÁZKA vo výraze (`case` nad `class`/`subclass`) –
-// nie `concat` z dát, nie meno z metadát. Tri veci sa na tom dajú pokaziť
-// a všetky sú tiché:
-//
-//   * meno, ktoré sprite nemá, MapLibre preskočí a kategória ostane bez ikony
-//     (štýl je platný, mapa sa načíta a nikto nič nepovie),
-//   * práve nahratá vlastná ikona v sprite EŠTE nie je – a keby ju štýl kvôli
-//     tomu nepustil, vyzeralo by to, že sa vlastné ikony pre POI nedajú,
-//   * a „žiadna ikona" (prázdne meno) sa nesmie stratiť: je to voľba, nie
-//     nezadaná hodnota.
+// 5. ikona vybraná pri POI kategórii sa do mapy dostane
+// Je to jediná hodnota v štýle nasadzovaná ako holé meno obrázka. Meno, ktoré
+// sprite nemá, MapLibre preskočí; práve nahratá vlastná ikona musí prejsť;
+// a „žiadna ikona" (prázdne meno) je voľba, nie nezadaná hodnota.
 {
   const meno = overrides.customIcons[0].name;
   const style = buildStyle({
@@ -231,12 +194,10 @@ try {
     spriteUrl: "https://x/sprite",
     glyphsUrl: "https://x/{fontstack}/{range}.pbf",
     featuresUrl: "pmtiles://x/f.pmtiles",
-    // Body sú vo vlastnom zdroji (workers/features/points.yml) – vrstva
-    // `feature-point` bez tohto v štýle vôbec nie je a kontrola nižšie by
-    // ju nenašla.
+    // body sú vo vlastnom zdroji – bez toho vrstva `feature-point` v štýle nie je
     pointsUrl: "pmtiles://x/p.pmtiles",
     roadsUrl: "pmtiles://x/r.pmtiles",
-    // Sprite zámerne BEZ vlastnej ikony – presne stav po jej nahratí v paneli.
+    // sprite zámerne bez vlastnej ikony – stav po jej nahratí v paneli
     icons: ["mountain_11", "restaurant_11"],
     iconSet: "osm-liberty",
     overrides: normalizeOverrides({
@@ -271,8 +232,7 @@ try {
       );
     }
   }
-  // A skryté kategórie musia platiť aj na vlastných bodoch – zoznam v paneli
-  // je jeden pre oboje.
+  // skryté kategórie platia aj na vlastných bodoch – zoznam v paneli je jeden
   const skryte = buildStyle({
     theme: Object.keys(THEMES)[0],
     tilesUrl: "pmtiles://x/t.pmtiles",
@@ -296,17 +256,11 @@ try {
   }
 }
 
-// ---------- 6. vlastný obrázok ako VZOR ----------
-// ŠIESTA TICHÁ VEC. Vzor sa dá nasadiť aj ako nahratý obrázok – a ten je
-// uložený ako vlastná ikona (`own:…`), teda ho pečie `custom-icons.mjs`.
-// Dve veci sa na tom dajú pokaziť a obe sú tiché:
-//
-//   * meno obrázka, ktorý v úpravách NIE JE, sa dostane do štýlu: MapLibre
-//     neznámy `fill-pattern` preskočí a plocha ostane bez vzoru (a nikto ho
-//     nemá ako dopiecť do spritu),
-//   * `collectPatternNames` by ho vrátilo medzi KRESLENÉ vzory a
-//     `workers/styles/patterns.mjs` by cezeň do atlasu nakreslil šrafovanie –
-//     teda by prepísal obrázok, ktorý tam dal `custom-icons.mjs`.
+// 6. vlastný obrázok ako vzor
+// Nahratý obrázok je uložený ako vlastná ikona (`own:…`), pečie ho
+// custom-icons.mjs. Meno, ktoré v úpravách nie je, MapLibre ticho preskočí;
+// a keby ho `collectPatternNames` vrátilo medzi kreslené vzory, prepísal by
+// ho rasterizér šrafovaním.
 {
   const meno = overrides.customIcons[0].name;
   const spravne = normalizeOverrides({
@@ -337,7 +291,7 @@ try {
     tilesUrl: "pmtiles://x/t.pmtiles",
     spriteUrl: "https://x/sprite",
     glyphsUrl: "https://x/{fontstack}/{range}.pbf",
-    // Sprite zámerne BEZ neho – presne stav hneď po nahratí v paneli.
+    // sprite zámerne bez neho – stav hneď po nahratí v paneli
     icons: ["mountain_11"],
     iconSet: "osm-liberty",
     overrides: spravne.overrides
@@ -362,13 +316,9 @@ try {
   }
 }
 
-// ---------- 7. šípky jednosmeriek sú v KAŽDEJ sade ----------
-// Kým bola šípka `arrow` z cudzieho spritu, mala ju jediná z troch overených
-// sád – a pri ostatných vrstva `road-oneway` do štýlu VÔBEC NEVZNIKLA, takže
-// sa nedalo nastaviť ani ako často sú šípky, ani akej sú farby či veľkosti.
-// Nespadlo nič; v paneli len nebolo čo nastavovať. Odvtedy si šípky kreslíme
-// sami a pečú sa do každého spritu – kontrola drží obe strany tej vety:
-// meno, ktoré štýl žiada, musí byť medzi tými, ktoré `arrows.mjs` pečie.
+// 7. šípky jednosmeriek sú v každej sade
+// Kým bola `arrow` z cudzieho spritu, vrstva `road-oneway` pri dvoch z troch
+// sád vôbec nevznikla a v paneli nebolo čo nastavovať.
 {
   const vsetky = arrowImages();
   if (!vsetky.includes(DEFAULT_ARROW_IMAGE)) {
@@ -377,14 +327,12 @@ try {
       `(${vsetky.join(", ")}) – vrstva jednosmeriek by sa ticho vynechala.`);
   }
   for (const set of ICON_SOURCE_IDS) {
-    // `hasIcon` dostáva to, čo je v sprite. Sada bez vlastnej `arrow` je
-    // presne ten prípad, kvôli ktorému si šípky kreslíme sami.
+    // sada bez vlastnej `arrow` je ten prípad, kvôli ktorému si ich kreslíme sami
     const style = buildStyle({
       theme: Object.keys(THEMES)[0],
       tilesUrl: "pmtiles://x/t.pmtiles",
       spriteUrl: "https://x/sprite",
-      // Pole, nie Set: `hasIcon` sa pýta na `.length` a `.includes`, takže
-      // Set by kontrolu ticho vypol a prešlo by čokoľvek.
+      // pole, nie Set: `hasIcon` sa pýta na `.length` a `.includes`
       icons: vsetky,
       sdfIcons: true,
       overrides: { ...overrides, icons: set }

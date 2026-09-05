@@ -3,39 +3,20 @@
  * Tieňovanie reliéfu: koľko z mapy pod sebou prekryje. Volá to
  * `Kontrola · lint workflowov`.
  *
- * ČO STRÁŽI A PREČO. `hillshade` nie je filter, je to PREKRYVNÁ vrstva:
- * MapLibre podľa sklonu namieša farbu tieňa a svetla a tou mapu pod sebou
- * PREKRYJE. Krytie je `sin` zo sklonu, ktorý sa prevýšením (`exaggeration`)
- * ešte natiahne – takže s nepriehľadnou farbou je nad ~20° sklonu krytie
- * 0,97–1,0 a pod tieňovaním nie je vidieť mapu, ale samotnú farbu tieňovania.
+ * `hillshade` nie je filter, je to prekryvná vrstva – krytie je `sin` zo
+ * sklonu natiahnutý prevýšením, takže nad ~20° je 0,97–1,0 a pod tieňovaním
+ * nie je vidieť mapu, ale samotnú farbu tieňovania. Tak bola z lesa na
+ * privrátenom svahu biela plocha. Štýl je pritom platný a mapa vyzerá „len
+ * veľmi kontrastne", takže to chytí jedine dopočítanie toho istého shadera.
  *
- * Presne to bola tá chyba, po ktorej kontrola vznikla: `hillHighlight` bola
- * `#ffffff` a z lesa na 30° svahu privrátenom k svetlu bola BIELA PLOCHA
- * (#b7d69f → #fcfcfb), na odvrátenej strane tá istá hnedá ako z lúky
- * (#5c4c3c). Mapa bola nad hranicou lesa vytieňovaná reliéfna maketa bez
- * krajinnej pokrývky – a najviac to bilo do očí na severných svahoch, lebo
- * predvolené svetlo MapLibre (335°) je 25° od severu a osvetľuje ich skoro
- * kolmo.
- *
- * PREČO TO NEVIDEL NIKTO SKÔR: štýl je platný, MapLibre nepovie ani slovo
- * a mapa vyzerá „len veľmi kontrastne". Jediné, čo to spoľahlivo chytí, je
- * dopočítať ten istý shader a spýtať sa, koľko z mapy pod tieňovaním ostane
- * (pravidlo 8 v CLAUDE.md).
- *
- * ŠTYRI VECI:
- *   1. privrátený svah nesmie byť prekrytý viac než {@link LIT_MAX} –
- *      inak je z lesa biela plocha,
- *   2. odvrátený svah nesmie byť prekrytý viac než {@link SHADOW_MAX} –
- *      inak je z lesa čierna diera,
- *   3. reliéf musí byť po tom všetkom stále vidieť: rozdiel krytia medzi
- *      privrátenou a odvrátenou stranou aspoň {@link RELIEF_MIN},
+ *   1. privrátený svah nesmie byť prekrytý viac než {@link LIT_MAX},
+ *   2. odvrátený viac než {@link SHADOW_MAX},
+ *   3. rozdiel krytia medzi stranami aspoň {@link RELIEF_MIN},
  *   4. svetlo nesmie svietiť takmer od severu ({@link NORTH_GAP}) a musí byť
  *      napísané v štýle – predvolená hodnota MapLibre je práve tá zlá.
  *
- * Počíta sa VŠETKÝCH téma × typ mapy a každý zlom krivky prevýšenia zvlášť:
- * farby má každá téma vlastné a krytie rastie so zoomom.
+ * Počíta sa každá téma × typ mapy a každý zlom krivky prevýšenia zvlášť.
  *
- * Použitie:
  *   node workers/lint/hillshade.mjs
  */
 import { THEMES, buildStyle } from "../../poc/web/themes.js";

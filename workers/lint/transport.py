@@ -1,42 +1,18 @@
 #!/usr/bin/env python3
-"""
-Dopravná sieť: filter pustí, čo schéma chce – a balík naozaj nesie sieť.
+"""Dopravná sieť: filter pustí, čo schéma chce – a balík naozaj nesie sieť.
 
-PÄŤ TICHÝCH VECÍ, na ktoré je táto kontrola:
+Päť tichých vecí:
 
-  1. PREDFILTER A SCHÉMA SA ROZÍDU. Job `transport` číta PBF dvakrát: `osmium
-     tags-filter` (workers/transport/filter.txt) a potom Planetiler
-     (workers/transport/transport.yml). To isté rozhodnutie je teda na dvoch
-     miestach a keď sa rozídu, Planetiler dostane PBF, v ktorom ten tag už NIE
-     JE – dlaždice vzniknú, beh zazelená a tá trieda v sieti len nie je. To
-     isté, čo pri krajinných prvkoch (`workers/lint/features.py`).
-
-  2. ZO SIETE VYPADNE CELÁ RODINA. Vrstva sľubuje „všetko, po čom sa dá
-     cestovať". Keby z nej vypadli železnice alebo trajekty, balík by sa volal
-     rovnako, vážil by menej a nikto by sa nedozvedel, že v ňom chýba spôsob
-     dopravy – meno je sľub o rozsahu (pravidlo 2). Kontroluje sa preto, že
-     schéma naozaj berie všetky štyri rodiny: `highway`, `railway`, `route`
-     (trajekt) a `aerialway`.
-
-  3. DO SIETE SA VRÁTI, PO ČOM SA ÍSŤ NEDÁ. `railway=abandoned`, `disused`,
-     `razed`, `construction`, `proposed` a `platform` sú v OSM koľajnice,
-     ktoré tam nie sú (alebo nie sú trať) – v sieti nemajú čo robiť a ich
-     pridanie by nespadlo na ničom.
-
-  4. OBMEDZENIA NA CESTE Z NEJ VYPADNÚ. Výška podjazdu, šírka, hmotnosť
-     a rýchlosť mali chvíľu vlastnú vrstvu (`-roads.pmtiles`) a sú tu preto,
-     že boli atribútmi tých istých ciest. Keby zmizli, „obmedzenia sú
-     v balíku `cesty`“ by prestalo platiť a nikto by to nezbadal: sieť sa
-     nakreslí rovnako, len bez nich. A HODNOTY MUSIA OSTAŤ REŤAZCOM –
-     `tag_mappings` s `double` z „12'6\"" spraví 12 metrov TICHO (rozpis
-     v hlavičke schémy).
-
-  5. `class` A `druh` PRESTANÚ BYŤ Z TOHO, ČÍM SA BLOK TRAFIL. Sú to
-     `match_value` a `match_key` Planetileru; keby ich niekto vypísal ručne
-     pri každom bloku, bola by to druhá kópia zoznamu tried z `include_when`
-     a rozišla by sa s ním pri prvej pridanej triede.
-
-Spustiť: `python3 workers/lint/transport.py`
+  1. predfilter (`filter.txt`) a schéma (`transport.yml`) sa rozídu –
+     Planetiler dostane PBF, v ktorom ten tag už nie je, a beh zazelená;
+  2. zo siete vypadne celá rodina – kontroluje sa `highway`, `railway`,
+     `route` (trajekt) aj `aerialway`;
+  3. do siete sa vráti, po čom sa ísť nedá (`railway=abandoned`, `disused`,
+     `razed`, `construction`, `proposed`, `platform`);
+  4. obmedzenia na ceste (výška, šírka, hmotnosť, rýchlosť) z nej vypadnú –
+     a hodnoty musia ostať reťazcom, `double` spraví z „12'6\"" ticho 12 m;
+  5. `class` a `druh` prestanú byť z `match_value`/`match_key` a stanú sa
+     druhou kópiou zoznamu tried z `include_when`.
 """
 import json
 import os

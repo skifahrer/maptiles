@@ -1,24 +1,12 @@
 #!/usr/bin/env python3
-"""
-Viewer sa musí na Pages celý nasadiť – každý súbor, ktorý si pýta.
+"""Viewer sa musí na Pages celý nasadiť – každý súbor, ktorý si pýta.
 
-PREČO TO EXISTUJE. `poc/web/layer-style.js` pribudol do repozitára, ale
-`workers/deploy/site.sh` mal vymenovaný zoznam súborov a ten sa s priečinkom
-rozišiel. `devmode.js` si `layer-style.js` importuje, prehliadač na 404 zahodí
-CELÝ modulový graf – takže sa nespustí ani `app.js` – a na stránke ostane biela
-plocha. Nič pritom nespadne: build je zelený, `workers/deploy/check.sh` pozerá
-na štýly a dlaždice (nie na moduly) a smoke test kontroluje manifest, sprite
-a `.pmtiles`, ktoré všetky naozaj nasadené sú. Tichý omyl v čistej podobe
-(pravidlo 8 v CLAUDE.md), a jediné, čo ho chytí, je pozrieť sa, čo si viewer
-importuje, a porovnať to s tým, čo `site.sh` kopíruje.
+`deploy/site.sh` mal vymenovaný zoznam súborov a ten sa s priečinkom rozišiel:
+prehliadač na 404 zahodí celý modulový graf, takže sa nespustí ani `app.js`
+a na stránke ostane biela plocha. Build je pritom zelený.
 
-DVE VECI:
-  1. každý relatívny import v grafe od `index.html` musí existovať,
-  2. `site.sh` musí kopírovať CELÝ priečinok, nie vymenovaný zoznam – zoznam
-     je presne to, čo sa raz rozíde, a druhýkrát by to nikto nezbadal.
-
-Spustenie:
-    python3 workers/lint/viewer.py
+  1. každý relatívny import v grafe od `index.html` musí existovať;
+  2. `site.sh` musí kopírovať celý priečinok, nie vymenovaný zoznam.
 """
 import os
 import re

@@ -1,38 +1,19 @@
 #!/usr/bin/env python3
-"""
-Hranica regiónu: presná z OSM, bez presahu – a uložené vrstvy to musia niesť.
+"""Hranica regiónu: presná z OSM, bez presahu – a uložené vrstvy to musia niesť.
 
-PREČO. Mapa kraja sa dlho orezávala `.poly`-gónom z osm.fr, ktorý je okolo
-hranice ROZŠÍRENÝ (susedné kraje sa v ňom prekrývajú o 2 – 4 km), a nad tým sa
-polygón ešte nafukoval o `BORDER_BUFFER_M` (2 500 m). Mapa, vrstevnice, skaly
-aj tieňovanie tak siahali kilometre do susedného kraja a za štátnu hranicu.
-Teraz sa hranica číta PRESNE z OSM relácie (`workers/plan/boundary.py`)
-a `BORDER_BUFFER_M` je 0.
+`.poly` z osm.fr je okolo hranice rozšírený o 2–4 km a `BORDER_BUFFER_M` ho
+ešte nafukoval, takže mapa siahala kilometre do susedného kraja. Teraz sa
+hranica číta presne z OSM relácie a buffer je 0.
 
-Obe polovice tej zmeny sa dajú stratiť potichu, tak ich stráži táto kontrola:
-
-  1. `BORDER_BUFFER_M` je stále na JEDNOM mieste (`workers/plan/area.py`) –
-     dve čísla by znamenali okno DEM nafúknuté inak než polygón.
-  2. Meno uloženej vrstvy (tieňovanie, skaly) to číslo NESIE. Hotové vrstvy sa
-     odkladajú na Drive a nabudúce sa len stiahnu – a meno v sklade to číslo
-     dlho nenieslo. Beh potom vrátil vrstvu orezanú ešte podľa STAREJ hranice,
-     tvrdil, že je hotová, a nikde nezaznelo nič. Namerané na balíku
-     Trnavského kraja z 3. 9. 2026 (build 33738121698): `trnavsky.pmtiles` aj
-     `region.geojson` v ňom už mali nafúknutý rozsah (16,8812 … 48,9226), kým
-     `trnavsky-terrain.pmtiles` z toho istého balíka ešte tesný bbox kraja
-     (16,915 … 48,9) – mapa pokračovala za hranicu, reliéf pod ňou nie. To je
-     pravidlo 8 v čistej podobe.
-  3. `workers/plan/pbf.sh` si hranicu naozaj pýta Z PBF (`--from-pbf`). Bez
-     toho prepínača spadne `region-poly.py` na náhradný `.poly` z osm.fr –
-     mapa vznikne, bude o 2 – 4 km väčšia než kraj a nikto to nezistí.
-  4. `boundary.py` vie hranicu prečítať aj PRETNÚŤ so štátom. Prienik je to
-     jediné, čo drží mapu kraja vnútri republiky aj vtedy, keď je relácia
-     kraja v OSM pokazená.
-  5. Šev so susedmi sa naďalej MERIA a meria sa OBOJE – medzera aj prekryv.
-     Kým sa merala len medzera, prekryv 2 – 4 km vychádzal ako „šev zavretý ✓".
-
-Spustiť sa dá aj lokálne:
-    python3 workers/lint/border-overlap.py
+  1. `BORDER_BUFFER_M` je stále na jednom mieste (`plan/area.py`);
+  2. meno uloženej vrstvy to číslo nesie – inak beh stiahne vrstvu orezanú
+     podľa starej hranice a tvrdí, že je hotová;
+  3. `plan/pbf.sh` si hranicu pýta z PBF (`--from-pbf`), inak spadne
+     `region-poly.py` na náhradný `.poly`;
+  4. `boundary.py` vie hranicu pretnúť so štátom – to drží mapu vnútri
+     republiky aj pri pokazenej relácii kraja;
+  5. šev so susedmi sa meria obojstranne: kým sa merala len medzera,
+     prekryv 2–4 km vychádzal ako „šev zavretý ✓".
 """
 import re
 import sys

@@ -1,32 +1,16 @@
 #!/usr/bin/env python3
-"""
-Predčasne končiaci čitateľ nesmie visieť na živom producentovi.
+"""Predčasne končiaci čitateľ nesmie visieť na živom producentovi.
 
-PREČO TO EXISTUJE. `curl -sL "$BASE/" | grep -q 'id="map"'` v smoke teste:
-`grep -q` po PRVEJ zhode skončí a zavrie rúru, `curl` dopisuje do zavretej
-rúry, dostane EPIPE a končí s 23 (pri signáli 141) – a `set -o pipefail`
-z toho spraví nenulový pipeline, HOCI GREP ZHODU NAŠIEL. Beh 32144952677:
-všetkých 13 kontrol ✓ a build spadol na hláške „na koreni nie je mapa", kým
-mapa tam celý čas bola.
+`curl … | grep -q` : `grep -q` po prvej zhode skončí, `curl` dostane EPIPE
+a `pipefail` z toho spraví nenulový pipeline, hoci grep zhodu našiel. Sú to
+preteky, nie deterministická chyba – prechádzalo to roky a vyskočilo, keď za
+zhodou pribudlo pár kB.
 
-Je to PRETEKY, nie deterministická chyba – rozhoduje, či producent stihol
-dopísať skôr, než čitateľ skončil. Preto to roky prechádzalo a vyskočilo až
-vtedy, keď za zhodou pribudlo pár kB (2,7 kB → 5,8 kB). Presne ten druh
-chyby, čo sa hľadá najhoršie: raz za čas, na inom mieste, bez súvisu so
-zmenou, ktorá to spôsobila.
+Pravidlo: rúra smie končiť len čitateľom, ktorý dočíta do EOF. Čokoľvek, čo
+skončí skôr (`grep -q`, `head -n`, `sed …q`, `awk …exit`), nesmie byť za rúrou
+zo živého príkazu – výstup sa najprv uloží do premennej (`head -1 <<<\"$VAR\"`).
 
-PRAVIDLO: rúra smie končiť len čitateľom, ktorý dočíta do EOF. Čokoľvek, čo
-skončí skôr (`grep -q`, `head -n`, `sed …q`, `awk …exit`), nesmie byť za
-rúrou zo živého príkazu. Výstup sa najprv uloží do premennej a hľadá sa až
-v nej (`head -1 <<<"$VAR"`) – here-string je súbor, nie rúra, takže EPIPE
-nemá odkiaľ prísť.
-
-Neplatí to na producentov, čo píšu jeden krátky reťazec (`printf`/`echo`
-z premennej): tie dopíšu skôr, než čitateľ vôbec začne. Preto sa hlásia len
-rúry z VONKAJŠIEHO príkazu.
-
-Spustenie:
-    python3 workers/lint/pipes.py
+Producenti, čo píšu jeden krátky reťazec (`printf`/`echo`), sa nehlásia.
 """
 import glob
 import os

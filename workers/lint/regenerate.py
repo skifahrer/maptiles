@@ -1,36 +1,13 @@
 #!/usr/bin/env python3
-"""
-Kontrola: dávka „Regenerate state" pregeneruje to, čo sľubuje.
+"""Kontrola: dávka „Regenerate state" pregeneruje to, čo sľubuje.
 
-PREČO. Je to formulár pred formulárom – rovnako ako „Build map state", len
-o stupeň zložitejší: okrem nastavení, ktoré cezeň len prechádzajú, si vyberá
-aj to, ČO sa má pregenerovať, a podľa toho spúšťa DVE RÔZNE pipeline
-(`workers/state/jobs.py`). To je presne ten druh vrstvy, ktorá sa rozíde
-ticho a beh pri tom ostane zelený:
-
-  * do číselníka pribudne vec, ktorú sa dá pregenerovať, a do formulára nie –
-    nikto si ju nevyberie a nič to nepovie;
-  * naopak: vo formulári je voľba, ktorú číselník nepozná – štafeta na nej
-    spadne až po tom, čo dávku niekto spustil;
-  * číselník podá behu kraja pole, ktoré ten formulár nemá (alebo hodnotu,
-    ktorú jeho `choice` neponúka) – beh kraja spadne hneď na vstupe,
-    a osemkrát za sebou;
-  * nastavenie sa v dávke PÝTA, ale `regenerate.sh` ho behu kraja nepodá –
-    celá krajina sa pregeneruje s predvolenými hodnotami a bude zelená;
-  * balík, ktorý číselník sľubuje, `publish-map.py` nepozná – beh by spadol
-    na `--only`, opäť až po spustení;
-  * podiel na rozpočte stránky sa v `regenerate-region.yml` rozíde s tým
-    v `build-map-region.yml` – tá istá vrstva by z pregenerovania varovala
-    inak než z buildu;
-  * vo formulári nad jedným krajom pribudne voľba, ktorú ani jeden job
-    nespomína – beh dobehne ZELENÝ a nespraví nič, lebo každý job sa
-    preskočí.
-
-Ani jedno by sa nedalo zistiť inak než spustením dávky, a práve preto to má
-strážiť lint.
-
-Spustiť sa dá aj lokálne:
-    python3 workers/lint/regenerate.py
+Formulár pred formulárom, ktorý si navyše vyberá, ČO sa pregeneruje, a podľa
+toho spúšťa dve rôzne pipeline. Rozíde sa to ticho a beh ostane zelený:
+voľba, ktorú číselník nepozná (štafeta spadne až po spustení), pole navyše
+(beh kraja spadne hneď na vstupe, osemkrát za sebou), nastavenie, ktoré sa
+pýta a nepodáva (celá krajina s predvolenými hodnotami), balík, ktorý packer
+nepozná, rozídené podiely na rozpočte, a voľba, ktorú ani jeden job nespomína
+(beh dobehne zelený a nespraví nič).
 """
 import importlib.util
 import json
@@ -51,11 +28,9 @@ with open(CISELNIK, encoding="utf-8") as _f:
     ZNAME_BALIKY = {b["kluc"] for b in json.load(_f).get("baliky") or []}
 REGIONS = "workers/data/regions.json"
 WF_DIR = ".github/workflows"
-# Vstupy dávky, ktoré NIE SÚ nastavením behu: krajina je to, nad čím sa to
-# púšťa, `co` je to, čo sa pregeneruje, `pokracovanie` je štafetový kolík.
+# vstupy dávky, ktoré nie sú nastavením behu
 VLASTNE = {"country", "co", "pokracovanie"}
-# Podiely na rozpočte stránky, ktoré `regenerate-region.yml` musí mať rovnaké
-# ako build mapy – `env:` workflowu sa nededí, takže sú napísané dvakrát.
+# podiely na rozpočte musia byť rovnaké ako v builde – `env:` sa nededí
 PODIELY = ("BUDGET_TRAILS_PCT", "BUDGET_FEATURES_PCT", "BUDGET_TRANSPORT_PCT",
            "BUDGET_BOUNDARIES_PCT", "BUDGET_WATER_PCT",
            "BUDGET_CONTOURS_PCT", "BUDGET_ROCKS_PCT", "BUDGET_TERRAIN_PCT")
@@ -76,7 +51,7 @@ def wf(path):
 
 
 def inputs(data):
-    # `on` je v YAMLe pravdivostná hodnota `True` – preto sa hľadá oboje.
+    # `on` je v YAMLe pravdivostná hodnota `True`
     on = data.get("on") or data.get(True) or {}
     return (on.get("workflow_dispatch") or {}).get("inputs") or {}
 
@@ -103,7 +78,7 @@ region_in = inputs(region)
 build_in = inputs(build)
 relay = open(RELAY, encoding="utf-8").read()
 
-# ---------- 1. formulár dávky ponúka presne to, čo číselník pozná ----------
+# 1. formulár dávky ponúka presne to, čo číselník pozná
 ponuka = list((state_in.get("co") or {}).get("options") or [])
 if ponuka != list(jobs.JOBS):
     chyba(STATE, f"Výber `co` je {ponuka}, podľa {JOBS} má byť "
@@ -111,8 +86,7 @@ if ponuka != list(jobs.JOBS):
                  f"až v behu; vec, ktorá je v číselníku a nie vo formulári, "
                  f"si nikto nevyberie.")
 
-# ---------- 2. to isté pre formulár nad jedným krajom ----------
-# Ponúkať má práve tie veci, ktoré cezeň chodia – ani viac, ani menej.
+# 2. to isté pre formulár nad jedným krajom – ani viac, ani menej
 cez_kraj = [k for k, v in jobs.JOBS.items()
             if v["workflow"] == os.path.basename(REGION)]
 ponuka_kraj = list((region_in.get("co") or {}).get("options") or [])
@@ -122,9 +96,8 @@ if ponuka_kraj != cez_kraj:
                   f"Dávka by inak spustila beh s hodnotou, ktorú tento "
                   f"formulár nepozná – a ten spadne hneď na vstupe.")
 
-# ---------- 3. číselník podáva len to, čo cieľový formulár má ----------
-# Prázdne prostredie zámerne: kontroluje sa TVAR (mená polí a hodnoty
-# z `inputs`), nie to, čo si niekto vyplnil.
+# 3. číselník podáva len to, čo cieľový formulár má
+# prázdne prostredie zámerne: kontroluje sa tvar, nie vyplnené hodnoty
 for kluc, j in jobs.JOBS.items():
     ciel = os.path.join(WF_DIR, j["workflow"])
     if not os.path.exists(ciel):
@@ -146,17 +119,14 @@ for kluc, j in jobs.JOBS.items():
         if volby and hodnota not in volby:
             chyba(JOBS, f"`{kluc}` podáva `{meno}={hodnota}`, ale "
                         f"`{j['workflow']}` ponúka {volby}.")
-    # Balík, ktorý packer nepozná, spadne až na `--only` – teda v behu.
-    # Zoznam balíkov drží číselník (`workers/data/packages.json`) a berie ho
-    # odtiaľ aj `publish-map.py`, takže sa pýtame jeho.
+    # balík, ktorý packer nepozná, spadne až na `--only`; zoznam drží číselník
     if j["balik"] not in ZNAME_BALIKY:
         chyba(JOBS, f"`{kluc}` sľubuje balík `{j['balik']}`, ktorý "
                     f"{CISELNIK} nepozná – beh by spadol na `--only`.")
 
-# ---------- 3b. každú voľbu niekto naozaj robí ----------
-# Voľba, ktorú ani jeden job nespomína vo svojej podmienke, je najtichšia
-# možná chyba: beh sa spustí, všetky joby sa preskočia, publikovanie nemá čo
-# nahrať – a keby aj malo, beh je zelený a na Drive sa nič nezmenilo.
+# 3b. každú voľbu niekto naozaj robí
+# voľba, ktorú ani jeden job nespomína, je najtichšia chyba: všetky joby sa
+# preskočia a beh je zelený
 region_text = open(REGION, encoding="utf-8").read()
 for kluc in ponuka_kraj:
     if f"inputs.co == '{kluc}'" not in region_text:
@@ -165,9 +135,7 @@ for kluc in ponuka_kraj:
                       f"preskočil všetky joby a skončil zelený bez toho, aby "
                       f"čokoľvek pregeneroval.")
 
-# ---------- 4. čo sa pýta, to sa aj podáva ----------
-# Vstup, ktorý `regenerate.sh` nepodá ďalšiemu článku, je tichá lož: formulár
-# sa spýtal a ďalší úsek dostal default.
+# 4. čo sa pýta, to sa aj podáva – nepodaný vstup je tichá lož
 for meno in state_in:
     if meno == "pokracovanie":
         continue
@@ -176,7 +144,7 @@ for meno in state_in:
                      f"článku štafety nepodáva (`-f {meno}=`) – reťaz by od "
                      f"druhého kraja pregenerovala niečo iné, a zelená.")
 
-# Nastavenia (nie `co` a `country`) musia ísť aj DO BEHU KRAJA – cez číselník.
+# nastavenia musia ísť aj do behu kraja – cez číselník
 podava = {m for c in jobs.CIELE.values() for m in c["podava"]}
 for meno in state_in:
     if meno in VLASTNE or meno in podava:
@@ -185,9 +153,8 @@ for meno in state_in:
                 f"kraja nepodáva – celá krajina by sa pregenerovala "
                 f"s predvolenou hodnotou a nikto sa to z behu nedozvie.")
 
-# ---------- 5. nastavenia sedia s formulárom kraja ----------
-# Nie „obsahuje to isté", ale „hodnoty sú tie isté": iná predvoľba alebo iný
-# zoznam znamená, že celá krajina vyjde inak než jeden kraj spustený ručne.
+# 5. nastavenia sedia s formulárom kraja – nie „obsahuje to isté", ale
+# „hodnoty sú tie isté"
 for meno, spec in state_in.items():
     if meno in VLASTNE:
         continue
@@ -204,7 +171,7 @@ for meno, spec in state_in.items():
                          f"{kluc}={(vzor or {}).get(kluc)!r}. Dávka je ten "
                          f"istý formulár o úroveň vyššie.")
 
-# ---------- 6. kraje sa ponúkajú tie isté ako v builde ----------
+# 6. kraje sa ponúkajú tie isté ako v builde
 a = list((region_in.get("region") or {}).get("options") or [])
 b = list((build_in.get("region") or {}).get("options") or [])
 if a != b:
@@ -212,7 +179,7 @@ if a != b:
                   f"ktorý sa dá postaviť, sa musí dať aj pregenerovať – inak "
                   f"v ňom vrstva ostarne a nikto sa to nedozvie.")
 
-# ---------- 7. výber krajín sedí s číselníkom regiónov ----------
+# 7. výber krajín sedí s číselníkom regiónov
 regions = json.load(open(REGIONS, encoding="utf-8"))
 maju_kraje = [k for k, v in regions.items()
               if v.get("admin_level") != KRAJ_LEVEL
@@ -224,7 +191,7 @@ if ponuka_kr != maju_kraje:
     chyba(STATE, f"Výber `country` je {ponuka_kr}, podľa {REGIONS} má byť "
                  f"{maju_kraje} (krajiny, ktoré nejaký kraj naozaj majú).")
 
-# ---------- 8. podiely na rozpočte sa nerozišli s buildom ----------
+# 8. podiely na rozpočte sa nerozišli s buildom
 def env_hodnoty(data):
     return {k: str(v) for k, v in (data.get("env") or {}).items()}
 
@@ -240,7 +207,7 @@ for k in PODIELY:
                       f"je napísaný dvakrát – a keď sa rozídu, tá istá vrstva "
                       f"varuje z pregenerovania inak než z buildu.")
 
-# ---------- 9. štafeta si spúšťa samu seba a stojí na spoločnom jadre ----------
+# 9. štafeta si spúšťa samu seba a stojí na spoločnom jadre
 if 'gh workflow run "$SELF"' not in relay:
     chyba(RELAY, "`regenerate.sh` si nespúšťa ďalší svoj beh "
                  "(`gh workflow run \"$SELF\"`). Bez toho dávka pregeneruje "

@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
-"""
-Kontrola: shim nad Drive znesie nápor a GDAL sa spamätá zo strateného spojenia.
+"""Kontrola: shim nad Drive znesie nápor a GDAL sa spamätá zo strateného spojenia.
 
-PREČO. Obe veci sú tiché. Keď `socketserver`-u pretečie predvolená fronta
-piatich čakajúcich spojení, jadro SYN zahodí BEZ chyby na oboch stranách –
-shim sa o požiadavke nedozvie a GDAL po dvoch minútach retransmitov vypíše
-`response_code=0`, čo vyzerá ako chyba Drive. Beh 31338803278 na tom padol dve
-časti pred koncom (45 zo 47 spočítaných).
+Keď `socketserver`-u pretečie predvolená fronta piatich spojení, jadro SYN
+zahodí bez chyby na oboch stranách a GDAL po dvoch minútach vypíše
+`response_code=0`, čo vyzerá ako chyba Drive.
 
-Kontroluje sa staticky, z AST `workers/drive/serve.py`: či má server dosť
-veľkú frontu a či `gdal_env()` nastavuje opakovanie požiadaviek.
-
-Použitie:
-    python3 workers/lint/drive-shim.py
+Staticky z AST `drive/serve.py`: dosť veľká fronta a `gdal_env()` nastavuje
+opakovanie požiadaviek.
 """
 import ast, sys
 

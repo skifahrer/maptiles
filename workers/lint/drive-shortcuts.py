@@ -1,22 +1,13 @@
 #!/usr/bin/env python3
-"""
-Výpis priečinka na Drive musí rozuzliť SKRATKY, nie ich preskočiť.
+"""Výpis priečinka na Drive musí rozuzliť skratky, nie ich preskočiť.
 
-PREČO TO JE KONTROLA. `listing` vo `workers/drive/folder.py` zahadzovala každú
-položku bez `size` – to je správne na Google-natívne dokumenty (tabuľka nemá
-čo stiahnuť), ale skratka (shortcut) `size` tiež nemá, a pritom za ňou ozajstný
-súbor JE. Sonnyho 1″ priečinok je z nich celý: 15 dlaždíc = 15 skratiek. Bez
-rozuzlenia z neho vypadli dva obrázky a ani jedna dlaždica – a hláška pritom
-vinila zdieľanie priečinka, ktoré bolo v poriadku. Presne to je tichý omyl
-z pravidla 8: chyba ukazuje inam, než kde je.
+`listing` zahadzovala každú položku bez `size` – správne pri Google-natívnych
+dokumentoch, lenže skratka `size` tiež nemá a ozajstný súbor za ňou je.
+Sonnyho 1″ priečinok je z nich celý (15 dlaždíc = 15 skratiek) a hláška pritom
+vinila zdieľanie priečinka.
 
-Staticky sa to overiť nedá (odpovedá až Drive), takže sa `listing` PUSTÍ nad
-napodobeninou priečinka a pozrie sa, čo vrátila. Kontroluje sa aj to, čo je
-na skratke ľahké prehliadnuť: sťahovať sa musí CIEĽ (`id` aj `size` z neho,
-nie zo skratky – skratka má nulovú veľkosť a nedá sa stiahnuť) a nesúlad mien
-musí varovať, lebo meno dlaždice je sľub o rozsahu (pravidlo 2).
-
-Spustiť sa dá aj lokálne: `python3 workers/lint/drive-shortcuts.py`.
+Staticky sa to overiť nedá, takže sa `listing` pustí nad napodobeninou.
+Sťahovať sa musí cieľ (`id` aj `size` z neho) a nesúlad mien musí varovať.
 """
 import importlib.util
 import io

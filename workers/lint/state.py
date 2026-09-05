@@ -1,28 +1,12 @@
 #!/usr/bin/env python3
-"""
-Kontrola: dávka „Build map state" stavia to isté, čo by si postavil ručne.
+"""Kontrola: dávka „Build map state" stavia to isté, čo by si postavil ručne.
 
-PREČO. Dávka je formulár pred formulárom – zdroje výšok, prah skál, `rebuild`
-aj `options` cez ňu len prechádzajú do behov jednotlivých krajov
-(`workers/state/relay.sh`). To je presne ten druh vrstvy, ktorá sa rozíde
-ticho:
+Formulár pred formulárom – nastavenia cezeň len prechádzajú do behov krajov.
+Rozíde sa to ticho: zdroj výšok, ktorý dávka nemá; nastavenie, ktoré sa pýta
+a `relay.sh` ho nepodá; krajina bez krajov v číselníku.
 
-  * do formulára kraja pribudne zdroj výšok a do dávky nie – kto ho zvolí
-    v jednom kraji, v dávke ho nemá a nič mu to nepovie;
-  * nastavenie sa v dávke PÝTA, ale `relay.sh` ho behu kraja nepodá – celá
-    krajina sa postaví s predvolenými hodnotami a bude zelená;
-  * do dávky pribudne krajina, ktorá v číselníku kraje nemá – po jej zvolení
-    dávka nemá čo spustiť.
-
-Ani jedno by beh nezhodilo, a práve preto to má strážiť lint.
-
-Čo sa NEKONTROLUJE a je to zámer: `area` a `publish_pages` dávka nemá a mať
-nesmie – výrez (pohorie) pre osem krajov nedáva zmysel a Pages unesú jednu
-mapu, takže osem behov za sebou by stránku osemkrát prepísalo. Že ich
-`relay.sh` podáva natvrdo, sa kontroluje nižšie.
-
-Spustiť sa dá aj lokálne:
-    python3 workers/lint/state.py
+`area` a `publish_pages` dávka nemá zámerne – výrez pre osem krajov nedáva
+zmysel a osem behov by stránku osemkrát prepísalo.
 """
 import json
 import os
@@ -37,11 +21,9 @@ RELAY = "workers/state/relay.sh"
 QUEUE = "workers/state/queue.py"
 REGIONS = "workers/data/regions.json"
 OPTIONS_PY = "workers/plan/options.py"
-# Vstupy dávky, ktoré NIE SÚ nastavením mapy: krajina je to, čo sa stavia,
-# `pokracovanie` je štafetový kolík. Zvyšok musí sedieť s formulárom kraja.
+# vstupy dávky, ktoré nie sú nastavením mapy
 VLASTNE = {"country", "pokracovanie"}
-# Čo dávka podáva natvrdo a prečo (viď hlavičku). Kontroluje sa, že to
-# v `relay.sh` naozaj stojí – inak by sa osem behov pobilo o Pages.
+# čo dávka podáva natvrdo – inak by sa osem behov pobilo o Pages
 NATVRDO = {"area": "cely_region", "publish_pages": "false"}
 
 bad = 0
@@ -67,10 +49,8 @@ state_in = inputs(STATE)
 region_in = inputs(REGION)
 relay = open(RELAY).read()
 
-# ---------- 1. formulár dávky sedí s formulárom kraja ----------
-# Nie „obsahuje to isté", ale „hodnoty sú tie isté": keby dávka ponúkala
-# zdroj výšok, ktorý kraj nepozná, beh kraja by spadol až na kontrole volieb –
-# po tom, čo dávka spustila osem behov.
+# 1. formulár dávky sedí s formulárom kraja – nie „obsahuje to isté", ale
+# „hodnoty sú tie isté"
 for meno, spec in state_in.items():
     if meno in VLASTNE:
         continue
@@ -87,8 +67,7 @@ for meno, spec in state_in.items():
                          f"zoznam znamená, že celá krajina vyjde inak než "
                          f"jeden kraj postavený ručne.")
 
-# Opačný smer: čo formulár kraja má a dávka nie. `area` a `publish_pages` tam
-# nepatria zámerne (viď hlavičku), `region` je to, čo dávka práve dopĺňa.
+# opačný smer: `area` a `publish_pages` tam nepatria zámerne, `region` dopĺňa dávka
 for meno in region_in:
     if meno in state_in or meno in NATVRDO or meno == "region":
         continue
@@ -98,9 +77,7 @@ for meno in region_in:
                  f"inak sa celá krajina postaví s predvolenou hodnotou "
                  f"a nikto sa to z behu nedozvie.")
 
-# ---------- 2. čo sa pýta, to sa aj podáva ----------
-# Vstup, ktorý `relay.sh` nepodá ďalej, je tichá lož: formulár sa spýtal,
-# beh kraja dostal default.
+# 2. čo sa pýta, to sa aj podáva – nepodaný vstup je tichá lož
 for meno in state_in:
     if meno in VLASTNE:
         continue
@@ -115,9 +92,7 @@ for meno, hodnota in NATVRDO.items():
                      f"dávka od jedného kraja líši a natvrdo to je zámer – "
                      f"rozpis je v hlavičke workflowu.")
 
-# ---------- 3. výber krajín sedí s číselníkom ----------
-# `type: choice` sa v YAMLe nedá generovať, ale dá sa strážiť, aby zoznam
-# nezostarol – to isté, čo robí „Kontrola · lint workflowov" s pohoriami.
+# 3. výber krajín sedí s číselníkom – `type: choice` sa generovať nedá, len strážiť
 sys.path.insert(0, os.path.dirname(os.path.abspath(QUEUE)))
 regions = json.load(open(REGIONS))
 KRAJ_LEVEL = 4
@@ -132,13 +107,9 @@ if ponuka != maju_kraje:
                  f"Krajina bez krajov je voľba, po ktorej dávka nemá čo "
                  f"spustiť.")
 
-# ---------- 3b. dávka nepočíta to, čo už raz vzniklo ----------
-# Osem krajov krát tri vrstvy z výškového modelu je väčšina toho dňa, ktorý
-# dávka trvá – a druhýkrát za sebou je to deň za nič. `relay.sh` preto dopĺňa
-# behu kraja `reuse_layers=true`, keď si o tom človek v `options` nepovedal
-# nič. Kontroluje sa OBOJE: že to tam je (bez toho by sa vrstvy počítali
-# odznova a nikde by to nebolo vidieť) aj že to `options.py` pozná (inak by
-# každý kraj dávky spadol na „neznáma voľba", a to hneď v prípravnom jobe).
+# 3b. dávka nepočíta to, čo už raz vzniklo: osem krajov × tri vrstvy z DEM je
+# väčšina toho dňa. Kontroluje sa, že `relay.sh` dopĺňa `reuse_layers=true`
+# aj že to `options.py` pozná.
 VOLBA = "reuse_layers"
 if f"{VOLBA}=true" not in relay:
     chyba(RELAY, f"`relay.sh` nedopĺňa behu kraja `{VOLBA}=true`. Dávka by "
@@ -150,8 +121,7 @@ if f'"{VOLBA}"' not in open(OPTIONS_PY).read():
                       f"ho podáva – každý kraj dávky by spadol na „neznáma "
                       f"voľba“ hneď v prípravnom jobe.")
 
-# ---------- 4. štafeta si spúšťa samu seba ----------
-# Bez toho reťaz skončí prvým krajom – a skončí ZELENÁ.
+# 4. štafeta si spúšťa samu seba – bez toho reťaz skončí prvým krajom, zelená
 if "gh workflow run \"$SELF\"" not in relay:
     chyba(RELAY, "`relay.sh` si nespúšťa ďalší svoj beh (`gh workflow run "
                  "\"$SELF\"`). Bez toho dávka postaví prvý kraj a tvári sa, "

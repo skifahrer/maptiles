@@ -1,28 +1,14 @@
 #!/usr/bin/env python3
-"""
-Hranice území: filter pustí, čo schéma chce – a v dlaždici je MENO.
+"""Hranice území: filter pustí, čo schéma chce – a v dlaždici je meno.
 
-TRI TICHÉ VECI, na ktoré je táto kontrola:
+Tri tiché veci:
 
-  1. PREDFILTER A SCHÉMA SA ROZÍDU. Job `hranice` číta PBF dvakrát (`osmium
-     tags-filter` nad `workers/boundaries/filter.txt`, potom Planetiler nad
-     `boundaries.yml`). To isté rozhodnutie je teda na dvoch miestach a keď sa
-     rozídu, Planetiler dostane PBF, v ktorom ten tag už NIE JE – dlaždice
-     vzniknú, beh zazelená a tá úroveň hraníc v nich len nie je.
-
-  2. FILTER PRESTANE DOŤAHOVAŤ ČLENOV RELÁCIÍ. Hranica obce je v OSM RELÁCIA,
-     ktorej členmi sú cesty – a tie samy `boundary=administrative` nemajú.
-     `osmium tags-filter` ich doťahuje sám; keby sa dopísalo `-R`
-     (`--omit-referenced`), z PBF vypadne geometria, Planetiler nemá z čoho
-     zložiť polygón a vrstva je PRÁZDNA pri zelenom behu. Je to jediná vrstva
-     v tejto pipeline, kde na tom stojí všetko.
-
-  3. Z DLAŽDICE ZMIZNE `name`. Kvôli tomu vrstva existuje: hranica vo vrstve
-     `boundary` OpenMapTiles je čiara BEZ MENA územia, ktoré ohraničuje, takže
-     sa z nej nedá povedať, v ktorej obci nejaký bod je. Balík by sa volal
-     `hranice`, vážil by menej a niesol by presne to, čo mapa má aj tak.
-
-Spustiť: `python3 workers/lint/boundaries.py`
+  1. predfilter (`filter.txt`) a schéma (`boundaries.yml`) sa rozídu;
+  2. filter prestane doťahovať členov relácií – hranica obce je relácia,
+     ktorej členmi sú cesty bez `boundary=administrative`, takže s `-R`
+     nemá Planetiler z čoho zložiť polygón a vrstva je prázdna;
+  3. z dlaždice zmizne `name` – kvôli tomu vrstva existuje (vrstva `boundary`
+     v OpenMapTiles je čiara bez mena územia).
 """
 import os
 import sys
