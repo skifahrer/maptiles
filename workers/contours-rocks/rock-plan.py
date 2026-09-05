@@ -30,7 +30,8 @@ SCALE = 100
 
 # namerané na GitHub runneri – slúžia len na odhad dopredu.
 # Slope: 170 častí / 23,1 mld. buniek za 75 min.
-#
+SLOPE_CELLS_PER_S = 5.1e6    # gdalwarp + gdaldem slope + gdal_translate
+
 # Contour: cena `gdal_contour -p` ide so ZDROJOVÝMI bunkami, nie s mriežkou,
 # na ktorú sa trasuje – obrys sa nezlacní hrubším trasovaním, ale hrubším
 # skladom. Preto `pick_res` účtuje vektorizáciu mriežke skladu.
@@ -42,6 +43,7 @@ SCALE = 100
 CONTOUR_SRC_CELLS_PER_S = 1.2e7
 # ten istý beh na OOM nespadol, takže pri 23,1 mld. buniek bol pod 16 GB:
 # zadanie sa zabije o čas, nie o pamäť
+MOSAIC_MB_PER_GCELL = 240    # Int16 + DEFLATE + PREDICTOR
 
 
 def run(cmd, **kw):

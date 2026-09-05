@@ -578,6 +578,10 @@ jobs:
       # vedieť spamätať z jedného stratného spojenia
       - name: Shim nad Drive znesie nápor a GDAL to skúsi znova
         run: python3 workers/lint/drive-shim.py
+      # workery s pomlčkou sa načítavajú cez `importlib`, takže zmazanú
+      # konštantu nenájde import ani `bash -n` – až pád na runneri
+      - name: Mená, ktoré worker číta, aj existujú
+        run: python3 workers/lint/names.py
       # tri výbery zdroja musia sedieť s kľúčmi v `dem-sources.json` a s tým,
       # pre ktoré vrstvy sa zdroj ponúka (kľúč `for`)
       - name: Výbery výšok sedia s dem-sources.json
