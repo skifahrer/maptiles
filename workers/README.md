@@ -1948,6 +1948,11 @@ a v ňom **len svoje** nastavenia; aj otlačok skriptov je rozdelený na dva
 (`SCHEMA_CONTOURS`, `SCHEMA_ROCKS`), takže oprava v `rocks.sh` už nezahadzuje
 vrstevnice.
 
+**Otlačok skladu je len z dlaždíc, ktoré vrstva naozaj číta** — nie z celého
+priečinka. Kým sa počítal z celého výpisu skladu, doplnenie DMR 5.0 pre jeden
+kraj zmenilo kľúč všetkým ostatným a ich vrstvy sa počítali odznova. Ráta to
+[`workers/dem/check.sh`](dem/check.sh).
+
 Každý kľúč má pritom tvar **nastavenia + otlačky**, v tomto poradí:
 
 ```
@@ -1955,11 +1960,12 @@ contours-v11-cdmr5-<bbox>-i5-z14-s0h0t-1x2-acely_region-  d<sklad>-<otlačok skr
 └────────────── nastavenia (predpona) ─────────────────┘  └──── čo sa mení samo ────┘
 ```
 
-Prvá časť ide von aj samostatne a je to **predpona** celého kľúča: kto ju podá
-ako `restore-keys` (dávka nad krajinou cez `reuse_layers=true`), dostane
+Prvá časť ide von aj samostatne a je to **predpona** celého kľúča: podáva sa
+ako `restore-keys` (`reuse_layers`, predvolene zapnuté), takže beh dostane
 najnovšiu vrstvu s tými istými nastaveniami — aj keď sa medzitým doplnil sklad
-modelu alebo zmenil skript. Jeden kraj beží bez toho, teda prísne: keď zmeníš
-skript, ktorý kreslí skaly, a spustíš kraj, chceš nové skaly.
+modelu alebo zmenil skript. Prepočet si pýta výber `rebuild`; `reuse_layers=false`
+robí celý beh prísnym. Kým bola predpona vypnutá, `rebuild: nic` počítalo
+vrstevnice aj skaly odznova po ktorejkoľvek zmene v pipeline.
 
 **Uloží sa len to, čo sa naozaj spočítalo.** Vrstva vzatá po predpone sa pod
 dnešný kľúč neuloží — tvrdila by o sebe dnešný otlačok skriptov a najbližší
@@ -3627,19 +3633,19 @@ V troch veciach a všetky sú dôsledok toho, že ide o celú krajinu:
 |---|---|
 | `area` | natvrdo **`cely_region`** — výrez je pohorie a vyberať jedno pohorie pre osem krajov nedáva zmysel |
 | `publish_pages` | natvrdo **vypnuté** — na Pages je JEDNA mapa, takže osem behov za sebou by stránku osemkrát prepísalo a nechalo na nej posledný kraj |
-| `reuse_layers` | dopĺňa sa do `options` ako **`true`** — vrstevnice, skaly a tieňovanie, ktoré s tými istými nastaveniami už raz vznikli, sa neprepočítavajú (viď nižšie) |
+| `reuse_layers` | dopĺňa sa do `options` ako **`true`** — to je aj predvolená hodnota jedného kraja, dávka ju len píše nahlas (viď nižšie) |
 
 **Dávka nepočíta vrstvy, ktoré už raz vznikli.** Vrstevnice, skaly
 a tieňovanie sú hodiny na kraj, čiže väčšina toho dňa, ktorý dávka trvá —
 a medzi dvomi dávkami sa málokedy zmení niečo, čo by ich zmenilo. Doplnený
 sklad výškového modelu alebo opravený skript inde v pipeline pritom cache
 zahodili (oba sú v kľúči ako otlačok), takže druhá dávka počítala to isté
-odznova. Preto každý kraj dostáva `reuse_layers=true`: vrstva, ktorá vznikla
-s **tými istými nastaveniami**, sa vezme hotová a job, ktorý to spravil, to
-hlási `::notice::`-om — v mape je vtedy vrstva, ktorú dnešný kód nevyrobil,
-a to nesmie byť ticho. Kto chce prepočet, povie to: `rebuild` (jedna vrstva
-nanovo) alebo `options: reuse_layers=false` (celá dávka prísne, ako jeden
-kraj). Ako sa hotová vrstva hľadá, je v [`workers/plan/cache-keys.sh`](plan/cache-keys.sh);
+odznova. Preto je `reuse_layers=true` predvolené a každý kraj ho dostáva aj
+napísané: vrstva, ktorá vznikla s **tými istými nastaveniami**, sa vezme hotová
+a job, ktorý to spravil, to hlási `::notice::`-om — v mape je vtedy vrstva,
+ktorú dnešný kód nevyrobil, a to nesmie byť ticho. Kto chce prepočet, povie to:
+`rebuild` (jedna vrstva nanovo) alebo `options: reuse_layers=false` (celý beh
+prísne). Ako sa hotová vrstva hľadá, je v [`workers/plan/cache-keys.sh`](plan/cache-keys.sh);
 rozhodnutie „počítať, alebo nie" je v [`workers/plan/hotova-vrstva.sh`](plan/hotova-vrstva.sh).
 
 Všetko ostatné je ten istý formulár s tými istými predvolenými hodnotami

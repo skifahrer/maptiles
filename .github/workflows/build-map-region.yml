@@ -112,9 +112,10 @@ on:
         required: false
         default: "50"
         type: string
-      # zmaže cache aj uloženú verziu v sklade. Pri zapnutom `test` sa
-      # pregenerúva vždy všetko. Staré meno `teren` ostáva prijímané
-      # (`REBUILD_ALIAS`); strážca je `workers/lint/rebuild.py`.
+      # zmaže cache aj uloženú verziu v sklade; `nic` neprepočíta nič a hotové
+      # vrstvy sa vezmú. Pri zapnutom `test` sa pregenerúva vždy všetko. Staré
+      # meno `teren` ostáva prijímané (`REBUILD_ALIAS`); strážca je
+      # `workers/lint/rebuild.py`.
       rebuild:
         description: "Čo pregenerovať nanovo, aj keď to už je v cache"
         required: false

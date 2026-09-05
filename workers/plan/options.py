@@ -31,10 +31,10 @@ DEFAULTS = {
     # 4 km², nie 2: na dvoch sa skalná plocha často netrafila do ničoho
     "test_km2": ("4", "veľkosť štvorca pri zapnutom switchi `test` (km²)"),
     "test_at": ("", "stred testovacieho štvorca `lon,lat` (prázdne = stred výrezu)"),
-    # nepočítať to, čo už raz vzniklo. Nie je to predvolené: po zmene skriptu
-    # čakáš nové skaly. Vzatú vrstvu job hlási `::notice::`-om; `rebuild` je silnejší.
-    "reuse_layers": ("false", "nepočítať vrstvu z výškového modelu, ktorá "
-                              "s týmito nastaveniami už raz vznikla"),
+    # predvolené: `rebuild: nic` znamená, že sa neprepočítava nič. Vzatú vrstvu
+    # job hlási `::notice::`-om; prepočet si pýta `rebuild`.
+    "reuse_layers": ("true", "nepočítať vrstvu z výškového modelu, ktorá "
+                             "s týmito nastaveniami už raz vznikla"),
     "size_limit_mb": ("900", "rozpočet celej stránky v MB"),
     "auto_shrink": ("true", "znížiť zoom dlaždíc, keď sa nezmestia"),
     "ugkk_fallback": ("true", "keď DMR 5.0 pre výrez nie je, počítať zo Sonnyho"),
@@ -398,9 +398,10 @@ def main():
         return 1
     # test neberie nič hotové, z toho istého dôvodu; tichý spor by sa hľadal dlho
     if test_on and values["reuse_layers"] == "true":
-        print("::notice::`reuse_layers=true` sa pri zapnutom switchi „test“ "
-              "neuplatní – rýchly test počíta vrstvy vždy nanovo, nech "
-              "neladíš na starom výsledku.")
+        if "reuse_layers" in changed:
+            print("::notice::`reuse_layers=true` sa pri zapnutom switchi „test“ "
+                  "neuplatní – rýchly test počíta vrstvy vždy nanovo, nech "
+                  "neladíš na starom výsledku.")
         values["reuse_layers"] = "false"
 
     lines = [f"opt_{k}={v}" for k, v in values.items()]
@@ -438,6 +439,10 @@ def main():
         print("Hotové vrstvy: BERÚ SA – vrstevnice, skaly aj tieňovanie, "
               "ktoré s týmito nastaveniami už raz vznikli, sa neprepočítajú "
               "(prepočíta ich `rebuild`)")
+    else:
+        print("Hotové vrstvy: NEBERÚ SA (`reuse_layers=false`) – vrstevnice, "
+              "skaly aj tieňovanie sa prepočítajú, len čo sa zmenil sklad "
+              "modelu alebo skript, ktorý ich kreslí")
     if test_on or rebuild != "nic":
         # aj to, čo sa NEprepočíta – bez toho „vsetko“ sľubuje viac, než robí
         print("  prepočíta sa: "

@@ -185,11 +185,11 @@ on:
         type: string
       # `true` = vrstva, ktorá s týmito nastaveniami už raz vznikla, sa
       # neprepočítava. Hľadá sa predponou kľúča a job to hlási `::notice::`-om.
-      # Zapína si to dávka nad krajinou; jeden kraj beží prísne.
+      # Predvolené: prepočet si pýta výber `rebuild`, nie zmena skriptu.
       opt_reuse_layers:
         description: "Nepočítať vrstvu, ktorá s týmito nastaveniami už raz vznikla"
         required: false
-        default: "false"
+        default: "true"
         type: string
       opt_size_limit_mb:
         description: "Rozpočet celej stránky v MB"
