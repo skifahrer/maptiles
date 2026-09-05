@@ -1,25 +1,14 @@
 #!/usr/bin/env python3
-"""
-„Dáta · DMR 5.0": okno, bloky a výstupy – teda „ktorý kus a v akom tvare".
+"""„Dáta · DMR 5.0": okno, bloky a výstupy – „ktorý kus a v akom tvare".
 
-ČO JE TU. Geometria a zápis: z WGS84 bboxu okno v projekcii zdroja, rozdelenie
-na bloky, ich súbežné čítanie z Drive a nakoniec dva možné výstupy – jeden COG
-vo WGS84 (výrez na pohorie) alebo 1°×1° dlaždice (celá krajina). Prihlásenie,
-sondu, fázy behu a CLI rieši `workers/drive/dmr5.py`, ktorý si tento modul
-berie.
+Geometria a zápis: z WGS84 bboxu okno v projekcii zdroja, rozdelenie na bloky,
+súbežné čítanie z Drive a dva možné výstupy – COG vo WGS84 (výrez na pohorie)
+alebo 1°×1° dlaždice. Prihlásenie, sondu a CLI rieši `workers/drive/dmr5.py`.
 
-PREČO ZVLÁŠŤ. `dmr5-drive.py` mal 888 riadkov a v jednom takom súbore sa nedá
-rýchlo nájsť, čo sa zmenilo (pravidlo 5 v CLAUDE.md, strop 800 stráži
-`Kontrola · lint workflowov`). Rez je tam, kde sa mení otázka: tam „ako sa k tým dátam
-dostať a čo to bude stáť", tu „ktorý kus zeme a v akom tvare z nich urobiť".
+Denník (`LOG`, `log()`, `run()`) je tu, nie vedľa: používajú ho obe strany
+a dve kópie by znamenali súhrn s polovicou riadkov.
 
-DENNÍK JE TU, NIE VEDĽA. `LOG`, `log()` a `run()` používajú obe strany, a keby
-mala každá svoju kópiu `LOG`, súhrn behu by mal polovicu riadkov a nikde by
-nebolo vidieť prečo (pravidlo 1: jedna otázka, jedno miesto). `dmr5-drive.py`
-si ich preto berie odtiaľto.
-
-Spúšťa sa ako modul, nie z príkazovej riadky:
-    cut = load("dmr5_cut", "dmr5-cut.py")
+Spúšťa sa ako modul: `cut = load("dmr5_cut", "dmr5-cut.py")`.
 """
 import importlib.util
 import math

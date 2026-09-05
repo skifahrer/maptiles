@@ -1,20 +1,14 @@
 /**
- * SIGNED DISTANCE FIELD z masky pokrytia – jedna implementácia pre všetkých,
+ * Signed distance field z masky pokrytia – jedna implementácia pre všetkých,
  * čo do spritu dávajú farbiteľnú ikonu.
  *
- * PREČO SAMOSTATNÝ SÚBOR. Pýtajú sa naň dve miesta a každé z inej strany:
- * `workers/assets/sprite.mjs` prerába na SDF CUDZIU sadu ikoniek (masku si
- * najprv vypreparuje z hotového obrázka), `workers/assets/arrows.mjs` si
- * masku KRESLÍ sám. Je to tá istá matematika a tie isté dve konštanty, ktoré
- * musia sedieť so shaderom MapLibre – a keby ich mal každý svoje, rozišli by
- * sa ticho: ikona by sa vykreslila, len by mala inak hrubú hranu a halo by
- * sedelo inde než pri ostatných.
+ * Pýtajú sa naň dve miesta z inej strany: `assets/sprite.mjs` prerába cudziu
+ * sadu (masku si vypreparuje z hotového obrázka), `assets/arrows.mjs` si masku
+ * kreslí sám. Tie dve konštanty musia sedieť so shaderom MapLibre.
  *
- * ČO JE SDF a prečo nie obyčajný obrázok: v alfe nie je krytie, ale
- * VZDIALENOSŤ od hrany tvaru. Vďaka tomu vie MapLibre tú istú ikonu nakresliť
- * v ľubovoľnej veľkosti ostro, dať jej farbu (`icon-color`) aj halo. Cenou je,
- * že ikona smie mať JEDNU farbu – preto sú značky trás (`poc/web/marks.js`)
- * hotové farebné obrázky a nie SDF.
+ * V alfe nie je krytie, ale vzdialenosť od hrany, takže MapLibre nakreslí
+ * ikonu ostro v ľubovoľnej veľkosti a vie jej dať farbu aj halo. Cenou je,
+ * že ikona smie mať jednu farbu – preto sú značky trás hotové obrázky.
  */
 
 const INF = 1e20;

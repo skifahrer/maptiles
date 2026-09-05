@@ -1,37 +1,20 @@
 #!/usr/bin/env bash
-# Medzivýsledky behu do skladu na Drive – to, čo predtým ostávalo ako artefakt
-# s 14- až 90-dňovou retenciou.
+# Medzivýsledky behu do skladu na Drive – to, čo predtým ostávalo ako artefakt.
 #
-# PREČO NIE ARTEFAKT. Do GitHubu sa už nepublikuje nič: ani releasy, ani
-# artefakty na pozretie. Krátkodobé artefakty (`site-*`, `steps-*`,
-# `retention-days: 1`) ostávajú, ale tie NIE SÚ publikovanie – sú to prepravky,
-# ktorými si joby jedného behu podávajú kusy `_site`. Toto boli oproti nim
-# uložené výsledky, a tie patria na Drive (`workers/drive/store.py`, sklad
-# `vysledky`).
+# Do GitHubu sa nepublikuje nič; krátkodobé artefakty (`retention-days: 1`) sú
+# prepravky medzi jobmi jedného behu, nie publikovanie. Vlastný skript preto,
+# že ten istý zoznam pýtali dva joby a tretí (`shading-rocks.yml`) to isté
+# balenie aj pomenovanie.
 #
-# PREČO SKRIPT A NIE `run:` VO WORKFLOWE. Zoznam súborov pre skaly a vrstevnice
-# pýtali DVA joby (`contours` a `rocks`) a dve kópie sa vždy raz rozídu –
-# pravidlo 3 v CLAUDE.md, tá istá vec ako `contours-site.sh`. A rovnaké
-# balenie, pomenovanie aj hlásenie potrebuje aj `shading-rocks.yml`.
+# Meno nesie, čo v tom je, a je jedinečné: nastavenia sú v `NAZOV`, dátum
+# a číslo behu sa pridá tu, takže sa dva behy neprepíšu. Sklad `vysledky`
+# prerieďuje `cleanup-cache.yml` na 90 dní.
 #
-# MENO NESIE, ČO V TOM JE, A JE JEDINEČNÉ. Nastavenia sú v `NAZOV` (výrez, prah
-# sklonu, mriežka, zoom) a dátum s číslom behu sa pridá tu, takže sa dva behy
-# nikdy neprepíšu – to isté pravidlo ako pri hotových mapách
-# (`publish-map.py`). Sklad `vysledky` prerieďuje `cleanup-cache.yml` na 90
-# dní, čo bola presne tá retencia, ktorú mal artefakt.
+# Jeden súbor ide sám, viac sa zabalí do `.tar.zst`. Zlyhanie nesmie zhodiť
+# beh – je to vec na pozretie, nie vstup pre nikoho.
 #
-# JEDEN SÚBOR IDE SÁM, viac sa zabalí do `.tar.zst`. Náhľadový PNG má zmysel
-# vidieť na Drive na jeden klik; archív s jedným obrázkom v ňom je len prekážka.
-#
-# ZLYHANIE NESMIE ZHODIŤ BEH: je to vec na pozretie, nie vstup pre nikoho.
-# Volajúci krok má `continue-on-error: true` a tento skript vracia 0, aj keď sa
-# neuložilo nič – len to nahlas povie.
-#
-# Použitie (hodnoty chodia z prostredia, ako u ostatných workerov):
 #   CO=teren NAZOV=teren-vysoke_tatry-s45-g2   workers/deploy/publish-results.sh
-#   CO=trasy NAZOV=trasy-presovsky             workers/deploy/publish-results.sh
-#   NAZOV=nahlad-vysoke_tatry-z16 SUBORY=out/preview.png \
-#     workers/deploy/publish-results.sh
+#   NAZOV=nahlad-vysoke_tatry-z16 SUBORY=out/preview.png  …
 set -uo pipefail
 
 NAZOV="${NAZOV:?meno bez prípony}"
