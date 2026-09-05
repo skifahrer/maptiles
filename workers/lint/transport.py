@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dopravná sieť: filter pustí, čo schéma chce – a balík naozaj nesie sieť.
 
-Päť tichých vecí:
+Šesť tichých vecí:
 
   1. predfilter (`filter.txt`) a schéma (`transport.yml`) sa rozídu –
      Planetiler dostane PBF, v ktorom ten tag už nie je, a beh zazelená;
@@ -9,9 +9,11 @@ Päť tichých vecí:
      `route` (trajekt) aj `aerialway`;
   3. do siete sa vráti, po čom sa ísť nedá (`railway=abandoned`, `disused`,
      `razed`, `construction`, `proposed`, `platform`);
-  4. obmedzenia na ceste (výška, šírka, hmotnosť, rýchlosť) z nej vypadnú –
+  4. zo siete ticho vypadne trieda – `include_when` je biela listina, takže
+     čo v nej nie je, sa do dlaždíc nedostane a nepovie o tom nič;
+  5. obmedzenia na ceste (výška, šírka, hmotnosť, rýchlosť) z nej vypadnú –
      a hodnoty musia ostať reťazcom, `double` spraví z „12'6\"" ticho 12 m;
-  5. `class` a `druh` prestanú byť z `match_value`/`match_key` a stanú sa
+  6. `class` a `druh` prestanú byť z `match_value`/`match_key` a stanú sa
      druhou kópiou zoznamu tried z `include_when`.
 """
 import json
@@ -56,6 +58,28 @@ RETAZCE = {"maxheight", "maxheight_physical", "maxwidth", "maxweight",
 # Hodnoty `railway`, po ktorých sa ísť NEDÁ – v sieti nemajú čo robiť.
 NEPREJAZDNE = {"abandoned", "disused", "razed", "construction", "proposed",
                "platform", "razed", "dismantled"}
+
+# Triedy, ktoré vrstva sľubuje; chýba tu, po čom sa ísť nedá a plochy s bodmi.
+PREJAZDNE = {
+    "highway": {
+        "motorway", "trunk", "primary", "secondary", "tertiary",
+        "motorway_link", "trunk_link", "primary_link", "secondary_link",
+        "tertiary_link", "unclassified", "residential", "living_street",
+        "pedestrian", "road", "busway", "bus_guideway", "escape", "raceway",
+        "track", "path", "footway", "cycleway", "bridleway", "steps",
+        "corridor", "via_ferrata", "elevator", "ladder", "service",
+    },
+    "railway": {
+        "rail", "narrow_gauge", "light_rail", "subway", "tram", "monorail",
+        "funicular", "preserved", "miniature",
+    },
+    "route": {"ferry"},
+    "aerialway": {
+        "cable_car", "gondola", "mixed_lift", "chair_lift", "drag_lift",
+        "t-bar", "j-bar", "platter", "rope_tow", "magic_carpet", "zip_line",
+        "goods",
+    },
+}
 
 bad = []
 
@@ -125,7 +149,22 @@ def main():
                 f"ísť nedá (zrušená alebo rozobraná trať, nástupište). Vrstva "
                 f"je „po čom sa dá cestovať“, nie „čo v OSM má koľajnice“.")
 
-    # ---- 4. obmedzenia na ceste sú atribútmi siete a sú reťazcom ----
+    # ---- 4. sľúbené triedy sú naozaj v schéme ----
+    v_scheme = {}
+    for b in bloky:
+        for kluc, hodnoty in (b.get("include_when") or {}).items():
+            if not isinstance(hodnoty, list):
+                hodnoty = [hodnoty]
+            v_scheme.setdefault(kluc, set()).update(map(str, hodnoty))
+    for kluc, sluby in PREJAZDNE.items():
+        chyba = sorted(sluby - v_scheme.get(kluc, set()))
+        if chyba:
+            err(f"{SCHEMA}: v sieti nie je `{kluc}=" + ", ".join(chyba) +
+                "`. `include_when` je biela listina, takže tá trieda sa do "
+                "dlaždíc nedostane – filter ju pustí, schéma zahodí, balík je "
+                "len o niečo menší a beh zelený.")
+
+    # ---- 5. obmedzenia na ceste sú atribútmi siete a sú reťazcom ----
     tag_mappings = schema.get("tag_mappings") or {}
     for i, b in enumerate(bloky, start=1):
         # Len cestné bloky – `maxheight` na lanovke ani na trajekte nie je
@@ -149,7 +188,7 @@ def main():
                 f"číslo zo začiatku a zvyšok zahodí – z 3,8 m je 12 m a "
                 f"nespadne pri tom nič. Nechaj ju reťazcom.")
 
-    # ---- 5. `class` a `druh` sú z toho, čím sa blok trafil ----
+    # ---- 6. `class` a `druh` sú z toho, čím sa blok trafil ----
     for i, b in enumerate(bloky, start=1):
         atr = {a.get("key"): a for a in (b.get("attributes") or [])
                if isinstance(a, dict)}
@@ -164,7 +203,7 @@ def main():
                     f"z `include_when` a rozíde sa s ním pri prvej pridanej "
                     f"triede.")
 
-    # ---- 6. vrstva sa naozaj dostane do balíka `cesty` ----
+    # ---- 7. vrstva sa naozaj dostane do balíka `cesty` ----
     # Postaviť ju a nezabaliť je presne ten tichý omyl, pre ktorý balík
     # existuje: `-cesty.zip` by vážil desiatky kB namiesto desiatok MB a na
     # ničom by to nebolo vidieť. Balíky drží číselník, tak sa pozeráme doňho.
@@ -189,7 +228,8 @@ def hotovo():
         print(f"\n{len(bad)} problém(ov) v dopravnej sieti.")
         return 1
     print("Dopravná sieť: predfilter pustí, čo schéma chce, v sieti sú cesty, "
-          "železnice, trajekty aj lanovky, neprejazdné koľajnice v nej nie sú, "
+          "železnice, trajekty aj lanovky, každá sľúbená trieda je v schéme, "
+          "neprejazdné koľajnice v nej nie sú, "
           "obmedzenia na ceste v nej sú a ostali reťazcom, `class` s `druh` "
           "idú z toho, čím sa blok trafil, a balík `cesty` ju naozaj nesie.")
     return 0
