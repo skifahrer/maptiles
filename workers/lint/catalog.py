@@ -357,10 +357,11 @@ def _skuska_katalogu():
                                         "maxzoom": 16}}}
     parts = ["slovensko", "bratislavsky"]
     mapove = ["mapa", "vrstevnice-skaly", "tienovanie"]
-    mapa_baliky = [("", "bratislavsky.zip", 1, "id1", "zip"),
+    mapa_baliky = [("", "bratislavsky.zip", 1, "id1", "zip", "sha1"),
                    ("vrstevnice-skaly", "bratislavsky-vrstevnice-skaly.zip",
-                    1, "id2", "zip"),
-                   ("tienovanie", "bratislavsky-tienovanie.zip", 1, "id3", "zip")]
+                    1, "id2", "zip", "sha2"),
+                   ("tienovanie", "bratislavsky-tienovanie.zip", 1, "id3",
+                    "zip", "sha3")]
 
     def maps_v(path):
         with open(path) as f:
@@ -375,7 +376,8 @@ def _skuska_katalogu():
             # `wiki.yml`: `--only=wikipedia`, teda doplnenie jedného balíka
             mod.zapis_katalog(path, parts, regions,
                               [("wikipedia", "bratislavsky-wikipedia.zip",
-                                1, "id4", "zip")], {}, iba="wikipedia")
+                                1, "id4", "zip", "sha4")], {},
+                              iba="wikipedia")
             po_wiki = maps_v(path)
             # a teraz ďalší build mapy – o `wikipedia` nerozhoduje
             mod.zapis_katalog(path, parts, regions, mapa_baliky, man,
@@ -435,6 +437,17 @@ def _skuska_katalogu():
                      f"`updated_ts` – pri balíku z inej pipeline je to jediné, "
                      f"čo povie, ako je starý.")
 
+    # bez `sha256` appka porovnáva dátumy, takže ten istý build znova vyrobený
+    # je pre ňu nová mapa a stiahne tie isté bajty druhý raz
+    bez_shy = sorted(k for k, m in (uzol.get("maps") or {}).items()
+                     if not m.get("sha256")
+                     or not (m.get("formats") or {}).get("zip", {}).get("sha256"))
+    if bez_shy:
+        chyby.append(f"{CATALOG_PY}: balík {', '.join(bez_shy)} nemá "
+                     f"`sha256` obsahu. Appka potom pozná novú mapu len po "
+                     f"dátume – a ten istý build znova vyrobený stiahne "
+                     f"druhýkrát.")
+
     # odkaz, za ktorým na Drive už súbor nie je: každé nahratie vyrobí nové
     # id, takže odkaz platí do ďalšieho behu tej mapy. Skúša sa naostro –
     # staticky sa nedá prečítať, či sa mŕtvy odkaz vyhodí a živý nechá.
@@ -461,7 +474,8 @@ def _skuska_katalogu():
             _polozka_s({"mapa": _odkaz("ziva"),
                         "search": _odkaz("zmazana")}, path)
             mod.zapis_katalog(path, parts, regions,
-                              [("", "bratislavsky.aar", 1, "aar1", "aar")],
+                              [("", "bratislavsky.aar", 1, "aar1", "aar",
+                                "sha1")],
                               man, merge=True, spravuje=["mapa"],
                               zrusene=tuple(ZRUSENE), zive={"ziva": "x"})
             po_aar = maps_v(path)

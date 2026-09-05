@@ -41,6 +41,7 @@ manifest_data = subory.manifest_data
 mimo_balika = subory.mimo_balika
 velkost_casti = subory.velkost_casti
 vsetky_subory = subory.vsetky_subory
+obsah_sha = subory.obsah_sha
 zaklad_subory = subory.zaklad_subory
 mena = load("deploy_mena", "mena.py")
 bez_testu = mena.bez_testu
@@ -246,6 +247,8 @@ def main():
     root = folder.folder_id(args.folder)
     fid = folder.ensure_path(creds, root, parts)
     hotove = []
+    # ten istý obsah v oboch formátoch, tak sa počíta raz na balík
+    shy = {}
     # balík × formát; čo je v balíku, nezávisí od toho, do čoho sa zabalí
     for (kind, popis, base, subory), fmt in [(b_, f) for b_ in baliky
                                              for f in formaty]:
@@ -276,7 +279,10 @@ def main():
         finally:
             if not args.keep_zip and os.path.exists(dest):
                 os.remove(dest)
-        hotove.append((kind, name, popis, velkost, prepisane, file_id, fmt))
+        if kind not in shy:
+            shy[kind] = obsah_sha(base, subory)
+        hotove.append((kind, name, popis, velkost, prepisane, file_id, fmt,
+                       shy[kind]))
     log(f"Hotovo: {len(hotove)} balíkov v {folder.folder_link(fid)}")
 
     # meno je stále, nový beh ho neprepíše – zrušený balík treba zmazať
@@ -306,7 +312,7 @@ def main():
         zmenene = catalog.zapis_katalog(
             args.maps, parts, regions,
             # do katalógu idú všetky formáty; `merge` dopĺňa, neprepisuje
-            [(k, n, v, i, f) for k, n, _p, v, _pr, i, f in hotove],
+            [(k, n, v, i, f, sh) for k, n, _p, v, _pr, i, f, sh in hotove],
             man, iba=args.only, merge="zip" not in formaty, kat=kat,
             layers=vrstvy(), spravuje=spravuje,
             # koľko z mapy je hľadanie – inde sa to nedá prečítať
@@ -325,7 +331,7 @@ def main():
                     f"mená sú stále, takže ďalší build tie isté súbory prepíše. "
                     f"Čo je v balíku, hovorí `obsah.json` v ňom.\n\n")
             f.write("| balík | čo je v ňom | veľkosť | starý |\n|---|---|--:|---|\n")
-            for _kind, name, popis, velkost, prepisane, _fid, _fmt in hotove:
+            for _kind, name, popis, velkost, prepisane, _fid, _fmt, _sha in hotove:
                 f.write(f"| `{name}` | {popis} | {folder.human(velkost)} | "
                         f"{'prepísaný' if prepisane else '–'} |\n")
             f.write("\n")

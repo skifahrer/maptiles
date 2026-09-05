@@ -112,7 +112,8 @@ def teraz():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t)), int(t)
 
 
-def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None):
+def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None,
+                sha=""):
     """Jeden balík v jednom formáte do `maps` položky katalógu.
 
     Vrch položky ukazuje na ZIP kvôli starším čitateľom, `.aar` ho neprepisuje.
@@ -129,6 +130,9 @@ def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None):
         zaznam["updated_at"] = kedy
     if kedy_ts is not None:
         zaznam["updated_ts"] = kedy_ts
+    # obsah, nie dátum: ten istý build dvakrát nie je pre appku nová mapa
+    if sha:
+        zaznam["sha256"] = sha
     polozka = mapy.setdefault(kind or "mapa", {})
     polozka.setdefault("formats", {})[fmt] = zaznam
     if fmt == "zip":
@@ -288,7 +292,7 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
                   zrusene=(), zive=None):
     """Doplň (alebo prepíš) položku v `maps.json`. Vracia True, keď sa zmenil.
 
-    `baliky` je `(druh, meno, veľkosť, id, formát)` toho, čo sa nahralo.
+    `baliky` je `(druh, meno, veľkosť, id, formát, sha)` toho, čo sa nahralo.
     `kat` je cesta v katalógu, keď sa líši od cesty na Drive (rýchly test).
     `merge=True` = beh nahral len ďalší formát, balíky sa dopĺňajú.
     `casti` = kúsky bez vlastného balíka; `None` = tento beh ich nepočítal.
@@ -341,11 +345,12 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
         uzol.setdefault("updated_ts", data["_updated_ts"])
         uzol.setdefault("run", env("GITHUB_RUN_NUMBER"))
         mapy = uzol.setdefault("maps", {})
-        for kind, name, velkost, fid, fmt in baliky:
+        for kind, name, velkost, fid, fmt, sha in baliky:
             zapis_balik(mapy, kind, name, velkost, fid, fmt,
-                        kedy=data["_updated_at"], kedy_ts=data["_updated_ts"])
+                        kedy=data["_updated_at"], kedy_ts=data["_updated_ts"],
+                        sha=sha)
         # `casti` sa tu neprepisujú; zrušený balík a mŕtvy odkaz sa upratujú
-        uprac(mapy, zrusene, zive, {fid for _k, _n, _v, fid, _f in baliky})
+        uprac(mapy, zrusene, zive, {fid for _k, _n, _v, fid, _f, _s in baliky})
         return zapis(path, data,
                      f"doplnený balík {iba} k {'/'.join(kat)}")
     polozka = {
@@ -405,14 +410,15 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
                   if k not in ("maps", "regions", "subregions")}
         zaklad.update(polozka)
         polozka = zaklad
-    for kind, name, velkost, fid, fmt in baliky:
+    for kind, name, velkost, fid, fmt, sha in baliky:
         zapis_balik(polozka["maps"], kind, name, velkost, fid, fmt,
-                    kedy=data["_updated_at"], kedy_ts=data["_updated_ts"])
+                    kedy=data["_updated_at"], kedy_ts=data["_updated_ts"],
+                    sha=sha)
     if casti is not None:
         zapis_casti(polozka["maps"], casti)
     # až teraz, keď sú v položke aj balíky tohto behu; tie sú `chranene`
     uprac(polozka["maps"], zrusene, zive,
-          {fid for _k, _n, _v, fid, _f in baliky})
+          {fid for _k, _n, _v, fid, _f, _s in baliky})
 
     # `subregions` patria uzlu, nie tejto mape
     zachovaj = {k: uzol[k] for k in ("regions", "subregions") if k in uzol}
