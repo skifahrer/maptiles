@@ -47,6 +47,7 @@ EMPTY_TAG = "EMPTY_CHECK"      # meno položky v metadátach GDALu
 EMPTY_CHECK = "v2-presne"
 # nad túto veľkosť to prázdna dlaždica byť nemôže (60×60 px je pár kB, skutočný
 # stupeň v 5 m stovky MB) – podľa toho vie `dem/trust.py`, čo sa oplatí otvoriť
+EMPTY_MAX_BYTES = 1 << 20
 
 
 def gdalinfo(path, stats=""):
