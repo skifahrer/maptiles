@@ -53,7 +53,8 @@
 #     ostatné cesty pre autá, električky, metro,     od z11
 #       trajekty, lanovky
 #     poľné a lesné cesty (`track`)                  od z12
-#     chodníky, pešie cesty, cyklotrasy, schody      od z13
+#     chodníky, pešie cesty, cyklotrasy, schody,     od z13
+#       výťahy a rebríky
 #     `service` (príjazdy k domom, uličky parkovísk) od z14
 #
 # POZOR NA `min_zoom` NAD MAXZOOMOM ARCHÍVU: čo má vyšší `min_zoom`, než je
@@ -185,14 +186,13 @@ layers:
         attributes: *transport_attrs
 
       # --- 3. ostatné cesty pre autá: od z11 ---
-      # `busway` je vyhradený jazdný pruh/koridor pre autobusy – patrí sem,
-      # lebo je to cesta, po ktorej ide verejná doprava.
+      # `busway` a `bus_guideway` sú tu, ide po nich verejná doprava.
       - source: osm
         geometry: line
         min_zoom: 11
         include_when:
           highway: [unclassified, residential, living_street, pedestrian,
-                    road, busway, escape, raceway]
+                    road, busway, bus_guideway, escape, raceway]
         attributes: *transport_attrs
 
       # --- 4. poľné a lesné cesty: od z12 ---
@@ -207,12 +207,13 @@ layers:
         attributes: *transport_attrs
 
       # --- 5. chodníky, pešie cesty, cyklotrasy, schody: od z13 ---
+      # bez `elevator` a `ladder` sa pešia sieť preruší na poschodí a na rebríku
       - source: osm
         geometry: line
         min_zoom: 13
         include_when:
           highway: [path, footway, cycleway, bridleway, steps, corridor,
-                    via_ferrata]
+                    via_ferrata, elevator, ladder]
         attributes: *transport_attrs
 
       # --- 6. `service`: od z14 ---
@@ -318,6 +319,48 @@ examples:
           class: footway
           druh: highway
           surface: gravel
+
+  - name: Vedená autobusová dráha je cesta verejnej dopravy
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: bus_guideway
+    output:
+      - layer: transport
+        geometry: line
+        min_zoom: 11
+        tags:
+          class: bus_guideway
+          druh: highway
+
+  - name: Výťah je úsek pešej siete – bez neho sa cesta cez poschodie preruší
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: elevator
+    output:
+      - layer: transport
+        geometry: line
+        min_zoom: 13
+        tags:
+          class: elevator
+          druh: highway
+
+  - name: Rebrík na horskom chodníku je tiež pešia sieť
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: ladder
+    output:
+      - layer: transport
+        geometry: line
+        min_zoom: 13
+        tags:
+          class: ladder
+          druh: highway
 
   - name: Poľná cesta má vlastný zoom (z12) a nesie `tracktype`
     input:
