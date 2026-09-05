@@ -57,7 +57,6 @@ bloky_mod = _load("contour_blocks", os.path.join(
 METRIC, SCALE = plan.METRIC, plan.SCALE
 SLOPE_CELLS_PER_S = plan.SLOPE_CELLS_PER_S
 CONTOUR_SRC_CELLS_PER_S = plan.CONTOUR_SRC_CELLS_PER_S
-CONTOUR_MB_PER_GCELL = plan.CONTOUR_MB_PER_GCELL
 MOSAIC_MB_PER_GCELL = plan.MOSAIC_MB_PER_GCELL
 RES_LADDER, VEC_FLOOR_M = plan.RES_LADDER, plan.VEC_FLOOR_M
 run, to_metric, dem_cell_metres = plan.run, plan.to_metric, plan.dem_cell_metres
