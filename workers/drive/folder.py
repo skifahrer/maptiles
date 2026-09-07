@@ -223,6 +223,9 @@ def fetch(pool, item, dest, progress):
 # Google žiada násobok 256 KiB. Vlastné meno, nie `CHUNK`: to patrí sťahovaniu.
 UPLOAD_CHUNK = 32 * 1024 * 1024
 
+# prechodné stavy Drive: opakuje sa od miesta, kde relácia skončila
+RETRY_STATUS = (408, 429, 500, 502, 503, 504)
+
 UPLOAD_PATH = ("/upload/drive/v3/files?uploadType=resumable"
                "&supportsAllDrives=true&fields=id,name,size")
 
@@ -431,12 +434,10 @@ def _posli(creds, path, size, name, relacia, tries):
                     raise RuntimeError(
                         f"Nahrávanie na Drive zlyhalo ani na {tries}. pokus "
                         f"({exc}). Uložené je {human(sent)} z {human(size)}.")
-                time.sleep(min(2 ** attempt, 20))
-                # koľko toho Drive má, vie len Drive; opakovaný blok zahodí
-                try:
-                    sent = _uploaded(host, upath, size, creds)
-                except Exception as exc2:           # noqa: BLE001
-                    print(f"  (Drive nepovedal, koľko má: {exc2})", flush=True)
+                sent, fid = _po_vypadku(host, upath, size, creds, sent,
+                                        attempt, str(exc))
+                if fid:
+                    return fid
                 continue
             if status in (200, 201):
                 progress.add(len(body), name)
@@ -451,20 +452,46 @@ def _posli(creds, path, size, name, relacia, tries):
                 attempt += 1
                 creds.renew(None)
                 continue
+            if status in RETRY_STATUS:
+                attempt += 1
+                if attempt >= tries:
+                    raise RuntimeError(
+                        f"{_upload_error(status, headers, name)} – ani na "
+                        f"{tries}. pokus. Uložené je {human(sent)} "
+                        f"z {human(size)}.")
+                sent, fid = _po_vypadku(host, upath, size, creds, sent,
+                                        attempt, f"HTTP {status}")
+                if fid:
+                    return fid
+                continue
             raise RuntimeError(_upload_error(status, headers, name))
     raise RuntimeError("Drive nahrávanie neukončil – posledný blok nedostal "
                        "odpoveď 200/201.")
 
 
+def _po_vypadku(host, upath, size, creds, sent, attempt, preco):
+    """Počkaj a spýtaj sa Drive, koľko má. Vracia `(odkiaľ, id ak dokončené)`."""
+    print(f"  ({preco}) – skúšam znova, {attempt}. pokus", flush=True)
+    time.sleep(min(2 ** attempt, 20))
+    # koľko toho Drive má, vie len Drive; opakovaný blok zahodí
+    try:
+        return _uploaded(host, upath, size, creds)
+    except Exception as exc:                        # noqa: BLE001
+        print(f"  (Drive nepovedal, koľko má: {exc})", flush=True)
+        return sent, None
+
+
 def _upload_error(status, headers, kde):
     body = headers.get("_telo") or b""
-    reason = drive.api_error(body) or f"HTTP {status}"
-    if status == 403 and "insufficient" in str(reason).lower():
+    reason = drive.api_error(body)
+    if status == 403 and "insufficient" in str(reason or "").lower():
         return auth.scope_hint(str(reason))
     if status == 403:
-        return (f"Drive odmietol zápis ({reason}) pri „{kde}“. Najčastejšie "
-                f"je to plný disk účtu alebo právo len na čítanie.")
-    return f"Drive vrátil HTTP {status} pri nahrávaní ({reason})"
+        return (f"Drive odmietol zápis ({reason or f'HTTP {status}'}) pri "
+                f"„{kde}“. Najčastejšie je to plný disk účtu alebo právo "
+                f"len na čítanie.")
+    detail = f" ({reason})" if reason else ""
+    return f"Drive vrátil HTTP {status} pri nahrávaní{detail}"
 
 
 def _request(host, method, path, body, headers, timeout=300):
@@ -490,7 +517,8 @@ def _post_session(creds, meta, size, method="POST", path=UPLOAD_PATH):
     `POST` vyrobí nový súbor, `PATCH` prepíše obsah hotového. Na 401 sa token
     raz vymení a skúsi znova.
     """
-    for pokus in range(2):
+    posledny = 4
+    for pokus in range(posledny + 1):
         status, head, _ = _request(
             auth.API_HOST, method, path, meta.encode("utf-8"),
             {"Authorization": "Bearer " + creds.token(),
@@ -502,6 +530,11 @@ def _post_session(creds, meta, size, method="POST", path=UPLOAD_PATH):
             return head
         if status == 401 and pokus == 0:
             creds.renew(None)
+            continue
+        if status in RETRY_STATUS and pokus < posledny:
+            print(f"  (HTTP {status} pri otváraní relácie) – skúšam znova",
+                  flush=True)
+            time.sleep(min(2 ** (pokus + 1), 20))
             continue
         raise RuntimeError(_upload_error(status, head, "?"))
     raise RuntimeError("Drive nezačal nahrávanie")
@@ -516,15 +549,18 @@ def _put_chunk(host, path, body, start, end, size, creds):
 
 
 def _uploaded(host, path, size, creds):
-    """Koľko bajtov už Drive z tohto nahrávania má."""
+    """Koľko bajtov Drive má a id, ak medzitým nahrávanie dokončil."""
     status, head, _ = _request(host, "PUT", path, b"",
                                {"Authorization": "Bearer " + creds.token(),
                                 "Content-Range": f"bytes */{size}",
                                 "Content-Length": "0",
                                 "User-Agent": drive.UA})
     if status in (200, 201):
-        return size
-    return _resume_from(head, 0)
+        return size, json.loads(head["_telo"] or b"{}").get("id", "")
+    if status != 308:
+        # 404/410 = relácia je preč; poslať do nej 127 MB odznova nemá zmysel
+        raise RuntimeError(f"HTTP {status}")
+    return _resume_from(head, 0), None
 
 
 def _resume_from(headers, default):
