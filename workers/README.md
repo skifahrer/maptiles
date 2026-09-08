@@ -2028,8 +2028,9 @@ rozbaliť jeden cez druhý.
 [`workers/data/packages.json`](data/packages.json), číta ho
 [`workers/deploy/baliky.py`](deploy/baliky.py). Ten istý zoznam berie packer
 (čo je v ktorom balíku), formulár „Pregeneruj vrstvu kraja", dávka nad celou
-krajinou, kontroly – a cez `maps.json` (kľúče `app` a `symbol`) aj aplikácia,
-takže balík, o ktorom ešte nevie, sa v nej nezobrazí ako holý kľúč bez ikony.
+krajinou, kontroly – a cez `maps.json` (kľúče `app`, `symbol` a `detail`) aj
+aplikácia, takže balík, o ktorom ešte nevie, sa v nej nezobrazí ako holý kľúč
+bez ikony a bez vety, čo kreslí.
 Kým bol napísaný na piatich miestach, znamenal nový balík päť úprav a
 ktorákoľvek zabudnutá bola tichá.
 
