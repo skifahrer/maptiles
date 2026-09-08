@@ -144,6 +144,7 @@ def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None,
         return
     polozka["app"] = meta["app"]
     polozka["symbol"] = meta["symbol"]
+    polozka["detail"] = meta["app_popis"]
     polozka["popis"] = meta["popis"]
 
 

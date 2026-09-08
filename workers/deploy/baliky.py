@@ -10,7 +10,7 @@ ktoré sa z neho odvodzujú:
     balik(kluc)       jeden, alebo tvrdý pád s tým, čo sa dá zadať
     kluce()           len kľúče
     zrusene()         balíky, ktoré UŽ NIE SÚ – ich starý súbor sa maže
-    pre_katalog()     `{kľúč: {app, symbol, popis}}` do `maps.json`
+    pre_katalog()     `{kľúč: {app, symbol, detail, popis}}` do `maps.json`
 
 PREČO SA TO NEČÍTA PRIAMO. Súbor sa načíta RAZ (`_CACHE`) a chyba v ňom padá
 s vetou, ktorá povie, kde sa opravuje – volajúci sú štyria (packer, súbory
@@ -64,13 +64,13 @@ def regenerovatelne():
 
 
 def pre_katalog():
-    """Meno a značka každého balíka do `maps.json`.
+    """Meno, značka a veta každého balíka do `maps.json`.
 
     Aby appka vedela pomenovať a nakresliť aj balík, ktorý ešte nepozná –
     jej vlastná tabuľka je záloha pre staršie katalógy, nie jediný zdroj.
     """
     return {b["kluc"]: {"app": b["app"], "symbol": b["symbol"],
-                        "popis": b["popis"]}
+                        "detail": b["app_popis"], "popis": b["popis"]}
             for b in zoznam()}
 
 
