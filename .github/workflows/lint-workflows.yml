@@ -539,6 +539,11 @@ jobs:
       - name: "Navigácia: profil prejde do motora celý, alebo o sebe povie"
         run: python3 workers/lint/routing.py
 
+      # čo nie je v slovníku značiek, sa do telefónu nedostane – a profil sa
+      # potom opiera o tag, ktorý v dlaždici nie je: prepínač nespraví nič
+      - name: "Navigácia: slovník značiek a telo smerovacej dlaždice"
+        run: python3 workers/lint/routing-tiles.py
+
       # dva rozsahy pod jedným `country` si položku v katalógu prepíšu, rezaný
       # PBF má na hranici slepé ulice, bez `admins.sqlite` nefunguje prechod
       # hranice – a nič z toho nespadne

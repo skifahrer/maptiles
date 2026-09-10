@@ -1,0 +1,204 @@
+{
+  "_comment": [
+    "SLOVNÍK ZNAČIEK PRE SMEROVANIE – čo z OSM sa vozí do telefónu.",
+    "",
+    "Do archívu `<kraj>-routing.pmtiles` ide TAG, nie cena: profil sa",
+    "vyhodnocuje až v telefóne (rozpis v `docs/navigation.md` §10, formát",
+    "v `docs/routing-tiles.md`). Preto je tento zoznam zároveň PÁKA NA",
+    "VEĽKOSŤ – čo tu nie je, sa do telefónu nedostane a žiadny profil to",
+    "nemôže použiť.",
+    "",
+    "DVE OTÁZKY, JEDEN SÚBOR. `siet` hovorí, ČO JE CESTA (podľa čoho sa way",
+    "berie do grafu), `kluce` hovorí, ČO SA O NEJ VEZIE. Kľúč, ktorý robí",
+    "oboje, má `z_siete: true` a hodnoty si berie zo `siet` – druhá kópia",
+    "zoznamu tried by sa rozišla a rozišla by sa ticho.",
+    "",
+    "TRI DRUHY KĽÚČOV; je to rozdiel v kódovaní, nie v dôležitosti:",
+    "  `hodnoty`  vymenované – v dlaždici je index, nie reťazec",
+    "  `cislo`    celé číslo bez jednotky (`layer`, `lanes`)",
+    "  `volny`    reťazec tak, ako je v OSM (`ref`, `maxheight`, `name`)",
+    "",
+    "ROZMERY OSTÁVAJÚ REŤAZCOM. `12'6\"` je 12 stôp 6 palcov; parser, ktorý",
+    "z toho v pipeline prečíta 12, pošle karavan pod podjazd a v builde",
+    "nespadne nič. To isté rozhodnutie ako `workers/transport/transport.yml`.",
+    "",
+    "HODNOTA MIMO ZOZNAMU SA ZAHODÍ a `tiles.py` ju spočíta do súhrnu behu –",
+    "nový povrch v OSM sa tak neprejaví ako tichá zmena trasy, ale ako riadok",
+    "v logu. Kľúč mimo zoznamu sa zahadzuje bez počítania: tých sú tisíce.",
+    "",
+    "`name` JE TU KVÔLI POKYNOM. „Odbočte vľavo na Hlavnú“ sa bez mena",
+    "cesty povedať nedá a doplniť ho neskôr znamená znovustiahnuť každý kraj.",
+    "Je to najdrahší kľúč zoznamu – keď sa archív nevojde do rozpočtu, škrtá",
+    "sa ako prvý, a vtedy sa vypnú aj pokyny, nie ticho.",
+    "",
+    "`krajina` NIE JE Z OSM TAGU. Je to krajina, v ktorej hrana leží, a bez",
+    "nej sa nedá povedať diaľničná známka (`workers/data/vignettes.json`).",
+    "Dnes ju `tiles.py` berie z regiónu, lebo kraj je celý v jednej krajine;",
+    "keď archív pokryje viac krajín, musí prísť z `admin_level=2`.",
+    "",
+    "ZMENA TOHTO SÚBORU MENÍ `id` SLOVNÍKA a to je v každej dlaždici. Archívy",
+    "s rôznym `id` sa v telefóne nesmú spojiť – index by ukazoval na inú",
+    "hodnotu a trasa by vyšla, len iná. Stráži to `workers/lint/routing-tiles.py`."
+  ],
+
+  "verzia": 1,
+
+  "siet": {
+    "_comment": [
+      "Podľa čoho je way cesta. `highway` je hlavná rodina; ostatné tri sú",
+      "úseky, po ktorých sa dá ísť a `highway` nemajú.",
+      "",
+      "`route=ferry` je na Dunaji jediný prechod cez rieku a `aerialway` sú",
+      "vleky – profil `ski` ich potrebuje rovnako, ako auto potrebuje cestu.",
+      "`railway=platform` je nástupište: pešia trasa na vlak inak končí pred",
+      "ním."
+    ],
+    "highway": [
+      "motorway", "motorway_link", "trunk", "trunk_link",
+      "primary", "primary_link", "secondary", "secondary_link",
+      "tertiary", "tertiary_link",
+      "unclassified", "residential", "living_street", "service", "busway",
+      "pedestrian", "track", "path", "footway", "cycleway", "bridleway",
+      "steps", "corridor", "via_ferrata", "road"
+    ],
+    "route": ["ferry"],
+    "railway": ["platform"],
+    "aerialway": [
+      "cable_car", "gondola", "mixed_lift", "chair_lift", "drag_lift",
+      "t-bar", "j-bar", "platter", "rope_tow", "magic_carpet", "zip_line"
+    ]
+  },
+
+  "kluce": {
+    "highway":   { "z_siete": true,  "co": "trieda cesty" },
+    "route":     { "z_siete": true,  "co": "trajekt" },
+    "railway":   { "z_siete": true,  "co": "nástupište" },
+    "aerialway": { "z_siete": true,  "co": "vlek, lanovka" },
+
+    "name": { "volny": true, "co": "meno cesty do pokynu „odbočte na…“" },
+    "ref":  { "volny": true, "co": "číslo cesty (D1, I/18) do pokynu aj do tabule" },
+
+    "oneway": {
+      "hodnoty": ["yes", "no", "-1", "reversible", "alternating"],
+      "co": "smerovosť; `-1` je proti poradiu uzlov way"
+    },
+    "oneway:bicycle": {
+      "hodnoty": ["yes", "no", "-1"],
+      "co": "jednosmerka, ktorá pre bicykel neplatí"
+    },
+    "junction": {
+      "hodnoty": ["roundabout", "circular", "jughandle"],
+      "co": "kruhový objazd – smerovosť aj pokyn („tretí výjazd“)"
+    },
+
+    "access":        { "pristup": true, "co": "prístup pre všetkých" },
+    "vehicle":       { "pristup": true, "co": "prístup pre vozidlá" },
+    "motor_vehicle": { "pristup": true, "co": "prístup pre motorové vozidlá" },
+    "motorcar":      { "pristup": true, "co": "prístup pre osobné auto" },
+    "hgv":           { "pristup": true, "co": "prístup pre nákladné auto" },
+    "psv":           { "pristup": true, "co": "prístup pre autobus" },
+    "foot":          { "pristup": true, "co": "prístup pešo" },
+    "bicycle":       { "pristup": true, "co": "prístup na bicykli" },
+    "horse":         { "pristup": true, "co": "prístup na koni" },
+    "ski":           { "pristup": true, "co": "prístup na lyžiach" },
+
+    "surface": {
+      "hodnoty": [
+        "asphalt", "concrete", "concrete:plates", "concrete:lanes", "paved",
+        "paving_stones", "sett", "cobblestone", "unhewn_cobblestone", "metal",
+        "wood", "unpaved", "compacted", "fine_gravel", "gravel",
+        "pebblestone", "rock", "dirt", "earth", "ground", "grass",
+        "grass_paver", "mud", "sand", "woodchips", "snow", "ice", "salt"
+      ],
+      "co": "povrch – cena pre bicykel a karavan, nie zákaz"
+    },
+    "smoothness": {
+      "hodnoty": [
+        "excellent", "good", "intermediate", "bad", "very_bad", "horrible",
+        "very_horrible", "impassable"
+      ],
+      "co": "zjazdnosť povrchu"
+    },
+    "tracktype": {
+      "hodnoty": ["grade1", "grade2", "grade3", "grade4", "grade5"],
+      "co": "stupeň poľnej cesty – v profile je `track` jeden prepínač, ale grade rozhoduje o cene"
+    },
+    "sac_scale": {
+      "hodnoty": [
+        "hiking", "mountain_hiking", "demanding_mountain_hiking",
+        "alpine_hiking", "demanding_alpine_hiking", "difficult_alpine_hiking"
+      ],
+      "co": "náročnosť pešej cesty (SAC)"
+    },
+    "mtb:scale": {
+      "hodnoty": ["0", "1", "2", "3", "4", "5", "6"],
+      "co": "náročnosť pre horský bicykel"
+    },
+    "trail_visibility": {
+      "hodnoty": ["excellent", "good", "intermediate", "bad", "horrible", "no"],
+      "co": "či je chodník v teréne vidieť"
+    },
+
+    "maxspeed": { "volny": true, "co": "najvyššia dovolená rýchlosť aj s jednotkou (`50`, `30 mph`)" },
+    "maxheight": { "volny": true, "co": "výška podjazdu" },
+    "maxheight:physical": { "volny": true, "co": "skutočná výška, keď je značka inde" },
+    "maxwidth":  { "volny": true, "co": "šírka" },
+    "maxweight": { "volny": true, "co": "hmotnosť" },
+    "maxlength": { "volny": true, "co": "dĺžka" },
+    "maxaxleload": { "volny": true, "co": "zaťaženie nápravy – pre nákladné auto" },
+
+    "hazmat": {
+      "hodnoty": ["yes", "no", "destination"],
+      "co": "nebezpečný náklad"
+    },
+    "toll": {
+      "hodnoty": ["yes", "no"],
+      "co": "mýto za prejazd; známka to NIE JE (`docs/navigation.md` §5)"
+    },
+    "ford": {
+      "hodnoty": ["yes", "no", "stepping_stones", "boat"],
+      "co": "brod"
+    },
+    "bridge": {
+      "hodnoty": [
+        "yes", "no", "viaduct", "boardwalk", "aqueduct", "cantilever",
+        "covered", "movable", "trestle"
+      ],
+      "co": "most"
+    },
+    "tunnel": {
+      "hodnoty": ["yes", "no", "building_passage", "culvert", "avalanche_protector"],
+      "co": "tunel"
+    },
+    "service": {
+      "hodnoty": [
+        "driveway", "parking_aisle", "alley", "drive-through",
+        "emergency_access", "yard", "siding", "spur", "crossover"
+      ],
+      "co": "druh účelovej cesty – príjazd k domu nie je ulička parkoviska"
+    },
+    "incline": { "volny": true, "co": "sklon aj so znamienkom (`10%`, `up`)" },
+
+    "layer": { "cislo": true, "co": "úroveň kríženia – mimoúrovňové kríženie nie je križovatka" },
+    "lanes": { "cislo": true, "co": "počet pruhov" },
+
+    "krajina": {
+      "hodnoty": ["SK", "CZ", "AT", "HU", "PL", "UA", "DE", "SI", "CH",
+                  "HR", "RO"],
+      "co": "krajina hrany – vstup pre diaľničnú známku, nie tag z OSM"
+    }
+  },
+
+  "_pristup": {
+    "_comment": [
+      "Hodnoty, ktoré má KAŽDÝ prístupový kľúč (`access`, `foot`, `hgv`…).",
+      "Napísané raz: desať kópií toho istého zoznamu by sa rozišlo pri prvom",
+      "novom stupni prístupu."
+    ],
+    "hodnoty": [
+      "yes", "no", "private", "destination", "delivery", "customers",
+      "permissive", "agricultural", "forestry", "designated", "dismount",
+      "discouraged", "use_sidepath", "unknown"
+    ]
+  }
+}
