@@ -29,8 +29,10 @@ on:
         required: false
         default: ""
         type: string
+      # rovnaké pre všetky kraje krajiny – archívy s rôznym poradím sa
+      # v telefóne spojiť nesmú
       routing_area:
-        description: "Územie, nad ktorým je poradie uzlov (`routing_area` v regions.json) – rovnaké pre všetky kraje krajiny"
+        description: "Územie, nad ktorým je poradie uzlov (`routing_area` v regions.json)"
         required: false
         default: ""
         type: string
