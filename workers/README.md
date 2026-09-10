@@ -2078,6 +2078,18 @@ v [`workers/data/routing-profiles.json`](data/routing-profiles.json)): to isté
 obmedzenie je tak v balíku `cesty` **na pozretie** („pod týmto mostom je
 3,8 m") a v grafe **na použitie** („trasa sa tomu podjazdu vyhne").
 
+**Graf Valhally sa ale nahrádza dlaždicami so značkami.** Vážil 176 – 192 MB na
+kraj a na hranici kraja končil; namiesto neho ide do telefónu
+`<kraj>-routing.pmtiles` – tá istá mriežka z9 ako mapa, vnútri graf križovatiek
+s OSM `id` uzlov a s tagmi, a cenu ráta telefón podľa profilu používateľa.
+Stavia to [`workers/routing/tiles.py`](routing/tiles.py) zo slovníka
+[`workers/data/routing-tags.json`](data/routing-tags.json), poradie uzlov pre
+CCH počíta [`workers/routing/order.py`](routing/order.py) a stráži to
+[`workers/lint/routing-tiles.py`](../workers/lint/routing-tiles.py). Formát je
+v [docs/routing-tiles.md](../docs/routing-tiles.md), dôvod
+v [docs/navigation.md](../docs/navigation.md) §10. Publikovať sa to ešte
+nezačalo – balík `navigacia` je zatiaľ graf Valhally.
+
 **Hranice a vodstvo sú nové balíky z toho istého dôvodu, pre ktorý existujú
 `cesty`:** v mape sú obe veci nakreslené, ale nie použiteľné. Vrstva `boundary`
 OpenMapTiles nesie `admin_level`, `disputed` a `maritime` – teda ČIARU, po

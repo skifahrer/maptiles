@@ -31,7 +31,7 @@ ZNAME = {
     "boundaries": "workflow „Mapa · hranice území“ (boundaries.yml)",
     "water": "workflow „Mapa · vodstvo“ (water.yml)",
     "search": "job `search` (vyhľadávací index)",
-    "routing": "profil navigácie (costing pre Valhallu / GraphHopper)",
+    "routing": "navigácia: profil, smerovacie dlaždice a poradie uzlov",
     "tiles": "job `tiles`",
     "wiki": "workflow „Build wiki“ (wiki.yml)",
     "world": "workflow „Build svet“ (world-map.yml)",

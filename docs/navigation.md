@@ -402,11 +402,19 @@ reže geometriu a zahadzuje topológiu, presne ako hovorí §1) – uzly s **OSM
 hrany ako dvojice indexov, sada značiek cez slovník, odbočovacie zákazy.
 
 **Hranica krajov zmizne.** Mriežka je globálna a uzly majú OSM id, takže dva
-susedné kraje majú okrajové dlaždice **rovnaké** – telefón si dlaždice
-zjednotí podľa z/x/y a duplikát zahodí. Trasa cez hranicu funguje vo chvíli,
-keď dobehne druhý kraj: nič sa nedopočítava a nič nedosťahuje. Slepá ulica
-z §7a prestáva byť vlastnosťou dát a celoštátny balík zo §7b prestáva byť
-dôvod, prečo existuje.
+susedné kraje majú okrajové dlaždice na tých istých z/x/y a telefón si ich
+zjednotí. Trasa cez hranicu funguje vo chvíli, keď dobehne druhý kraj: nič sa
+nedopočítava a nič nedosťahuje. Slepá ulica z §7a prestáva byť vlastnosťou dát
+a celoštátny balík zo §7b prestáva byť dôvod, prečo existuje.
+
+**Zjednotí ich ale po PRVKOCH, nie po dlaždiciach** – a to je oprava tohto
+odseku, ktorá vyšla najavo pri stavbe (P2). Prvá verzia počítala s tým, že sú
+okrajové dlaždice susedov bajt po bajte zhodné a duplikát sa dá zahodiť. Nie sú
+a nemôžu byť: PBF kraja je rezaný jeho hranicou, takže v okrajovej dlaždici má
+každý kraj len tú časť siete, ktorá padla do neho – zahodiť jednu z dvoch
+takých dlaždíc znamená zahodiť polovicu križovatky. Zjednotenie preto ide cez
+OSM id uzlov a dvojicu `(od, do)` na hrane. Skontrolovať sa dá to, čo z toho
+naozaj platí: že sa spoločné prvky **nerozídu** (P4).
 
 Rozmery ostávajú **reťazcom**, ako to už `workers/transport/transport.yml`
 rozhodol. Parser v pipeline, ktorý z `12'6"` prečíta 12, pošle karavan pod
@@ -416,16 +424,24 @@ podjazd a v builde nespadne nič.
 
 | lístok | čo |
 |---|---|
-| **P1** | `workers/data/routing-tags.json` – slovník značiek; je to zároveň páka na veľkosť |
-| **P2** | `workers/routing/tiles.py` – archív z `data/region.osm.pbf` na mriežke z9, s OSM id uzlov; `graf.json` s verziou formátu, id slovníka, id poradia a počtom hrán |
-| **P3** | `workers/routing/order.py` – poradie uzlov (nested dissection, InertialFlowCutter) nad **celým stavaným územím**, jedno číslo na uzol. Viď §11 |
-| **P4** | `workers/lint/routing-tiles.py` – každá značka je v slovníku, okrajové dlaždice susedov sú zhodné, všetky archívy jedného behu majú to isté id poradia, žiadna dlaždica neprekročí rozpočet |
+| **P1** ✓ | `workers/data/routing-tags.json` – slovník značiek; je to zároveň páka na veľkosť |
+| **P2** ✓ | `workers/routing/tiles.py` – archív z `data/region.osm.pbf` na mriežke z9, s OSM id uzlov; `graf` v metadátach archívu s verziou formátu, id slovníka, id poradia a počtom hrán |
+| **P3** ✓ | `workers/routing/order.py` – poradie uzlov (nested dissection) nad **celým stavaným územím**, jedno číslo na uzol. Viď §11; rez je zatiaľ inerciálny, nie InertialFlowCutter |
+| **P4** ✓ | `workers/lint/routing-tiles.py` – každá značka je v slovníku, spoločné prvky okrajových dlaždíc susedov sa nerozchádzajú, všetky archívy jedného behu majú to isté id poradia, žiadna dlaždica neprekročí rozpočet |
 | **P5** | `navigation-region.yml` publikuje nový archív; položka v katalógu pod `maps.navigacia` namiesto Valhally |
 | **P6** | balík grafu kraja sa prestane publikovať. `graph.sh` a celoštátny job ostávajú – sú referenčná stavba, proti ktorej sa nový motor krížom kontroluje |
 | **P7** | `workers/lint/roadtypes.py` – zoznam typov ciest v appke proti triedam v štýle |
 
 Prvý beh má potvrdiť odhad veľkosti (P2). Kým to nie je namerané, je to odhad
 odvodený z cudzieho čísla, nie naše číslo.
+
+**Hotové je P1 – P4**, teda formát a všetko, čo ho stráži; rozpis formátu je
+v [`docs/routing-tiles.md`](routing-tiles.md). Chýba P5 – P7: archív sa ešte
+nepublikuje, balík grafu Valhally sa ešte neprestal publikovať a zoznam typov
+ciest v appke ešte nikto neporovnáva so štýlom. **Neoverené na pravých dátach:**
+skúšané je to na vyrobených PBF (mriežka ulíc, jednosmerka, trajekt, zákaz
+odbočenia), lebo v tomto prostredí nie je PBF kraja – takže odhad veľkosti
+z tabuľky vyššie ostáva odhadom.
 
 ## 11. Jedna drahá vec, ktorá patrí sem a nie do telefónu
 
