@@ -37,8 +37,8 @@ Mapa · Build map region      deväť jobov, tie dlhé bežia súbežne:
                                hranice  hranice území a ich názvy ─► balík
                                         `hranice`
                                vodstvo  rieky, jazerá, more ─► balík `vodstvo`
-                               navigacia navigačný graf Valhally ─► vlastný
-                                        balík `-navigacia.zip`
+                               navigacia smerovacia sieť so značkami ─►
+                                        vlastný balík `-navigacia.zip`
                                assets   SDF sprity a glyfy
                                deploy   zloží _site ─► GitHub Pages
                                apple-archive  balíky ešte raz ako .aar
@@ -2007,7 +2007,7 @@ Priečinok hovorí, čoho sa mapa týka, a čo chýba, sa vyrobí:
     presovsky-vysoke_tatry-vodstvo.zip            rieky, jazerá, priehrady, more
                                                   – každý prvok aj s menom
     presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
-    presovsky-vysoke_tatry-navigacia.zip          navigačný graf Valhally
+    presovsky-vysoke_tatry-navigacia.zip          smerovacia sieť so značkami
 
 Každý balík je aj ako **`.aar` (Apple Archive)** – ten istý obsah, to isté
 meno, iná prípona. iOS a macOS ho rozbalia systémovo (framework AppleArchive),
@@ -2034,7 +2034,7 @@ bez ikony a bez vety, čo kreslí.
 Kým bol napísaný na piatich miestach, znamenal nový balík päť úprav a
 ktorákoľvek zabudnutá bola tichá.
 
-**Dopravná sieť, body záujmu, hranice, vodstvo a navigačný graf sú VONKU zo
+**Dopravná sieť, body záujmu, hranice, vodstvo a smerovacia sieť sú VONKU zo
 základnej mapy** z rovnakého dôvodu ako vrstvy z výškového modelu – s tým
 rozdielom, že od nich mapa vyzerá rovnako aj bez nich, takže tu ide výlučne
 o veľkosť sťahovania:
@@ -2045,7 +2045,7 @@ o veľkosť sťahovania:
 | `body` | pramene, jaskyne, rozhľadne, pamiatky, banské dedičstvo, geodetické body | `-points` |
 | `hranice` | štát, kraj, okres a obec ako plochy aj čiary, s menom a úrovňou, plus body sídel | `-boundaries` |
 | `vodstvo` | rieky, potoky, kanály, jazerá, priehrady, zálivy, pobrežie – každý prvok aj s menom | `-water` |
-| `navigacia` | navigačný graf Valhally pre tento kraj | `routing/` |
+| `navigacia` | smerovacia sieť so značkami – cenu trasy počíta telefón | `-routing` |
 
 **`-transport.pmtiles` je celý balík `cesty`** a je to celá cestná, koľajová
 a chodníková sieť kraja: cesty od diaľnice po schody, železnice, električky
@@ -2078,17 +2078,20 @@ v [`workers/data/routing-profiles.json`](data/routing-profiles.json)): to isté
 obmedzenie je tak v balíku `cesty` **na pozretie** („pod týmto mostom je
 3,8 m") a v grafe **na použitie** („trasa sa tomu podjazdu vyhne").
 
-**Graf Valhally sa ale nahrádza dlaždicami so značkami.** Vážil 176 – 192 MB na
-kraj a na hranici kraja končil; namiesto neho ide do telefónu
+**Graf Valhally nahradili dlaždice so značkami.** Vážil 176 – 192 MB na kraj
+a na hranici kraja končil; namiesto neho ide do telefónu
 `<kraj>-routing.pmtiles` – tá istá mriežka z9 ako mapa, vnútri graf križovatiek
 s OSM `id` uzlov a s tagmi, a cenu ráta telefón podľa profilu používateľa.
-Stavia to [`workers/routing/tiles.py`](routing/tiles.py) zo slovníka
+Stavia to [`workers/routing/build.sh`](routing/build.sh) →
+[`tiles.py`](routing/tiles.py) zo slovníka
 [`workers/data/routing-tags.json`](data/routing-tags.json), poradie uzlov pre
-CCH počíta [`workers/routing/order.py`](routing/order.py) a stráži to
-[`workers/lint/routing-tiles.py`](../workers/lint/routing-tiles.py). Formát je
+CCH počíta [`workers/routing/order.py`](routing/order.py) a strážia to
+[`workers/lint/routing-tiles.py`](lint/routing-tiles.py)
+a [`roadtypes.mjs`](lint/roadtypes.mjs). Formát je
 v [docs/routing-tiles.md](../docs/routing-tiles.md), dôvod
-v [docs/navigation.md](../docs/navigation.md) §10. Publikovať sa to ešte
-nezačalo – balík `navigacia` je zatiaľ graf Valhally.
+v [docs/navigation.md](../docs/navigation.md) §10. Graf Valhally ostáva ako
+CELOŠTÁTNA referenčná stavba (`navigation.yml`), proti ktorej sa nový motor dá
+krížom skontrolovať – po krajoch sa už nestavia.
 
 **Hranice a vodstvo sú nové balíky z toho istého dôvodu, pre ktorý existujú
 `cesty`:** v mape sú obe veci nakreslené, ale nie použiteľné. Vrstva `boundary`
@@ -2135,17 +2138,18 @@ stovkám za dlaždice, takže sa tu nemá čo šetriť. Balíky `-search` a `-li
 preto zanikli (`zrusene` v číselníku) a staré sa na Drive mažú.
 
 **Navigácia je naopak zo základnej mapy VON a má vlastný balík
-`-navigacia.zip`** – cestná a chodníková sieť z OSM ako graf Valhally
-(`_site/routing/`: `valhalla_tiles.tar`, `valhalla.json`, `admins.sqlite`,
-`timezones.sqlite`, `graf.json`). Balila sa dovnútra mapy s tým istým
-argumentom ako index, lenže namerané to tak nie je: **graf kraja váži 170 až
-190 MB a mapa s ním 283 MB**, čiže dve tretiny „základnej mapy" bola sieť, po
-ktorej sa jazdí, nie mapa, ktorá sa kreslí. To je presne prípad vrstevníc
-a tieňovania. Stojí vedľa `cesty` a sú to dve otázky: „chcem vidieť, kadiaľ sa
-dá ísť" a „chcem, aby ma to tam doviezlo". Rozdiel medzi nimi je vecný, nie
-formálny: `.pmtiles` je kreslený obraz s orezanou a zjednodušenou geometriou
-bez odbočovacích zákazov, takže sa z neho routovať **nedá**; graf v `routing/`
-je tá istá sieť na jazdenie – rozpis v [`docs/navigation.md`](../docs/navigation.md) §1.
+`-navigacia.zip`** – `<kraj>-routing.pmtiles`, smerovacia sieť so značkami.
+Balila sa dovnútra mapy s tým istým argumentom ako index, lenže vtedy to bol
+graf Valhally a namerané to tak nebolo: **graf kraja vážil 170 až 190 MB a mapa
+s ním 283 MB**, čiže dve tretiny „základnej mapy" bola sieť, po ktorej sa
+jazdí, nie mapa, ktorá sa kreslí. Dnešný archív je jednotky MB, ale balík
+ostáva vlastný, lebo sú to dve otázky: „chcem vidieť, kadiaľ sa dá ísť"
+(`cesty`) a „chcem, aby ma to tam doviezlo" (`navigacia`) – a kto navigáciu
+nechce, nemá ju za čo sťahovať. Rozdiel medzi nimi je vecný, nie formálny:
+`-transport.pmtiles` je kreslený obraz s orezanou a zjednodušenou geometriou
+bez odbočovacích zákazov, takže sa z neho routovať **nedá**;
+`-routing.pmtiles` je tá istá sieť ako graf – rozpis
+v [`docs/routing-tiles.md`](../docs/routing-tiles.md).
 
 **Hľadanie aj graf sú vždy za ten jeden región**, ktorého je mapa. Index je
 z toho istého PBF ako mapa; graf sa stavia z `data/region.osm.pbf` toho istého
@@ -3700,7 +3704,7 @@ Build kraja postaví **všetko** — dlaždice, vrstevnice, skaly, tieňovanie,
 trasy, prvky, hľadanie aj navigáciu. Trvá to hodiny a je to správne vtedy, keď
 sa mapa naozaj celá mení. Lenže veľká časť zmien sa týka **jednej vrstvy**:
 pribudne trieda do `workers/features/points.yml`, opraví sa schéma obmedzení,
-dvihne sa verzia Valhally. Prestavať kvôli tomu osem krajov znamená zaplatiť
+zmení sa slovník značiek. Prestavať kvôli tomu osem krajov znamená zaplatiť
 deň za pár minút práce — a pri tom prepísať na Drive aj balíky, na ktorých sa
 nič nezmenilo.
 
@@ -3713,7 +3717,7 @@ nad krajom nespúšťa celý build, ale to jedno, čo si vyberieš (`co`):
 | `cesty` | `{kraj}-cesty.zip` (dopravná sieť aj s obmedzeniami na ceste) | **minúty** – z toho istého PBF ako mapa |
 | `hranice` | `{kraj}-hranice.zip` (hranice území a ich mená) | **minúty** – z toho istého PBF ako mapa |
 | `vodstvo` | `{kraj}-vodstvo.zip` (rieky, jazerá, more) | **minúty** – z toho istého PBF ako mapa |
-| `navigacia` | `{kraj}-navigacia.zip` (graf Valhally) | **minúty** – z toho istého PBF ako mapa |
+| `navigacia` | `{kraj}-navigacia.zip` (smerovacia sieť so značkami) | **minúty** – z toho istého PBF ako mapa |
 | `vrstevnice` | `{kraj}-vrstevnice-skaly.zip` | desiatky minút až hodiny – z výškového modelu |
 | `skaly` | `{kraj}-vrstevnice-skaly.zip` | desiatky minút až hodiny – z výškového modelu |
 | `tienovanie` | `{kraj}-tienovanie.zip` (výškový model – tieňovanie aj 3D terén) | desiatky minút až hodiny – z výškového modelu |
@@ -3744,8 +3748,9 @@ na ceste atribútmi tej istej siete a značené trasy cestujú v základnej mape
 polovica nová s polovicou starou už nemá ako vzniknúť.
 
 `navigacia` je **vlastná voľba**, lebo je vlastný balík — a je to zároveň
-jediné, čo sa mení pri zdvihnutí verzie Valhally, takže prestavovať kvôli tomu
-dopravnú sieť by bolo zbytočné.
+jediné, čo sa mení pri zmene slovníka značiek
+(`workers/data/routing-tags.json`), takže prestavovať kvôli tomu dopravnú sieť
+by bolo zbytočné.
 
 **Základná mapa a články z Wikipédie sa takto pregenerovať nedajú.** Mapa je
 celý build (Planetiler nad celým PBF, štýl, ikonky), takže „len ju" znamená

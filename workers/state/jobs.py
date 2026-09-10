@@ -105,8 +105,8 @@ CENA = {
                 "hranice štátu, kraja, okresu a obce aj s ich menami"),
     "vodstvo": ("Vodstvo",
                 "rieky, potoky, jazerá, priehrady a more aj s ich menami"),
-    "navigacia": ("Navigačný graf (Valhalla)",
-                  "graf pre trasovanie v tomto kraji"),
+    "navigacia": ("Smerovacia sieť",
+                  "sieť so značkami, z ktorej telefón počíta trasu"),
     "vrstevnice": ("Vrstevnice",
                    "izolínie z výškového modelu (skaly v balíku prídu "
                    "z cache)"),

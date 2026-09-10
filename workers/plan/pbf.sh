@@ -65,6 +65,7 @@ hranica_z() { # $1 = PBF, z ktorého sa hranica číta
 if [ -n "$CUSTOM_URL" ]; then
   # ----- vlastný región (Európa / svet) -----
   NAME="$OPT_CUSTOM_NAME"
+  ISO=""
   [ -n "$NAME" ] || NAME=$(basename "$CUSTOM_URL" .osm.pbf)
   KEY=$(echo "$NAME" | LC_ALL=C.UTF-8 iconv -f utf8 -t ascii//TRANSLIT | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '_' | sed 's/^_//;s/_*$//')
   download "$CUSTOM_URL" || { echo "::error::Nepodarilo sa stiahnuť $CUSTOM_URL"; exit 1; }
@@ -87,6 +88,9 @@ else
   NAME=$(jq -r --arg r "$KEY" '.[$r].name' workers/data/regions.json)
   BBOX=$(jq -r --arg r "$KEY" '.[$r].bbox | join(",")' workers/data/regions.json)
   DIR=$(jq -r --arg r "$KEY" '.[$r].osmfr.dir' workers/data/regions.json)
+  # ISO krajiny pre smerovanie: hrana v archíve nesie krajinu, inak nemá
+  # diaľničná známka na čom stáť. Kraj ho má cez svoje `country`.
+  ISO=$(jq -r --arg r "$KEY" '. as $d | ($d[$r].iso // $d[$d[$r].country].iso // "")' workers/data/regions.json)
   # rodič je kľúč iného regiónu v tom istom číselníku, nie druhá URL
   PARENT=$(jq -r --arg r "$KEY" '.[$r].osmfr.parent // ""' workers/data/regions.json)
   if [ "$NAME" = "null" ]; then echo "::error::Neznámy región: $KEY"; exit 1; fi
@@ -270,6 +274,7 @@ fi
 
 echo "key=$KEY"   >> "$GITHUB_OUTPUT"
 echo "name=$NAME" >> "$GITHUB_OUTPUT"
+echo "iso=$ISO"   >> "$GITHUB_OUTPUT"
 echo "bbox=$BBOX" >> "$GITHUB_OUTPUT"
 echo "dem_bbox=$DEM_BBOX" >> "$GITHUB_OUTPUT"
 # bezpečná podoba bboxu do kľúča cache. Z `dem_bbox`, lebo ho používajú len

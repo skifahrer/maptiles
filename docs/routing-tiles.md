@@ -109,6 +109,24 @@ a dvojicu `(od, do)` na hranách – rovnaký prvok z dvoch archívov je ten ist
 prvok. Čo sa naozaj dá skontrolovať, je, že sa spoločné prvky **nerozídu**;
 robí to `workers/lint/routing-tiles.py` nad archívmi jedného behu.
 
+## Kde to v pipeline sedí
+
+Kraj: job `navigacia` v „Mapa · Build map region" volá
+[`navigation-region.yml`](../.github/workflows/navigation-region.yml), ten
+[`workers/routing/build.sh`](../workers/routing/build.sh) nad tým istým
+`data/region.osm.pbf`, z akého je mapa. Archív ide do `_site/tiles/` ako každá
+iná vrstva, do manifestu pod `routing` a odtiaľ do balíka `navigacia`
+(`workers/data/packages.json`). Predfilter PBF si berie zoznam tried zo
+slovníka (`tags.py --filter`), takže druhý zoznam neexistuje, a hotový archív
+beh overí tou istou kontrolou, aká beží v lintoch.
+
+Krajina hrany (`krajina`) sa berie z `iso` v `workers/data/regions.json` cez
+`country` kraja – bez nej nemá diaľničná známka na čom stáť.
+
+Graf Valhally (`workers/routing/graph.sh`,
+[`navigation.yml`](../.github/workflows/navigation.yml)) ostáva ako celoštátna
+referenčná stavba; po krajoch sa už nestavia.
+
 ## Ako sa to spúšťa
 
 ```bash
