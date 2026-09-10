@@ -9,6 +9,13 @@ chodníkom*, **maximálna rýchlosť vozidla** a **diaľničná známka po kraji
 Tento súbor je návrh, nie popis hotového stavu. Čo z neho už v repozitári je,
 stojí na konci.
 
+> **September 2026: §4 a §7 sú prekonané.** Graf Valhally po krajoch vážil
+> 176 – 192 MB na kraj (§7a) a na hranici končil. Namiesto neho sa vozia
+> **dlaždice so značkami** a cenu počíta telefón – rozpis je v §10 a celý plán
+> v [`skifahrer/rikimaps`, `.planning/navigation.md`](https://github.com/skifahrer/rikimaps/blob/master/.planning/navigation.md).
+> Čo tento súbor hovorí o VÝZNAME volieb (známka ≠ mýto, `bus` ≠ `transit`,
+> transit potrebuje GTFS), platí ďalej.
+
 ## 1. Dnešný stav: v mapách nie sú ani dáta na to
 
 Dlaždice robí Planetiler so **štandardným profilom OpenMapTiles** a jeho vrstva
@@ -353,3 +360,68 @@ python3 workers/lint/routing.py
 5. **Zobraziť limity v mape** (výška podjazdu, šírka, max. rýchlosť) je
    samostatná vec od smerovania – vlastná schéma prvkov ciest, ako
    `features.yml`. Súvisí, ale nezávisí.
+
+## 10. Prekopanie: dlaždice so značkami namiesto grafu
+
+Zadanie z rikimaps znie: **nesťahovať veľa dát navyše a čo najviac počítať
+v telefóne**, a k tomu **navigačné profily**, kde si používateľ zapne alebo
+vypne každý typ cesty, zadá rozmery vozidla, známky po krajinách a povolenú
+dĺžku prejazdu cez vypnutú cestu.
+
+Tá druhá polovica rozhodne o prvej. Taký profil sa do predpočítaného grafu
+zapiecť nedá – a keď cenu ráta telefón, tak sa **vozia značky, nie ceny**,
+a to je zároveň tá malá vec.
+
+### Prečo graf padol
+
+| | dnes (Valhalla) | plán |
+|---|--:|--:|
+| Banskobystrický kraj | 192 MB | jednotky MB |
+| celé Slovensko | ~1,5 GB (8 krajov) | ~25 – 30 MB |
+
+Pravá stĺpec je odhad z **nameraného** referenčného bodu: BRouterove `rd5`
+(10. 9. 2026, `brouter.de/brouter/segments4/`) nesú `E15_N45` – Slovensko,
+Maďarsko, Slovinsko, Chorvátsko, Bosnu, Srbsko, východné Rakúsko, južné Poľsko
+a východné Česko – v **124 MB** aj s výškou na uzol a každým chodníkom. Celá
+planéta je 5,1 GB. Slovensko je z toho štvorca asi 23 % plochy.
+
+BRouter to dokáže preto, že v súbore má **tagy**, nie cenu: profil sa
+vyhodnocuje až pri hľadaní trasy. To je presne to, čo tu treba – a je to aj
+odpoveď na §3 tohto dokumentu. Záplata `kHighwayFactor` sa nepíše: vlastná
+vetva Valhally pre tri prepínače, ktorú by sme museli prekladať pre iOS
+a doťahovať za upstreamom, sa nevyplatí, keď cenu aj tak počíta telefón.
+**BRouter sa portovať nedá** (je to Java a port do C neexistuje), takže sa
+preberá návrh, nie kód.
+
+### Čo sa stavia
+
+Jeden archív na kraj, `<kraj>-routing.pmtiles`, **PMTiles** – katalóg, fronta
+sťahovania, účtovanie miesta aj maska regiónu už ten formát vedia. Dlaždice sú
+**z9**, tá istá mriežka ako mapa. Vnútri je vlastné binárne telo (nie MVT: MVT
+reže geometriu a zahadzuje topológiu, presne ako hovorí §1) – uzly s **OSM id**,
+hrany ako dvojice indexov, sada značiek cez slovník, odbočovacie zákazy.
+
+**Hranica krajov zmizne.** Mriežka je globálna a uzly majú OSM id, takže dva
+susedné kraje majú okrajové dlaždice **rovnaké** – telefón si dlaždice
+zjednotí podľa z/x/y a duplikát zahodí. Trasa cez hranicu funguje vo chvíli,
+keď dobehne druhý kraj: nič sa nedopočítava a nič nedosťahuje. Slepá ulica
+z §7a prestáva byť vlastnosťou dát a celoštátny balík zo §7b prestáva byť
+dôvod, prečo existuje.
+
+Rozmery ostávajú **reťazcom**, ako to už `workers/transport/transport.yml`
+rozhodol. Parser v pipeline, ktorý z `12'6"` prečíta 12, pošle karavan pod
+podjazd a v builde nespadne nič.
+
+### Kroky
+
+| lístok | čo |
+|---|---|
+| **P1** | `workers/data/routing-tags.json` – slovník značiek; je to zároveň páka na veľkosť |
+| **P2** | `workers/routing/tiles.py` – archív z `data/region.osm.pbf` na mriežke z9, s OSM id uzlov; `graf.json` s verziou formátu, id slovníka a počtom hrán |
+| **P3** | `workers/lint/routing-tiles.py` – každá značka je v slovníku, okrajové dlaždice susedov sú zhodné, žiadna dlaždica neprekročí rozpočet |
+| **P4** | `navigation-region.yml` publikuje nový archív; položka v katalógu pod `maps.navigacia` namiesto Valhally |
+| **P5** | balík grafu kraja sa prestane publikovať. `graph.sh` a celoštátny job ostávajú – sú referenčná stavba, proti ktorej sa nový motor krížom kontroluje |
+| **P6** | `workers/lint/roadtypes.py` – zoznam typov ciest v appke proti triedam v štýle |
+
+Prvý beh má potvrdiť odhad veľkosti (P2). Kým to nie je namerané, je to odhad
+odvodený z cudzieho čísla, nie naše číslo.
