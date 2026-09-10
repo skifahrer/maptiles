@@ -16,7 +16,9 @@ Tiché veci:
   3. bez `admins.sqlite` Valhalla nevie, v ktorej krajine hrana leží;
   4. rozsah pokrývajúci krajinu mimo `vignettes.json` sa na známku nespýta;
   5. sieť kraja musí stáť na PBF mapy, mať vlastný balík a byť v manifeste;
-  6. formulár GitHub zoznam zo súboru prečítať nevie, takže sa píše dvakrát.
+  6. poradie uzlov: kľúč cache musí na oboch stranách znieť rovnako, inak
+     archívy ticho a navždy chodia bez neho;
+  7. formulár GitHub zoznam zo súboru prečítať nevie, takže sa píše dvakrát.
 """
 import json
 import os
@@ -34,6 +36,7 @@ REGIONS = os.path.join(_DATA, "regions.json")
 VIGNETTES = os.path.join(_DATA, "vignettes.json")
 CISELNIK = os.path.join(_DATA, "packages.json")
 WORKFLOW = os.path.join(".github", "workflows", "navigation.yml")
+ORDER_WORKFLOW = os.path.join(".github", "workflows", "routing-order.yml")
 REGION_WORKFLOW = os.path.join(".github", "workflows", "navigation-region.yml")
 BUILD_MAP = os.path.join(".github", "workflows", "build-map-region.yml")
 SITE_SH = os.path.join(_WORKERS, "deploy", "site.sh")
@@ -209,6 +212,61 @@ def siet_kraja():
                 "skladá zo zálohy podľa prípony mena.")
 
 
+def poradie(areas, regions):
+    """Poradie uzlov: počíta ho vlastný workflow a build kraja si ho vezme.
+
+    Kľúč cache je jediná väzba medzi nimi a je to REŤAZEC na dvoch miestach –
+    keď sa rozíde, build kraja proste nikdy nič nenájde, archívy pôjdu bez
+    poradia a nespadne pri tom nič.
+    """
+    rel_regions = "workers/data/regions.json"
+    for kluc, r in regions.items():
+        oblast = r.get("routing_area")
+        if oblast and oblast not in areas:
+            err(rel_regions,
+                f"`{kluc}` má `routing_area: {oblast}`, ktoré vo "
+                f"`workers/data/routing-areas.json` nie je. Build kraja by "
+                f"hľadal poradie, ktoré nikto nepočíta.")
+
+    if not os.path.exists(ORDER_WORKFLOW):
+        err(".github/workflows/routing-order.yml",
+            "workflow neexistuje. Poradie uzlov sa počíta nad CELÝM územím, "
+            "takže ho beh kraja vyrobiť nemôže – bez tohto workflowu ho "
+            "nevyrobí nikto a archívy pôjdu bez neho.")
+        return
+    ord_text = open(ORDER_WORKFLOW, encoding="utf-8").read()
+    for skript, preco in (
+            ("workers/routing/pbf.sh",
+             "druhý zdroj PBF by bol druhá pravda o tom, nad akým územím sa "
+             "poradie počíta"),
+            ("workers/routing/order.py",
+             "poradie musí rátať ten istý kód, ktorého id ide do archívu")):
+        if skript not in ord_text:
+            err(".github/workflows/routing-order.yml",
+                f"workflow nepoužíva `{skript}` – {preco}.")
+
+    kluce = {ORDER_WORKFLOW: _kluc_cache(ord_text)}
+    if os.path.exists(REGION_WORKFLOW):
+        kluce[REGION_WORKFLOW] = _kluc_cache(
+            open(REGION_WORKFLOW, encoding="utf-8").read())
+    chyba = [f for f, k in kluce.items() if not k]
+    for f in chyba:
+        err(f, "nie je v ňom kľúč cache s poradím uzlov (`routing-order-…`). "
+               "Poradie sa medzi behmi prenáša jedine ním.")
+    hodnoty = {k for k in kluce.values() if k}
+    if len(hodnoty) > 1:
+        err(".github/workflows/routing-order.yml",
+            f"kľúč cache s poradím znie na každej strane inak ({sorted(hodnoty)}). "
+            f"Build kraja potom nenájde nič, archívy pôjdu bez poradia – "
+            f"a nespadne pri tom nič.")
+
+
+def _kluc_cache(text):
+    """Predpona kľúča cache s poradím – bez `run_id`, ten je zámerne rôzny."""
+    m = re.search(r"key: (routing-order-[a-z0-9-]*)", text)
+    return m.group(1).rstrip("-") if m else ""
+
+
 def balik():
     """Vlastný balík vedľa kreslenej dopravnej siete, nie v nej ani v mape."""
     if not os.path.exists(CISELNIK):
@@ -256,20 +314,22 @@ def balik():
 
 def formular(areas):
     """Výber rozsahu vo formulári sa musí zhodovať s číselníkom."""
-    if not os.path.exists(WORKFLOW):
-        err(".github/workflows/navigation.yml", "workflow neexistuje.")
-        return
-    with open(WORKFLOW, encoding="utf-8") as f:
-        wf = yaml.safe_load(f)
-    on = wf.get("on", wf.get(True)) or {}
-    inp = ((on.get("workflow_dispatch") or {}).get("inputs") or {})
-    opts = set((inp.get("area") or {}).get("options") or [])
-    if opts != set(areas):
-        err(".github/workflows/navigation.yml",
-            f"výber `area` vo formulári má {sorted(opts)}, číselník "
-            f"{sorted(areas)}. `choice` GitHub zo súboru prečítať nevie, "
-            f"takže sa to píše dvakrát – a rozsah, ktorý vo výbere nie je, "
-            f"sa nedá vybrať.")
+    for cesta in (WORKFLOW, ORDER_WORKFLOW):
+        rel = cesta.replace(os.sep, "/")
+        if not os.path.exists(cesta):
+            err(rel, "workflow neexistuje.")
+            continue
+        with open(cesta, encoding="utf-8") as f:
+            wf = yaml.safe_load(f)
+        on = wf.get("on", wf.get(True)) or {}
+        inp = ((on.get("workflow_dispatch") or {}).get("inputs") or {})
+        opts = set((inp.get("area") or {}).get("options") or [])
+        if opts != set(areas):
+            err(rel,
+                f"výber `area` vo formulári má {sorted(opts)}, číselník "
+                f"{sorted(areas)}. `choice` GitHub zo súboru prečítať nevie, "
+                f"takže sa to píše dvakrát – a rozsah, ktorý vo výbere nie je, "
+                f"sa nedá vybrať.")
 
 
 def main():
@@ -282,6 +342,7 @@ def main():
 
     celostatny_graf(areas, regions, countries)
     siet_kraja()
+    poradie(areas, regions)
     balik()
     formular(areas)
 
@@ -291,8 +352,10 @@ def main():
         print(f"\n{len(bad)} problém(ov) v navigácii.")
         return 1
     print("Navigácia: sieť kraja stojí na PBF mapy, má vlastný balík "
-          "v manifeste a beh ju overí; celoštátny graf Valhally ostáva ako "
-          "referenčná stavba, jeho PBF sa nereže a formulár sedí s číselníkom.")
+          "v manifeste a beh ju overí; poradie uzlov má vlastný workflow "
+          "a obe strany kľúča cache znejú rovnako; celoštátny graf Valhally "
+          "ostáva ako referenčná stavba, jeho PBF sa nereže a formuláre "
+          "sedia s číselníkom.")
     return 0
 
 

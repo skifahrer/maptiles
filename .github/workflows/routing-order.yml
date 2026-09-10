@@ -1,0 +1,117 @@
+name: Navigácia · poradie uzlov
+
+# PORADIE UZLOV PRE CCH nad celým stavaným územím – jediná drahá časť, ktorá
+# do telefónu nepatrí (rozpis v `docs/navigation.md` §11).
+#
+# Vlastný workflow, nie krok v builde kraja, a je to priamy dôsledok zadania:
+# poradie sa počíta nad CELÝM územím, takže ho beh jedného kraja vyrobiť
+# nemôže. Poradia počítané po krajoch sa spojiť nedajú.
+#
+# Nezávisí od profilu ani od cien, len od TVARU siete – takže sa neprepočítava
+# pri každom builde. Leží v cache na Drive a build kraja si ho odtiaľ vezme;
+# uzol, ktorý pribudol po jeho výpočte, dostane rank na konci podľa OSM id
+# (`workers/routing/tiles.py`), takže mierne zastarané poradie je stále
+# platné poradie a archívy sa dajú spojiť ďalej.
+#
+# Spúšťa sa ručne – vtedy, keď to `tiles.py` v builde kraja vypýta
+# (::warning:: „sieť sa od jeho výpočtu zmenila").
+
+on:
+  workflow_dispatch:
+    inputs:
+      # zoznam je vo `workers/data/routing-areas.json`; `choice` GitHub zo
+      # súboru prečítať nevie, tak sa píše aj sem a lint to porovná
+      area:
+        description: "Územie, nad ktorým sa poradie počíta"
+        required: false
+        default: "slovensko"
+        type: choice
+        options:
+          - "slovensko"
+          - "slovensko_susedia"
+
+# Drive: sem ide hotové poradie (cache). Prihlásenie pre celý workflow.
+env:
+  GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+  DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
+  DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
+  DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
+  OSMFR_BASE: https://download.openstreetmap.fr/extracts
+
+jobs:
+  poradie:
+    name: Poradie uzlov
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Priprav priečinok na meranie
+        run: mkdir -p steps-out
+
+      - name: Nainštaluj osmium-tool a pyosmium
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq osmium-tool
+          python3 -c 'import osmium' 2>/dev/null \
+            || sudo apt-get install -y -qq python3-pyosmium \
+            || python3 -m pip install --quiet --break-system-packages 'osmium>=3.6,<5'
+
+      # ten istý skript, akým si PBF berie celoštátny graf – druhý by bol druhá
+      # pravda o tom, nad akým územím sa poradie počíta
+      - name: PBF územia
+        env:
+          AREA: ${{ inputs.area }}
+        run: workers/routing/pbf.sh
+
+      - name: Poradie uzlov z PBF
+        id: order
+        env:
+          AREA: ${{ inputs.area }}
+        run: |
+          set -euo pipefail
+          python3 workers/routing/order.py \
+            --pbf=data/routing.osm.pbf \
+            --out=data/routing-order.json \
+            --nazov="$AREA"
+          python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import json
+          raw = json.load(open("data/routing-order.json", encoding="utf-8"))
+          print(f"id={raw['id']}")
+          print(f"uzlov={raw['uzlov']}")
+          PY
+
+      # kľúč nesie `run_id`, lebo existujúci sa neprepisuje; build kraja ho
+      # hľadá cez `restore-keys` (predpona, najnovší záznam vyhrá)
+      - name: Ulož poradie do cache na Drive
+        uses: ./.github/actions/cache-save
+        with:
+          path: data/routing-order.json
+          key: routing-order-v1-${{ inputs.area }}-${{ github.run_id }}
+
+      - name: Zhrnutie
+        env:
+          AREA: ${{ inputs.area }}
+          ORDER_ID: ${{ steps.order.outputs.id }}
+          UZLOV: ${{ steps.order.outputs.uzlov }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Poradie uzlov · $AREA"
+            echo
+            echo "* id poradia: \`$ORDER_ID\`"
+            echo "* uzlov: $UZLOV"
+            echo
+            echo "Kraje postavené OD TERAZ ho dostanú do archívu; tie staršie"
+            echo "nesú predošlé id a s novými sa v telefóne spojiť nesmú, takže"
+            echo "ich treba prestavať (\`Mapa · Regenerate state\`, voľba"
+            echo "\`navigacia\`)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Odlož meranie krokov
+        if: ${{ always() && hashFiles('steps-out/*') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: steps-routing-order
+          path: steps-out
+          retention-days: 1
+          if-no-files-found: ignore

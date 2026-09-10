@@ -88,9 +88,28 @@ stupeň nahor 59 namiesto 511; 100 000 uzlov trvá 2,5 s. InertialFlowCutter
 (rez maximálnym tokom namiesto mediánu) dá lepší oddeľovač a je to miesto, kam
 sa vráti, keď bude na čom merať – nie zmena formátu.
 
-Archív bez poradia (`tiles.py` bez `--poradie`) sa postaviť dá a `graf`
-v metadátach archívu to o sebe povie (`poradie: null`); telefón si vtedy poradie musí
-dorátať sám.
+Poradie ráta vlastný workflow **„Navigácia · poradie uzlov"**
+([`routing-order.yml`](../.github/workflows/routing-order.yml)) nad PBF celého
+územia (`workers/routing/pbf.sh`, ten istý, z akého sa stavia celoštátny graf)
+a ukladá ho do cache na Drive pod kľúč `routing-order-v1-<územie>-<run_id>`.
+Build kraja si ho odtiaľ vezme cez `restore-keys`, teda **najnovšie uložené
+poradie toho územia**; ktoré územie to je, hovorí `routing_area` pri krajine
+vo `workers/data/regions.json` – všetky kraje krajiny musia stáť na tom istom.
+Že kľúč znie na oboch stranách rovnako, stráži
+[`workers/lint/navigation.py`](../workers/lint/navigation.py): keby sa rozišiel,
+build kraja by nenašiel nič, archívy by šli bez poradia a nespadlo by pri tom
+nič.
+
+**Poradie sa preto neprepočítava pri každom builde** a nemusí: závisí len od
+tvaru siete. Uzol, ktorý pribudol po jeho výpočte, dostane rank **na konci
+podľa svojho OSM id** – je to stále globálne poradie (OSM id je jedno na celý
+svet, takže dva kraje dosadia tomu istému uzlu to isté číslo), takže mierne
+zastarané poradie je stále platné poradie. `tiles.py` vypíše, koľko takých
+uzlov bolo; keď ich je veľa, workflow sa spustí znova.
+
+Archív bez poradia (`tiles.py` bez `--poradie`, teda kým cache ešte nič nemá)
+sa postaviť dá a `graf` v metadátach archívu to o sebe povie
+(`poradie: null`); telefón si vtedy poradie musí dorátať sám.
 
 ## Ako sa kraje spájajú
 
@@ -130,6 +149,7 @@ referenčná stavba; po krajoch sa už nestavia.
 ## Ako sa to spúšťa
 
 ```bash
+# poradie – nad celým územím, nie po krajoch (workflow to robí za teba)
 python3 workers/routing/order.py --pbf=data/routing.osm.pbf \
     --out=data/routing-order.json --nazov=Slovensko
 

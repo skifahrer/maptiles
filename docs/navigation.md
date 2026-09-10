@@ -426,7 +426,7 @@ podjazd a v builde nespadne nič.
 |---|---|
 | **P1** ✓ | `workers/data/routing-tags.json` – slovník značiek; je to zároveň páka na veľkosť |
 | **P2** ✓ | `workers/routing/tiles.py` – archív z `data/region.osm.pbf` na mriežke z9, s OSM id uzlov; `graf` v metadátach archívu s verziou formátu, id slovníka, id poradia a počtom hrán |
-| **P3** ✓ | `workers/routing/order.py` – poradie uzlov (nested dissection) nad **celým stavaným územím**, jedno číslo na uzol. Viď §11; rez je zatiaľ inerciálny, nie InertialFlowCutter |
+| **P3** ✓ | `workers/routing/order.py` – poradie uzlov (nested dissection) nad **celým stavaným územím**, jedno číslo na uzol; ráta ho workflow `routing-order.yml` a build kraja si ho berie z cache. Viď §11; rez je zatiaľ inerciálny, nie InertialFlowCutter |
 | **P4** ✓ | `workers/lint/routing-tiles.py` – každá značka je v slovníku, spoločné prvky okrajových dlaždíc susedov sa nerozchádzajú, všetky archívy jedného behu majú to isté id poradia, žiadna dlaždica neprekročí rozpočet |
 | **P5** ✓ | `navigation-region.yml` publikuje nový archív; položka v katalógu pod `maps.navigacia` namiesto Valhally |
 | **P6** ✓ | balík grafu kraja sa prestal publikovať. `graph.sh` a celoštátny job ostávajú – sú referenčná stavba, proti ktorej sa nový motor krížom kontroluje |
@@ -442,13 +442,21 @@ a `deploy` ho z manifestu zabalí do `<kraj>-navigacia.zip`. Balík grafu kraja
 zanikol; `workers/routing/graph.sh` a celoštátny `navigation.yml` ostali ako
 referenčná stavba.
 
-**Poradie uzlov (P3) do archívu kraja ešte nechodí** a je to jediná chýbajúca
-väzba: počíta sa nad CELÝM stavaným územím, takže ho beh jedného kraja vyrobiť
-nemôže – musí prísť z celoštátneho behu. `tiles.py` má na to `--poradie`,
-`build.sh` ho použije, keď súbor leží v `data/`, a archív bez neho o sebe
-povie `poradie: null` a beh to vypíše ako `::warning::`. Telefón si vtedy
-poradie doráta sám (sekundy pre Slovensko), takže to nie je pokazená trasa,
-len zbytočná práca v telefóne.
+**Poradie uzlov (P3) chodí do archívu kraja cez cache na Drive.** Počíta sa nad
+CELÝM stavaným územím, takže ho beh jedného kraja vyrobiť nemôže: má vlastný
+workflow „Navigácia · poradie uzlov" (`routing-order.yml`), ktorý ho uloží pod
+kľúč `routing-order-v1-<územie>-<run_id>`, a build kraja si ho vezme cez
+`restore-keys` – teda najnovšie poradie toho územia. Ktoré územie to je, hovorí
+`routing_area` pri krajine v `regions.json`; všetky kraje krajiny musia stáť na
+tom istom, inak sa ich archívy v telefóne spojiť nesmú.
+
+**Neprepočítava sa pri každom builde** a nemusí: závisí len od tvaru siete.
+Uzol, ktorý pribudol po jeho výpočte, dostane rank na konci podľa svojho OSM id
+– je to stále globálne poradie, takže mierne zastarané poradie je stále platné
+a archívy sa dajú spojiť ďalej. Koľko takých uzlov bolo, `tiles.py` vypíše;
+keď ich je veľa, workflow sa pustí znova. Kým cache nič nemá, archív ide bez
+poradia, povie to o sebe (`poradie: null`) a telefón si ho doráta sám –
+sekundy pre Slovensko, teda zbytočná práca, nie pokazená trasa.
 
 **Neoverené na pravých dátach:** skúšané je to na vyrobených PBF (mriežka ulíc,
 jednosmerka, trajekt, zákaz odbočenia, územie cez deväť dlaždíc), lebo v tomto

@@ -145,6 +145,8 @@ jobs:
       key: ${{ steps.region.outputs.key }}
       name: ${{ steps.region.outputs.name }}
       iso: ${{ steps.region.outputs.iso }}
+      # územie, nad ktorým je poradie uzlov pre CCH
+      routing_area: ${{ steps.region.outputs.routing_area }}
       bbox: ${{ steps.region.outputs.bbox }}
       day: ${{ steps.day.outputs.d }}
       balik: ${{ steps.co.outputs.balik }}
@@ -457,10 +459,12 @@ jobs:
     needs: plan
     if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'navigacia' }}
     uses: ./.github/workflows/navigation-region.yml
+    secrets: inherit                      # cache s poradím uzlov na Drive
     with:
       region_key: ${{ needs.plan.outputs.key }}
       region_name: ${{ needs.plan.outputs.name }}
       routing_country: ${{ needs.plan.outputs.iso }}
+      routing_area: ${{ needs.plan.outputs.routing_area }}
       size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
       budget_pct: ${{ needs.plan.outputs.budget_routing_pct }}
 

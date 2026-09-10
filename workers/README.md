@@ -2089,7 +2089,12 @@ CCH počíta [`workers/routing/order.py`](routing/order.py) a strážia to
 [`workers/lint/routing-tiles.py`](lint/routing-tiles.py)
 a [`roadtypes.mjs`](lint/roadtypes.mjs). Formát je
 v [docs/routing-tiles.md](../docs/routing-tiles.md), dôvod
-v [docs/navigation.md](../docs/navigation.md) §10. Graf Valhally ostáva ako
+v [docs/navigation.md](../docs/navigation.md) §10. Poradie uzlov sa počíta nad
+CELÝM územím, takže ho beh kraja vyrobiť nemôže: má vlastný workflow
+**„Navigácia · poradie uzlov"** ([`routing-order.yml`](../.github/workflows/routing-order.yml)),
+ktorý ho uloží do cache na Drive, a build kraja si ho odtiaľ vezme. Ktoré
+územie to je, hovorí `routing_area` pri krajine v
+[`workers/data/regions.json`](data/regions.json). Graf Valhally ostáva ako
 CELOŠTÁTNA referenčná stavba (`navigation.yml`), proti ktorej sa nový motor dá
 krížom skontrolovať – po krajoch sa už nestavia.
 
