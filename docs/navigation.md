@@ -466,3 +466,45 @@ viac miesta než rozvinutý graf, teda presne naopak, než na čo bol vymyslený
 
 Obe polia – `rank` na uzle aj zákazy – musia byť v archíve **od prvej verzie**.
 Doplniť ich neskôr znamená zmenu formátu a znovustiahnutie každého kraja.
+
+## 12. Čo z OSM ide do grafu: len križovatky
+
+Toto je pri OSM **dôležitejšie rozhodnutie než výber algoritmu** a patrí do
+`workers/routing/tiles.py` (P2).
+
+Namerané ([Engineering Data Reduction for Nested Dissection](https://arxiv.org/pdf/2004.11315)):
+
+| inštancia | vrcholov | hrán |
+|---|--:|--:|
+| **OSM Európa, surová** | **174 mil.** | 348 mil. |
+| z toho stupňa 2 (geometria) | 143 mil. | – |
+| z toho stupňa > 2 (križovatky) | 23 mil. | – |
+| DIMACS Európa (čistený graf) | 18 mil. | 42 mil. |
+
+**82 % vrcholov OSM je geometria, nie križovatka** – body, ktoré ohýbajú cestu
+a nerozhoduje sa v nich o ničom. Všetky čísla z literatúry (aj tie v §11) sú
+merané na tom čistenom grafe s 18 miliónmi vrcholov. Kto pošle do algoritmu
+surové OSM, počíta na grafe o rád väčšom, než na akom sa merali – na serveri je
+to trápne, v telefóne smrteľné.
+
+Do archívu preto ide **graf križovatiek**:
+
+* `nodes` sú **len uzly stupňa > 2** (a konce ciest),
+* tvar cesty je **vnútorná geometria hrany** – body bez id, ktoré nikdy nie sú
+  vrcholom grafu; sú tam na kreslenie trasy a na výpočet dĺžky, nie na hľadanie.
+
+Je to zároveň zavedený postup práve pre nested dissection, teda pre prípravu,
+ktorú §11 posiela do pipeline: po odstránení simpliciálnych uzlov a uzlov
+stupňa 2 ostane z OSM inštancií „menej než 20 % uzlov".
+
+Aj potom si OSM svoju daň vyberie a je vidieť v meraniach: dotazy nad **OSM
+Nemeckom** trvajú ~440 µs proti ~300 µs nad DIMACS Európou – **hoci je Nemecko
+menší graf**. Za rozdiel môže jemnejšie modelovanie OSM. Zbaviť sa toho úplne
+sa nedá; ide o to, aby to nestálo rád.
+
+Vzor na to, ako sa OSM číta, je [`RoutingKit`](https://github.com/RoutingKit/RoutingKit/blob/master/doc/OpenStreetMap.md):
+z PBF postaví graf s kontrahovanými geometrickými uzlami, so zákazmi odbočenia
+(zakazujúcimi aj prikazujúcimi), s jednosmerkami a s profilmi auto/bicykel/pešo.
+Dve jeho obmedzenia si treba prevziať vedome: súradnice geometrických uzlov
+zahadzuje (my ich držíme ako geometriu hrany) a počíta s 32-bitovými id (na kraj
+či štát to stačí, na planétu nie).
