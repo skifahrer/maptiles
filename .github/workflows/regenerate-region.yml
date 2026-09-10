@@ -127,6 +127,7 @@ env:
   BUDGET_TRAILS_PCT: "3"
   BUDGET_FEATURES_PCT: "4"
   BUDGET_TRANSPORT_PCT: "8"
+  BUDGET_ROUTING_PCT: "3"
   BUDGET_BOUNDARIES_PCT: "3"
   BUDGET_WATER_PCT: "5"
   # to isté pre vrstvy z výškového modelu; `dem-layers.yml` ich dostáva inputom
@@ -143,6 +144,7 @@ jobs:
     outputs:
       key: ${{ steps.region.outputs.key }}
       name: ${{ steps.region.outputs.name }}
+      iso: ${{ steps.region.outputs.iso }}
       bbox: ${{ steps.region.outputs.bbox }}
       day: ${{ steps.day.outputs.d }}
       balik: ${{ steps.co.outputs.balik }}
@@ -156,10 +158,10 @@ jobs:
       opt_transport_maxzoom: ${{ steps.opts.outputs.opt_transport_maxzoom }}
       opt_boundaries_maxzoom: ${{ steps.opts.outputs.opt_boundaries_maxzoom }}
       opt_water_maxzoom: ${{ steps.opts.outputs.opt_water_maxzoom }}
-      opt_valhalla_image: ${{ steps.opts.outputs.opt_valhalla_image }}
       opt_custom_pbf_url: ${{ steps.opts.outputs.opt_custom_pbf_url }}
       opt_custom_name: ${{ steps.opts.outputs.opt_custom_name }}
       budget_transport_pct: ${{ env.BUDGET_TRANSPORT_PCT }}
+      budget_routing_pct: ${{ env.BUDGET_ROUTING_PCT }}
       budget_boundaries_pct: ${{ env.BUDGET_BOUNDARIES_PCT }}
       budget_water_pct: ${{ env.BUDGET_WATER_PCT }}
       # podiely idú cez výstup, lebo `env` sa vo `with:` volaného workflowu
@@ -449,16 +451,18 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_water_pct }}
       day: ${{ needs.plan.outputs.day }}
 
-  # vlastný balík, teda vlastná voľba. Graf odloží ako artefakt `navigacia-graf`
-  # (nie `site-…`, na Pages nemá čo robiť) a balenie si ho stiahne menom.
+  # vlastný balík, teda vlastná voľba
   navigacia:
-    name: Navigačný graf (Valhalla)
+    name: Smerovacia sieť
     needs: plan
     if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'navigacia' }}
     uses: ./.github/workflows/navigation-region.yml
     with:
       region_key: ${{ needs.plan.outputs.key }}
-      valhalla_image: ${{ needs.plan.outputs.opt_valhalla_image }}
+      region_name: ${{ needs.plan.outputs.name }}
+      routing_country: ${{ needs.plan.outputs.iso }}
+      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      budget_pct: ${{ needs.plan.outputs.budget_routing_pct }}
 
   # ten istý workflow, aký nad nimi púšťa build mapy (`dem-layers.yml`) – nie
   # kópia, inak by sa balík tichým rozdielom rozišiel s mapou.
@@ -548,15 +552,6 @@ jobs:
           pattern: site-*
           path: _site
           merge-multiple: true
-
-      # graf sa nevolá `site-…`, tak sa sťahuje menom. Bez `continue-on-error`:
-      # tu je graf celým balíkom, prázdny `-navigacia.zip` by nikto nespoznal.
-      - name: Stiahni navigačný graf
-        if: ${{ inputs.co == 'navigacia' }}
-        uses: actions/download-artifact@v8
-        with:
-          name: navigacia-graf
-          path: _site
 
       - name: Čo prišlo od jobov vrstvy
         run: |

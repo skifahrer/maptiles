@@ -428,20 +428,33 @@ podjazd a v builde nespadne nič.
 | **P2** ✓ | `workers/routing/tiles.py` – archív z `data/region.osm.pbf` na mriežke z9, s OSM id uzlov; `graf` v metadátach archívu s verziou formátu, id slovníka, id poradia a počtom hrán |
 | **P3** ✓ | `workers/routing/order.py` – poradie uzlov (nested dissection) nad **celým stavaným územím**, jedno číslo na uzol. Viď §11; rez je zatiaľ inerciálny, nie InertialFlowCutter |
 | **P4** ✓ | `workers/lint/routing-tiles.py` – každá značka je v slovníku, spoločné prvky okrajových dlaždíc susedov sa nerozchádzajú, všetky archívy jedného behu majú to isté id poradia, žiadna dlaždica neprekročí rozpočet |
-| **P5** | `navigation-region.yml` publikuje nový archív; položka v katalógu pod `maps.navigacia` namiesto Valhally |
-| **P6** | balík grafu kraja sa prestane publikovať. `graph.sh` a celoštátny job ostávajú – sú referenčná stavba, proti ktorej sa nový motor krížom kontroluje |
-| **P7** | `workers/lint/roadtypes.py` – zoznam typov ciest v appke proti triedam v štýle |
+| **P5** ✓ | `navigation-region.yml` publikuje nový archív; položka v katalógu pod `maps.navigacia` namiesto Valhally |
+| **P6** ✓ | balík grafu kraja sa prestal publikovať. `graph.sh` a celoštátny job ostávajú – sú referenčná stavba, proti ktorej sa nový motor krížom kontroluje |
+| **P7** ✓ | `workers/lint/roadtypes.mjs` – zoznam typov ciest proti triedam v štýle. `.mjs`, nie `.py`: tabuľky ciest sú v štýle (`poc/web/themes.js`) a ten sa v tomto repozitári kontroluje z nodu (`style.mjs`, `shields.mjs`) |
 
 Prvý beh má potvrdiť odhad veľkosti (P2). Kým to nie je namerané, je to odhad
 odvodený z cudzieho čísla, nie naše číslo.
 
-**Hotové je P1 – P4**, teda formát a všetko, čo ho stráži; rozpis formátu je
-v [`docs/routing-tiles.md`](routing-tiles.md). Chýba P5 – P7: archív sa ešte
-nepublikuje, balík grafu Valhally sa ešte neprestal publikovať a zoznam typov
-ciest v appke ešte nikto neporovnáva so štýlom. **Neoverené na pravých dátach:**
-skúšané je to na vyrobených PBF (mriežka ulíc, jednosmerka, trajekt, zákaz
-odbočenia), lebo v tomto prostredí nie je PBF kraja – takže odhad veľkosti
-z tabuľky vyššie ostáva odhadom.
+**Hotové je P1 – P7**; rozpis formátu je
+v [`docs/routing-tiles.md`](routing-tiles.md). Kraj stavia archív v joboch
+`navigacia` (`navigation-region.yml`), ide do `_site` ako každá iná vrstva
+a `deploy` ho z manifestu zabalí do `<kraj>-navigacia.zip`. Balík grafu kraja
+zanikol; `workers/routing/graph.sh` a celoštátny `navigation.yml` ostali ako
+referenčná stavba.
+
+**Poradie uzlov (P3) do archívu kraja ešte nechodí** a je to jediná chýbajúca
+väzba: počíta sa nad CELÝM stavaným územím, takže ho beh jedného kraja vyrobiť
+nemôže – musí prísť z celoštátneho behu. `tiles.py` má na to `--poradie`,
+`build.sh` ho použije, keď súbor leží v `data/`, a archív bez neho o sebe
+povie `poradie: null` a beh to vypíše ako `::warning::`. Telefón si vtedy
+poradie doráta sám (sekundy pre Slovensko), takže to nie je pokazená trasa,
+len zbytočná práca v telefóne.
+
+**Neoverené na pravých dátach:** skúšané je to na vyrobených PBF (mriežka ulíc,
+jednosmerka, trajekt, zákaz odbočenia, územie cez deväť dlaždíc), lebo v tomto
+prostredí nie je PBF kraja – takže odhad veľkosti z tabuľky vyššie ostáva
+odhadom. Prvý ostrý beh ho má potvrdiť; `build.sh` veľkosť vypíše a porovná
+s podielom `BUDGET_ROUTING_PCT` (3 % rozpočtu stránky).
 
 ## 11. Jedna drahá vec, ktorá patrí sem a nie do telefónu
 

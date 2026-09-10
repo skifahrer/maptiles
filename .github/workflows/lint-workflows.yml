@@ -544,6 +544,12 @@ jobs:
       - name: "Navigácia: slovník značiek a telo smerovacej dlaždice"
         run: python3 workers/lint/routing-tiles.py
 
+      # prepínač typu cesty v profile má vedľa seba čiaru tak, ako ju kreslí
+      # mapa – keď sa zoznamy rozídu, ostane prepínač bez ukážky alebo je na
+      # mape cesta, ktorú sa nedá vypnúť
+      - name: "Navigácia: typy ciest v profile proti triedam v štýle"
+        run: node workers/lint/roadtypes.mjs
+
       # dva rozsahy pod jedným `country` si položku v katalógu prepíšu, rezaný
       # PBF má na hranici slepé ulice, bez `admins.sqlite` nefunguje prechod
       # hranice – a nič z toho nespadne

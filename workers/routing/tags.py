@@ -109,8 +109,21 @@ def slovnik():
     return _CACHE
 
 
+def filter_vyrazy(s=None):
+    """Predfilter PBF pre `osmium tags-filter` – zo `siet`, nie druhý zoznam."""
+    s = s or slovnik()
+    riadky = [f"w/{kluc}={','.join(hodnoty)}"
+              for kluc, hodnoty in s.siet.items()]
+    # zákazy odbočenia; členov si `tags-filter` doťahuje sám (bez `-R`)
+    riadky.append("r/type=restriction")
+    return riadky
+
+
 if __name__ == "__main__":
     s = slovnik()
+    if "--filter" in sys.argv[1:]:
+        print("\n".join(filter_vyrazy(s)))
+        sys.exit(0)
     print(f"slovník v{s.verzia}, id {s.id:08x}, {len(s.kluce)} kľúčov")
     for kluc in s.kluce:
         n = len(s.hodnoty[kluc])

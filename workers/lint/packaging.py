@@ -12,7 +12,7 @@ Kontroluje sa:
   4. `deploy/site.sh` skladá adresu glyfov z `$BASE` a viewer do `_site` kopíruje;
   5. `world/style.mjs` odkazuje na adresu, nie do balíka;
   6. hľadanie ani značené trasy zo základnej mapy nevypadli a sú premerané;
-  7. navigačný graf je naopak von – má vlastný balík a je v ňom celý;
+  7. smerovacia sieť je naopak von – má vlastný balík a `cesty` ju neberú;
   8. balík nie je v číselníku medzi živými a zrušenými naraz.
 """
 import importlib.util
@@ -47,7 +47,7 @@ def nacitaj(cesta):
 def napln(site):
     """Napodobenina `_site`: viewer, glyfy, štýly, sprite, dlaždice.
 
-    Aj hľadanie (do mapy patrí), aj vrstvy s vlastným balíkom a graf Valhally.
+    Aj hľadanie (do mapy patrí), aj vrstvy s vlastným balíkom.
     """
     for rel in ("index.html", "app.js", "themes.js", "style-overrides.json",
                 "region.geojson", "fonts/Noto Sans Regular/0-255.pbf",
@@ -58,9 +58,8 @@ def napln(site):
                 "tiles/kraj-transport.pmtiles", "tiles/kraj-trails.pmtiles",
                 "tiles/kraj-points.pmtiles", "tiles/kraj-boundaries.pmtiles",
                 "tiles/kraj-water.pmtiles",
-                "tiles/search-index.db", "routing/valhalla_tiles.tar",
-                "routing/valhalla.json", "routing/admins.sqlite",
-                "routing/timezones.sqlite", "routing/graf.json"):
+                "tiles/kraj-routing.pmtiles",
+                "tiles/search-index.db"):
         cesta = os.path.join(site, rel)
         os.makedirs(os.path.dirname(cesta) or site, exist_ok=True)
         with open(cesta, "w") as f:
@@ -152,7 +151,6 @@ if "fonts/Noto Sans Regular/0-255.pbf" in neznamy:
 baliky = zabalene()
 mapa_zip = baliky.get("mapa", set())
 cesty_zip = baliky.get("cesty", set())
-navigacia_zip = baliky.get("navigacia", set())
 
 if baliky and "tiles/search-index.db" not in mapa_zip:
     bad.append(
@@ -191,37 +189,19 @@ for _cast, _preco in (("search", "index na offline hľadanie"),
             f"priečinka? V mape by tá časť ostala, len by o nej katalóg "
             f"tvrdil, že tam nie je.")
 
-# 7. navigačný graf: vlastný balík, a preto zo základnej mapy von
-# Namerané 170–190 MB grafu v 283 MB mape. Obe strany sa dajú pokaziť ticho:
-# nechať ho v mape znamená stiahnuť ho dvakrát, nezabaliť ho nikam znamená
-# mapu, ktorá vie, kde čo je, ale nevie ťa tam doviezť.
-for meno in ("routing/valhalla_tiles.tar", "routing/valhalla.json",
-             "routing/admins.sqlite", "routing/timezones.sqlite",
-             "routing/graf.json"):
-    if not baliky:
-        break
-    if meno in mapa_zip:
-        bad.append(
-            f"{PUBLISH}: `{meno}` ostal v ZÁKLADNEJ MAPE, hoci graf má vlastný "
-            f"balík `-navigacia.zip`. Cesty vnútri sú tie isté, takže by ho mal "
-            f"každý dvakrát: raz v mape, raz v balíku – a na veľkosti to nikto "
-            f"nepozná. Patrí do `vylucit` v `zaklad_subory`.")
-    if meno in cesty_zip:
-        bad.append(
-            f"{PUBLISH}: `{meno}` je v balíku `-cesty.zip`, kde graf nie je. "
-            f"`cesty` je kreslená dopravná sieť (desiatky MB), graf je 170 až "
-            f"190 MB – v jednom balíku by z neho bolo deväť desatín a kto chce "
-            f"sieť len vidieť, sťahoval by ho tak či tak.")
-    if meno not in navigacia_zip:
-        bad.append(
-            f"{PUBLISH}: `{meno}` sa do balíka `navigacia` nedostal. Graf sú "
-            f"štyri súbory, ktoré si musia sedieť, plus `graf.json` s tým, "
-            f"z čoho je – keď jeden chýba, trasa sa „len nenájde“ a vyzerá to "
-            f"ako chyba aplikácie, nie ako chýbajúci súbor v balíku.")
+# 7. smerovacia sieť je iná otázka než kreslená dopravná sieť: „chcem vidieť,
+# kadiaľ sa dá ísť" a „chcem, aby ma to tam doviezlo". V jednom balíku by si ju
+# stiahol aj ten, kto chce sieť len vidieť.
+if baliky and "tiles/kraj-routing.pmtiles" in cesty_zip:
+    bad.append(
+        f"{PUBLISH}: `tiles/kraj-routing.pmtiles` je v balíku `-cesty.zip`, "
+        f"kde smerovacia sieť nie je. `cesty` je KRESLENÁ sieť; smerovacia je "
+        f"vlastný balík `navigacia`, lebo je to iná otázka.")
 
 # a to isté pre vrstvy s vlastným balíkom: „čo pribudne, patrí aj do `vylucit`"
 # platí na všetky, nie na posledný pridaný
-for druh, meno in (("vrstevnice-skaly", "tiles/kraj-contours.pmtiles"),
+for druh, meno in (("navigacia", "tiles/kraj-routing.pmtiles"),
+                   ("vrstevnice-skaly", "tiles/kraj-contours.pmtiles"),
                    ("vrstevnice-skaly", "tiles/kraj-rocks.pmtiles"),
                    ("tienovanie", "tiles/kraj-terrain.pmtiles"),
                    ("cesty", "tiles/kraj-transport.pmtiles"),
@@ -243,9 +223,9 @@ for druh, meno in (("vrstevnice-skaly", "tiles/kraj-contours.pmtiles"),
 if "navigacia" in merane:
     bad.append(
         f"{SUBORY}: `casti_baliku` hlási `navigacia` ako ČASŤ základnej mapy, "
-        f"hoci graf má vlastný balík. Katalóg by tú istú vec niesol dvakrát – "
-        f"pod `maps.mapa.casti` aj pod `maps.navigacia` – a veľkosti by sa "
-        f"sčítali do čísla, ktoré si nikto nestiahne.")
+        f"hoci smerovacia sieť má vlastný balík. Katalóg by tú istú vec niesol "
+        f"dvakrát – pod `maps.mapa.casti` aj pod `maps.navigacia` – a veľkosti "
+        f"by sa sčítali do čísla, ktoré si nikto nestiahne.")
 
 # balík, ktorý sa vyrába, nesmie byť v `ZRUSENE`: „vyrába sa" a „starý sa
 # maže" sú opačné tvrdenia a beh by ho podľa poradia nahral a hneď zmazal

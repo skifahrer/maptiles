@@ -181,6 +181,9 @@ env:
   # dopravná sieť je najhustejšia vrstva, akú pipeline stavia vlastnou schémou;
   # keď to prestane stačiť, povie to `workers/transport/build.sh`
   BUDGET_TRANSPORT_PCT: "8"
+  # smerovacia sieť sú dlaždice so značkami, nie graf – jednotky MB na kraj;
+  # keď to prestane platiť, povie to `workers/routing/build.sh`
+  BUDGET_ROUTING_PCT: "3"
   BUDGET_ASSETS_MB: "40"
 
 # Žiadny job nemá `timeout-minutes` a je to zámer: drahé fázy sa nedajú prerušiť
@@ -277,6 +280,8 @@ jobs:
     outputs:
       key: ${{ steps.region.outputs.key }}
       name: ${{ steps.region.outputs.name }}
+      # ISO krajiny kraja – vstup pre diaľničnú známku v smerovacej sieti
+      iso: ${{ steps.region.outputs.iso }}
       # `bbox` je územie mapy, `dem_bbox` územie vrstiev z DEM. Pri rýchlom
       # teste sú to tie isté 4 km²; líšia sa, len keď je výrez menší než región.
       bbox: ${{ steps.region.outputs.bbox }}
@@ -302,9 +307,8 @@ jobs:
       opt_trails: ${{ steps.opts.outputs.opt_trails }}
       opt_features: ${{ steps.opts.outputs.opt_features }}
       opt_search: ${{ steps.opts.outputs.opt_search }}
-      # navigačný graf nemá vlastný balík, ide dovnútra mapy
+      # smerovacia sieť má vlastný balík `navigacia`
       opt_navigacia: ${{ steps.opts.outputs.opt_navigacia }}
-      opt_valhalla_image: ${{ steps.opts.outputs.opt_valhalla_image }}
       # `opt_rock_dem` je zdroj skál, len keď je to výškový model – pri
       # `tienovanie` a `ziadne` je prázdny
       opt_contour_source: ${{ steps.opts.outputs.opt_contour_source }}
@@ -329,6 +333,7 @@ jobs:
       opt_transport: ${{ steps.opts.outputs.opt_transport }}
       opt_transport_maxzoom: ${{ steps.opts.outputs.opt_transport_maxzoom }}
       budget_transport_pct: ${{ env.BUDGET_TRANSPORT_PCT }}
+      budget_routing_pct: ${{ env.BUDGET_ROUTING_PCT }}
       opt_boundaries: ${{ steps.opts.outputs.opt_boundaries }}
       opt_boundaries_maxzoom: ${{ steps.opts.outputs.opt_boundaries_maxzoom }}
       budget_boundaries_pct: ${{ env.BUDGET_BOUNDARIES_PCT }}
@@ -828,15 +833,18 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # navigačný graf vo vlastnom súbore; rozpis je v `navigation-region.yml`
+  # smerovacia sieť vo vlastnom súbore; rozpis je v `navigation-region.yml`
   navigacia:
-    name: Navigačný graf (Valhalla)
+    name: Smerovacia sieť
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.opt_navigacia == 'true' }}
     uses: ./.github/workflows/navigation-region.yml
     with:
       region_key: ${{ needs.plan.outputs.key }}
-      valhalla_image: ${{ needs.plan.outputs.opt_valhalla_image }}
+      region_name: ${{ needs.plan.outputs.name }}
+      routing_country: ${{ needs.plan.outputs.iso }}
+      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      budget_pct: ${{ needs.plan.outputs.budget_routing_pct }}
 
   # beží súbežne s vrstevnicami, trasami aj tieňovaním – potrebuje len PBF
   tiles:
@@ -1137,6 +1145,7 @@ jobs:
           POINTS_ENABLED: ${{ needs.features.outputs.points_enabled || 'false' }}
           TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
           TRANSPORT_MAXZOOM: ${{ needs.transport.outputs.maxzoom || '14' }}
+          ROUTING_ENABLED: ${{ needs.navigacia.outputs.enabled || 'false' }}
           BOUNDARIES_ENABLED: ${{ needs.hranice.outputs.enabled || 'false' }}
           BOUNDARIES_MAXZOOM: ${{ needs.hranice.outputs.maxzoom || '12' }}
           WATER_ENABLED: ${{ needs.vodstvo.outputs.enabled || 'false' }}
@@ -1210,17 +1219,6 @@ jobs:
           WATER: ${{ needs.vodstvo.outputs.enabled }}
           PAGES_BUILD_TYPE: ${{ needs.plan.outputs.pages_build_type }}
         run: workers/deploy/smoke-test.sh
-
-      # navigačný graf až tu, za Pages: ide do vlastného balíka a na stránku
-      # nepatrí. Preto sa artefakt nevolá `site-…` – zlial by sa doňho.
-      # `continue-on-error`, lebo mapa bez navigácie je mapa.
-      - name: Stiahni navigačný graf do balíka
-        if: ${{ always() && needs.navigacia.result == 'success' }}
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with:
-          name: navigacia-graf
-          path: _site
 
       - name: Publikuj mapu na Drive
         id: publish
@@ -1330,14 +1328,6 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: deploy-site
-          path: _site
-      # `.aar` je ten istý obsah ako ZIP: bez grafu by `-navigacia.aar` bol
-      # prázdny a nebolo by to na ničom vidieť. Do `site-*` graf nepatrí.
-      - name: Stiahni navigačný graf do balíka
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with:
-          name: navigacia-graf
           path: _site
       - name: Zabaľ a nahraj .aar na Drive
         id: publish

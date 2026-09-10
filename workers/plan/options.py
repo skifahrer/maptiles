@@ -63,12 +63,9 @@ DEFAULTS = {
     "features": ("true", "generovať krajinné prvky, ktoré OpenMapTiles nemá"),
     # offline FTS5 index, z toho istého PBF ako mapa
     "search": ("true", "generovať vyhľadávací index pre offline hľadávanie"),
-    # graf pre tento región; trasa v ňom končí na hranici kraja, cez hranicu
-    # vedie celoštátny balík z `navigation.yml`
-    "navigacia": ("true", "stavať navigačný graf (Valhalla) pre tento región"),
-    # graf a knižnica v telefóne si musia sedieť; použité ide do `graf.json`
-    "valhalla_image": ("ghcr.io/valhalla/valhalla-scripted:latest",
-                       "docker obraz, ktorým sa stavia navigačný graf"),
+    # dlaždice so značkami, z ktorých telefón počíta trasu – balík `navigacia`
+    "navigacia": ("true", "stavať smerovaciu sieť pre tento región – balík "
+                          "`navigacia`"),
     # všetko, po čom sa dá cestovať, aj s obmedzeniami na ceste ako atribútmi
     # tých istých ciest – vrstva `transportation` OpenMapTiles ich nenesie
     "transport": ("true", "generovať dopravnú sieť (cesty, trate, trajekty, "

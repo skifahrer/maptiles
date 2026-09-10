@@ -87,6 +87,7 @@ jq -n \
   --argjson wmaxzoom "$WATER_MAXZOOM" \
   --argjson transport "$TRANSPORT_ENABLED" \
   --argjson trmaxzoom "$TRANSPORT_MAXZOOM" \
+  --argjson routing "$ROUTING_ENABLED" \
   --argjson contours "$CONTOURS_ENABLED" \
   --argjson cmaxzoom "$CONTOURS_MAXZOOM" \
   --argjson rocks "$ROCKS_ENABLED" \
@@ -182,6 +183,15 @@ jq -n \
       + (if $transport then {
         transport: ("tiles/" + $region + "-transport.pmtiles"),
         transport_maxzoom: $trmaxzoom
+      } else {} end)
+      # smerovacia sieť – dlaždice so značkami, z ktorých telefón počíta trasu.
+      # Štýl z nej nekreslí nič a je to v poriadku: manifest je zoznam toho, čo
+      # v mape JE (číta ho `subory.py` pri skladaní balíka `navigacia`), nie
+      # toho, čo pýta štýl. `routing_zoom` je pevných z9, ale píše sa sem –
+      # klient nemá odkiaľ vedieť, na akej mriežke archív je.
+      + (if $routing then {
+        routing: ("tiles/" + $region + "-routing.pmtiles"),
+        routing_zoom: 9
       } else {} end)
       # hranica regiónu – viewer ňou prekryje všetko za regiónom, lebo
       # dlaždice sú orezané len po celých dlaždiciach

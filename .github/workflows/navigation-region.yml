@@ -1,44 +1,59 @@
-name: Mapa · navigačný graf kraja
+name: Mapa · smerovacia sieť kraja
 
-# NAVIGAČNÝ GRAF (Valhalla) PRE JEDEN KRAJ, s vlastným balíkom
-# `<kraj>-navigacia.zip`. Dovnútra mapy sa nebalí: graf kraja váži 170–190 MB
-# a mapa s ním 283 MB. Že sa o ňom dá dozvedieť, drží katalóg.
+# SMEROVACIA SIEŤ JEDNÉHO KRAJA – `<kraj>-routing.pmtiles`, balík `navigacia`.
 #
-# Trasa v ňom končí na hranici kraja – PBF je rezaný presnou hranicou z OSM
-# a hrana bez druhého konca je slepá ulica. Je to zámer a `graf.json` to
-# o sebe hovorí. Cez hranicu vedie celoštátny graf z `navigation.yml`.
+# Do telefónu ide TAG, nie cena: profil používateľa (vypnuté typy ciest,
+# rozmery vozidla, známky) sa do predpočítaného grafu zapiecť nedá. Rozpis
+# formátu je v `docs/routing-tiles.md`, dôvod v `docs/navigation.md` §10.
+#
+# Nahradilo to graf Valhally, ktorý vážil 176 – 192 MB na kraj a na hranici
+# kraja končil. `workers/routing/graph.sh` a celoštátny `navigation.yml`
+# ostávajú ako referenčná stavba, proti ktorej sa nový motor krížom kontroluje.
 #
 # Samostatný súbor preto, že `build-map-region.yml` je pri strope 128 KiB.
-# Graf stavia `workers/routing/graph.sh`, to isté, čo púšťa celoštátna
-# pipeline – líši sa len tým, čo dostane.
 
 on:
   workflow_call:
     inputs:
       region_key:
-        description: "Kľúč regiónu – ide do `graf.json` ako rozsah grafu"
+        description: "Kľúč regiónu – z neho je meno `{region}-routing.pmtiles`"
         required: true
         type: string
-      valhalla_image:
-        description: "Docker obraz Valhally (radšej s tagom než latest)"
+      region_name:
+        description: "Meno regiónu do metadát archívu"
         required: false
-        default: "ghcr.io/valhalla/valhalla-scripted:latest"
+        default: ""
+        type: string
+      routing_country:
+        description: "ISO kód krajiny kraja (`iso` v regions.json) – bez neho nemá diaľničná známka na čom stáť"
+        required: false
+        default: ""
+        type: string
+      size_limit_mb:
+        description: "Rozpočet celej stránky v MB"
+        required: false
+        default: "900"
+        type: string
+      budget_pct:
+        description: "Podiel smerovacej siete na rozpočte stránky v percentách"
+        required: false
+        default: "3"
         type: string
     outputs:
-      graph_mb:
-        description: "Veľkosť grafu v MB (0 = nevznikol)"
-        value: ${{ jobs.graf.outputs.graph_mb }}
-      valhalla:
-        description: "Verzia motora, ktorou je graf postavený"
-        value: ${{ jobs.graf.outputs.valhalla }}
+      enabled:
+        description: "Vznikol archív? (vo výreze nemusí byť ani jedna cesta)"
+        value: ${{ jobs.routing.outputs.enabled }}
+      size_mb:
+        description: "Veľkosť archívu v MB"
+        value: ${{ jobs.routing.outputs.size_mb }}
 
 jobs:
-  graf:
-    name: Graf z PBF kraja
+  routing:
+    name: Smerovacia sieť z PBF kraja
     runs-on: ubuntu-latest
     outputs:
-      graph_mb: ${{ steps.graph.outputs.graph_mb }}
-      valhalla: ${{ steps.graph.outputs.valhalla }}
+      enabled: ${{ steps.routing.outputs.enabled }}
+      size_mb: ${{ steps.routing.outputs.size_mb }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -53,23 +68,25 @@ jobs:
           name: pbf
           path: data
 
-      # Docker je na `ubuntu-latest` k dispozícii
-      - name: Graf Valhally z PBF kraja
-        id: graph
+      # rozpis je vo `workers/routing/build.sh`
+      - name: Smerovacia sieť z OSM → PMTiles
+        id: routing
         env:
           REGION_KEY: ${{ inputs.region_key }}
-          ROUTING_PBF: data/region.osm.pbf
-          VALHALLA_IMAGE: ${{ inputs.valhalla_image }}
-        run: workers/routing/graph.sh
+          REGION_NAME: ${{ inputs.region_name }}
+          ROUTING_COUNTRY: ${{ inputs.routing_country }}
+          SIZE_LIMIT_MB: ${{ inputs.size_limit_mb }}
+          BUDGET_ROUTING_PCT: ${{ inputs.budget_pct }}
+        run: workers/routing/build.sh
 
-      # artefakt sa nevolá `site-…` zámerne: `deploy` zlieva `site-*` do `_site`
-      # pred nahratím na Pages a graf tam nemá čo robiť. Balenie si ho stiahne
-      # menom, až za tým krokom.
-      - name: Odlož graf pre balenie
-        if: ${{ always() && hashFiles('_site/routing/*') != '' }}
+      # `site-…` zámerne: archív je jednotky MB, takže ide do `_site` ako každá
+      # iná vrstva a `deploy` ho z manifestu zabalí do `navigacia`. Graf
+      # Valhally mal vlastný artefakt práve preto, že to jednotky MB neboli.
+      - name: Odlož časť stránky
+        if: ${{ always() && hashFiles('_site/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
-          name: navigacia-graf
+          name: site-navigacia
           path: _site
           retention-days: 1
           compression-level: 0

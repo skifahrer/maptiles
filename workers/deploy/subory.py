@@ -50,7 +50,7 @@ def log(msg):
 
 # ---------- čo je v ktorom balíku ----------
 # Základná mapa NEOBSAHUJE vrstevnice, skaly, tieňovanie, dopravnú sieť, body,
-# hranice, vodstvo ani navigačný graf – sú to ťažké vrstvy, ktoré mapa na to,
+# hranice, vodstvo ani smerovaciu sieť – sú to ťažké vrstvy, ktoré mapa na to,
 # aby sa nakreslila, nepotrebuje, a majú vlastné balíky práve preto, aby si ich
 # človek nemusel sťahovať, keď ich nechce. Vrstevnice a skaly sú SPOLU zámerne:
 # sú z toho istého výpočtu nad tým istým DEM a jedna bez druhej sa nepoužíva.
@@ -75,13 +75,8 @@ def manifest_data(site):
 def subory_baliku(site, man, b):
     """Súbory JEDNÉHO balíka podľa jeho položky v číselníku.
 
-    Tri spôsoby, ako sa to dá povedať, a berú sa v tomto poradí:
+    Dva spôsoby, ako sa to dá povedať, a berú sa v tomto poradí:
 
-      `priecinok`  CELÝ priečinok v `_site`, nie výber podľa mien. Navigačný
-                   graf sú štyri súbory, ktoré si musia sedieť, plus
-                   `graf.json` s tým, z čoho je – keby sa vyberali menami,
-                   prvý ďalší súbor od Valhally by ticho vypadol a trasa by
-                   „len nešla".
       `manifest`   kľúče v `regions.<kraj>` manifestu. Toto je tá správna
                    odpoveď: manifest je jediné miesto, ktoré vie, čo v mape
                    naozaj je.
@@ -91,18 +86,10 @@ def subory_baliku(site, man, b):
                    „všetko v priečinku" by do balíka `tienovanie` pribalilo aj
                    mapu, vrstevnice a trasy.
 
-    Balík bez všetkých troch (základná mapa, články z Wikipédie) tadiaľto
-    nechodí – tie skladá `zaklad_subory`, resp. `vsetky_subory` nad
-    priečinkom, ktorý podal workflow.
+    Balík bez oboch (základná mapa, články z Wikipédie) tadiaľto nechodí –
+    tie skladá `zaklad_subory`, resp. `vsetky_subory` nad priečinkom, ktorý
+    podal workflow.
     """
-    priecinok = b.get("priecinok")
-    if priecinok:
-        base = os.path.join(site, priecinok)
-        if not os.path.isdir(base):
-            return []
-        return sorted(os.path.join(root, n)
-                      for root, _dirs, names in os.walk(base) for n in names)
-
     reg = catalog.region_entry(man)
     rel = [reg[k] for k in b.get("manifest") or () if reg.get(k)]
     if not rel and b.get("pripony"):
@@ -184,10 +171,9 @@ def casti_baliku(site, man):
     Mlčanie by sa dalo čítať aj ako „zabudlo sa to premerať" – ten istý dôvod,
     pre ktorý meno balíka nesie `bez_skal`.
 
-    NAVIGÁCIA TU NIE JE a nie je to opomenutie: graf bol dvomi tretinami
-    základnej mapy, takže sa z nej vybral do VLASTNÉHO balíka. Jeho veľkosť je
-    preto v katalógu pod `maps.navigacia.size` ako pri každom inom balíku, nie
-    pod `maps.mapa.casti`.
+    NAVIGÁCIA TU NIE JE a nie je to opomenutie: smerovacia sieť má VLASTNÝ
+    balík, takže jej veľkosť je v katalógu pod `maps.navigacia.size` ako pri
+    každom inom balíku, nie pod `maps.mapa.casti`.
     """
     return [
         ("search", "index na offline hľadanie (SQLite FTS5)",
