@@ -417,11 +417,52 @@ podjazd a v builde nespadne nič.
 | lístok | čo |
 |---|---|
 | **P1** | `workers/data/routing-tags.json` – slovník značiek; je to zároveň páka na veľkosť |
-| **P2** | `workers/routing/tiles.py` – archív z `data/region.osm.pbf` na mriežke z9, s OSM id uzlov; `graf.json` s verziou formátu, id slovníka a počtom hrán |
-| **P3** | `workers/lint/routing-tiles.py` – každá značka je v slovníku, okrajové dlaždice susedov sú zhodné, žiadna dlaždica neprekročí rozpočet |
-| **P4** | `navigation-region.yml` publikuje nový archív; položka v katalógu pod `maps.navigacia` namiesto Valhally |
-| **P5** | balík grafu kraja sa prestane publikovať. `graph.sh` a celoštátny job ostávajú – sú referenčná stavba, proti ktorej sa nový motor krížom kontroluje |
-| **P6** | `workers/lint/roadtypes.py` – zoznam typov ciest v appke proti triedam v štýle |
+| **P2** | `workers/routing/tiles.py` – archív z `data/region.osm.pbf` na mriežke z9, s OSM id uzlov; `graf.json` s verziou formátu, id slovníka, id poradia a počtom hrán |
+| **P3** | `workers/routing/order.py` – poradie uzlov (nested dissection, InertialFlowCutter) nad **celým stavaným územím**, jedno číslo na uzol. Viď §11 |
+| **P4** | `workers/lint/routing-tiles.py` – každá značka je v slovníku, okrajové dlaždice susedov sú zhodné, všetky archívy jedného behu majú to isté id poradia, žiadna dlaždica neprekročí rozpočet |
+| **P5** | `navigation-region.yml` publikuje nový archív; položka v katalógu pod `maps.navigacia` namiesto Valhally |
+| **P6** | balík grafu kraja sa prestane publikovať. `graph.sh` a celoštátny job ostávajú – sú referenčná stavba, proti ktorej sa nový motor krížom kontroluje |
+| **P7** | `workers/lint/roadtypes.py` – zoznam typov ciest v appke proti triedam v štýle |
 
 Prvý beh má potvrdiť odhad veľkosti (P2). Kým to nie je namerané, je to odhad
 odvodený z cudzieho čísla, nie naše číslo.
+
+## 11. Jedna drahá vec, ktorá patrí sem a nie do telefónu
+
+Motor v telefóne je **CCH** (Customizable Contraction Hierarchies) – rozbor
+a namerané čísla sú v pláne v rikimaps, §4. Pre pipeline z toho vyplýva jediná,
+ale podstatná povinnosť.
+
+CCH delí prípravu na dve časti a **len jedna z nich závisí od profilu**:
+
+| časť | závisí od | kde beží |
+|---|---|---|
+| poradie uzlov (nested dissection) | len od **tvaru siete** | **tu, v pipeline** |
+| kontrakcia podľa poradia | tvar siete | telefón, raz na zostavu krajov |
+| customizácia (dosadenie cien) | profil používateľa | telefón, pri každej úprave profilu |
+| hľadanie trasy | – | telefón, 0,31 ms |
+
+Poradie je **nezávislé od profilu aj od cien**, takže ho počítať v telefóne by
+bola čistá strata: pre západnú Európu je to 256 s na stroji s viacerými
+jadrami, pre Slovensko sekundy. Ide do archívu ako **jedno číslo (rank) na
+uzol**, ~2 – 3 bajty s varintom.
+
+Dve veci z toho treba dodržať, inak sa to nedá spojiť:
+
+* **Poradie sa počíta nad celým stavaným územím**, nie po krajoch. Zúženie
+  globálneho poradia na podgraf je stále platné poradie preň; poradia počítané
+  po krajoch zvlášť sa spojiť nedajú.
+* **Každý archív nesie `id poradia`.** Kraj postavený proti inému poradiu sa
+  s týmto spojiť nesmie a klient to musí vedieť odmietnuť – nesúlad by sa
+  navonok javil ako pokazená trasa, presne ako nesúlad verzie motora
+  a grafu pri Valhalle (§7b).
+
+A ešte jedna vec do formátu: **odbočovacie zákazy musia byť v archíve ako
+plnohodnotné dáta**, nie ako príloha. CCH beží na hranovo rozvinutom grafe
+(hrany sa stanú vrcholmi, odbočky hranami) a ten si telefón odvodí z hrán
+a zákazov. Merané (Buchhold a spol., ATMOS 2020): kompaktný model s tabuľkami
+odbočiek je pri CCH 34× pomalší na customizácii, 53× na dotazoch – a zaberie
+viac miesta než rozvinutý graf, teda presne naopak, než na čo bol vymyslený.
+
+Obe polia – `rank` na uzle aj zákazy – musia byť v archíve **od prvej verzie**.
+Doplniť ich neskôr znamená zmenu formátu a znovustiahnutie každého kraja.
