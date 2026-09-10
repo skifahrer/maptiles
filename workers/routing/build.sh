@@ -42,8 +42,9 @@ if [ "$AFTER" -lt 2000 ]; then
 fi
 
 # ---- 2. archív ----
-# Poradie uzlov sa počíta nad CELÝM stavaným územím (`workers/routing/order.py`),
-# takže ho beh kraja vyrobiť nemôže – keď tu súbor leží, použije sa.
+# Poradie uzlov sa počíta nad CELÝM stavaným územím (workflow „Navigácia ·
+# poradie uzlov"), takže ho beh kraja vyrobiť nemôže – berie sa z cache na
+# Drive a leží tu. Keď tu nie je, archív ide bez neho a `tiles.py` to povie.
 PORADIE=()
 if [ -s data/routing-order.json ]; then
   PORADIE=(--poradie=data/routing-order.json)

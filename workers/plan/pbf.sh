@@ -66,6 +66,7 @@ if [ -n "$CUSTOM_URL" ]; then
   # ----- vlastný región (Európa / svet) -----
   NAME="$OPT_CUSTOM_NAME"
   ISO=""
+  ROUTING_AREA=""
   [ -n "$NAME" ] || NAME=$(basename "$CUSTOM_URL" .osm.pbf)
   KEY=$(echo "$NAME" | LC_ALL=C.UTF-8 iconv -f utf8 -t ascii//TRANSLIT | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '_' | sed 's/^_//;s/_*$//')
   download "$CUSTOM_URL" || { echo "::error::Nepodarilo sa stiahnuť $CUSTOM_URL"; exit 1; }
@@ -91,6 +92,9 @@ else
   # ISO krajiny pre smerovanie: hrana v archíve nesie krajinu, inak nemá
   # diaľničná známka na čom stáť. Kraj ho má cez svoje `country`.
   ISO=$(jq -r --arg r "$KEY" '. as $d | ($d[$r].iso // $d[$d[$r].country].iso // "")' workers/data/regions.json)
+  # územie, nad ktorým je poradie uzlov pre CCH – to isté pre všetky kraje
+  # krajiny, inak sa ich archívy v telefóne spojiť nesmú
+  ROUTING_AREA=$(jq -r --arg r "$KEY" '. as $d | ($d[$r].routing_area // $d[$d[$r].country].routing_area // "")' workers/data/regions.json)
   # rodič je kľúč iného regiónu v tom istom číselníku, nie druhá URL
   PARENT=$(jq -r --arg r "$KEY" '.[$r].osmfr.parent // ""' workers/data/regions.json)
   if [ "$NAME" = "null" ]; then echo "::error::Neznámy región: $KEY"; exit 1; fi
@@ -275,6 +279,7 @@ fi
 echo "key=$KEY"   >> "$GITHUB_OUTPUT"
 echo "name=$NAME" >> "$GITHUB_OUTPUT"
 echo "iso=$ISO"   >> "$GITHUB_OUTPUT"
+echo "routing_area=$ROUTING_AREA" >> "$GITHUB_OUTPUT"
 echo "bbox=$BBOX" >> "$GITHUB_OUTPUT"
 echo "dem_bbox=$DEM_BBOX" >> "$GITHUB_OUTPUT"
 # bezpečná podoba bboxu do kľúča cache. Z `dem_bbox`, lebo ho používajú len

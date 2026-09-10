@@ -37,9 +37,10 @@
     "osm_name": "Slovensko",
     "admin_level": 2,
     "iso": "SK",
+    "routing_area": "slovensko",
     "bbox": [16.815, 47.71, 22.585, 49.635],
     "osmfr": { "dir": "europe", "slugs": ["slovakia-latest"] },
-    "note": "Celé Slovensko ako jeden región – a zároveň RODIČ krajov: každý kraj má `osmfr.parent: slovensko` a `workers/plan/pbf.sh` si ho z tohto súboru vyreže (`osmium extract -s smart`). Hotový `{kraj}-latest.osm.pbf` na osm.fr sa NEPOUŽÍVA – nie je referenčne úplný, takže plocha presahujúca do susedného kraja (CHKO Malé Karpaty, CHKO Záhorie, lesy Záhoria) v ňom nemá všetkých členov a Planetiler ju zahodí CELÚ, aj tú časť, čo v kraji leží. Namerané aj s číslami v hlavičke pbf.sh. `iso` je dvojpísmenový kód krajiny a je tu kvôli SMEROVANIU: hrana v archíve nesie krajinu, lebo bez nej nemá diaľničná známka na čom stáť (`workers/data/vignettes.json`). Kraje si ho berú cez svoje `country`, takže je napísaný raz."
+    "note": "Celé Slovensko ako jeden región – a zároveň RODIČ krajov: každý kraj má `osmfr.parent: slovensko` a `workers/plan/pbf.sh` si ho z tohto súboru vyreže (`osmium extract -s smart`). Hotový `{kraj}-latest.osm.pbf` na osm.fr sa NEPOUŽÍVA – nie je referenčne úplný, takže plocha presahujúca do susedného kraja (CHKO Malé Karpaty, CHKO Záhorie, lesy Záhoria) v ňom nemá všetkých členov a Planetiler ju zahodí CELÚ, aj tú časť, čo v kraji leží. Namerané aj s číslami v hlavičke pbf.sh. `iso` je dvojpísmenový kód krajiny a je tu kvôli SMEROVANIU: hrana v archíve nesie krajinu, lebo bez nej nemá diaľničná známka na čom stáť (`workers/data/vignettes.json`). Kraje si ho berú cez svoje `country`, takže je napísaný raz. `routing_area` je kľúč vo `workers/data/routing-areas.json`, nad ktorým sa počíta PORADIE UZLOV pre CCH – všetky kraje krajiny musia stáť na tom istom, inak sa ich archívy v telefóne nesmú spojiť."
   },
   "bratislavsky": {
     "name": "Bratislavský kraj",

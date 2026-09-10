@@ -282,6 +282,8 @@ jobs:
       name: ${{ steps.region.outputs.name }}
       # ISO krajiny kraja – vstup pre diaľničnú známku v smerovacej sieti
       iso: ${{ steps.region.outputs.iso }}
+      # územie, nad ktorým je poradie uzlov pre CCH
+      routing_area: ${{ steps.region.outputs.routing_area }}
       # `bbox` je územie mapy, `dem_bbox` územie vrstiev z DEM. Pri rýchlom
       # teste sú to tie isté 4 km²; líšia sa, len keď je výrez menší než región.
       bbox: ${{ steps.region.outputs.bbox }}
@@ -839,10 +841,12 @@ jobs:
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.opt_navigacia == 'true' }}
     uses: ./.github/workflows/navigation-region.yml
+    secrets: inherit                      # cache s poradím uzlov na Drive
     with:
       region_key: ${{ needs.plan.outputs.key }}
       region_name: ${{ needs.plan.outputs.name }}
       routing_country: ${{ needs.plan.outputs.iso }}
+      routing_area: ${{ needs.plan.outputs.routing_area }}
       size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
       budget_pct: ${{ needs.plan.outputs.budget_routing_pct }}
 

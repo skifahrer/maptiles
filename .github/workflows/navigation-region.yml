@@ -29,6 +29,11 @@ on:
         required: false
         default: ""
         type: string
+      routing_area:
+        description: "Územie, nad ktorým je poradie uzlov (`routing_area` v regions.json) – rovnaké pre všetky kraje krajiny"
+        required: false
+        default: ""
+        type: string
       size_limit_mb:
         description: "Rozpočet celej stránky v MB"
         required: false
@@ -39,6 +44,15 @@ on:
         required: false
         default: "3"
         type: string
+    # `workflow_call` nededí secrets sám. Bez nich sa cache na Drive nemá ako
+    # otvoriť a archív by šiel bez poradia uzlov.
+    secrets:
+      GDRIVE_CREDENTIALS:
+        required: false
+      DRIVE_SECRET:
+        required: false
+      DRIVE_REFRESH:
+        required: false
     outputs:
       enabled:
         description: "Vznikol archív? (vo výreze nemusí byť ani jedna cesta)"
@@ -46,6 +60,13 @@ on:
       size_mb:
         description: "Veľkosť archívu v MB"
         value: ${{ jobs.routing.outputs.size_mb }}
+
+# prihlásenie na Drive pre celý workflow: cache s poradím uzlov
+env:
+  GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+  DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
+  DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
+  DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
 
 jobs:
   routing:
@@ -67,6 +88,20 @@ jobs:
         with:
           name: pbf
           path: data
+
+      # Poradie uzlov pre CCH sa počíta nad CELÝM územím („Navigácia · poradie
+      # uzlov"), takže ho beh kraja vyrobiť nemôže – berie sa z cache. Kľúč je
+      # predpona, teda najnovšie uložené poradie toho územia.
+      # `continue-on-error`: archív bez poradia je platný archív, len si ho
+      # telefón doráta sám – a `build.sh` to povie.
+      - name: Vezmi poradie uzlov z cache
+        if: ${{ inputs.routing_area != '' }}
+        continue-on-error: true
+        uses: ./.github/actions/cache-restore
+        with:
+          path: data/routing-order.json
+          key: routing-order-v1-${{ inputs.routing_area }}
+          restore-keys: routing-order-v1-${{ inputs.routing_area }}-
 
       # rozpis je vo `workers/routing/build.sh`
       - name: Smerovacia sieť z OSM → PMTiles

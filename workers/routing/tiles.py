@@ -104,7 +104,7 @@ class Dlazdica:
         })
 
 
-def rozdel(siet, slovnik, krajina, rank):
+def rozdel(siet, slovnik, krajina, poradie):
     """Hrana patrí do dlaždice svojho prvého uzla – to je vlastnosť OSM, nie kraja."""
     dlazdice = {}
     for h in siet.hrany:
@@ -118,7 +118,7 @@ def rozdel(siet, slovnik, krajina, rank):
             tagy["krajina"] = krajina
         for ref in (h["od"], h["do"]):
             if ref not in d.uzly:
-                d.uzly[ref] = (*siet.uzly[ref], 0, rank.get(ref, 0))
+                d.uzly[ref] = (*siet.uzly[ref], 0, poradie.rank(ref))
         d.hrany.append({"od": h["od"], "do": h["do"], "geom": h["geom"],
                         "dlzka_cm": h["dlzka_cm"], "smer": h["smer"],
                         "tagset": d.tagset(tagy)})
@@ -132,11 +132,34 @@ def rozdel(siet, slovnik, krajina, rank):
     return dlazdice
 
 
-def nacitaj_poradie(cesta):
-    """Poradie uzlov z `order.py` – `{"id": …, "rank": {osm_id: rank}}`."""
-    with open(cesta, encoding="utf-8") as f:
-        raw = json.load(f)
-    return int(raw["id"], 16), {int(k): v for k, v in raw["rank"].items()}
+class Poradie:
+    """Rank na uzol – aj pre uzol, ktorý v poradí nie je."""
+
+    def __init__(self, cesta=""):
+        self.id, self._rank = 0, {}
+        if cesta:
+            with open(cesta, encoding="utf-8") as f:
+                raw = json.load(f)
+            self.id = int(raw["id"], 16)
+            self._rank = {int(k): v for k, v in raw["rank"].items()}
+        self._koniec = len(self._rank)
+
+    def __bool__(self):
+        return bool(self._rank)
+
+    def rank(self, osm_id):
+        """Uzol pribudnutý po výpočte poradia ide na koniec, podľa OSM id.
+
+        Je to stále GLOBÁLNE poradie – OSM id je jedno na celý svet, takže dva
+        kraje dosadia tomu istému uzlu to isté číslo. Bez toho by sa poradie
+        muselo prepočítať pri každej zmene siete a archívy postavené pred ňou
+        a po nej by sa nedali spojiť.
+        """
+        r = self._rank.get(osm_id)
+        return r if r is not None else self._koniec + osm_id
+
+    def chybajuce(self, uzly):
+        return sum(1 for u in uzly if u not in self._rank)
 
 
 def main():
@@ -167,22 +190,22 @@ def main():
           f"{len(siet.hrany)} hrán, {len(siet.zakazy)} zákazov "
           f"({time.time() - t0:.0f} s)")
 
-    poradie_id, rank = (nacitaj_poradie(args.poradie) if args.poradie
-                        else (0, {}))
+    poradie = Poradie(args.poradie)
     if args.poradie:
-        chyba = [u for u in siet.uzly if u not in rank]
+        chyba = poradie.chybajuce(siet.uzly)
         if chyba:
-            print(f"::warning::{len(chyba)} uzlov nemá poradie z "
-                  f"{args.poradie} – poradie sa počítalo nad iným územím než "
-                  f"tento kraj. Kontrakcia v telefóne na nich stojí, takže "
-                  f"trasa cez ne bude pomalšia, nie zlá.")
+            print(f"::warning::{chyba} z {len(siet.uzly)} uzlov v poradí "
+                  f"z {args.poradie} nie je – sieť sa od jeho výpočtu zmenila. "
+                  f"Dostanú rank na konci podľa OSM id, takže sa archívy dajú "
+                  f"spojiť ďalej; keď ich je veľa, prepočítaj poradie "
+                  f"(workflow „Navigácia · poradie uzlov“).")
     else:
         print("::warning::Archív ide BEZ PORADIA UZLOV (`--poradie`). Trasa "
               "sa z neho spočíta, ale telefón si musí poradie dorátať sám – "
               "a to je jediná drahá časť CCH, ktorá do telefónu nepatrí "
               "(docs/navigation.md §11).")
 
-    dlazdice = rozdel(siet, slovnik, args.krajina, rank)
+    dlazdice = rozdel(siet, slovnik, args.krajina, poradie)
     if not dlazdice:
         print("::warning::V tomto území nie je ani jedna cesta, po ktorej by "
               "sa dalo ísť – archív so smerovaním sa nevyrobí.")
@@ -191,7 +214,8 @@ def main():
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     telá = {}
     for zxy, d in dlazdice.items():
-        telá[zxy] = gzip.compress(d.telo(slovnik.id, poradie_id, bool(rank)), 9)
+        telá[zxy] = gzip.compress(
+            d.telo(slovnik.id, poradie.id, bool(poradie)), 9)
 
     velke = sorted(((len(b), zxy) for zxy, b in telá.items()), reverse=True)
     nad = [(n, zxy) for n, zxy in velke if n > fmt.ROZPOCET_KB * 1024]
@@ -208,7 +232,7 @@ def main():
         "format_verzia": fmt.VERZIA,
         "slovnik": f"{slovnik.id:08x}",
         "slovnik_verzia": slovnik.verzia,
-        "poradie": f"{poradie_id:08x}" if poradie_id else None,
+        "poradie": f"{poradie.id:08x}" if poradie else None,
         "krajina": args.krajina or None,
         "zoom": ZOOM,
         "dlazdic": len(dlazdice),
