@@ -117,41 +117,16 @@ def baliky_vrstiev(site, man):
 
 
 # ---------- časti, ktoré cestujú V ZÁKLADNEJ MAPE ----------
-# Hľadanie NIE JE balík (rozpis v hlavičke súboru). Je to časť základnej mapy
-# a jediné, čo o nej publikovanie navyše robí, je, že ju PREMERIA – veľkosť
-# ide do `maps.json` pod balík `mapa`, aby sa dalo povedať, koľko z tých
-# stoviek MB je mapa a koľko to, čo v nej hľadá.
-#
-# Vlastnú funkciu má preto, že sa nedá vybrať podľa priečinka: `tiles/` je
-# spoločný pre všetky vrstvy, takže „všetko v priečinku" by za index vyhlásilo
-# aj dlaždice.
-
-def hladanie_subory(site, man):
-    """Časť `search` – SQLite FTS5 index na offline hľadanie.
-
-    Jeden súbor, presunutý workers/search/build.sh do `_site/tiles/` ako
-    `search-index.db`. Hľadá sa podľa PRÍPONY MENA a slova „search" v nej
-    (rovnaké pravidlo, akým appka skenuje stiahnutý priečinok, nie pevné
-    meno – `.db` súbor s „search" v mene).
-    """
-    base = os.path.join(site, "tiles")
-    if not os.path.isdir(base):
-        return []
-    return [os.path.join(base, n) for n in sorted(os.listdir(base))
-            if n.endswith(".db") and "search" in n.lower()]
-
-
 def trasy_subory(site, man):
     """Časť `trasy` – značené trasy z OSM relácií (`-trails.pmtiles`).
 
     ČASŤ, A NIE BALÍK, a je to zmena: trasy cestovali v `linie` vedľa
     dopravnej siete. Turistická mapa bez značiek je ale mapa, ktorá nesľubuje
     to, načo si ju človek stiahol – a je to jeden súbor v jednotkách MB proti
-    stovkám za dlaždice, takže sa tu nemá čo šetriť. Ten istý dôvod, pre ktorý
-    je v mape hľadanie.
+    stovkám za dlaždice, takže sa tu nemá čo šetriť.
 
-    Premeriava sa z rovnakého dôvodu ako hľadanie: časť, ktorú nikto nemeria,
-    sa v katalógu nedá odlíšiť od časti, ktorá tam nie je.
+    Premeriava sa preto, že časť, ktorú nikto nemeria, sa v katalógu nedá
+    odlíšiť od časti, ktorá tam nie je.
     """
     reg = catalog.region_entry(man)
     rel = [reg["trails"]] if reg.get("trails") else []
@@ -176,8 +151,6 @@ def casti_baliku(site, man):
     každom inom balíku, nie pod `maps.mapa.casti`.
     """
     return [
-        ("search", "index na offline hľadanie (SQLite FTS5)",
-         hladanie_subory(site, man)),
         ("trasy", "značené trasy z OSM relácií (.pmtiles)",
          trasy_subory(site, man)),
     ]
@@ -288,11 +261,11 @@ def zaklad_subory(site, vylucit):
     z číselníka, netreba naň myslieť: `publish-map.py` sem podáva `vylucit`
     zložené z toho istého zoznamu, z akého sa balíky vyrábajú. Kým sa písali
     ručne, bolo vynechanie ticho: mapa je v poriadku, len o toľko väčšia,
-    a na súbore to nikto nepozná. Presne to sa stalo `search-index.db`.
+    a na súbore to nikto nepozná.
 
-    HĽADANIE A ZNAČENÉ TRASY SEM NAOPAK NEPATRIA a nie je to opomenutie:
-    druhý balík nemajú, sú to ČASTI tejto mapy (`casti_baliku`). Vynímať ich
-    by znamenalo mapu, v ktorej sa nedá nič nájsť a na ktorej nie sú značky.
+    ZNAČENÉ TRASY SEM NAOPAK NEPATRIA a nie je to opomenutie: druhý balík
+    nemajú, sú to ČASŤ tejto mapy (`casti_baliku`). Vyňať ich by znamenalo
+    mapu, na ktorej nie sú značky.
     """
     von = {os.path.abspath(p) for p in vylucit}
     return [p for p in vsetky_subory(site) if os.path.abspath(p) not in von]

@@ -308,7 +308,6 @@ jobs:
       opt_terrain: ${{ steps.opts.outputs.opt_terrain }}
       opt_trails: ${{ steps.opts.outputs.opt_trails }}
       opt_features: ${{ steps.opts.outputs.opt_features }}
-      opt_search: ${{ steps.opts.outputs.opt_search }}
       # smerovacia sieť má vlastný balík `navigacia`
       opt_navigacia: ${{ steps.opts.outputs.opt_navigacia }}
       # `opt_rock_dem` je zdroj skál, len keď je to výškový model – pri
@@ -780,61 +779,6 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_water_pct }}
       day: ${{ needs.plan.outputs.day }}
 
-  # vyhľadávací index: SQLite FTS5 z predfiltrovaného PBF, balí sa do
-  # `_site/tiles/search-index.db`
-  search:
-    name: Vyhľadávací index
-    needs: plan
-    if: ${{ !cancelled() && needs.plan.outputs.opt_search == 'true' }}
-    runs-on: ubuntu-latest
-    outputs:
-      enabled: ${{ steps.search.outputs.enabled }}
-      size_mb: ${{ steps.search.outputs.size_mb }}
-      row_count: ${{ steps.search.outputs.row_count }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-      - name: Priprav priečinok na meranie
-        run: mkdir -p steps-out
-
-      - name: Stiahni PBF z prípravy
-        uses: actions/download-artifact@v8
-        with:
-          name: pbf
-          path: data
-
-      - name: Nainštaluj osmium-tool a Python knižnice
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq osmium-tool python3-pip
-          pip3 install osmium
-
-      - name: Vyhľadávací index z OSM → SQLite
-        id: search
-        env:
-          REGION_KEY: ${{ needs.plan.outputs.key }}
-          OSM_ID_FIELD: osm_id
-        run: workers/search/build.sh
-
-      - name: Odlož kus stránky
-        if: ${{ always() && hashFiles('_site/**') != '' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: site-search
-          path: _site
-          retention-days: 1
-          compression-level: 0
-          if-no-files-found: ignore
-
-      - name: Odlož meranie krokov
-        if: ${{ always() && hashFiles('steps-out/*') != '' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: steps-search
-          path: steps-out
-          retention-days: 1
-          if-no-files-found: ignore
-
   # smerovacia sieť vo vlastnom súbore; rozpis je v `navigation-region.yml`
   navigacia:
     name: Smerovacia sieť
@@ -1025,7 +969,7 @@ jobs:
   # mapa sa má nasadiť aj tak.
   deploy:
     name: Zloženie a nasadenie
-    needs: [plan, dem, trails, features, transport, hranice, vodstvo, search, navigacia, tiles, assets]
+    needs: [plan, dem, trails, features, transport, hranice, vodstvo, navigacia, tiles, assets]
     if: ${{ !cancelled() && needs.tiles.result == 'success' && needs.assets.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -1061,7 +1005,7 @@ jobs:
       - name: Čo prišlo od ostatných jobov
         run: |
           set -uo pipefail
-          echo "Výsledky jobov: vrstevnice=${{ needs.dem.outputs.res_contours }}, trasy=${{ needs.trails.result }}, prvky=${{ needs.features.result }}, doprava=${{ needs.transport.result }}, hranice=${{ needs.hranice.result }}, vodstvo=${{ needs.vodstvo.result }}, hľadanie=${{ needs.search.result }}, navigácia=${{ needs.navigacia.result }}, terén=${{ needs.dem.outputs.res_terrain }}, dlaždice=${{ needs.tiles.result }}, ikonky=${{ needs.assets.result }}"
+          echo "Výsledky jobov: vrstevnice=${{ needs.dem.outputs.res_contours }}, trasy=${{ needs.trails.result }}, prvky=${{ needs.features.result }}, doprava=${{ needs.transport.result }}, hranice=${{ needs.hranice.result }}, vodstvo=${{ needs.vodstvo.result }}, navigácia=${{ needs.navigacia.result }}, terén=${{ needs.dem.outputs.res_terrain }}, dlaždice=${{ needs.tiles.result }}, ikonky=${{ needs.assets.result }}"
           find _site -maxdepth 2 -mindepth 1 -type d -exec du -sh {} \; 2>/dev/null || true
           du -sm _site | cut -f1 | xargs -I{} echo "_site spolu: {} MB"
 

@@ -61,8 +61,6 @@ DEFAULTS = {
     "trails": ("true", "generovať značené trasy z OSM relácií"),
     # násypy, múry, ploty, vedenia, prieseky, pramene, jaskyne, rozhľadne
     "features": ("true", "generovať krajinné prvky, ktoré OpenMapTiles nemá"),
-    # offline FTS5 index, z toho istého PBF ako mapa
-    "search": ("true", "generovať vyhľadávací index pre offline hľadávanie"),
     # dlaždice so značkami, z ktorých telefón počíta trasu – balík `navigacia`
     "navigacia": ("true", "stavať smerovaciu sieť pre tento región – balík "
                           "`navigacia`"),
@@ -329,10 +327,6 @@ def main():
             print(f"::error::Voľba „{volba}“ ({co}) musí byť true alebo "
                   f"false, nie „{values[volba]}“.", file=sys.stderr)
             return 1
-    if values["search"] not in ("true", "false"):
-        print(f"::error::Voľba search=... musí byť true alebo false, "
-              f"nie {values['search']}.", file=sys.stderr)
-        return 1
     if values["navigacia"] not in ("true", "false"):
         print(f"::error::Voľba navigacia=... musí byť true alebo false, "
               f"nie {values['navigacia']}.", file=sys.stderr)
