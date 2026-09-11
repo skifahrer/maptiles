@@ -6,7 +6,8 @@
   3. voľba profilu stojí na `key=value`, ktoré slovník pozná;
   4. krajina so známkou musí byť medzi hodnotami `krajina`;
   5. telo dlaždice sa zapíše a prečíta na to isté;
-  6. archívy behu (keď sú zadané): jeden slovník, jedno poradie, dlaždice
+  6. hustá dlaždica sa reže hlbšie, kým sa telo nezmestí do rozpočtu;
+  7. archívy behu (keď sú zadané): jeden slovník, jedno poradie, dlaždice
      v rozpočte a prekryv susedov sa nesmie rozísť.
 """
 import argparse
@@ -15,6 +16,7 @@ import importlib.util
 import json
 import os
 import sys
+from types import SimpleNamespace
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _WORKERS = os.path.dirname(_HERE)
@@ -64,6 +66,62 @@ def skus_telo(fmt, lint):
                      f"pole `{kluc}` sa po zápise a čítaní zmenilo "
                      f"({cakane} → {spat[kluc]}). Telefón by na tom mieste "
                      f"čítal iný graf a trasa by vyšla – len iná.")
+
+
+def _hustá_siet(fmt, krok=0.01, mriezka=24):
+    uzly, hrany = {}, []
+    for i in range(mriezka):
+        for j in range(mriezka):
+            uzly[i * 100 + j] = (int((48.10 + i * krok) * 1e7),
+                                 int((17.05 + j * krok) * 1e7))
+    for i in range(mriezka):
+        for j in range(mriezka - 1):
+            od, do = i * 100 + j, i * 100 + j + 1
+            hrany.append({"od": od, "do": do, "geom": [uzly[do]],
+                          "dlzka_cm": 74000, "smer": fmt.S_VPRED,
+                          "tagy": {"highway": "residential",
+                                   "name": f"Ulica {od}"}})
+    zakazy = [{"druh": 0, "vynimky": 0, "cez": 1, "hrany": [(0, 1), (1, 2)]}]
+    return SimpleNamespace(uzly=uzly, hrany=hrany, zakazy=zakazy)
+
+
+def skus_delenie(fmt, lint):
+    """Hustá dlaždica sa reže hlbšie, kým sa telo nezmestí do rozpočtu."""
+    tiles = load("routing_tiles", "tiles.py", "routing")
+    slovnik = tiles.slovnik_modul.slovnik()
+    siet = _hustá_siet(fmt)
+    rozpocet = 1500
+    telá = tiles.rozdel(siet, slovnik, "SK", tiles.Poradie(), rozpocet=rozpocet)
+
+    hran, zakazov = 0, 0
+    for zxy, telo in telá.items():
+        z, x, y = zxy
+        if len(telo) > rozpocet and z < tiles.ZOOM_MAX:
+            lint.err("workers/routing/tiles.py",
+                     f"dlaždica {z}/{x}/{y} má {len(telo)} B nad rozpočtom "
+                     f"{rozpocet} B a nerozdelila sa. Archív by spadol na tej "
+                     f"istej kontrole, aká ho stráži v builde.")
+        d = fmt.citaj(gzip.decompress(telo))
+        hran += len(d["hrany"])
+        zakazov += len(d["zakazy"])
+        for hlbka in range(tiles.ZOOM, z):
+            if (hlbka, x >> (z - hlbka), y >> (z - hlbka)) in telá:
+                lint.err("workers/routing/tiles.py",
+                         f"dlaždica {z}/{x}/{y} je v archíve aj so svojím "
+                         f"predkom na z{hlbka} – telefón by tie isté hrany "
+                         f"načítal dvakrát.")
+    if hran != len(siet.hrany):
+        lint.err("workers/routing/tiles.py",
+                 f"delenie prinieslo {hran} hrán z {len(siet.hrany)}. "
+                 f"Cesta, ktorá pri delení vypadla, nie je v žiadnej dlaždici.")
+    if zakazov != len(siet.zakazy):
+        lint.err("workers/routing/tiles.py",
+                 f"delenie prinieslo {zakazov} zákazov z {len(siet.zakazy)} – "
+                 f"trasa by viedla cez zákaz odbočenia.")
+    if not any(z > tiles.ZOOM for z, _, _ in telá):
+        lint.err("workers/routing/tiles.py",
+                 f"sieť nad rozpočtom ostala celá na z{tiles.ZOOM}; delenie "
+                 f"sa nespustilo a v builde by padla každá hustá dlaždica.")
 
 
 def slovnik_sam(slovnik, raw, lint):
@@ -247,6 +305,7 @@ def main():
     profil_proti_slovniku(slovnik, lint)
     znamky_proti_slovniku(slovnik, lint)
     skus_telo(fmt, lint)
+    skus_delenie(fmt, lint)
     if args.archivy:
         archivy(args.archivy, slovnik, fmt, lint)
 

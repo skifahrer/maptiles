@@ -8,9 +8,6 @@ import os
 import sys
 import time
 
-from pmtiles.tile import Compression, TileType, zxy_to_tileid
-from pmtiles.writer import Writer
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import format as fmt                                              # noqa: E402
 import tags as slovnik_modul                                      # noqa: E402
@@ -18,6 +15,8 @@ import tags as slovnik_modul                                      # noqa: E402
 # tá istá mriežka ako mapa; okrajové dlaždice susedných krajov tak na seba
 # sadnú a telefón ich spojí podľa z/x/y
 ZOOM = 9
+# meno pod hustým mestom sa nezmestí do rozpočtu, tak sa dlaždica reže hlbšie
+ZOOM_MAX = 13
 E7 = 1e7
 
 
@@ -104,15 +103,24 @@ class Dlazdica:
         })
 
 
-def rozdel(siet, slovnik, krajina, poradie):
+def po_dlazdiciach(siet, hrany, zakazy, z):
     """Hrana patrí do dlaždice svojho prvého uzla – to je vlastnosť OSM, nie kraja."""
-    dlazdice = {}
-    for h in siet.hrany:
+    skupiny = {}
+    for h in hrany:
         lat, lon = siet.uzly[h["od"]]
-        zxy = dlazdica_z(lat, lon)
-        d = dlazdice.get(zxy)
-        if d is None:
-            d = dlazdice[zxy] = Dlazdica(zxy, slovnik)
+        skupiny.setdefault(dlazdica_z(lat, lon, z), ([], []))[0].append(h)
+    for zakaz in zakazy:
+        lat, lon = siet.uzly[zakaz["cez"]]
+        skupina = skupiny.get(dlazdica_z(lat, lon, z))
+        if skupina is None:
+            continue
+        skupina[1].append(zakaz)
+    return skupiny
+
+
+def postav(zxy, hrany, zakazy, siet, slovnik, krajina, poradie):
+    d = Dlazdica(zxy, slovnik)
+    for h in hrany:
         tagy = dict(h["tagy"])
         if krajina:
             tagy["krajina"] = krajina
@@ -122,14 +130,30 @@ def rozdel(siet, slovnik, krajina, poradie):
         d.hrany.append({"od": h["od"], "do": h["do"], "geom": h["geom"],
                         "dlzka_cm": h["dlzka_cm"], "smer": h["smer"],
                         "tagset": d.tagset(tagy)})
-    for z in siet.zakazy:
-        lat, lon = siet.uzly[z["cez"]]
-        d = dlazdice.get(dlazdica_z(lat, lon))
-        if d is None:
+    for zakaz in zakazy:
+        d.zakazy.append({"druh": zakaz["druh"], "vynimky": zakaz["vynimky"],
+                         "hrany": zakaz["hrany"]})
+    return d
+
+
+def rozdel(siet, slovnik, krajina, poradie, rozpocet=None):
+    """Dlaždice z9; ktorej sa telo nezmestí do rozpočtu, tá sa reže hlbšie.
+
+    Delí sa tá istá mriežka, takže dieťa celé leží vo svojej z9 a na jej
+    `z/x/y` nie je potom nič – telefón tam nenájde dlaždicu a zostúpi.
+    """
+    strop = fmt.ROZPOCET_KB * 1024 if rozpocet is None else rozpocet
+    telá = {}
+    fronta = list(po_dlazdiciach(siet, siet.hrany, siet.zakazy, ZOOM).items())
+    while fronta:
+        zxy, (hrany, zakazy) = fronta.pop()
+        d = postav(zxy, hrany, zakazy, siet, slovnik, krajina, poradie)
+        telo = gzip.compress(d.telo(slovnik.id, poradie.id, bool(poradie)), 9)
+        if len(telo) > strop and zxy[0] < ZOOM_MAX:
+            fronta.extend(po_dlazdiciach(siet, hrany, zakazy, zxy[0] + 1).items())
             continue
-        d.zakazy.append({"druh": z["druh"], "vynimky": z["vynimky"],
-                         "hrany": z["hrany"]})
-    return dlazdice
+        telá[zxy] = telo
+    return telá
 
 
 class Poradie:
@@ -205,24 +229,23 @@ def main():
               "a to je jediná drahá časť CCH, ktorá do telefónu nepatrí "
               "(docs/navigation.md §11).")
 
-    dlazdice = rozdel(siet, slovnik, args.krajina, poradie)
-    if not dlazdice:
+    telá = rozdel(siet, slovnik, args.krajina, poradie)
+    if not telá:
         print("::warning::V tomto území nie je ani jedna cesta, po ktorej by "
               "sa dalo ísť – archív so smerovaním sa nevyrobí.")
         return 0
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    telá = {}
-    for zxy, d in dlazdice.items():
-        telá[zxy] = gzip.compress(
-            d.telo(slovnik.id, poradie.id, bool(poradie)), 9)
+    zoom_max = max(z for z, _, _ in telá)
+    delene = sum(1 for z, _, _ in telá if z > ZOOM)
 
     velke = sorted(((len(b), zxy) for zxy, b in telá.items()), reverse=True)
     nad = [(n, zxy) for n, zxy in velke if n > fmt.ROZPOCET_KB * 1024]
     for n, zxy in nad:
         print(f"::warning::Dlaždica {zxy[0]}/{zxy[1]}/{zxy[2]} má "
-              f"{n // 1024} kB, čo je nad rozpočtom {fmt.ROZPOCET_KB} kB. "
-              f"Páka je slovník značiek (workers/data/routing-tags.json).")
+              f"{n // 1024} kB, čo je nad rozpočtom {fmt.ROZPOCET_KB} kB aj "
+              f"na z{ZOOM_MAX}, hlbšie sa už nedelí. Páka je slovník značiek "
+              f"(workers/data/routing-tags.json).")
 
     graf = {
         "rozsah": "region",
@@ -235,7 +258,9 @@ def main():
         "poradie": f"{poradie.id:08x}" if poradie else None,
         "krajina": args.krajina or None,
         "zoom": ZOOM,
-        "dlazdic": len(dlazdice),
+        "zoom_max": zoom_max,
+        "delenych": delene,
+        "dlazdic": len(telá),
         "uzlov": len(siet.uzly),
         "hran": len(siet.hrany),
         "zakazov": len(siet.zakazy),
@@ -245,22 +270,29 @@ def main():
         # okrajové dlaždice tej istej z/x/y a telefón ich spojí podľa OSM id
         "spojenie": "podľa OSM id uzlov; okrajové dlaždice susedov sa "
                     "prekrývajú a spájajú sa po prvkoch, nie po dlaždiciach",
+        # hustá dlaždica je nahradená deťmi, na jej vlastnom z/x/y nie je nič
+        "delenie": "na z/x/y bez dlaždice zostúp o zoom nižšie, až po zoom_max",
         "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "run": os.environ.get("GITHUB_RUN_NUMBER", ""),
         "run_id": os.environ.get("GITHUB_RUN_ID", ""),
     }
 
+    # až tu, nech si tiler naimportuje aj lint, ktorý pmtiles mať nemusí
+    from pmtiles.tile import (Compression, TileType,                # noqa: PLC0415
+                              zxy_to_tileid)
+    from pmtiles.writer import Writer                               # noqa: PLC0415
+
     with open(args.out, "wb") as f:
         wr = Writer(f)
         for zxy in sorted(telá, key=lambda t: zxy_to_tileid(*t)):
             wr.write_tile(zxy_to_tileid(*zxy), telá[zxy])
-        w = min(okno(*z)[0] for z in dlazdice)
-        s = min(okno(*z)[1] for z in dlazdice)
-        e = max(okno(*z)[2] for z in dlazdice)
-        n = max(okno(*z)[3] for z in dlazdice)
+        w = min(okno(*z)[0] for z in telá)
+        s = min(okno(*z)[1] for z in telá)
+        e = max(okno(*z)[2] for z in telá)
+        n = max(okno(*z)[3] for z in telá)
         wr.finalize(
             {"tile_type": TileType.UNKNOWN, "tile_compression": Compression.GZIP,
-             "min_zoom": ZOOM, "max_zoom": ZOOM,
+             "min_zoom": ZOOM, "max_zoom": zoom_max,
              "min_lon_e7": w, "min_lat_e7": s, "max_lon_e7": e, "max_lat_e7": n,
              "center_zoom": ZOOM, "center_lon_e7": (w + e) // 2,
              "center_lat_e7": (s + n) // 2},
@@ -271,7 +303,8 @@ def main():
 
     velkost = os.path.getsize(args.out)
     print(json.dumps(graf, ensure_ascii=False, indent=2))
-    print(f"{args.out}: {len(dlazdice)} dlaždíc, {velkost / 1048576:.1f} MB, "
+    print(f"{args.out}: {len(telá)} dlaždíc (z{ZOOM}–z{zoom_max}, {delene} "
+          f"delených), {velkost / 1048576:.1f} MB, "
           f"najväčšia {velke[0][0] // 1024} kB")
     zahodene = siet.zahodene.most_common(10)
     if zahodene:
