@@ -37,6 +37,18 @@ Dlaždice sú **z9 XYZ**, tá istá mriežka ako mapa. Hrana patrí do dlaždice
 **svojho prvého uzla** – to je vlastnosť way v OSM, nie kraja, takže dvom
 behom nad tými istými dátami vyjde tá istá dlaždica.
 
+**Nad mestom sa z9 nezmestí.** Rozpočet na jednu dlaždicu je `ROZPOCET_KB`
+(1 MB) a je to strop na pamäť telefónu, nie na stránku: nad ním sa archív
+sťahuje po kusoch, ktoré sa v ňom nedajú rozumne držať. Bratislavská z9 má
+4,2 MB, košické dve po 2,9 a 2,7 MB. Dlaždica nad rozpočtom sa preto **reže na
+štvrtiny o zoom hlbšie** a tie znova, až kým sa telo nezmestí alebo kým nepríde
+`ZOOM_MAX` (z13). Reže sa tá istá mriežka, takže dieťa celé leží vo svojej z9.
+
+Rozdelená dlaždica v archíve **nie je**: na jej `z/x/y` nie je nič a kto ju
+tam hľadá, zostúpi o zoom nižšie – tak, ako to hovorí `delenie` v `graf`.
+Ktoré zoomy v archíve sú, povie `zoom` a `zoom_max` tamtiež a `min_zoom`
+/`max_zoom` v hlavičke PMTiles.
+
 ## Telo dlaždice
 
 Celé telo je zabalené `gzip`-om; v PMTiles je to `tile_compression: GZIP`
@@ -114,9 +126,10 @@ sa postaviť dá a `graf` v metadátach archívu to o sebe povie
 ## Ako sa kraje spájajú
 
 Uzly nesú **OSM `id`** a mriežka je globálna, takže dva susedné kraje majú
-okrajové dlaždice na tých istých `z/x/y` a telefón ich spojí. Trasa cez hranicu
-funguje vo chvíli, keď dobehne druhý kraj – nič sa nedopočítava a nič
-nedosťahuje.
+okrajové dlaždice na tých istých `z/x/y` a telefón ich spojí. Že si jeden kraj
+tú istú z9 rozdelil a druhý nie, na tom nič nemení: spája sa po prvkoch, nie
+po dlaždiciach. Trasa cez hranicu funguje vo chvíli, keď dobehne druhý kraj –
+nič sa nedopočítava a nič nedosťahuje.
 
 **Spája sa ale po prvkoch, nie po dlaždiciach, a to je oprava návrhu.** Plán
 predpokladal, že okrajové dlaždice susedov sú bajt po bajte zhodné a duplikát
