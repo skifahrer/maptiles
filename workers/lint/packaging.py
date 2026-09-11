@@ -173,8 +173,7 @@ sub = nacitaj_modul("deploy_subory", SUBORY)
 with _tf.TemporaryDirectory() as site:
     napln(site)
     merane = sub.velkost_casti(sub.casti_baliku(site, PAGES))
-for _cast, _preco in (("search", "index na offline hľadanie"),
-                      ("trasy", "značené trasy")):
+for _cast, _preco in (("trasy", "značené trasy"),):
     if _cast in merane and merane[_cast].get("files"):
         continue
     if _cast not in merane:
