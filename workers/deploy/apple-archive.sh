@@ -60,6 +60,11 @@ else
     echo "::error::_site nemá priečinok styles – bez štýlov nie je .aar mapa, len dlaždice. Pozri krok „Pozbieraj zloženú časť webu“."
     exit 1
   fi
+  # appka číta iba `.aar`, a štýl bez spritu nenakreslí ikonu
+  if [ -z "$(find _site/sprites -name '*.json' -print -quit 2>/dev/null)" ]; then
+    echo "::error::_site nemá sprity – appka číta .aar a bez nich mapa nenakreslí ani jednu ikonu. Pozri krok „Pozbieraj kusy stránky“."
+    exit 1
+  fi
   ARGS+=(--site=_site)
   echo "Zložené _site ✓ ($(find _site -type f | wc -l | tr -d ' ') súborov, $(du -sh _site | cut -f1))"
   # články z Wikipédie majú vlastnú pipeline; bez `--wiki` ich tento beh
