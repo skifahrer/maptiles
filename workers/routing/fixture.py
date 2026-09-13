@@ -147,12 +147,11 @@ class Poradie:
         return self._rank.get(osm, len(self._rank) + osm)
 
 
-def zapis(cesta, s, slovnik, kluc):
+def zapis(cesta, s, slovnik, kluc, poradie):
     from pmtiles.tile import (Compression, TileType,                # noqa: PLC0415
                               zxy_to_tileid)
     from pmtiles.writer import Writer                               # noqa: PLC0415
 
-    poradie = Poradie(s)
     telá = tiles.rozdel(s, slovnik, "SK", poradie, rozpocet=ROZPOCET)
     zoom_max = max(z for z, _, _ in telá)
     graf = {
@@ -193,12 +192,16 @@ def main():
     args = ap.parse_args()
 
     slovnik = slovnik_modul.slovnik()
-    zapis(os.path.join(args.out, "routing-fixture.pmtiles"), husta(siet()),
-          slovnik, "fixture")
+    cela = husta(siet())
+    # poradie je nad celým územím, nie nad výrezom – inak by dva „kraje“ dali
+    # tomu istému uzlu iný rank a spojiť sa nedajú
+    poradie = Poradie(cela)
+    zapis(os.path.join(args.out, "routing-fixture.pmtiles"), cela, slovnik,
+          "fixture", poradie)
     zapis(os.path.join(args.out, "routing-fixture-west.pmtiles"),
-          vyrez(siet(), True), slovnik, "fixture-west")
+          vyrez(siet(), True), slovnik, "fixture-west", poradie)
     zapis(os.path.join(args.out, "routing-fixture-east.pmtiles"),
-          vyrez(siet(), False), slovnik, "fixture-east")
+          vyrez(siet(), False), slovnik, "fixture-east", poradie)
     print(json.dumps({"slovnik": f"{slovnik.id:08x}",
                       "poradie": f"{PORADIE_ID:08x}"}))
     return 0
