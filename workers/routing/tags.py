@@ -109,6 +109,14 @@ def slovnik():
     return _CACHE
 
 
+def export(s=None):
+    """Slovník tak, ako ho potrebuje appka – kľúče v poradí indexov, aj s `id`."""
+    s = s or slovnik()
+    return {"verzia": s.verzia, "id": f"{s.id:08x}",
+            "siet": {k: list(v) for k, v in s.siet.items()},
+            "kluce": [[k, s.druh[k], s.hodnoty[k]] for k in s.kluce]}
+
+
 def filter_vyrazy(s=None):
     """Predfilter PBF pre `osmium tags-filter` – zo `siet`, nie druhý zoznam."""
     s = s or slovnik()
@@ -123,6 +131,9 @@ if __name__ == "__main__":
     s = slovnik()
     if "--filter" in sys.argv[1:]:
         print("\n".join(filter_vyrazy(s)))
+        sys.exit(0)
+    if "--export" in sys.argv[1:]:
+        print(json.dumps(export(s), ensure_ascii=False, indent=1))
         sys.exit(0)
     print(f"slovník v{s.verzia}, id {s.id:08x}, {len(s.kluce)} kľúčov")
     for kluc in s.kluce:

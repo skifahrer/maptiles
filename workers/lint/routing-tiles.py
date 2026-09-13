@@ -227,7 +227,7 @@ def archivy(cesty, slovnik, fmt, lint):
                  + "; ".join(f"{p or 'žiadne'} → {', '.join(map(os.path.basename, c))}"
                              for p, c in poradia.items())
                  + ". Spojiť sa nesmú a klient to musí odmietnuť.")
-    _prekryv(obsah, lint)
+    _prekryv(obsah, slovnik, lint)
 
 
 def _tagsety(cesta, z, x, y, d, slovnik, lint):
@@ -247,7 +247,7 @@ def _tagsety(cesta, z, x, y, d, slovnik, lint):
                                 f"reťazec {kod}, ktorý v dlaždici nie je.")
 
 
-def _prekryv(obsah, lint):
+def _prekryv(obsah, slovnik, lint):
     """Tú istú hranu musia dva archívy povedať rovnako – inak sa spojiť nedá."""
     spolocne, rozporov = 0, 0
     for zxy, podla_archivu in obsah.items():
@@ -255,9 +255,9 @@ def _prekryv(obsah, lint):
             continue
         spolocne += 1
         cesty = list(podla_archivu)
-        prvy = _hrany_podla_id(podla_archivu[cesty[0]])
+        prvy = _hrany_podla_id(podla_archivu[cesty[0]], slovnik)
         for dalsi in cesty[1:]:
-            druhy = _hrany_podla_id(podla_archivu[dalsi])
+            druhy = _hrany_podla_id(podla_archivu[dalsi], slovnik)
             rozpor = [k for k in set(prvy) & set(druhy) if prvy[k] != druhy[k]]
             if rozpor:
                 rozporov += 1
@@ -270,16 +270,23 @@ def _prekryv(obsah, lint):
         print(f"  prekryv susedov: {spolocne} spoločných dlaždíc, hrany sedia")
 
 
-def _hrany_podla_id(d):
+def _hrany_podla_id(d, slovnik):
     von = {}
     for h in d["hrany"]:
         kluc = (d["uzly"][h["od"]][0], d["uzly"][h["do"]][0])
-        von[kluc] = (h["dlzka_cm"], h["smer"],
-                     tuple(sorted(d["tagsety"][h["tagset"]])),
-                     tuple(d["retazce"][k] for _, k in
-                           sorted(d["tagsety"][h["tagset"]])
-                           if k < len(d["retazce"])))
+        von[kluc] = (h["dlzka_cm"], h["smer"], _znacky(d, h["tagset"], slovnik))
     return von
+
+
+def _znacky(d, i, slovnik):
+    """Index reťazca platí len v jednej dlaždici, tak sa porovnáva jeho hodnota."""
+    von = []
+    for kluc_idx, kod in sorted(d["tagsety"][i]):
+        kluc = (slovnik.kluce[kluc_idx] if kluc_idx < len(slovnik.kluce)
+                else kluc_idx)
+        volny = slovnik.druh.get(kluc) == "volny" and kod < len(d["retazce"])
+        von.append((kluc, d["retazce"][kod] if volny else kod))
+    return tuple(von)
 
 
 def main():
