@@ -172,4 +172,12 @@ python3 workers/routing/tiles.py --pbf=data/region.osm.pbf \
     --poradie=data/routing-order.json
 
 python3 workers/lint/routing-tiles.py _site/tiles/*-routing.pmtiles
+
+# vzorové archívy pre testy čítačky v appke (skifahrer/rikimaps)
+python3 workers/routing/fixture.py --out=/tmp/fixture
 ```
+
+Vzorový archív je písaný ručne, nie z PBF: jedna križovatka so zákazom
+odbočenia, hrana cez hranicu dlaždice a hustá mriežka, ktorá sa rozdelí na
+z10. `--out` napíše tri súbory – celú sieť a jej západný a východný výrez,
+ktoré zdieľajú hranu cez hranicu a spájajú sa podľa OSM id.
