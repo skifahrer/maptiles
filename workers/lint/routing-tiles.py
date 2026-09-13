@@ -266,6 +266,8 @@ def _prekryv(obsah, slovnik, lint):
                                 f"spoločných hrán sa v nich líši. Telefón ich "
                                 f"spája podľa OSM id, takže by si vybral jednu "
                                 f"z dvoch právd.")
+            rozporov += _uzly(zxy, cesty[0], podla_archivu[cesty[0]],
+                              dalsi, podla_archivu[dalsi], lint)
     if spolocne and not rozporov:
         print(f"  prekryv susedov: {spolocne} spoločných dlaždíc, hrany sedia")
 
@@ -276,6 +278,23 @@ def _hrany_podla_id(d, slovnik):
         kluc = (d["uzly"][h["od"]][0], d["uzly"][h["do"]][0])
         von[kluc] = (h["dlzka_cm"], h["smer"], _znacky(d, h["tagset"], slovnik))
     return von
+
+
+def _uzly(zxy, prva, a, druha, b, lint):
+    """Ten istý uzol musí mať v oboch archívoch tie isté súradnice aj rank."""
+    prvy = {u[0]: (u[1], u[2], u[4]) for u in a["uzly"]}
+    druhy = {u[0]: (u[1], u[2], u[4]) for u in b["uzly"]}
+    poradie = a["poradie"] and b["poradie"]
+    rozpor = [osm for osm in set(prvy) & set(druhy)
+              if prvy[osm][:2] != druhy[osm][:2]
+              or (poradie and prvy[osm][2] != druhy[osm][2])]
+    if not rozpor:
+        return 0
+    lint.err(druha, f"dlaždica {zxy[0]}/{zxy[1]}/{zxy[2]} je aj v "
+                    f"{os.path.basename(prva)} a {len(rozpor)} spoločných uzlov "
+                    f"sa v nich líši. Rank sa ráta nad celým územím, takže "
+                    f"rozdiel znamená dve rôzne poradia pod jedným `id`.")
+    return 1
 
 
 def _znacky(d, i, slovnik):
