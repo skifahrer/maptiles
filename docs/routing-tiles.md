@@ -184,3 +184,7 @@ ktoré zdieľajú hranu cez hranicu a spájajú sa podľa OSM id, a k tomu sieť
 ciest: hlavný ťah s obchádzkami po miestnych uliciach a dve ulice spojené
 jedine poľnou cestou, raz krátkou a raz dlhou. Poradie uzlov je nad všetkým,
 čo `fixture.py` píše, takže archívy sa dajú čítať aj spolu.
+
+Vedľa nich ešte `iny-rank/routing-fixture-east.pmtiles`: ten istý východný
+výrez pod iným `id` poradia a s inými rankmi. Je tam preto, aby ho mala appka
+čo odmietnuť, takže do behu nepatrí a lint sa nad ním nepúšťa.
