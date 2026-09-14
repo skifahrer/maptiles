@@ -181,11 +181,13 @@ python3 workers/routing/fixture.py --out=/tmp/fixture
 
 Vzorový archív je písaný ručne, nie z PBF: jedna križovatka so zákazom
 odbočenia, hrana cez hranicu dlaždice a hustá mriežka, ktorá sa rozdelí na
-z10. `--out` napíše päť súborov – celú sieť a jej západný a východný výrez,
+z10. `--out` napíše šesť súborov – celú sieť a jej západný a východný výrez,
 ktoré zdieľajú hranu cez hranicu a spájajú sa podľa OSM id, sieť ciest:
 hlavný ťah s obchádzkami po miestnych uliciach a dve ulice spojené jedine
-poľnou cestou, raz krátkou a raz dlhou, a cestu cez hrebeň, ktorá jediná má
-výšky uzlov. Poradie uzlov je nad všetkým, čo `fixture.py` píše, takže
+poľnou cestou, raz krátkou a raz dlhou, cestu cez hrebeň, ktorá jediná má
+výšky uzlov, a sieť križovatiek na pokyny: diaľnica s výjazdom a nájazdom,
+kruhový objazd so štyrmi ramenami, vidlica, zmena mena ulice a slepý koniec
+s jedinou odbočkou. Poradie uzlov je nad všetkým, čo `fixture.py` píše, takže
 archívy sa dajú čítať aj spolu.
 
 Vedľa nich ešte `iny-rank/routing-fixture-east.pmtiles`: ten istý východný

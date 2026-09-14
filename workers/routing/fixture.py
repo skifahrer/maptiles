@@ -162,6 +162,83 @@ def kopce():
     return s
 
 
+def krizovatky():
+    """Sieť na pokyny: výjazd z diaľnice, nájazd, kruhák, vidlica a koniec cesty."""
+    s = Siet()
+    dialnica(s)
+    kruhak(s)
+    vidlica(s)
+    ulice(s)
+    return s
+
+
+def dialnica(s):
+    """D1 s výjazdom na cestu do mesta a s nájazdom naspäť."""
+    m = [s.uzol(6_000_000 + i, 20.00 + i * 0.05, 49.20) for i in range(4)]
+    for od, do in zip(m, m[1:]):
+        s.hrana(od, do, {"highway": "motorway", "oneway": "yes", "ref": "D1"},
+                smer=fmt.S_VPRED)
+    x0 = s.uzol(6_000_010, 20.07, 49.18)
+    x1 = s.uzol(6_000_011, 20.10, 49.16)
+    s.hrana(m[1], x0, {"highway": "motorway_link", "oneway": "yes"},
+            smer=fmt.S_VPRED)
+    s.hrana(x0, x1, {"highway": "primary", "ref": "I/18",
+                     "name": "Cesta do mesta"})
+    n0 = s.uzol(6_000_020, 20.12, 49.22)
+    n1 = s.uzol(6_000_021, 20.13, 49.21)
+    s.hrana(n0, n1, {"highway": "primary", "name": "Prístupová"})
+    s.hrana(n1, m[2], {"highway": "motorway_link", "oneway": "yes"},
+            smer=fmt.S_VPRED)
+
+
+def kruhak(s):
+    """Kruhový objazd proti smeru hodinových ručičiek so štyrmi ramenami."""
+    ring = [s.uzol(6_000_030 + i, lon, lat) for i, (lon, lat) in enumerate(
+        ((20.200, 49.200), (20.205, 49.197), (20.210, 49.200), (20.205, 49.203)))]
+    for od, do in zip(ring, ring[1:] + ring[:1]):
+        s.hrana(od, do, {"highway": "tertiary", "junction": "roundabout",
+                         "oneway": "yes"}, smer=fmt.S_VPRED)
+    ramena = ((20.190, 49.200, "Západná"), (20.205, 49.190, "Južná"),
+              (20.220, 49.200, "Východná"), (20.205, 49.210, "Severná"))
+    for i, (lon, lat, meno) in enumerate(ramena):
+        koniec = s.uzol(6_000_034 + i, lon, lat)
+        s.hrana(koniec, ring[i], {"highway": "tertiary", "name": meno})
+
+
+def vidlica(s):
+    """Hlavný ťah, ktorý sa rozdvojuje – ani jedna vetva nie je odbočka."""
+    f0 = s.uzol(6_000_040, 20.30, 49.20)
+    f1 = s.uzol(6_000_041, 20.33, 49.20)
+    f2 = s.uzol(6_000_042, 20.36, 49.21)
+    f3 = s.uzol(6_000_043, 20.36, 49.19)
+    s.hrana(f0, f1, {"highway": "primary", "ref": "I/18", "name": "Hlavná"})
+    s.hrana(f1, f2, {"highway": "primary", "ref": "I/18", "name": "Hlavná"})
+    s.hrana(f1, f3, {"highway": "primary", "ref": "I/66", "name": "Odbočka"})
+
+
+def ulice(s):
+    """Zmena mena, slepý koniec s jedinou odbočkou a obyčajná križovatka."""
+    c0 = s.uzol(6_000_050, 20.25, 49.20)
+    c1 = s.uzol(6_000_051, 20.28, 49.20)
+    c2 = s.uzol(6_000_052, 20.31, 49.21)
+    s.hrana(c0, c1, {"highway": "residential", "name": "Prvá"})
+    s.hrana(c1, c2, {"highway": "residential", "name": "Druhá"})
+
+    e0 = s.uzol(6_000_060, 20.40, 49.20)
+    e1 = s.uzol(6_000_061, 20.43, 49.20)
+    e2 = s.uzol(6_000_062, 20.43, 49.23)
+    s.hrana(e0, e1, {"highway": "residential", "name": "Slepá"})
+    s.hrana(e1, e2, {"highway": "residential", "name": "Priečna"})
+
+    t0 = s.uzol(6_000_070, 20.50, 49.20)
+    t1 = s.uzol(6_000_071, 20.53, 49.20)
+    t2 = s.uzol(6_000_072, 20.53, 49.17)
+    t3 = s.uzol(6_000_073, 20.56, 49.20)
+    s.hrana(t0, t1, {"highway": "residential", "name": "Rovná"})
+    s.hrana(t1, t2, {"highway": "residential", "name": "Kolmá"})
+    s.hrana(t1, t3, {"highway": "residential", "name": "Rovná"})
+
+
 def vyrez(s, zapad):
     """Kraj rezaný hranicou: hrana ostáva, keď je v ňom aspoň jeden jej koniec."""
     von = Siet()
@@ -245,10 +322,12 @@ def main():
     cela = husta(siet())
     vsetky_cesty = cesty()
     hory = kopce()
+    uzly_krizovatiek = krizovatky()
     # poradie je nad celým územím, nie nad výrezom – inak by dva „kraje“ dali
     # tomu istému uzlu iný rank a spojiť sa nedajú
     uzemie = Siet()
-    uzemie.uzly = {**cela.uzly, **vsetky_cesty.uzly, **hory.uzly}
+    uzemie.uzly = {**cela.uzly, **vsetky_cesty.uzly, **hory.uzly,
+                   **uzly_krizovatiek.uzly}
     poradie = Poradie(uzemie)
     zapis(os.path.join(args.out, "routing-fixture.pmtiles"), cela, slovnik,
           "fixture", poradie)
@@ -260,6 +339,8 @@ def main():
           slovnik, "fixture-roads", poradie)
     zapis(os.path.join(args.out, "routing-fixture-hills.pmtiles"), hory,
           slovnik, "fixture-hills", poradie)
+    zapis(os.path.join(args.out, "routing-fixture-junctions.pmtiles"),
+          uzly_krizovatiek, slovnik, "fixture-junctions", poradie)
     # nie je súčasťou behu, preto vedľa: lint sa nad ním nepúšťa
     zapis(os.path.join(args.out, "iny-rank", "routing-fixture-east.pmtiles"),
           vyrez(siet(), False), slovnik, "fixture-east",
