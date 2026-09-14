@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import format as fmt                                              # noqa: E402
+import order                                                      # noqa: E402
 import tags as slovnik_modul                                      # noqa: E402
 import tiles                                                      # noqa: E402
 
@@ -259,12 +260,29 @@ def _je_zapad(uzol):
     return uzol[1] < e7(POLOVICA)
 
 
+class Susedia:
+    """To, čo `order.poradie` čaká od siete: susedia uzla a jeho poloha."""
+
+    def __init__(self, s):
+        self.xy = s.uzly
+        self._susedia = {osm: set() for osm in s.uzly}
+        for h in s.hrany:
+            self._susedia[h["od"]].add(h["do"])
+            self._susedia[h["do"]].add(h["od"])
+
+    def __getitem__(self, osm):
+        return self._susedia.get(osm, ())
+
+
 class Poradie:
     """Rank pre každý uzol siete, aby mala dlaždica príznak poradia."""
 
     def __init__(self, s, poradie_id=PORADIE_ID, posun=0):
         self.id = poradie_id
-        self._rank = {osm: i + posun for i, osm in enumerate(sorted(s.uzly))}
+        # to isté nested dissection ako kraj, nie zoradenie podľa OSM id: inak
+        # vzorový archív meria najhorší prípad a CCH v appke vyzerá zbytočné
+        eliminacia = order.poradie(sorted(s.uzly), Susedia(s))
+        self._rank = {osm: i + posun for i, osm in enumerate(eliminacia)}
 
     def __bool__(self):
         return True
