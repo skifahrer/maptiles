@@ -33,11 +33,14 @@ class Siet:
 
     def __init__(self):
         self.uzly = {}
+        self.vysky = {}
         self.hrany = []
         self.zakazy = []
 
-    def uzol(self, osm, lon, lat):
+    def uzol(self, osm, lon, lat, vyska=None):
         self.uzly[osm] = (e7(lat), e7(lon))
+        if vyska is not None:
+            self.vysky[osm] = vyska
         return osm
 
     def hrana(self, od, do, tagy, smer=fmt.S_VPRED | fmt.S_VZAD, body=()):
@@ -146,15 +149,30 @@ def _priechod(s, osm, lat, dlzka):
     s.hrana(r3, r4, {"highway": "residential", "name": "Ulica za"})
 
 
+def kopce():
+    """Sieť s výškami: cesta z doliny cez hrebeň a zase dolu."""
+    s = Siet()
+    hreben = ((19.00, 420), (19.05, 660), (19.10, 980), (19.15, 540),
+              (19.20, 300))
+    u = [s.uzol(5_000_000 + i, lon, 49.00, vyska)
+         for i, (lon, vyska) in enumerate(hreben)]
+    for od, do in zip(u, u[1:]):
+        s.hrana(od, do, {"highway": "secondary", "name": "Cez hrebeň",
+                         "ref": "II/520"})
+    return s
+
+
 def vyrez(s, zapad):
     """Kraj rezaný hranicou: hrana ostáva, keď je v ňom aspoň jeden jej koniec."""
     von = Siet()
     von.uzly = dict(s.uzly)
+    von.vysky = dict(s.vysky)
     for h in s.hrany:
         if any(_je_zapad(s.uzly[u]) == zapad for u in (h["od"], h["do"])):
             von.hrany.append(h)
     ostrov = {u for h in von.hrany for u in (h["od"], h["do"])}
     von.uzly = {k: v for k, v in s.uzly.items() if k in ostrov}
+    von.vysky = {k: v for k, v in s.vysky.items() if k in ostrov}
     von.zakazy = [z for z in s.zakazy
                   if all(u in ostrov for hr in z["hrany"] for u in hr)]
     return von
@@ -192,7 +210,8 @@ def zapis(cesta, s, slovnik, kluc, poradie):
         "krajina": "SK", "zoom": tiles.ZOOM, "zoom_max": zoom_max,
         "delenych": sum(1 for z, _, _ in telá if z > tiles.ZOOM),
         "dlazdic": len(telá), "uzlov": len(s.uzly), "hran": len(s.hrany),
-        "zakazov": len(s.zakazy), "vyska": False, "multimodal": False,
+        "zakazov": len(s.zakazy), "vyska": bool(s.vysky),
+        "multimodal": False,
         "built_at": "2026-09-13T00:00:00Z", "run": "", "run_id": "",
     }
     os.makedirs(os.path.dirname(os.path.abspath(cesta)), exist_ok=True)
@@ -225,10 +244,11 @@ def main():
     slovnik = slovnik_modul.slovnik()
     cela = husta(siet())
     vsetky_cesty = cesty()
+    hory = kopce()
     # poradie je nad celým územím, nie nad výrezom – inak by dva „kraje“ dali
     # tomu istému uzlu iný rank a spojiť sa nedajú
     uzemie = Siet()
-    uzemie.uzly = {**cela.uzly, **vsetky_cesty.uzly}
+    uzemie.uzly = {**cela.uzly, **vsetky_cesty.uzly, **hory.uzly}
     poradie = Poradie(uzemie)
     zapis(os.path.join(args.out, "routing-fixture.pmtiles"), cela, slovnik,
           "fixture", poradie)
@@ -238,6 +258,8 @@ def main():
           vyrez(siet(), False), slovnik, "fixture-east", poradie)
     zapis(os.path.join(args.out, "routing-fixture-roads.pmtiles"), vsetky_cesty,
           slovnik, "fixture-roads", poradie)
+    zapis(os.path.join(args.out, "routing-fixture-hills.pmtiles"), hory,
+          slovnik, "fixture-hills", poradie)
     # nie je súčasťou behu, preto vedľa: lint sa nad ním nepúšťa
     zapis(os.path.join(args.out, "iny-rank", "routing-fixture-east.pmtiles"),
           vyrez(siet(), False), slovnik, "fixture-east",

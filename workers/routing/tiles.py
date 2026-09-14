@@ -66,7 +66,7 @@ class Dlazdica:
         kluc = tuple(polozky)
         return self._tagsety.setdefault(kluc, len(self._tagsety))
 
-    def telo(self, slovnik_id, poradie_id, s_poradim):
+    def telo(self, slovnik_id, poradie_id, s_poradim, s_vyskou=False):
         poradie = sorted(self.uzly)
         idx = {osm: i for i, osm in enumerate(poradie)}
         uzly = [(osm, *self.uzly[osm]) for osm in poradie]
@@ -84,7 +84,7 @@ class Dlazdica:
                  if not (w <= u[2] <= e and s <= u[1] <= n)]
 
         return fmt.zapis({
-            "vyska": False,
+            "vyska": s_vyskou,
             "poradie": s_poradim,
             "slovnik_id": slovnik_id,
             "poradie_id": poradie_id,
@@ -120,13 +120,15 @@ def po_dlazdiciach(siet, hrany, zakazy, z):
 
 def postav(zxy, hrany, zakazy, siet, slovnik, krajina, poradie):
     d = Dlazdica(zxy, slovnik)
+    vysky = vysky_siete(siet)
     for h in hrany:
         tagy = dict(h["tagy"])
         if krajina:
             tagy["krajina"] = krajina
         for ref in (h["od"], h["do"]):
             if ref not in d.uzly:
-                d.uzly[ref] = (*siet.uzly[ref], 0, poradie.rank(ref))
+                d.uzly[ref] = (*siet.uzly[ref], vysky.get(ref, 0),
+                               poradie.rank(ref))
         d.hrany.append({"od": h["od"], "do": h["do"], "geom": h["geom"],
                         "dlzka_cm": h["dlzka_cm"], "smer": h["smer"],
                         "tagset": d.tagset(tagy)})
@@ -136,6 +138,11 @@ def postav(zxy, hrany, zakazy, siet, slovnik, krajina, poradie):
     return d
 
 
+def vysky_siete(siet):
+    """Výšky uzlov, keď ich sieť má – bez nich sa stĺpec do dlaždice nepíše."""
+    return getattr(siet, "vysky", None) or {}
+
+
 def rozdel(siet, slovnik, krajina, poradie, rozpocet=None):
     """Dlaždice z9; ktorej sa telo nezmestí do rozpočtu, tá sa reže hlbšie.
 
@@ -143,12 +150,14 @@ def rozdel(siet, slovnik, krajina, poradie, rozpocet=None):
     `z/x/y` nie je potom nič – telefón tam nenájde dlaždicu a zostúpi.
     """
     strop = fmt.ROZPOCET_KB * 1024 if rozpocet is None else rozpocet
+    s_vyskou = bool(vysky_siete(siet))
     telá = {}
     fronta = list(po_dlazdiciach(siet, siet.hrany, siet.zakazy, ZOOM).items())
     while fronta:
         zxy, (hrany, zakazy) = fronta.pop()
         d = postav(zxy, hrany, zakazy, siet, slovnik, krajina, poradie)
-        telo = gzip.compress(d.telo(slovnik.id, poradie.id, bool(poradie)), 9)
+        telo = gzip.compress(
+            d.telo(slovnik.id, poradie.id, bool(poradie), s_vyskou), 9)
         if len(telo) > strop and zxy[0] < ZOOM_MAX:
             fronta.extend(po_dlazdiciach(siet, hrany, zakazy, zxy[0] + 1).items())
             continue
@@ -264,7 +273,7 @@ def main():
         "uzlov": len(siet.uzly),
         "hran": len(siet.hrany),
         "zakazov": len(siet.zakazy),
-        "vyska": False,
+        "vyska": bool(vysky_siete(siet)),
         "multimodal": False,
         # dlaždica sa reže mriežkou, nie hranicou kraja: susedné kraje majú
         # okrajové dlaždice tej istej z/x/y a telefón ich spojí podľa OSM id
