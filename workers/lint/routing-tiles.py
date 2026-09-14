@@ -42,13 +42,14 @@ class Lint:
         self.bad += 1
 
 
-def skus_telo(fmt, lint):
+def skus_telo(fmt, lint, vyska=False):
     """Zápis a čítanie musia dať to isté – inak sa archív číta ako iný graf."""
-    d = {"vyska": False, "poradie": True, "slovnik_id": 0x01020304,
+    v = (420, 380) if vyska else (0, 0)
+    d = {"vyska": vyska, "poradie": True, "slovnik_id": 0x01020304,
          "poradie_id": 0x05060708, "zxy": [9, 283, 175],
          "bbox": [1, -2, 3, 4],
-         "uzly": [(10, 490000000, 190000000, 0, 1),
-                  (2000000000000, 490010000, 190020000, 0, 9)],
+         "uzly": [(10, 490000000, 190000000, v[0], 1),
+                  (2000000000000, 490010000, 190020000, v[1], 9)],
          "hrany": [{"od": 0, "do": 1, "tagset": 0, "dlzka_cm": 1234,
                     "smer": fmt.S_VPRED, "geom": [(490005000, 190010000)]}],
          "tagsety": [[(0, 1), (4, 0)]], "retazce": ["Hlavná"],
@@ -331,6 +332,7 @@ def main():
     profil_proti_slovniku(slovnik, lint)
     znamky_proti_slovniku(slovnik, lint)
     skus_telo(fmt, lint)
+    skus_telo(fmt, lint, vyska=True)
     skus_delenie(fmt, lint)
     if args.archivy:
         archivy(args.archivy, slovnik, fmt, lint)

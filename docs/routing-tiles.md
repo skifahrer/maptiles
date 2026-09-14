@@ -25,8 +25,10 @@ a zahadzuje topológiu; presne to robí `-transport.pmtiles` nepoužiteľným na
 smerovanie. PMTiles ostáva ako obálka, lebo katalóg, fronta sťahovania,
 účtovanie miesta aj maska regiónu ten formát už vedia.
 
-Vo verzii 1 **nie je**: nadmorská výška uzlov (pole je definované, príznak
-`vyska` je 0), zábrany na uzloch (`barrier=*`), podmienené zákazy
+Vo verzii 1 **nie je**: nadmorská výška uzlov v archíve kraja – stĺpec aj
+príznak `vyska` sú hotové a `tiles.py` ich zapíše, keď sieť výšky má, ale
+`network.py` ich z PBF nemá odkiaľ vziať; zatiaľ ich nesie len vzorový
+archív. Ďalej chýbajú: zábrany na uzloch (`barrier=*`), podmienené zákazy
 (`restriction:conditional`), smerové rýchlosti (`maxspeed:forward`) a krajina
 hrany z `admin_level=2` – tú dnes dosadzuje `--krajina` na celý archív, lebo
 kraj je celý v jednej krajine.
@@ -179,11 +181,12 @@ python3 workers/routing/fixture.py --out=/tmp/fixture
 
 Vzorový archív je písaný ručne, nie z PBF: jedna križovatka so zákazom
 odbočenia, hrana cez hranicu dlaždice a hustá mriežka, ktorá sa rozdelí na
-z10. `--out` napíše štyri súbory – celú sieť a jej západný a východný výrez,
-ktoré zdieľajú hranu cez hranicu a spájajú sa podľa OSM id, a k tomu sieť
-ciest: hlavný ťah s obchádzkami po miestnych uliciach a dve ulice spojené
-jedine poľnou cestou, raz krátkou a raz dlhou. Poradie uzlov je nad všetkým,
-čo `fixture.py` píše, takže archívy sa dajú čítať aj spolu.
+z10. `--out` napíše päť súborov – celú sieť a jej západný a východný výrez,
+ktoré zdieľajú hranu cez hranicu a spájajú sa podľa OSM id, sieť ciest:
+hlavný ťah s obchádzkami po miestnych uliciach a dve ulice spojené jedine
+poľnou cestou, raz krátkou a raz dlhou, a cestu cez hrebeň, ktorá jediná má
+výšky uzlov. Poradie uzlov je nad všetkým, čo `fixture.py` píše, takže
+archívy sa dajú čítať aj spolu.
 
 Vedľa nich ešte `iny-rank/routing-fixture-east.pmtiles`: ten istý východný
 výrez pod iným `id` poradia a s inými rankmi. Je tam preto, aby ho mala appka
