@@ -184,8 +184,8 @@ def dialnica(s):
             smer=fmt.S_VPRED)
     s.hrana(x0, x1, {"highway": "primary", "ref": "I/18",
                      "name": "Cesta do mesta"})
-    n0 = s.uzol(6_000_020, 20.12, 49.22)
-    n1 = s.uzol(6_000_021, 20.13, 49.21)
+    n0 = s.uzol(6_000_020, 20.02, 49.225)
+    n1 = s.uzol(6_000_021, 20.06, 49.22)
     s.hrana(n0, n1, {"highway": "primary", "name": "Prístupová"})
     s.hrana(n1, m[2], {"highway": "motorway_link", "oneway": "yes"},
             smer=fmt.S_VPRED)
