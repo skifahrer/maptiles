@@ -19,6 +19,8 @@ STRANA = 12
 KROK = 0.03
 STRED = (21.4453125, 48.6904256)
 PORADIE_ID = 0x0A0B0C0D
+# archív, ktorý sa nesmie dať spojiť: appka má odmietnuť iné poradie
+PORADIE_INE = 0x0A0B0C0E
 POLOVICA = 17.578125  # hranica z9 medzi 280 a 281, po nej sa archív reže
 
 
@@ -165,9 +167,9 @@ def _je_zapad(uzol):
 class Poradie:
     """Rank pre každý uzol siete, aby mala dlaždica príznak poradia."""
 
-    def __init__(self, s):
-        self.id = PORADIE_ID
-        self._rank = {osm: i for i, osm in enumerate(sorted(s.uzly))}
+    def __init__(self, s, poradie_id=PORADIE_ID, posun=0):
+        self.id = poradie_id
+        self._rank = {osm: i + posun for i, osm in enumerate(sorted(s.uzly))}
 
     def __bool__(self):
         return True
@@ -236,8 +238,13 @@ def main():
           vyrez(siet(), False), slovnik, "fixture-east", poradie)
     zapis(os.path.join(args.out, "routing-fixture-roads.pmtiles"), vsetky_cesty,
           slovnik, "fixture-roads", poradie)
+    # nie je súčasťou behu, preto vedľa: lint sa nad ním nepúšťa
+    zapis(os.path.join(args.out, "iny-rank", "routing-fixture-east.pmtiles"),
+          vyrez(siet(), False), slovnik, "fixture-east",
+          Poradie(uzemie, PORADIE_INE, posun=1))
     print(json.dumps({"slovnik": f"{slovnik.id:08x}",
-                      "poradie": f"{PORADIE_ID:08x}"}))
+                      "poradie": f"{PORADIE_ID:08x}",
+                      "iny": f"{PORADIE_INE:08x}"}))
     return 0
 
 
