@@ -115,6 +115,35 @@ def husta(s, n=STRANA):
     return s
 
 
+def cesty():
+    """Sieť na triedy ciest a na priechod cez vypnutú cestu."""
+    s = Siet()
+    c = [s.uzol(4_000_000 + i, 18.00 + i * 0.10, 48.50) for i in range(6)]
+    for od, do in zip(c, c[1:]):
+        s.hrana(od, do, {"highway": "primary", "ref": "I/65",
+                         "name": "Hlavný ťah"})
+    # obchádzky sú dlhšie, ale hľadanie ich prejde, kým ich trieda neodreže
+    for i in range(5):
+        d = s.uzol(4_000_100 + i, 18.05 + i * 0.10, 48.52)
+        s.hrana(c[i], d, {"highway": "residential", "name": "Obchádzka"})
+        s.hrana(d, c[i + 1], {"highway": "residential", "name": "Obchádzka"})
+    for osm, lat, dlzka in ((4_000_200, 48.45, 0.002), (4_000_300, 48.40, 0.068)):
+        _priechod(s, osm, lat, dlzka)
+        s.hrana(c[0], osm, {"highway": "residential", "name": "Prípojka"})
+    return s
+
+
+def _priechod(s, osm, lat, dlzka):
+    """Dve ulice spojené jedine poľnou cestou, ktorej dĺžka je tu premenná."""
+    r1 = s.uzol(osm, 18.00, lat)
+    r2 = s.uzol(osm + 1, 18.02, lat)
+    r3 = s.uzol(osm + 2, 18.02 + dlzka, lat)
+    r4 = s.uzol(osm + 3, 18.04 + dlzka, lat)
+    s.hrana(r1, r2, {"highway": "residential", "name": "Ulica pred"})
+    s.hrana(r2, r3, {"highway": "track", "surface": "gravel"})
+    s.hrana(r3, r4, {"highway": "residential", "name": "Ulica za"})
+
+
 def vyrez(s, zapad):
     """Kraj rezaný hranicou: hrana ostáva, keď je v ňom aspoň jeden jej koniec."""
     von = Siet()
@@ -193,15 +222,20 @@ def main():
 
     slovnik = slovnik_modul.slovnik()
     cela = husta(siet())
+    vsetky_cesty = cesty()
     # poradie je nad celým územím, nie nad výrezom – inak by dva „kraje“ dali
     # tomu istému uzlu iný rank a spojiť sa nedajú
-    poradie = Poradie(cela)
+    uzemie = Siet()
+    uzemie.uzly = {**cela.uzly, **vsetky_cesty.uzly}
+    poradie = Poradie(uzemie)
     zapis(os.path.join(args.out, "routing-fixture.pmtiles"), cela, slovnik,
           "fixture", poradie)
     zapis(os.path.join(args.out, "routing-fixture-west.pmtiles"),
           vyrez(siet(), True), slovnik, "fixture-west", poradie)
     zapis(os.path.join(args.out, "routing-fixture-east.pmtiles"),
           vyrez(siet(), False), slovnik, "fixture-east", poradie)
+    zapis(os.path.join(args.out, "routing-fixture-roads.pmtiles"), vsetky_cesty,
+          slovnik, "fixture-roads", poradie)
     print(json.dumps({"slovnik": f"{slovnik.id:08x}",
                       "poradie": f"{PORADIE_ID:08x}"}))
     return 0
