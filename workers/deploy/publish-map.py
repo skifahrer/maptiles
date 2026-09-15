@@ -162,8 +162,12 @@ def main():
     # balíky v jednom zozname: druh, obsah, popis, báza ciest v archíve.
     # Vlastné balíky sa počítajú pred základnou mapou – tá ich vynecháva.
     vrstvove_baliky = baliky_vrstiev(args.site, man)
-    # časti základnej mapy: nevynímajú sa z nej, merajú sa do katalógu
-    casti = [] if args.only else casti_baliku(args.site, man)
+    # časti základnej mapy: nevynímajú sa z nej (ani keď ich nesie aj iný
+    # balík) a merajú sa do katalógu; pri `--only` sa mapa nepublikuje
+    casti = casti_baliku(args.site, man)
+    ponechat = [p for _k, _p, subory in casti for p in subory]
+    if args.only:
+        casti = []
     # viewer a glyfy sa nebalia; musí byť vidieť, koľko toho balík nenesie
     von_pack, von_dovody = mimo_balika(args.site, man)
     for popis, kolko, bajtov in von_dovody:
@@ -177,10 +181,10 @@ def main():
     # zo základnej mapy von: súbory vlastných balíkov + čo tam nemá čo robiť
     vylucit = [p for _b, subory in vrstvove_baliky for p in subory] + von_pack
     baliky = [
-        ("", "základná mapa – celá kresba z OSM aj so značenými trasami "
-             "a hľadaním; bez vrstiev, ktoré majú vlastný balík, a bez glyfov "
-             "a viewera",
-         args.site, zaklad_subory(args.site, vylucit)),
+        ("", "základná mapa – celá kresba z OSM aj so značenými trasami, "
+             "smerovacou sieťou a hľadaním; bez vrstiev, ktoré majú vlastný "
+             "balík, a bez glyfov a viewera",
+         args.site, zaklad_subory(args.site, vylucit, ponechat)),
     ] + [(b["kluc"], b["popis"], args.site, subory)
          for b, subory in vrstvove_baliky]
     # wikipédia má vlastnú pipeline; bez `--wiki` by jej balík beh mapy zmazal

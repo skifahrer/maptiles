@@ -3,8 +3,8 @@
 
 Dve rôzne veci pod jedným menom, tak sú tu obe:
 
-  * SMEROVACIA SIEŤ KRAJA (`<kraj>-routing.pmtiles`, balík `navigacia`) – to,
-    čo ide do telefónu; rozpis v `docs/routing-tiles.md`;
+  * SMEROVACIA SIEŤ KRAJA (`<kraj>-routing.pmtiles`, v základnej mape aj
+    v balíku `cesty`) – to, čo ide do telefónu; rozpis v `docs/routing-tiles.md`;
   * GRAF VALHALLY nad celým štátom (`navigation.yml`) – referenčná stavba,
     proti ktorej sa nový motor krížom kontroluje. Po krajoch sa už nestavia.
 
@@ -15,9 +15,11 @@ Tiché veci:
      je slepá ulica, ale graf sa postaví a beh zazelená;
   3. bez `admins.sqlite` Valhalla nevie, v ktorej krajine hrana leží;
   4. rozsah pokrývajúci krajinu mimo `vignettes.json` sa na známku nespýta;
-  5. sieť kraja musí stáť na PBF mapy, mať vlastný balík a byť v manifeste;
-  6. poradie uzlov: kľúč cache musí na oboch stranách znieť rovnako, inak
-     archívy ticho a navždy chodia bez neho;
+  5. sieť kraja musí stáť na PBF mapy, ísť v mape aj v `cesty` a byť
+     v manifeste; vlastný balík `navigacia` je zrušený;
+  6. poradie uzlov: build kraja si ho z cache vezme a keď tam nie je alebo je
+     staré, dopočíta ho sám a uloží; kľúč cache musí na všetkých stranách
+     znieť rovnako, inak archívy ticho a navždy chodia bez neho;
   7. formulár GitHub zoznam zo súboru prečítať nevie, takže sa píše dvakrát.
 """
 import json
@@ -138,7 +140,7 @@ def celostatny_graf(areas, regions, countries):
 
 
 def siet_kraja():
-    """`<kraj>-routing.pmtiles`: PBF mapy, vlastný balík, manifest, kontrola."""
+    """`<kraj>-routing.pmtiles`: PBF mapy, manifest, kontrola, balenie."""
     if not os.path.exists(BUILD_SH):
         err("workers/routing/build.sh", "skript neexistuje – kraj by ostal "
                                         "bez smerovacej siete.")
@@ -182,8 +184,18 @@ def siet_kraja():
     if "name: site-navigacia" not in wtext:
         err(".github/workflows/navigation-region.yml",
             "archív sa neodkladá ako `site-navigacia`. Do `_site` – a teda do "
-            "manifestu aj do balíka – sa dostane jedine cezeň; `deploy` "
-            "zlieva práve `site-*`.")
+            "manifestu, do mapy aj do `cesty` – sa dostane jedine cezeň; "
+            "`deploy` zlieva práve `site-*`.")
+    if "workers/routing/order.sh" not in kod:
+        err(".github/workflows/navigation-region.yml",
+            "build kraja si poradie uzlov nedopočíta (`workers/routing/"
+            "order.sh`). Poradie z cache je vec ručného workflowu, ktorý "
+            "nikto nespustí – a archívy potom navždy chodia bez neho.")
+    if "actions/cache-save" not in kod:
+        err(".github/workflows/navigation-region.yml",
+            "dopočítané poradie sa neukladá do cache (`cache-save`). Každý "
+            "kraj by ho rátal znova a každý by mal iné – a také sa v telefóne "
+            "spojiť nesmú.")
     if "name: pbf" not in wtext:
         err(".github/workflows/navigation-region.yml",
             "job si nesťahuje artefakt `pbf` z prípravy, takže nemá z čoho "
@@ -200,7 +212,7 @@ def siet_kraja():
         if "ROUTING_ENABLED" not in bm:
             err(".github/workflows/build-map-region.yml",
                 "manifestu sa nehovorí, či sieť vznikla (`ROUTING_ENABLED`). "
-                "Balík `navigacia` sa potom skladá len podľa mien súborov, "
+                "Mapa a `cesty` sa potom skladajú len podľa mien súborov, "
                 "a keď sieť nevznikla, tvári sa mapa, že v nej je.")
 
     if os.path.exists(SITE_SH):
@@ -208,16 +220,17 @@ def siet_kraja():
         if "routing:" not in site:
             err("workers/deploy/site.sh",
                 "manifest nenesie `routing`. Manifest je jediné miesto, ktoré "
-                "vie, čo v mape naozaj je – bez neho sa balík `navigacia` "
-                "skladá zo zálohy podľa prípony mena.")
+                "vie, čo v mape naozaj je – bez neho sa sieť do mapy a do "
+                "`cesty` skladá zo zálohy podľa prípony mena.")
 
 
 def poradie(areas, regions):
-    """Poradie uzlov: počíta ho vlastný workflow a build kraja si ho vezme.
+    """Poradie uzlov: build kraja si ho vezme z cache, inak dopočíta a uloží.
 
-    Kľúč cache je jediná väzba medzi nimi a je to REŤAZEC na dvoch miestach –
-    keď sa rozíde, build kraja proste nikdy nič nenájde, archívy pôjdu bez
-    poradia a nespadne pri tom nič.
+    `routing-order.yml` ostáva ako ručné prepočítanie. Kľúč cache je jediná
+    väzba medzi nimi a je to REŤAZEC na troch miestach – keď sa rozíde, build
+    kraja proste nikdy nič nenájde, archívy pôjdu bez poradia a nespadne pri
+    tom nič.
     """
     rel_regions = "workers/data/regions.json"
     for kluc, r in regions.items():
@@ -230,30 +243,40 @@ def poradie(areas, regions):
 
     if not os.path.exists(ORDER_WORKFLOW):
         err(".github/workflows/routing-order.yml",
-            "workflow neexistuje. Poradie uzlov sa počíta nad CELÝM územím, "
-            "takže ho beh kraja vyrobiť nemôže – bez tohto workflowu ho "
-            "nevyrobí nikto a archívy pôjdu bez neho.")
+            "workflow neexistuje. Je to ručné prepočítanie poradia nad CELÝM "
+            "územím – bez neho sa nové poradie dá vynútiť len tým, že sa "
+            "staré nechá zostarnúť.")
         return
     ord_text = open(ORDER_WORKFLOW, encoding="utf-8").read()
-    for skript, preco in (
-            ("workers/routing/pbf.sh",
-             "druhý zdroj PBF by bol druhá pravda o tom, nad akým územím sa "
-             "poradie počíta"),
-            ("workers/routing/order.py",
-             "poradie musí rátať ten istý kód, ktorého id ide do archívu")):
-        if skript not in ord_text:
-            err(".github/workflows/routing-order.yml",
-                f"workflow nepoužíva `{skript}` – {preco}.")
+    if "workers/routing/order.sh" not in ord_text:
+        err(".github/workflows/routing-order.yml",
+            "workflow nepoužíva `workers/routing/order.sh` – ten istý skript, "
+            "akým si poradie dopočíta build kraja. Druhý postup by bol druhá "
+            "pravda o tom, nad akým PBF a akým kódom poradie vzniká.")
+    order_sh = os.path.join(_WORKERS, "routing", "order.sh")
+    if not os.path.exists(order_sh):
+        err("workers/routing/order.sh", "skript neexistuje.")
+    else:
+        text = open(order_sh, encoding="utf-8").read()
+        for skript, preco in (
+                ("workers/routing/pbf.sh",
+                 "druhý zdroj PBF by bol druhá pravda o tom, nad akým územím "
+                 "sa poradie počíta"),
+                ("workers/routing/order.py",
+                 "poradie musí rátať ten istý kód, ktorého id ide do archívu")):
+            if skript not in text:
+                err("workers/routing/order.sh",
+                    f"skript nepoužíva `{skript}` – {preco}.")
 
-    kluce = {ORDER_WORKFLOW: _kluc_cache(ord_text)}
+    kluce = {ORDER_WORKFLOW: _kluce_cache(ord_text)}
     if os.path.exists(REGION_WORKFLOW):
-        kluce[REGION_WORKFLOW] = _kluc_cache(
+        kluce[REGION_WORKFLOW] = _kluce_cache(
             open(REGION_WORKFLOW, encoding="utf-8").read())
     chyba = [f for f, k in kluce.items() if not k]
     for f in chyba:
         err(f, "nie je v ňom kľúč cache s poradím uzlov (`routing-order-…`). "
                "Poradie sa medzi behmi prenáša jedine ním.")
-    hodnoty = {k for k in kluce.values() if k}
+    hodnoty = set().union(*kluce.values())
     if len(hodnoty) > 1:
         err(".github/workflows/routing-order.yml",
             f"kľúč cache s poradím znie na každej strane inak ({sorted(hodnoty)}). "
@@ -261,40 +284,29 @@ def poradie(areas, regions):
             f"a nespadne pri tom nič.")
 
 
-def _kluc_cache(text):
-    """Predpona kľúča cache s poradím – bez `run_id`, ten je zámerne rôzny."""
-    m = re.search(r"key: (routing-order-[a-z0-9-]*)", text)
-    return m.group(1).rstrip("-") if m else ""
+def _kluce_cache(text):
+    """Predpony kľúčov cache s poradím – bez `run_id`, ten je zámerne rôzny."""
+    return {m.rstrip("-")
+            for m in re.findall(r"key: (routing-order-[a-z0-9-]*)", text)}
 
 
 def balik():
-    """Vlastný balík vedľa kreslenej dopravnej siete, nie v nej ani v mape."""
+    """Sieť ide v mape a v `cesty`; vlastný balík `navigacia` je zrušený."""
     if not os.path.exists(CISELNIK):
         err("workers/data/packages.json", "číselník balíkov neexistuje.")
         return
     with open(CISELNIK, encoding="utf-8") as f:
-        baliky = {b["kluc"]: b for b in json.load(f).get("baliky") or []}
-    nav = baliky.get("navigacia")
-    if not nav:
+        cis = json.load(f)
+    baliky = {b["kluc"]: b for b in cis.get("baliky") or []}
+    if "navigacia" in baliky:
         err("workers/data/packages.json",
-            "balík `navigacia` v číselníku nie je – sieť sa postaví a nikam sa "
-            "nenahrá, a katalóg o nej nepovie nič, takže si ju appka nemá ako "
-            "vypýtať.")
-    else:
-        if "routing" not in (nav.get("manifest") or []):
-            err("workers/data/packages.json",
-                "balík `navigacia` neberie `routing` z manifestu – je to "
-                "prázdny balík so sľubom v mene.")
-        if "-routing.pmtiles" not in (nav.get("pripony") or []):
-            err("workers/data/packages.json",
-                "balík `navigacia` nemá zálohu podľa prípony "
-                "(`-routing.pmtiles`). Pregenerovanie jednej vrstvy beží bez "
-                "manifestu, takže by z neho vyšiel prázdny ZIP.")
-        if nav.get("priecinok"):
-            err("workers/data/packages.json",
-                "balík `navigacia` sa skladá z priečinka. Graf Valhally to "
-                "potreboval (štyri súbory, ktoré si musia sedieť); smerovacia "
-                "sieť je jeden archív a patrí do manifestu ako ostatné vrstvy.")
+            "balík `navigacia` je zase medzi živými. Sieť ide v mape a v "
+            "`cesty`; tretí ZIP by sa sťahoval nadarmo – a človek s mapou sa "
+            "o ňom nedozvedel.")
+    if "navigacia" not in (cis.get("zrusene") or []):
+        err("workers/data/packages.json",
+            "`navigacia` nie je v `zrusene`, takže starý `-navigacia.zip` "
+            "ostane na Drive ležať a katalóg ho bude ponúkať.")
     cesty = baliky.get("cesty")
     if not cesty:
         err("workers/data/packages.json",
@@ -305,11 +317,15 @@ def balik():
         err("workers/data/packages.json",
             "balík `cesty` neberie `transport` z manifestu. Bez dopravnej "
             "siete je to prázdny balík so sľubom v mene.")
-    elif "routing" in (cesty.get("manifest") or []):
+    elif "routing" not in (cesty.get("manifest") or []):
         err("workers/data/packages.json",
-            "balík `cesty` zase priberá smerovaciu sieť. `cesty` je KRESLENÁ "
-            "sieť („kadiaľ sa dá ísť“), smerovacia sieť je iná otázka („doveź "
-            "ma tam“) – a kto chce sieť len vidieť, sťahoval by aj ju.")
+            "balík `cesty` neberie `routing` z manifestu. Kto si berie len "
+            "siete, má dostať aj tú, po ktorej sa počíta trasa.")
+    elif "-routing.pmtiles" not in (cesty.get("pripony") or []):
+        err("workers/data/packages.json",
+            "balík `cesty` nemá zálohu podľa prípony (`-routing.pmtiles`). "
+            "Pregenerovanie jednej vrstvy beží bez manifestu, takže by z neho "
+            "vyšiel balík bez siete.")
 
 
 def formular(areas):
@@ -351,9 +367,9 @@ def main():
     if bad:
         print(f"\n{len(bad)} problém(ov) v navigácii.")
         return 1
-    print("Navigácia: sieť kraja stojí na PBF mapy, má vlastný balík "
-          "v manifeste a beh ju overí; poradie uzlov má vlastný workflow "
-          "a obe strany kľúča cache znejú rovnako; celoštátny graf Valhally "
+    print("Navigácia: sieť kraja stojí na PBF mapy, ide v mape aj v `cesty` "
+          "a beh ju overí; poradie uzlov si build kraja dopočíta a uloží "
+          "a všetky strany kľúča cache znejú rovnako; celoštátny graf Valhally "
           "ostáva ako referenčná stavba, jeho PBF sa nereže a formuláre "
           "sedia s číselníkom.")
     return 0

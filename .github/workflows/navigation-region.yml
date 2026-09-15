@@ -1,6 +1,7 @@
 name: Mapa · smerovacia sieť kraja
 
-# SMEROVACIA SIEŤ JEDNÉHO KRAJA – `<kraj>-routing.pmtiles`, balík `navigacia`.
+# SMEROVACIA SIEŤ JEDNÉHO KRAJA – `<kraj>-routing.pmtiles`. Ide v základnej
+# mape (časť `navigacia`) aj v balíku `cesty`; vlastný balík nemá.
 #
 # Do telefónu ide TAG, nie cena: profil používateľa (vypnuté typy ciest,
 # rozmery vozidla, známky) sa do predpočítaného grafu zapiecť nedá. Rozpis
@@ -46,6 +47,11 @@ on:
         required: false
         default: "3"
         type: string
+      order_max_age_days:
+        description: "Po koľkých dňoch sa poradie uzlov z cache prepočíta (0 = vždy)"
+        required: false
+        default: "30"
+        type: string
     # `workflow_call` nededí secrets sám. Bez nich sa cache na Drive nemá ako
     # otvoriť a archív by šiel bez poradia uzlov.
     secrets:
@@ -69,6 +75,7 @@ env:
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
   DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
   DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
+  OSMFR_BASE: https://download.openstreetmap.fr/extracts
 
 jobs:
   routing:
@@ -91,9 +98,11 @@ jobs:
           name: pbf
           path: data
 
-      # Poradie uzlov pre CCH sa počíta nad CELÝM územím („Navigácia · poradie
-      # uzlov"), takže ho beh kraja vyrobiť nemôže – berie sa z cache. Kľúč je
-      # predpona, teda najnovšie uložené poradie toho územia.
+      # Poradie uzlov pre CCH sa počíta nad CELÝM územím, nie nad krajom –
+      # kraje s rôznym poradím sa v telefóne spojiť nesmú. Berie sa z cache
+      # (kľúč je predpona, teda najnovšie uložené poradie toho územia); keď tam
+      # nie je alebo je staršie než `order_max_age_days`, dopočíta sa TU a
+      # uloží, takže prvý kraj štafety ho vyrobí a ostatné ho vezmú.
       # `continue-on-error`: archív bez poradia je platný archív, len si ho
       # telefón doráta sám – a `build.sh` to povie.
       - name: Vezmi poradie uzlov z cache
@@ -104,6 +113,27 @@ jobs:
           path: data/routing-order.json
           key: routing-order-v1-${{ inputs.routing_area }}
           restore-keys: routing-order-v1-${{ inputs.routing_area }}-
+
+      # rozpis vo `workers/routing/order.sh` – ten istý skript, akým poradie
+      # ručne prepočíta „Navigácia · poradie uzlov"
+      - name: Poradie uzlov – z cache, alebo dopočítať
+        id: order
+        if: ${{ inputs.routing_area != '' }}
+        continue-on-error: true
+        env:
+          AREA: ${{ inputs.routing_area }}
+          ORDER_MAX_AGE_DAYS: ${{ inputs.order_max_age_days }}
+        run: workers/routing/order.sh
+
+      # kľúč nesie `run_id`, lebo existujúci sa neprepisuje; hľadá sa cez
+      # `restore-keys` (predpona, najnovší záznam vyhrá)
+      - name: Ulož dopočítané poradie do cache na Drive
+        if: ${{ steps.order.outputs.computed == 'true' }}
+        continue-on-error: true
+        uses: ./.github/actions/cache-save
+        with:
+          path: data/routing-order.json
+          key: routing-order-v1-${{ inputs.routing_area }}-${{ github.run_id }}
 
       # rozpis je vo `workers/routing/build.sh`
       - name: Smerovacia sieť z OSM → PMTiles
@@ -117,7 +147,7 @@ jobs:
         run: workers/routing/build.sh
 
       # `site-…` zámerne: archív je jednotky MB, takže ide do `_site` ako každá
-      # iná vrstva a `deploy` ho z manifestu zabalí do `navigacia`. Graf
+      # iná vrstva a `deploy` ho z manifestu dá do mapy aj do `cesty`. Graf
       # Valhally mal vlastný artefakt práve preto, že to jednotky MB neboli.
       - name: Odlož časť stránky
         if: ${{ always() && hashFiles('_site/**') != '' }}

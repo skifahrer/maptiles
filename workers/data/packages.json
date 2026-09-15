@@ -47,7 +47,15 @@
     "by starý súbor osirela a každému vynútila stiahnutie toho istého znova.",
     "",
     "PORADIE JE PORADIE V APLIKÁCII: základná mapa, potom vrstvy nad ňou",
-    "od najviac používanej, potom články a nakoniec smerovacia sieť.",
+    "od najviac používanej a nakoniec články.",
+    "",
+    "SMEROVACIA SIEŤ (`-routing.pmtiles`) VLASTNÝ BALÍK NEMÁ – je ČASŤOU",
+    "základnej mapy (`casti_baliku` v `workers/deploy/subory.py`) a zároveň",
+    "ide v balíku `cesty`: kto má mapu, dá sa v nej doviezť; kto si berie",
+    "len siete, dostane aj tú, po ktorej sa počíta trasa. Je to jednotky MB",
+    "proti stovkám za dlaždice, takže dvakrát na Drive nie je cena, kým",
+    "tretí ZIP, o ktorom sa človek nedozvie, bola. `navigacia` je preto",
+    "v `zrusene`.",
     "",
     "BALÍK, KTORÝ ODTIAĽTO ZMIZNE, PATRÍ DO `zrusene` – inak jeho starý",
     "súbor na Drive ostane ležať (mená sú stále, takže ho nový beh",
@@ -95,10 +103,10 @@
       "meno": "Cesty a chodníky",
       "app": "Roads & paths",
       "symbol": "road.lanes",
-      "app_popis": "Every road, path, railway and lift, with their limits",
-      "popis": "celá dopravná sieť z OSM – cesty od diaľnice po schody, železnice, trajekty a lanovky, s obmedzeniami na ceste (.pmtiles)",
-      "manifest": ["transport"],
-      "pripony": ["-transport.pmtiles"],
+      "app_popis": "Every road, path, railway and lift, with their limits – and the network to route on",
+      "popis": "celá dopravná sieť z OSM – cesty od diaľnice po schody, železnice, trajekty a lanovky, s obmedzeniami na ceste – a smerovacia sieť so značkami, z ktorej telefón počíta trasu (.pmtiles)",
+      "manifest": ["transport", "routing"],
+      "pripony": ["-transport.pmtiles", "-routing.pmtiles"],
       "zdroj": "site",
       "regeneruj": "cesty"
     },
@@ -148,19 +156,7 @@
       "manifest": [],
       "pripony": [],
       "zdroj": "wiki"
-    },
-    {
-      "kluc": "navigacia",
-      "meno": "Smerovacia sieť",
-      "app": "Routing network",
-      "symbol": "location.north.line.fill",
-      "app_popis": "The network to route on, with its limits and turn restrictions",
-      "popis": "smerovacia sieť tohto kraja ako dlaždice so značkami (.pmtiles) – cenu trasy počíta telefón podľa profilu",
-      "manifest": ["routing"],
-      "pripony": ["-routing.pmtiles"],
-      "zdroj": "site",
-      "regeneruj": "navigacia"
     }
   ],
-  "zrusene": ["search", "linie"]
+  "zrusene": ["search", "linie", "navigacia"]
 }

@@ -186,7 +186,7 @@ jq -n \
       } else {} end)
       # smerovacia sieť – dlaždice so značkami, z ktorých telefón počíta trasu.
       # Štýl z nej nekreslí nič a je to v poriadku: manifest je zoznam toho, čo
-      # v mape JE (číta ho `subory.py` pri skladaní balíka `navigacia`), nie
+      # v mape JE (číta ho `subory.py` pri skladaní mapy a balíka `cesty`), nie
       # toho, čo pýta štýl. `routing_zoom` je pevných z9, ale píše sa sem –
       # klient nemá odkiaľ vedieť, na akej mriežke archív je.
       + (if $routing then {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smerovacia sieť kraja → `{región}-routing.pmtiles` (balík `navigacia`).
+# Smerovacia sieť kraja → `{región}-routing.pmtiles` (v mape aj v `cesty`).
 #
 # Rozpis formátu je v `docs/routing-tiles.md`, dôvod v `docs/navigation.md` §10.
 # Krátko: do telefónu ide TAG, nie cena – profil používateľa sa do
@@ -36,15 +36,15 @@ printf '%s\t%s\t%s\t%s\n' "20" "Predfilter smerovacej siete" "$(( $(date +%s) - 
   >> steps-out/routing.tsv
 
 if [ "$AFTER" -lt 2000 ]; then
-  echo "::warning::V tomto území nie je ani jedna cesta, po ktorej by sa dalo ísť – balík \`navigacia\` sa nevyrobí."
+  echo "::warning::V tomto území nie je ani jedna cesta, po ktorej by sa dalo ísť – smerovacia sieť sa nevyrobí."
   echo "enabled=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi
 
 # ---- 2. archív ----
-# Poradie uzlov sa počíta nad CELÝM stavaným územím (workflow „Navigácia ·
-# poradie uzlov"), takže ho beh kraja vyrobiť nemôže – berie sa z cache na
-# Drive a leží tu. Keď tu nie je, archív ide bez neho a `tiles.py` to povie.
+# Poradie uzlov sa počíta nad CELÝM stavaným územím (`order.sh`, z cache na
+# Drive alebo dopočítané) a leží tu. Keď tu nie je, archív ide bez neho
+# a `tiles.py` to povie.
 PORADIE=()
 if [ -s data/routing-order.json ]; then
   PORADIE=(--poradie=data/routing-order.json)

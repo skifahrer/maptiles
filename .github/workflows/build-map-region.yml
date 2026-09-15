@@ -308,7 +308,7 @@ jobs:
       opt_terrain: ${{ steps.opts.outputs.opt_terrain }}
       opt_trails: ${{ steps.opts.outputs.opt_trails }}
       opt_features: ${{ steps.opts.outputs.opt_features }}
-      # smerovacia sieť má vlastný balík `navigacia`
+      # smerovacia sieť – ide v základnej mape aj v balíku `cesty`
       opt_navigacia: ${{ steps.opts.outputs.opt_navigacia }}
       # `opt_rock_dem` je zdroj skál, len keď je to výškový model – pri
       # `tienovanie` a `ziadne` je prázdny

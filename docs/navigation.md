@@ -188,6 +188,10 @@ dva by boli dve pravdy o tom, ako sa graf stavia a čo sa v ňom kontroluje.
 
 ### 7a. Graf KRAJA – vlastný balík vedľa mapy
 
+> Platilo pre graf Valhally (170–190 MB). Smerovacia sieť v dlaždiciach (§10)
+> váži jednotky MB a ide v základnej mape aj v `cesty` – pozri „Hotové je
+> P1 – P7" nižšie.
+
 Mapu si človek sťahuje po krajoch a chce v nej navigáciu. Preto sa ku každému
 kraju stavia graf z **toho istého PBF, z akého je mapa** (`data/region.osm.pbf`,
 job `navigacia` → `.github/workflows/navigation-region.yml`) a balí sa do
@@ -438,15 +442,20 @@ odvodený z cudzieho čísla, nie naše číslo.
 **Hotové je P1 – P7**; rozpis formátu je
 v [`docs/routing-tiles.md`](routing-tiles.md). Kraj stavia archív v joboch
 `navigacia` (`navigation-region.yml`), ide do `_site` ako každá iná vrstva
-a `deploy` ho z manifestu zabalí do `<kraj>-navigacia.zip`. Balík grafu kraja
-zanikol; `workers/routing/graph.sh` a celoštátny `navigation.yml` ostali ako
+a `deploy` ho z manifestu dá do **základnej mapy** (časť `navigacia`) **aj do
+`<kraj>-cesty.zip`**. Vlastný `<kraj>-navigacia.zip` zanikol (`zrusene` v
+`packages.json`): pri jednotkách MB je tretí ZIP, o ktorom sa človek s mapou
+nedozvie, horší než tie MB dvakrát na Drive – §7a nižšie hovorí o grafe
+Valhally, pri ktorom to platilo naopak. Balík grafu kraja zanikol;
+`workers/routing/graph.sh` a celoštátny `navigation.yml` ostali ako
 referenčná stavba.
 
 **Poradie uzlov (P3) chodí do archívu kraja cez cache na Drive.** Počíta sa nad
-CELÝM stavaným územím, takže ho beh jedného kraja vyrobiť nemôže: má vlastný
-workflow „Navigácia · poradie uzlov" (`routing-order.yml`), ktorý ho uloží pod
-kľúč `routing-order-v1-<územie>-<run_id>`, a build kraja si ho vezme cez
-`restore-keys` – teda najnovšie poradie toho územia. Ktoré územie to je, hovorí
+CELÝM stavaným územím (`workers/routing/order.sh`) a build kraja si ho vezme
+z cache pod kľúčom `routing-order-v1-<územie>-<run_id>` cez `restore-keys` –
+teda najnovšie poradie toho územia. Keď tam nie je alebo je staršie než 30
+dní, build kraja ho **dopočíta sám a uloží**; „Navigácia · poradie uzlov"
+(`routing-order.yml`) ho tým istým skriptom prepočíta skôr. Ktoré územie to je, hovorí
 `routing_area` pri krajine v `regions.json`; všetky kraje krajiny musia stáť na
 tom istom, inak sa ich archívy v telefóne spojiť nesmú.
 

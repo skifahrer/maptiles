@@ -2,8 +2,9 @@ name: Mapa · Pregeneruj vrstvu kraja
 
 # JEDNA VRSTVA JEDNÉHO KRAJA NANOVO – bez toho, aby sa prestavala mapa.
 #
-# Voľby `co`: body, linie (celá dopravná sieť), navigacia, vrstevnice, skaly,
-# tienovanie. Na Drive sa prepíše len príslušný balík.
+# Voľby `co`: body, cesty (celá dopravná sieť aj so smerovacou sieťou),
+# hranice, vodstvo, vrstevnice, skaly, tienovanie. Na Drive sa prepíše len
+# príslušný balík.
 #
 # `body` a `linie` sú minúty (z toho istého PBF ako mapa), vrstvy z výškového
 # modelu desiatky minút až hodiny – počíta ich `dem-layers.yml`, ten istý
@@ -50,7 +51,6 @@ on:
           - cesty
           - hranice
           - vodstvo
-          - navigacia
           - vrstevnice
           - skaly
           - tienovanie
@@ -219,8 +219,8 @@ jobs:
         env:
           CO: ${{ inputs.co }}
 
-      # ten istý rozklad volieb ako pri builde. Pri `body`, `linie`
-      # a `navigacia` sa hodnoty nikam nepodávajú a nikto na DEM nesiahne.
+      # ten istý rozklad volieb ako pri builde. Pri vrstvách z PBF sa hodnoty
+      # nikam nepodávajú a nikto na DEM nesiahne.
       - name: Rozlož voľby
         id: opts
         run: |
@@ -402,10 +402,10 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # celý balík `cesty` aj s obmedzeniami na ceste; ten istý workflow, aký volá
-  # build mapy. Rozpis je v hlavičke `workers/transport/transport.yml`.
-  # Jeden job: odkedy sú obmedzenia atribútmi tej istej siete a trasy cestujú
-  # v základnej mape, je balík jedna vrstva.
+  # kreslená dopravná sieť aj s obmedzeniami na ceste; ten istý workflow, aký
+  # volá build mapy. Rozpis je v hlavičke `workers/transport/transport.yml`.
+  # Balík `cesty` nesie aj smerovaciu sieť, tú stavia job `navigacia` nižšie
+  # – oba bežia pri tej istej voľbe, lebo balík sa prepisuje celý.
   doprava:
     name: Cesty a chodníky
     needs: plan
@@ -453,11 +453,12 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_water_pct }}
       day: ${{ needs.plan.outputs.day }}
 
-  # vlastný balík, teda vlastná voľba
+  # druhá polovica balíka `cesty`: smerovacia sieť ide v ňom (a v základnej
+  # mape), vlastný balík nemá – takže ju voľba `cesty` stavia tiež
   navigacia:
     name: Smerovacia sieť
     needs: plan
-    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'navigacia' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'cesty' }}
     uses: ./.github/workflows/navigation-region.yml
     secrets: inherit                      # cache s poradím uzlov na Drive
     with:
@@ -577,7 +578,7 @@ jobs:
           # tvrdil „bez_vrstevnic, bez_skal…", teda lož o mape, ktorú beh nevidel.
           # Pri vrstvách z DEM je prázdne: `publish-map.py` si meno zloží z toho,
           # čo mu o vrstve povie job (zdroj, interval, prah).
-          MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'cesty' || inputs.co == 'hranice' || inputs.co == 'vodstvo' || inputs.co == 'navigacia') && inputs.co || '' }}
+          MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'cesty' || inputs.co == 'hranice' || inputs.co == 'vodstvo') && inputs.co || '' }}
           CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
           CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
           CONTOUR_INTERVAL: ${{ needs.plan.outputs.opt_contour_interval }}
@@ -666,7 +667,7 @@ jobs:
           CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
           # musia to byť tie isté hodnoty, aké dostal job so ZIPom – `obsah.json`
           # sa skladá z nich
-          MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'cesty' || inputs.co == 'hranice' || inputs.co == 'vodstvo' || inputs.co == 'navigacia') && inputs.co || '' }}
+          MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'cesty' || inputs.co == 'hranice' || inputs.co == 'vodstvo') && inputs.co || '' }}
           CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
           CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
           CONTOUR_INTERVAL: ${{ needs.plan.outputs.opt_contour_interval }}

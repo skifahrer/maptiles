@@ -12,10 +12,10 @@ by bol zelený. Zoznam v `choice` sa generovať nedá, ale dá sa strážiť
 (`workers/lint/regenerate.py`).
 
 Všetko ide cez „Pregeneruj vrstvu kraja", ktorý postaví len tú vec a prepíše
-len jej balík. Ceny sú rôzne: z PBF (`body`, `cesty`, `hranice`, `vodstvo`,
-`navigacia`) sú to minúty, z výškového modelu (`vrstevnice`, `skaly`,
-`tienovanie`) desiatky minút až hodiny – a robí to `dem-layers.yml`, ten istý
-workflow, aký volá build mapy.
+len jej balík. Ceny sú rôzne: z PBF (`body`, `cesty`, `hranice`, `vodstvo`)
+sú to minúty, z výškového modelu (`vrstevnice`, `skaly`, `tienovanie`)
+desiatky minút až hodiny – a robí to `dem-layers.yml`, ten istý workflow,
+aký volá build mapy. `cesty` nesú aj smerovaciu sieť, tak sa stavia s nimi.
 
 Základná mapa a články tu nie sú: mapa je celý build (a značené trasy
 cestujú v nej), články majú vlastnú pipeline.
@@ -100,13 +100,12 @@ CENA = {
              "pramene, jaskyne, rozhľadne, pamiatky a ďalšie bodové prvky"),
     "cesty": ("Cesty a chodníky",
               "celá dopravná sieť z OSM aj s obmedzeniami na ceste (výška "
-              "podjazdu, hmotnosť, rýchlosť)"),
+              "podjazdu, hmotnosť, rýchlosť) a smerovacia sieť, z ktorej "
+              "telefón počíta trasu"),
     "hranice": ("Hranice a názvy území",
                 "hranice štátu, kraja, okresu a obce aj s ich menami"),
     "vodstvo": ("Vodstvo",
                 "rieky, potoky, jazerá, priehrady a more aj s ich menami"),
-    "navigacia": ("Smerovacia sieť",
-                  "sieť so značkami, z ktorej telefón počíta trasu"),
     "vrstevnice": ("Vrstevnice",
                    "izolínie z výškového modelu (skaly v balíku prídu "
                    "z cache)"),

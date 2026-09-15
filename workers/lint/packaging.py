@@ -11,8 +11,10 @@ Kontroluje sa:
      relatívnom odkaze aj vtedy, keď sa manifest nedá prečítať;
   4. `deploy/site.sh` skladá adresu glyfov z `$BASE` a viewer do `_site` kopíruje;
   5. `world/style.mjs` odkazuje na adresu, nie do balíka;
-  6. hľadanie ani značené trasy zo základnej mapy nevypadli a sú premerané;
-  7. smerovacia sieť je naopak von – má vlastný balík a `cesty` ju neberú;
+  6. hľadanie, značené trasy ani smerovacia sieť zo základnej mapy nevypadli
+     a sú premerané;
+  7. smerovacia sieť ide AJ v `cesty` – kto si berie len siete, dostane aj tú,
+     po ktorej sa počíta trasa; vlastný balík `navigacia` je zrušený;
   8. balík nie je v číselníku medzi živými a zrušenými naraz.
 """
 import importlib.util
@@ -173,7 +175,8 @@ sub = nacitaj_modul("deploy_subory", SUBORY)
 with _tf.TemporaryDirectory() as site:
     napln(site)
     merane = sub.velkost_casti(sub.casti_baliku(site, PAGES))
-for _cast, _preco in (("trasy", "značené trasy"),):
+for _cast, _preco in (("trasy", "značené trasy"),
+                      ("navigacia", "smerovacia sieť")):
     if _cast in merane and merane[_cast].get("files"):
         continue
     if _cast not in merane:
@@ -188,19 +191,28 @@ for _cast, _preco in (("trasy", "značené trasy"),):
             f"priečinka? V mape by tá časť ostala, len by o nej katalóg "
             f"tvrdil, že tam nie je.")
 
-# 7. smerovacia sieť je iná otázka než kreslená dopravná sieť: „chcem vidieť,
-# kadiaľ sa dá ísť" a „chcem, aby ma to tam doviezlo". V jednom balíku by si ju
-# stiahol aj ten, kto chce sieť len vidieť.
-if baliky and "tiles/kraj-routing.pmtiles" in cesty_zip:
+# 7. smerovacia sieť je v mape (časť) AJ v `cesty`: jednotky MB, ktoré si
+# nikto nemá ako vypýtať tretím ZIPom. Vlastný balík `navigacia` mala – a bol
+# to balík, o ktorom sa človek s mapou nedozvedel.
+if baliky and "tiles/kraj-routing.pmtiles" not in mapa_zip:
     bad.append(
-        f"{PUBLISH}: `tiles/kraj-routing.pmtiles` je v balíku `-cesty.zip`, "
-        f"kde smerovacia sieť nie je. `cesty` je KRESLENÁ sieť; smerovacia je "
-        f"vlastný balík `navigacia`, lebo je to iná otázka.")
+        f"{PUBLISH}: `tiles/kraj-routing.pmtiles` z balíka mapy VYPADOL. "
+        f"Smerovacia sieť je ČASŤ základnej mapy (`casti_baliku`) – ide aj "
+        f"v `cesty`, ale to ju z mapy nevyníma (`ponechat` v `zaklad_subory`). "
+        f"Bez nej je to mapa, v ktorej sa nedá nikam doviezť.")
+if baliky and "tiles/kraj-routing.pmtiles" not in cesty_zip:
+    bad.append(
+        f"{PUBLISH}: `tiles/kraj-routing.pmtiles` nie je v balíku `-cesty.zip`. "
+        f"Kto si berie len siete, má dostať aj tú, po ktorej sa počíta trasa "
+        f"– číselník ju `cesty` dáva z manifestu pod `routing`.")
+if baliky and "navigacia" in baliky:
+    bad.append(
+        f"{PUBLISH}: vyrobil sa balík `-navigacia.zip`. Smerovacia sieť ide "
+        f"v mape a v `cesty`; tretí ZIP by sa sťahoval nadarmo.")
 
 # a to isté pre vrstvy s vlastným balíkom: „čo pribudne, patrí aj do `vylucit`"
 # platí na všetky, nie na posledný pridaný
-for druh, meno in (("navigacia", "tiles/kraj-routing.pmtiles"),
-                   ("vrstevnice-skaly", "tiles/kraj-contours.pmtiles"),
+for druh, meno in (("vrstevnice-skaly", "tiles/kraj-contours.pmtiles"),
                    ("vrstevnice-skaly", "tiles/kraj-rocks.pmtiles"),
                    ("tienovanie", "tiles/kraj-terrain.pmtiles"),
                    ("cesty", "tiles/kraj-transport.pmtiles"),
@@ -219,13 +231,6 @@ for druh, meno in (("navigacia", "tiles/kraj-routing.pmtiles"),
             f"{PUBLISH}: `{meno}` sa do balíka `{druh}` nedostal – ten balík "
             f"sľubuje vrstvu, ktorú nenesie.")
 
-if "navigacia" in merane:
-    bad.append(
-        f"{SUBORY}: `casti_baliku` hlási `navigacia` ako ČASŤ základnej mapy, "
-        f"hoci smerovacia sieť má vlastný balík. Katalóg by tú istú vec niesol "
-        f"dvakrát – pod `maps.mapa.casti` aj pod `maps.navigacia` – a veľkosti "
-        f"by sa sčítali do čísla, ktoré si nikto nestiahne.")
-
 # balík, ktorý sa vyrába, nesmie byť v `ZRUSENE`: „vyrába sa" a „starý sa
 # maže" sú opačné tvrdenia a beh by ho podľa poradia nahral a hneď zmazal
 import json as _json                                          # noqa: E402
@@ -238,11 +243,24 @@ for _k in sorted(_zive & _mrtve):
         f"{CISELNIK}: balík `{_k}` je medzi živými AJ v `zrusene`. `zrusene` "
         f"znamená „starý sa maže“ – balík by tak zmizol z Drive aj z katalógu "
         f"hneď po tom, čo ho beh nahral.")
-for _k in ("navigacia", "cesty", "hranice", "vodstvo"):
+for _k in ("cesty", "hranice", "vodstvo"):
     if _k not in _zive:
         bad.append(
             f"{CISELNIK}: balík `{_k}` v číselníku nie je, takže sa nevyrobí "
             f"a katalóg o ňom nepovie nič – vrstva sa postaví a skončí nikde.")
+if "navigacia" in _zive or "navigacia" not in _mrtve:
+    bad.append(
+        f"{CISELNIK}: balík `navigacia` má byť v `zrusene` a nie medzi živými: "
+        f"smerovacia sieť ide v mape a v `cesty`, a starý `-navigacia.zip` na "
+        f"Drive by inak ostal ležať a katalóg by ho ponúkal.")
+_cesty = next((b for b in _cis.get("baliky") or [] if b["kluc"] == "cesty"), {})
+if "routing" not in (_cesty.get("manifest") or []) \
+        or "-routing.pmtiles" not in (_cesty.get("pripony") or []):
+    bad.append(
+        f"{CISELNIK}: balík `cesty` neberie smerovaciu sieť (`routing` "
+        f"v `manifest`, `-routing.pmtiles` v `pripony`). Pregenerovanie jednej "
+        f"vrstvy beží bez manifestu, takže bez oboch by z neho vyšiel balík "
+        f"bez siete.")
 
 # 4. Pages tie súbory naozaj má
 with open(SITE, encoding="utf-8") as f:

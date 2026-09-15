@@ -3,18 +3,17 @@ name: Navigácia · poradie uzlov
 # PORADIE UZLOV PRE CCH nad celým stavaným územím – jediná drahá časť, ktorá
 # do telefónu nepatrí (rozpis v `docs/navigation.md` §11).
 #
-# Vlastný workflow, nie krok v builde kraja, a je to priamy dôsledok zadania:
-# poradie sa počíta nad CELÝM územím, takže ho beh jedného kraja vyrobiť
-# nemôže. Poradia počítané po krajoch sa spojiť nedajú.
-#
-# Nezávisí od profilu ani od cien, len od TVARU siete – takže sa neprepočítava
-# pri každom builde. Leží v cache na Drive a build kraja si ho odtiaľ vezme;
-# uzol, ktorý pribudol po jeho výpočte, dostane rank na konci podľa OSM id
-# (`workers/routing/tiles.py`), takže mierne zastarané poradie je stále
-# platné poradie a archívy sa dajú spojiť ďalej.
-#
-# Spúšťa sa ručne – vtedy, keď to `tiles.py` v builde kraja vypýta
+# RUČNÉ PREPOČÍTANIE. Build kraja (`navigation-region.yml`) si poradie berie
+# z cache na Drive a keď tam nie je alebo je staršie než 30 dní, dopočíta ho
+# sám tým istým skriptom (`workers/routing/order.sh`). Tento workflow je na
+# to, keď má byť nové skôr – keď to `tiles.py` v builde kraja vypýta
 # (::warning:: „sieť sa od jeho výpočtu zmenila").
+#
+# Nezávisí od profilu ani od cien, len od TVARU siete; uzol, ktorý pribudol
+# po jeho výpočte, dostane rank na konci podľa OSM id (`tiles.py`), takže
+# mierne zastarané poradie je stále platné poradie. Nové poradie má nové id
+# a kraje so starým sa s ním v telefóne spojiť nesmú – po prepočítaní treba
+# prestavať všetky („Mapa · Regenerate state", voľba `cesty`).
 
 on:
   workflow_dispatch:
@@ -48,37 +47,14 @@ jobs:
       - name: Priprav priečinok na meranie
         run: mkdir -p steps-out
 
-      - name: Nainštaluj osmium-tool a pyosmium
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq osmium-tool
-          python3 -c 'import osmium' 2>/dev/null \
-            || sudo apt-get install -y -qq python3-pyosmium \
-            || python3 -m pip install --quiet --break-system-packages 'osmium>=3.6,<5'
-
-      # ten istý skript, akým si PBF berie celoštátny graf – druhý by bol druhá
-      # pravda o tom, nad akým územím sa poradie počíta
-      - name: PBF územia
-        env:
-          AREA: ${{ inputs.area }}
-        run: workers/routing/pbf.sh
-
-      - name: Poradie uzlov z PBF
+      # ten istý skript, akým si poradie dopočíta build kraja; `FORCE`, lebo
+      # tento workflow sa spúšťa práve preto, že čerstvé nestačí
+      - name: Poradie uzlov z PBF územia
         id: order
         env:
           AREA: ${{ inputs.area }}
-        run: |
-          set -euo pipefail
-          python3 workers/routing/order.py \
-            --pbf=data/routing.osm.pbf \
-            --out=data/routing-order.json \
-            --nazov="$AREA"
-          python3 - >> "$GITHUB_OUTPUT" <<'PY'
-          import json
-          raw = json.load(open("data/routing-order.json", encoding="utf-8"))
-          print(f"id={raw['id']}")
-          print(f"uzlov={raw['uzlov']}")
-          PY
+          FORCE: "true"
+        run: workers/routing/order.sh
 
       # kľúč nesie `run_id`, lebo existujúci sa neprepisuje; build kraja ho
       # hľadá cez `restore-keys` (predpona, najnovší záznam vyhrá)
@@ -104,7 +80,7 @@ jobs:
             echo "Kraje postavené OD TERAZ ho dostanú do archívu; tie staršie"
             echo "nesú predošlé id a s novými sa v telefóne spojiť nesmú, takže"
             echo "ich treba prestavať (\`Mapa · Regenerate state\`, voľba"
-            echo "\`navigacia\`)."
+            echo "\`cesty\`)."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Odlož meranie krokov

@@ -10,9 +10,12 @@ Tri druhy odpovedí:
 
   * vlastný balík (`baliky_vrstiev`) – ťažké veci, ktoré mapa na nakreslenie
     nepotrebuje a ktoré vážia porovnateľne s ňou samou;
-  * časť základnej mapy (`casti_baliku`: hľadanie) – desiatky MB proti stovkám
-    za dlaždice; vlastný balík by znamenal mapu, v ktorej sa nedá nič nájsť.
-    Premeriava sa, aby bolo v katalógu vidieť, koľko z balíka je;
+  * časť základnej mapy (`casti_baliku`: hľadanie, značené trasy, smerovacia
+    sieť) – jednotky až desiatky MB proti stovkám za dlaždice; vlastný balík
+    by znamenal mapu, v ktorej sa nedá nič nájsť ani nikam doviezť.
+    Premeriava sa, aby bolo v katalógu vidieť, koľko z balíka je. Časť smie
+    ísť AJ v inom balíku (smerovacia sieť je aj v `cesty`) – z mapy ju to
+    nevyníma;
   * mimo balíka (`mimo_balika`: glyfy a viewer) – viewer si aplikácia
     nespúšťa a glyfy si nesie vo vlastnom binári, takže sa vynechajú vždy.
 
@@ -50,9 +53,10 @@ def log(msg):
 
 # ---------- čo je v ktorom balíku ----------
 # Základná mapa NEOBSAHUJE vrstevnice, skaly, tieňovanie, dopravnú sieť, body,
-# hranice, vodstvo ani smerovaciu sieť – sú to ťažké vrstvy, ktoré mapa na to,
-# aby sa nakreslila, nepotrebuje, a majú vlastné balíky práve preto, aby si ich
-# človek nemusel sťahovať, keď ich nechce. Vrstevnice a skaly sú SPOLU zámerne:
+# hranice ani vodstvo – sú to ťažké vrstvy, ktoré mapa na to, aby sa
+# nakreslila, nepotrebuje, a majú vlastné balíky práve preto, aby si ich
+# človek nemusel sťahovať, keď ich nechce. Smerovaciu sieť naopak nesie
+# (`casti_baliku`) a `cesty` ju nesú tiež. Vrstevnice a skaly sú SPOLU zámerne:
 # sú z toho istého výpočtu nad tým istým DEM a jedna bez druhej sa nepoužíva.
 
 def manifest_data(site):
@@ -138,6 +142,25 @@ def trasy_subory(site, man):
             if os.path.exists(os.path.join(site, p))]
 
 
+def navigacia_subory(site, man):
+    """Časť `navigacia` – smerovacia sieť so značkami (`-routing.pmtiles`).
+
+    Mapa, v ktorej sa nedá nikam doviezť, sľubuje menej, než načo si ju
+    človek stiahol – a je to jednotky MB. Tá istá vrstva ide AJ v balíku
+    `cesty` (číselník ju berie z manifestu pod `routing`): kto si berie len
+    siete, dostane aj tú, po ktorej sa počíta trasa. Vlastný balík
+    `navigacia` mala a bol to tretí ZIP, o ktorom sa človek nedozvedel.
+    """
+    reg = catalog.region_entry(man)
+    rel = [reg["routing"]] if reg.get("routing") else []
+    if not rel:
+        base = os.path.join(site, "tiles")
+        rel = [os.path.join("tiles", n) for n in sorted(os.listdir(base))
+               if n.endswith("-routing.pmtiles")] if os.path.isdir(base) else []
+    return [os.path.join(site, p) for p in rel
+            if os.path.exists(os.path.join(site, p))]
+
+
 def casti_baliku(site, man):
     """Časti základnej mapy: `[(kľúč, popis, súbory)]` – aj tie, čo nie sú.
 
@@ -146,13 +169,14 @@ def casti_baliku(site, man):
     Mlčanie by sa dalo čítať aj ako „zabudlo sa to premerať" – ten istý dôvod,
     pre ktorý meno balíka nesie `bez_skal`.
 
-    NAVIGÁCIA TU NIE JE a nie je to opomenutie: smerovacia sieť má VLASTNÝ
-    balík, takže jej veľkosť je v katalógu pod `maps.navigacia.size` ako pri
-    každom inom balíku, nie pod `maps.mapa.casti`.
+    Súbory častí sa zo základnej mapy NEVYNÍMAJÚ, ani keď ich nesie aj iný
+    balík – `zaklad_subory` ich dostáva ako `ponechat`.
     """
     return [
         ("trasy", "značené trasy z OSM relácií (.pmtiles)",
          trasy_subory(site, man)),
+        ("navigacia", "smerovacia sieť so značkami (.pmtiles)",
+         navigacia_subory(site, man)),
     ]
 
 
@@ -246,7 +270,7 @@ def mimo_balika(site, man):
     return subory, dovody
 
 
-def zaklad_subory(site, vylucit):
+def zaklad_subory(site, vylucit, ponechat=()):
     """Súbory balíka `mapa` – všetko z `_site` OKREM toho, čo doň nepatrí.
 
     `vylucit` je dvoje. Jedno sú súbory VLASTNÝCH BALÍKOV (`baliky_vrstiev`):
@@ -263,11 +287,14 @@ def zaklad_subory(site, vylucit):
     ručne, bolo vynechanie ticho: mapa je v poriadku, len o toľko väčšia,
     a na súbore to nikto nepozná.
 
-    ZNAČENÉ TRASY SEM NAOPAK NEPATRIA a nie je to opomenutie: druhý balík
-    nemajú, sú to ČASŤ tejto mapy (`casti_baliku`). Vyňať ich by znamenalo
-    mapu, na ktorej nie sú značky.
+    `ponechat` sú súbory ČASTÍ mapy (`casti_baliku`) a vyhrávajú nad
+    `vylucit`: smerovacia sieť je aj v balíku `cesty`, a tak by ju zoznam
+    vlastných balíkov z mapy vyňal – a bola by to mapa, v ktorej sa nedá
+    nikam doviezť. Značené trasy tam sú z toho istého dôvodu, tie len druhý
+    balík nemajú.
     """
-    von = {os.path.abspath(p) for p in vylucit}
+    dnu = {os.path.abspath(p) for p in ponechat}
+    von = {os.path.abspath(p) for p in vylucit} - dnu
     return [p for p in vsetky_subory(site) if os.path.abspath(p) not in von]
 
 

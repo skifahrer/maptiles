@@ -3,9 +3,10 @@ name: Mapa · Regenerate state
 # JEDNA VRSTVA V CELEJ KRAJINE NA JEDNO KLIKNUTIE. Nad každým krajom spustí
 # „Pregeneruj vrstvu kraja" pre to jedno, čo si vyberieš.
 #
-# Zoznam volieb drží `workers/state/jobs.py`. `body`, `cesty`, `hranice`,
-# `vodstvo` a `navigacia` sú minúty na kraj (počítajú sa z toho istého PBF ako
-# mapa); `vrstevnice`, `skaly` a `tienovanie` desiatky minút až hodiny.
+# Zoznam volieb drží `workers/state/jobs.py`. `body`, `cesty`, `hranice`
+# a `vodstvo` sú minúty na kraj (počítajú sa z toho istého PBF ako mapa;
+# `cesty` nesú aj smerovaciu sieť); `vrstevnice`, `skaly` a `tienovanie`
+# desiatky minút až hodiny.
 #
 # Beží ako štafeta, z toho istého dôvodu ako „Build map state": job má strop
 # šesť hodín. Jadro je vo `workers/state/estafeta.sh`, zvyšok v `regenerate.sh`.
@@ -36,7 +37,6 @@ on:
           - cesty
           - hranice
           - vodstvo
-          - navigacia
           - vrstevnice
           - skaly
           - tienovanie

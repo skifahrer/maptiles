@@ -38,7 +38,7 @@ Mapa · Build map region      deväť jobov, tie dlhé bežia súbežne:
                                         `hranice`
                                vodstvo  rieky, jazerá, more ─► balík `vodstvo`
                                navigacia smerovacia sieť so značkami ─►
-                                        vlastný balík `-navigacia.zip`
+                                        v mape aj v balíku `cesty`
                                assets   SDF sprity a glyfy
                                deploy   zloží _site ─► GitHub Pages
                                apple-archive  balíky ešte raz ako .aar
@@ -69,10 +69,10 @@ Mapa · Pregeneruj vrstvu     JEDNA VRSTVA JEDNÉHO KRAJA nanovo, bez toho,
 kraja (manuálne, jeden kraj) aby sa prestavala mapa:
                                body       ─► {kraj}-body.zip
                                cesty      ─► {kraj}-cesty.zip
-                                             (sieť aj obmedzenia na ceste)
+                                             (sieť, obmedzenia na ceste
+                                             aj smerovacia sieť)
                                hranice    ─► {kraj}-hranice.zip
                                vodstvo    ─► {kraj}-vodstvo.zip
-                               navigácia  ─► {kraj}-navigacia.zip
                                vrstevnice ┐ {kraj}-vrstevnice-skaly.zip
                                skaly      ┘ (druhá polovica ide z cache)
                                tieňovanie ─► {kraj}-tienovanie.zip
@@ -2007,7 +2007,6 @@ Priečinok hovorí, čoho sa mapa týka, a čo chýba, sa vyrobí:
     presovsky-vysoke_tatry-vodstvo.zip            rieky, jazerá, priehrady, more
                                                   – každý prvok aj s menom
     presovsky-vysoke_tatry-wikipedia.zip          články z Wikipédie
-    presovsky-vysoke_tatry-navigacia.zip          smerovacia sieť so značkami
 
 Každý balík je aj ako **`.aar` (Apple Archive)** – ten istý obsah, to isté
 meno, iná prípona. iOS a macOS ho rozbalia systémovo (framework AppleArchive),
@@ -2090,9 +2089,11 @@ CCH počíta [`workers/routing/order.py`](routing/order.py) a strážia to
 a [`roadtypes.mjs`](lint/roadtypes.mjs). Formát je
 v [docs/routing-tiles.md](../docs/routing-tiles.md), dôvod
 v [docs/navigation.md](../docs/navigation.md) §10. Poradie uzlov sa počíta nad
-CELÝM územím, takže ho beh kraja vyrobiť nemôže: má vlastný workflow
-**„Navigácia · poradie uzlov"** ([`routing-order.yml`](../.github/workflows/routing-order.yml)),
-ktorý ho uloží do cache na Drive, a build kraja si ho odtiaľ vezme. Ktoré
+CELÝM územím ([`order.sh`](routing/order.sh)) a leží v cache na Drive: build
+kraja si ho odtiaľ vezme, a keď tam nie je alebo je staršie než 30 dní,
+dopočíta ho sám a uloží – prvý kraj štafety ho vyrobí, ostatné ho vezmú.
+Skôr ho prepočíta **„Navigácia · poradie uzlov"**
+([`routing-order.yml`](../.github/workflows/routing-order.yml)). Ktoré
 územie to je, hovorí `routing_area` pri krajine v
 [`workers/data/regions.json`](data/regions.json). Graf Valhally ostáva ako
 CELOŠTÁTNA referenčná stavba (`navigation.yml`), proti ktorej sa nový motor dá
@@ -2142,19 +2143,19 @@ to, načo si ju človek stiahol. Cena za oboje sú jednotky až desiatky MB prot
 stovkám za dlaždice, takže sa tu nemá čo šetriť. Balíky `-search` a `-linie`
 preto zanikli (`zrusene` v číselníku) a staré sa na Drive mažú.
 
-**Navigácia je naopak zo základnej mapy VON a má vlastný balík
-`-navigacia.zip`** – `<kraj>-routing.pmtiles`, smerovacia sieť so značkami.
-Balila sa dovnútra mapy s tým istým argumentom ako index, lenže vtedy to bol
-graf Valhally a namerané to tak nebolo: **graf kraja vážil 170 až 190 MB a mapa
-s ním 283 MB**, čiže dve tretiny „základnej mapy" bola sieť, po ktorej sa
-jazdí, nie mapa, ktorá sa kreslí. Dnešný archív je jednotky MB, ale balík
-ostáva vlastný, lebo sú to dve otázky: „chcem vidieť, kadiaľ sa dá ísť"
-(`cesty`) a „chcem, aby ma to tam doviezlo" (`navigacia`) – a kto navigáciu
-nechce, nemá ju za čo sťahovať. Rozdiel medzi nimi je vecný, nie formálny:
+**Smerovacia sieť (`<kraj>-routing.pmtiles`, dlaždice so značkami) je v
+základnej mape tiež** – časť `navigacia` vedľa `trasy` – **a ide aj v balíku
+`cesty`.** Vlastný `-navigacia.zip` mala, kým to bol graf Valhally: **graf
+kraja vážil 170 až 190 MB a mapa s ním 283 MB**, čiže dve tretiny „základnej
+mapy" bola sieť, po ktorej sa jazdí, nie mapa, ktorá sa kreslí. Dnešný archív
+sú jednotky MB, a pri nich platí úvaha indexu: tretí ZIP, o ktorom sa človek
+s mapou nedozvie, je mapa, v ktorej sa nedá nikam doviezť. V `cesty` je preto,
+že kto si berie len siete, má dostať aj tú, po ktorej sa počíta trasa –
 `-transport.pmtiles` je kreslený obraz s orezanou a zjednodušenou geometriou
 bez odbočovacích zákazov, takže sa z neho routovať **nedá**;
 `-routing.pmtiles` je tá istá sieť ako graf – rozpis
-v [`docs/routing-tiles.md`](../docs/routing-tiles.md).
+v [`docs/routing-tiles.md`](../docs/routing-tiles.md). `-navigacia.zip`
+zanikol (`zrusene`) a starý sa na Drive maže.
 
 **Hľadanie aj graf sú vždy za ten jeden región**, ktorého je mapa. Index je
 z toho istého PBF ako mapa; graf sa stavia z `data/region.osm.pbf` toho istého
@@ -3719,10 +3720,9 @@ nad krajom nespúšťa celý build, ale to jedno, čo si vyberieš (`co`):
 | voľba | čo sa prepíše | čo to stojí |
 |---|---|---|
 | `body` | `{kraj}-body.zip` | **minúty** – z toho istého PBF ako mapa |
-| `cesty` | `{kraj}-cesty.zip` (dopravná sieť aj s obmedzeniami na ceste) | **minúty** – z toho istého PBF ako mapa |
+| `cesty` | `{kraj}-cesty.zip` (dopravná sieť aj s obmedzeniami na ceste a smerovacia sieť) | **minúty** – z toho istého PBF ako mapa |
 | `hranice` | `{kraj}-hranice.zip` (hranice území a ich mená) | **minúty** – z toho istého PBF ako mapa |
 | `vodstvo` | `{kraj}-vodstvo.zip` (rieky, jazerá, more) | **minúty** – z toho istého PBF ako mapa |
-| `navigacia` | `{kraj}-navigacia.zip` (smerovacia sieť so značkami) | **minúty** – z toho istého PBF ako mapa |
 | `vrstevnice` | `{kraj}-vrstevnice-skaly.zip` | desiatky minút až hodiny – z výškového modelu |
 | `skaly` | `{kraj}-vrstevnice-skaly.zip` | desiatky minút až hodiny – z výškového modelu |
 | `tienovanie` | `{kraj}-tienovanie.zip` (výškový model – tieňovanie aj 3D terén) | desiatky minút až hodiny – z výškového modelu |

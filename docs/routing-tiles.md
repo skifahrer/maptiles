@@ -102,14 +102,17 @@ stupeň nahor 59 namiesto 511; 100 000 uzlov trvá 2,5 s. InertialFlowCutter
 (rez maximálnym tokom namiesto mediánu) dá lepší oddeľovač a je to miesto, kam
 sa vráti, keď bude na čom merať – nie zmena formátu.
 
-Poradie ráta vlastný workflow **„Navigácia · poradie uzlov"**
-([`routing-order.yml`](../.github/workflows/routing-order.yml)) nad PBF celého
-územia (`workers/routing/pbf.sh`, ten istý, z akého sa stavia celoštátny graf)
-a ukladá ho do cache na Drive pod kľúč `routing-order-v1-<územie>-<run_id>`.
-Build kraja si ho odtiaľ vezme cez `restore-keys`, teda **najnovšie uložené
-poradie toho územia**; ktoré územie to je, hovorí `routing_area` pri krajine
+Poradie ráta [`workers/routing/order.sh`](../workers/routing/order.sh) nad
+PBF celého územia (`workers/routing/pbf.sh`, ten istý, z akého sa stavia
+celoštátny graf) a leží v cache na Drive pod kľúčom
+`routing-order-v1-<územie>-<run_id>`. **Build kraja si ho odtiaľ vezme** cez
+`restore-keys`, teda najnovšie uložené poradie toho územia – a keď tam nie je
+alebo je staršie než 30 dní (`order_max_age_days`), **dopočíta ho sám a uloží**,
+takže prvý kraj štafety ho vyrobí a ostatné ho vezmú. Ručne ho skôr prepočíta
+**„Navigácia · poradie uzlov"** ([`routing-order.yml`](../.github/workflows/routing-order.yml))
+tým istým skriptom. Ktoré územie to je, hovorí `routing_area` pri krajine
 vo `workers/data/regions.json` – všetky kraje krajiny musia stáť na tom istom.
-Že kľúč znie na oboch stranách rovnako, stráži
+Že kľúč znie na všetkých stranách rovnako, stráži
 [`workers/lint/navigation.py`](../workers/lint/navigation.py): keby sa rozišiel,
 build kraja by nenašiel nič, archívy by šli bez poradia a nespadlo by pri tom
 nič.
@@ -149,8 +152,11 @@ Kraj: job `navigacia` v „Mapa · Build map region" volá
 [`navigation-region.yml`](../.github/workflows/navigation-region.yml), ten
 [`workers/routing/build.sh`](../workers/routing/build.sh) nad tým istým
 `data/region.osm.pbf`, z akého je mapa. Archív ide do `_site/tiles/` ako každá
-iná vrstva, do manifestu pod `routing` a odtiaľ do balíka `navigacia`
-(`workers/data/packages.json`). Predfilter PBF si berie zoznam tried zo
+iná vrstva, do manifestu pod `routing` a odtiaľ do **základnej mapy** (časť
+`navigacia`, `casti_baliku` vo `workers/deploy/subory.py`) **aj do balíka
+`cesty`** (`workers/data/packages.json`): kto má mapu, dá sa v nej doviezť, a
+kto si berie len siete, dostane aj tú, po ktorej sa počíta trasa. Vlastný
+balík `navigacia` zanikol (`zrusene`). Predfilter PBF si berie zoznam tried zo
 slovníka (`tags.py --filter`), takže druhý zoznam neexistuje, a hotový archív
 beh overí tou istou kontrolou, aká beží v lintoch.
 

@@ -92,10 +92,11 @@ vrátila staré (širšie) fonty. Preto je skript teraz v `hashFiles(...)`.
 > cestoval v balíku `linie` (kreslená sieť a graf sú tá istá vec z toho istého
 > PBF, raz nakreslená a raz zjazdná), lenže kreslená dopravná sieť váži
 > desiatky MB proti 170–190 za graf – deväť desatín balíka by bol graf. Má
-> preto VLASTNÝ
-> `-navigacia.zip` a veľkosť je v katalógu pod `maps.navigacia`, nie pod
-> `casti`. Rozdiel oproti indexu je práve to číslo, nie iná úvaha –
-> `docs/navigation.md` §7a.
+> preto mal VLASTNÝ
+> `-navigacia.zip`. Rozdiel oproti indexu je práve to číslo, nie iná úvaha –
+> `docs/navigation.md` §7a. Odkedy graf nahradili dlaždice so značkami
+> (jednotky MB), platí zase úvaha indexu: sieť je ČASŤ mapy
+> (`casti.navigacia`) a ide aj v `cesty`; `-navigacia.zip` zanikol.
 >
 > Dôvod je v poslednom odseku tejto sekcie a v čísle: úspora 4–6,5 MB na
 > balíku, ktorý má 65–152 MB, je 4–8 %. Za to sa kúpila mapa, v ktorej

@@ -61,9 +61,10 @@ DEFAULTS = {
     "trails": ("true", "generovať značené trasy z OSM relácií"),
     # násypy, múry, ploty, vedenia, prieseky, pramene, jaskyne, rozhľadne
     "features": ("true", "generovať krajinné prvky, ktoré OpenMapTiles nemá"),
-    # dlaždice so značkami, z ktorých telefón počíta trasu – balík `navigacia`
-    "navigacia": ("true", "stavať smerovaciu sieť pre tento región – balík "
-                          "`navigacia`"),
+    # dlaždice so značkami, z ktorých telefón počíta trasu – ide v základnej
+    # mape aj v balíku `cesty`
+    "navigacia": ("true", "stavať smerovaciu sieť pre tento región – ide "
+                          "v základnej mape aj v balíku `cesty`"),
     # všetko, po čom sa dá cestovať, aj s obmedzeniami na ceste ako atribútmi
     # tých istých ciest – vrstva `transportation` OpenMapTiles ich nenesie
     "transport": ("true", "generovať dopravnú sieť (cesty, trate, trajekty, "
