@@ -66,15 +66,21 @@ if [ -n "${DEM_BBOX:-}" ]; then
   sudo apt-get install -y -qq gdal-bin
   python3 -c 'import numpy' 2>/dev/null \
     || python3 -m pip install --quiet --break-system-packages numpy
-  set +e
-  workers/dem/fetch.sh "$DEM_BBOX" "dem/$DEM_SOURCE" steps-out/routing.tsv "$DEM_SOURCE"
-  DRC=$?
-  set -e
-  if [ "$DRC" -eq 0 ] && [ -s "dem/$DEM_SOURCE/all.vrt" ]; then
-    DEM=(--dem="dem/$DEM_SOURCE/all.vrt")
+  if [ "$DEM_SOURCE" = 'dmr5' ]; then
+    # DMR 5.0 sa nezrkadlí a ani nemá kam: 145 GB. Číta sa oknom cez HTTP
+    # Range, tým istým shimom, akým si sklon berie skaly.
+    DEM=(--dem=drive)
   else
-    echo "::warning::Výškový model kraja ($DEM_SOURCE) sa nestiahol (kód $DRC) – archív ide bez výšok uzlov."
-    bez_vysok
+    set +e
+    workers/dem/fetch.sh "$DEM_BBOX" "dem/$DEM_SOURCE" steps-out/routing.tsv "$DEM_SOURCE"
+    DRC=$?
+    set -e
+    if [ "$DRC" -eq 0 ] && [ -s "dem/$DEM_SOURCE/all.vrt" ]; then
+      DEM=(--dem="dem/$DEM_SOURCE/all.vrt")
+    else
+      echo "::warning::Výškový model kraja ($DEM_SOURCE) sa nestiahol (kód $DRC) – archív ide bez výšok uzlov."
+      bez_vysok
+    fi
   fi
 else
   echo "::warning::Kraj nemá bbox výškového modelu (DEM_BBOX) – archív ide bez výšok uzlov."

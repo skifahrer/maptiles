@@ -223,7 +223,7 @@ Trails) preto kombinuje OSM s externým DEM. Robíme to rovnako:
 |---|---|---|
 | výšky vrcholov | OSM tag `ele` | už v dlaždiciach, vrstva `mountain_peak` |
 | **vrstevnice a skaly** | **Sonny's LiDAR DTM, model 20m** | náš sklad `dem-sonny` na Drive (napĺňa ho *Dáta · výškové modely*, volaný z buildu kraja) |
-| **výška križovatiek v smerovacej sieti** | **ten istý Sonny DEM, 20 m** | `<kraj>-routing.pmtiles`, odoberá [`workers/routing/vysky.py`](routing/vysky.py) zo skladu `dem-sonny`; model si build kraja dopĺňa sám, iný je vec `dem_source` |
+| **výška križovatiek v smerovacej sieti** | **Sonny 20 m zo skladu, alebo DMR 5.0 oknom z Drive** | `<kraj>-routing.pmtiles`, odoberá [`workers/routing/vysky.py`](routing/vysky.py); pri `dem_source: sonny` si model build kraja dopĺňa sám, pri `dmr5` sa nezrkadlí nič a číta sa cez HTTP Range |
 | **tieňovanie reliéfu, 3D terén** | **ten istý Sonny DEM** | vlastný raster `.pmtiles` (terrarium PNG vnútri), uložený v sklade `dem-terrain` |
 | tieňovanie a 3D – záloha | AWS Terrain Tiles (Terrarium) | [registry.opendata.aws](https://registry.opendata.aws/terrain-tiles/), keď sa vlastné nevyrobia |
 

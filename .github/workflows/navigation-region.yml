@@ -92,10 +92,12 @@ jobs:
   # Výškový model si navigácia dopĺňa sama. Kým ho pýtali len vrstevnice
   # a tieňovanie, hotové z cache neprosili o nič a archív kraja ticho vyšiel
   # bez výšok – dvakrát po sebe, pri zelenom behu.
+  # `dmr5` sa sem nepýta: 145 GB sa nezrkadlí, číta sa oknom cez HTTP Range
+  # priamo v stavbe archívu (`vysky.py --dem=drive`).
   vysky:
     name: Výškový model pre výšky uzlov
     runs-on: ubuntu-latest
-    if: ${{ inputs.dem_bbox != '' }}
+    if: ${{ inputs.dem_bbox != '' && inputs.dem_source != 'dmr5' }}
     outputs:
       doplnit: ${{ steps.check.outputs.mirror_routing }}
     steps:

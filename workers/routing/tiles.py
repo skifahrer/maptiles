@@ -223,7 +223,7 @@ def main():
     ap.add_argument("--poradie", default="",
                     help="súbor s poradím uzlov z workers/routing/order.py")
     ap.add_argument("--dem", default="",
-                    help="mozaika výškového modelu (VRT) – výška na uzol")
+                    help="mozaika modelu (VRT), alebo `drive` pre DMR 5.0 z Drive")
     args = ap.parse_args()
 
     import network                                                # noqa: PLC0415
