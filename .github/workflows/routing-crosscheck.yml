@@ -1,0 +1,156 @@
+name: Navigácia · krížová kontrola
+
+# VONKAJŠÍ NÁZOR NA MOTOR V TELEFÓNE. Nad tým istým PBF kraja sa postaví
+# archív pre appku (`<kraj>-routing.pmtiles`) aj graf Valhally, a Valhalla
+# odpovie na náhodné dvojice križovatiek pre auto aj chodca. Artefakt
+# s odpoveďami a archívom si vezme `RoutingCrossCheckTests` v `rikimaps`
+# a porovná vzdialenosť a čas svojho motora s ňou (`.planning/navigation.md`
+# R17). Kým sa oba naše motory (presný a CCH) porovnávali len medzi sebou,
+# toto je jediné miesto, kde ich drží niekto tretí.
+#
+# Výstup ide do skladu `vysledky` na Drive (`publish-results.sh`); artefakt
+# behu je len na stiahnutie v ten deň.
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "Kľúč kraja z `workers/data/regions.json`"
+        required: false
+        default: "bratislavsky"
+        type: string
+      pairs:
+        description: "Koľko dvojíc križovatiek"
+        required: false
+        default: "200"
+        type: string
+      seed:
+        description: "Seed náhodných dvojíc – ten istý seed, tie isté dvojice"
+        required: false
+        default: "1"
+        type: string
+      valhalla_image:
+        description: "Docker obraz Valhally"
+        required: false
+        default: "ghcr.io/valhalla/valhalla-scripted:latest"
+        type: string
+
+env:
+  GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+  DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
+  DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
+  DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
+  OSMFR_BASE: https://download.openstreetmap.fr/extracts
+
+jobs:
+  kontrola:
+    name: Archív, graf Valhally a odpovede
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Priprav priečinky
+        run: mkdir -p steps-out data
+
+      # ten istý rez kraja ako pri mape – iný PBF by bol iná pravda o území
+      - name: PBF regiónu
+        id: region
+        env:
+          REGION: ${{ inputs.region }}
+          AREA_IN: ""
+          OPT_AREA_BBOX: ""
+          OPT_CROP_BBOX: ""
+          OPT_CUSTOM_BBOX: ""
+          OPT_CUSTOM_NAME: ""
+          OPT_CUSTOM_PBF_URL: ""
+          OPT_TEST_AT: ""
+          OPT_TEST_KM2: ""
+        run: workers/plan/pbf.sh
+
+      # archív pre appku z toho istého PBF; bez výšok, tie kontrola neporovnáva
+      - name: Smerovacia sieť → PMTiles
+        id: routing
+        env:
+          REGION_KEY: ${{ steps.region.outputs.key }}
+          REGION_NAME: ${{ steps.region.outputs.name }}
+          ROUTING_COUNTRY: ${{ steps.region.outputs.iso }}
+          SIZE_LIMIT_MB: "900"
+          BUDGET_ROUTING_PCT: "3"
+        run: workers/routing/build.sh
+
+      - name: Graf Valhally
+        id: graph
+        env:
+          REGION_KEY: ${{ steps.region.outputs.key }}
+          ROUTING_PBF: data/region.osm.pbf
+          VALHALLA_IMAGE: ${{ inputs.valhalla_image }}
+        run: workers/routing/graph.sh
+
+      # `use_tiles_ignore_pbf`: obsluhuje hotový tar z predošlého kroku, nič nestavia
+      - name: Spusti Valhallu nad grafom
+        env:
+          VALHALLA_IMAGE: ${{ inputs.valhalla_image }}
+        run: |
+          set -euo pipefail
+          docker run -d --name valhalla -p 8002:8002 \
+            -e use_tiles_ignore_pbf=True -e serve_tiles=True \
+            -e tileset_name=valhalla_tiles \
+            -v "$PWD/custom_files:/custom_files" "$VALHALLA_IMAGE"
+
+      - name: Odpovede Valhally na náhodné dvojice
+        env:
+          REGION_KEY: ${{ steps.region.outputs.key }}
+          PAIRS: ${{ inputs.pairs }}
+          SEED: ${{ inputs.seed }}
+          VALHALLA_VER: ${{ steps.graph.outputs.valhalla }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp "_site/tiles/${REGION_KEY}-routing.pmtiles" out/
+          python3 workers/routing/crosscheck.py \
+            --pbf=data/routing.osm.pbf \
+            --region-key="$REGION_KEY" \
+            --n="$PAIRS" --seed="$SEED" \
+            --valhalla-version="$VALHALLA_VER" \
+            --out="out/krizova-kontrola-${REGION_KEY}.json"
+          docker logs valhalla 2>&1 | tail -20 || true
+          docker rm -f valhalla || true
+          {
+            echo "## Krížová kontrola · $REGION_KEY"
+            echo
+            python3 - "out/krizova-kontrola-${REGION_KEY}.json" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          print(f"* Valhalla: `{d['valhalla']}`, seed {d['seed']}")
+          print(f"* dvojíc: {d['dvojic']}, bez trasy: auto {d['bez_trasy']['auto']}, chodec {d['bez_trasy']['chodec']}")
+          PY
+            echo
+            echo "Odpovede aj archív sú v sklade \`vysledky\` na Drive a dnes aj"
+            echo "v artefakte \`krizova-kontrola-$REGION_KEY\`; porovnanie robí"
+            echo "\`RoutingCrossCheckTests\` v \`rikimaps\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Odlož odpovede a archív do skladu
+        continue-on-error: true
+        env:
+          NAZOV: krizova-kontrola-${{ steps.region.outputs.key }}-s${{ inputs.seed }}
+          SUBORY: out
+          POPIS: Odpovede Valhally na náhodné dvojice a archív kraja, z ktorého sú
+        run: workers/deploy/publish-results.sh
+
+      - name: Odlož odpovede a archív
+        uses: actions/upload-artifact@v7
+        with:
+          name: krizova-kontrola-${{ steps.region.outputs.key }}
+          path: out
+          retention-days: 1
+
+      - name: Odlož meranie krokov
+        if: ${{ always() && hashFiles('steps-out/*') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: steps-routing-crosscheck
+          path: steps-out
+          retention-days: 1
+          if-no-files-found: ignore
