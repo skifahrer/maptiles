@@ -42,10 +42,10 @@ if [ "$AFTER" -lt 2000 ]; then
 fi
 
 # ---- 2. výšky uzlov ----
-# Z modelu, ktorý sa naozaj zrkadlí: DMR 5.0. Iný je vec `ROUTING_DEM_SOURCE`.
-# Bez modelu ide archív bez výšok a `tiles.py` to povie – bicykel a chodec
-# potom rátajú rovinu.
-DEM_SOURCE="${ROUTING_DEM_SOURCE:-dmr5}"
+# Sonny 20 m: výška sa berie na križovatke, a medzi dvomi križovatkami tvar
+# cesty nenesie žiadnu – jemnejší model by tú chybu nezmenšil, len by stiahol
+# rádovo viac bajtov. Iný je vec `ROUTING_DEM_SOURCE`.
+DEM_SOURCE="${ROUTING_DEM_SOURCE:-sonny}"
 
 # Warning v logu prehliadne každý: kraje sa už dvakrát prestavali a `vyska`
 # zostala `false`. Toto je na stránke behu, kde sa výsledok číta.
@@ -56,8 +56,8 @@ bez_vysok() {
 \`${REGION_KEY}\` ide s \`vyska: false\` – bicykel a chodec sa v ňom rátajú, ako
 keby bol kraj rovina, a trasa hlási namiesto stúpania pomlčku.
 
-Doplniť: **Dáta · DMR 5.0**, area \`cele_slovensko\` (5 m dlaždice do skladu
-\`dem-dmr5-v2\`), potom kraj postaviť znova.
+Doplniť: **Dáta · výškové modely**, zdroj \`sonny\` (20 m, celé Slovensko, sklad
+\`dem-sonny\`), potom kraj postaviť znova.
 TEXT
 }
 
