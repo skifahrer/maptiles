@@ -42,24 +42,43 @@ if [ "$AFTER" -lt 2000 ]; then
 fi
 
 # ---- 2. výšky uzlov ----
-# Sonny pokrýva všetko, tak sa neberie z výberu vo formulári. Bez modelu ide
-# archív bez výšok a `tiles.py` to povie – bicykel a chodec potom rátajú rovinu.
+# Z modelu, ktorý sa naozaj zrkadlí: DMR 5.0. Iný je vec `ROUTING_DEM_SOURCE`.
+# Bez modelu ide archív bez výšok a `tiles.py` to povie – bicykel a chodec
+# potom rátajú rovinu.
+DEM_SOURCE="${ROUTING_DEM_SOURCE:-dmr5}"
+
+# Warning v logu prehliadne každý: kraje sa už dvakrát prestavali a `vyska`
+# zostala `false`. Toto je na stránke behu, kde sa výsledok číta.
+bez_vysok() {
+  [ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
+  cat >> "$GITHUB_STEP_SUMMARY" <<TEXT
+### Navigácia: archív bez výšok uzlov
+\`${REGION_KEY}\` ide s \`vyska: false\` – bicykel a chodec sa v ňom rátajú, ako
+keby bol kraj rovina, a trasa hlási namiesto stúpania pomlčku.
+
+Doplniť: **Dáta · DMR 5.0**, area \`cele_slovensko\` (5 m dlaždice do skladu
+\`dem-dmr5-v2\`), potom kraj postaviť znova.
+TEXT
+}
+
 DEM=()
 if [ -n "${DEM_BBOX:-}" ]; then
   sudo apt-get install -y -qq gdal-bin
   python3 -c 'import numpy' 2>/dev/null \
     || python3 -m pip install --quiet --break-system-packages numpy
   set +e
-  workers/dem/fetch.sh "$DEM_BBOX" dem/sonny steps-out/routing.tsv sonny
+  workers/dem/fetch.sh "$DEM_BBOX" "dem/$DEM_SOURCE" steps-out/routing.tsv "$DEM_SOURCE"
   DRC=$?
   set -e
-  if [ "$DRC" -eq 0 ] && [ -s dem/sonny/all.vrt ]; then
-    DEM=(--dem=dem/sonny/all.vrt)
+  if [ "$DRC" -eq 0 ] && [ -s "dem/$DEM_SOURCE/all.vrt" ]; then
+    DEM=(--dem="dem/$DEM_SOURCE/all.vrt")
   else
-    echo "::warning::Výškový model kraja sa nestiahol (kód $DRC) – archív ide bez výšok uzlov."
+    echo "::warning::Výškový model kraja ($DEM_SOURCE) sa nestiahol (kód $DRC) – archív ide bez výšok uzlov."
+    bez_vysok
   fi
 else
   echo "::warning::Kraj nemá bbox výškového modelu (DEM_BBOX) – archív ide bez výšok uzlov."
+  bez_vysok
 fi
 
 # ---- 3. archív ----
