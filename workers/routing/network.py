@@ -24,6 +24,7 @@ class Siet:
 
     def __init__(self):
         self.uzly = {}          # osm id -> (lat_e7, lon_e7)
+        self.vysky = {}         # osm id -> m n. m., keď beh mal výškový model
         self.hrany = []
         self.zakazy = []
         self.zahodene = Counter()

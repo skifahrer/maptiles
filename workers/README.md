@@ -2085,7 +2085,8 @@ s OSM `id` uzlov a s tagmi, a cenu ráta telefón podľa profilu používateľa.
 Stavia to [`workers/routing/build.sh`](routing/build.sh) →
 [`tiles.py`](routing/tiles.py) zo slovníka
 [`workers/data/routing-tags.json`](data/routing-tags.json), poradie uzlov pre
-CCH počíta [`workers/routing/order.py`](routing/order.py) a strážia to
+CCH počíta [`workers/routing/order.py`](routing/order.py), výšky uzlov
+vzorkuje z DEM [`vysky.py`](routing/vysky.py) a strážia to
 [`workers/lint/routing-tiles.py`](lint/routing-tiles.py)
 a [`roadtypes.mjs`](lint/roadtypes.mjs). Formát je
 v [docs/routing-tiles.md](../docs/routing-tiles.md), dôvod
@@ -2094,7 +2095,12 @@ CELÝM územím, takže ho beh kraja vyrobiť nemôže: má vlastný workflow
 **„Navigácia · poradie uzlov"** ([`routing-order.yml`](../.github/workflows/routing-order.yml)),
 ktorý ho uloží do cache na Drive, a build kraja si ho odtiaľ vezme. Ktoré
 územie to je, hovorí `routing_area` pri krajine v
-[`workers/data/regions.json`](data/regions.json). Graf Valhally ostáva ako
+[`workers/data/regions.json`](data/regions.json). Výšky uzlov sú naopak vecou
+behu kraja: `build.sh` si na `dem_bbox` stiahne Sonnyho cez
+[`workers/dem/fetch.sh`](dem/fetch.sh) a `tiles.py --dem` ich dosadí. Vždy
+Sonny, nech si tieňovanie vyberie čokoľvek – archívy toho istého územia sa inak
+o výške nezhodnú. Bez modelu je archív platný, len bez stúpania, tak ako bez
+poradia uzlov. Graf Valhally ostáva ako
 CELOŠTÁTNA referenčná stavba (`navigation.yml`), proti ktorej sa nový motor dá
 krížom skontrolovať – po krajoch sa už nestavia.
 

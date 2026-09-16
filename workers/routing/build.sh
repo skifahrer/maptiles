@@ -41,7 +41,29 @@ if [ "$AFTER" -lt 2000 ]; then
   exit 0
 fi
 
-# ---- 2. archív ----
+# ---- 2. výšky uzlov ----
+# Sonny, nie model, ktorý si vybralo tieňovanie: výška uzla má byť nad každým
+# krajom z toho istého, inak sa dva archívy toho istého územia nezhodnú.
+# Bez modelu je archív platný, len bez stúpania – tak ako bez poradia uzlov.
+VYSKY=()
+if [ -n "${DEM_BBOX:-}" ]; then
+  T_D=$(date +%s)
+  sudo apt-get install -y -qq gdal-bin
+  python3 -c 'import numpy' 2>/dev/null \
+    || python3 -m pip install --quiet --break-system-packages numpy
+  # vlastný tsv sa nepodáva: `fetch.sh` píše krok 20, čo je predfilter
+  if workers/dem/fetch.sh "$DEM_BBOX" dem/sonny "" sonny; then
+    VYSKY=(--dem=dem/sonny/all.vrt)
+    printf '%s\t%s\t%s\t%s\n' "21" "Výškový model pre výšky uzlov" \
+      "$(( $(date +%s) - T_D ))" "sonny" >> steps-out/routing.tsv
+  else
+    echo "::warning::Výškový model sa nestiahol – archív pôjde bez výšok uzlov a trasa v ňom nepovie stúpanie ani klesanie."
+  fi
+else
+  echo "::warning::Beh nedostal \`dem_bbox\`, takže sa výšky uzlov nemajú z čoho vziať a trasa v tomto kraji nepovie stúpanie ani klesanie."
+fi
+
+# ---- 3. archív ----
 # Poradie uzlov sa počíta nad CELÝM stavaným územím (workflow „Navigácia ·
 # poradie uzlov"), takže ho beh kraja vyrobiť nemôže – berie sa z cache na
 # Drive a leží tu. Keď tu nie je, archív ide bez neho a `tiles.py` to povie.
@@ -63,7 +85,7 @@ python3 workers/routing/tiles.py \
   --region-key="$REGION_KEY" \
   --name="$REGION_NAME" \
   --krajina="$KRAJINA" \
-  "${PORADIE[@]}"
+  "${PORADIE[@]}" "${VYSKY[@]}"
 
 if [ ! -s "$OUT" ]; then
   echo "::warning::Archív so smerovaním nevznikol – v území nie je nič, po čom by sa dalo ísť."
@@ -86,5 +108,5 @@ fi
 echo "enabled=true" >> "$GITHUB_OUTPUT"
 echo "size_mb=$MB" >> "$GITHUB_OUTPUT"
 ls -lh "$OUT"
-printf '%s\t%s\t%s\t%s\n' "21" "Smerovacia sieť → PMTiles" "$(( $(date +%s) - T_A ))" \
+printf '%s\t%s\t%s\t%s\n' "22" "Smerovacia sieť → PMTiles" "$(( $(date +%s) - T_A ))" \
   "$(du -h "$OUT" | cut -f1)" >> steps-out/routing.tsv

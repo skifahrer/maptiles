@@ -205,6 +205,8 @@ def main():
                     help="ISO kód krajiny archívu – vstup pre diaľničnú známku")
     ap.add_argument("--poradie", default="",
                     help="súbor s poradím uzlov z workers/routing/order.py")
+    ap.add_argument("--dem", default="",
+                    help="výškový model (VRT) – bez neho ide archív bez výšok")
     args = ap.parse_args()
 
     import network                                                # noqa: PLC0415
@@ -222,6 +224,25 @@ def main():
     print(f"Sieť: {siet.ciest} ciest → {len(siet.uzly)} križovatiek, "
           f"{len(siet.hrany)} hrán, {len(siet.zakazy)} zákazov "
           f"({time.time() - t0:.0f} s)")
+
+    if args.dem:
+        import vysky                                              # noqa: PLC0415
+        t0 = time.time()
+        chyba = vysky.doplni(siet, args.dem)
+        if chyba:
+            # nula medzi skutočnými výškami je horšia než žiadne výšky: hrana
+            # do takého uzla by hlásila stúpanie cez celý kraj
+            siet.vysky = {}
+            print(f"::warning::{chyba} z {len(siet.uzly)} uzlov nemá výšku – "
+                  f"model `{args.dem}` nepokrýva celý kraj. Archív ide BEZ "
+                  f"VÝŠOK a trasa v ňom nepovie stúpanie.")
+        else:
+            print(f"Výšky: {len(siet.vysky)} uzlov z modelu "
+                  f"({time.time() - t0:.0f} s)")
+    else:
+        print("::warning::Archív ide BEZ VÝŠOK UZLOV (`--dem`). Trasa sa "
+              "z neho spočíta, ale stúpanie ani klesanie nepovie – v telefóne "
+              "bude na ich mieste pomlčka.")
 
     poradie = Poradie(args.poradie)
     if args.poradie:
