@@ -143,6 +143,23 @@ def vysky_siete(siet):
     return getattr(siet, "vysky", None) or {}
 
 
+def vzorkuj_vysky(siet, dem):
+    """Výšky z modelu; keď to nejde, archív ide bez nich a beh to povie."""
+    import vysky                                                  # noqa: PLC0415
+    t0 = time.time()
+    try:
+        z_modelu, od_susedov, bez = vysky.dopln(siet, dem)
+    except Exception as e:                                        # noqa: BLE001
+        print(f"::warning::Výšky uzlov z {dem} sa nedali odobrať ({e}) – "
+              f"archív ide bez nich.")
+        return
+    print(f"Výšky: {z_modelu} uzlov z modelu, {od_susedov} od susedov "
+          f"({time.time() - t0:.0f} s)")
+    if bez:
+        print(f"::warning::{bez} z {len(siet.uzly)} uzlov nemá výšku ani od "
+              f"suseda – model {dem} ich územie nepokrýva; v archíve majú 0 m.")
+
+
 def rozdel(siet, slovnik, krajina, poradie, rozpocet=None):
     """Dlaždice z9; ktorej sa telo nezmestí do rozpočtu, tá sa reže hlbšie.
 
@@ -205,6 +222,8 @@ def main():
                     help="ISO kód krajiny archívu – vstup pre diaľničnú známku")
     ap.add_argument("--poradie", default="",
                     help="súbor s poradím uzlov z workers/routing/order.py")
+    ap.add_argument("--dem", default="",
+                    help="mozaika výškového modelu (VRT) – výška na uzol")
     args = ap.parse_args()
 
     import network                                                # noqa: PLC0415
@@ -222,6 +241,13 @@ def main():
     print(f"Sieť: {siet.ciest} ciest → {len(siet.uzly)} križovatiek, "
           f"{len(siet.hrany)} hrán, {len(siet.zakazy)} zákazov "
           f"({time.time() - t0:.0f} s)")
+
+    if args.dem:
+        vzorkuj_vysky(siet, args.dem)
+    else:
+        print("::warning::Archív ide BEZ VÝŠOK UZLOV (`--dem`): bicykel a "
+              "chodec sa v ňom rátajú, ako keby bol kraj rovina, a trasa "
+              "hlási namiesto stúpania pomlčku.")
 
     poradie = Poradie(args.poradie)
     if args.poradie:

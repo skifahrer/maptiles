@@ -223,6 +223,7 @@ Trails) preto kombinuje OSM s externým DEM. Robíme to rovnako:
 |---|---|---|
 | výšky vrcholov | OSM tag `ele` | už v dlaždiciach, vrstva `mountain_peak` |
 | **vrstevnice a skaly** | **Sonny's LiDAR DTM, model 20m** | náš sklad `dem-sonny` na Drive (napĺňa ho workflow *Dáta · výškové modely*) |
+| **výška križovatiek v smerovacej sieti** | **ten istý Sonny DEM** | `<kraj>-routing.pmtiles`, odoberá [`workers/routing/vysky.py`](routing/vysky.py) |
 | **tieňovanie reliéfu, 3D terén** | **ten istý Sonny DEM** | vlastný raster `.pmtiles` (terrarium PNG vnútri), uložený v sklade `dem-terrain` |
 | tieňovanie a 3D – záloha | AWS Terrain Tiles (Terrarium) | [registry.opendata.aws](https://registry.opendata.aws/terrain-tiles/), keď sa vlastné nevyrobia |
 
@@ -2083,7 +2084,8 @@ a na hranici kraja končil; namiesto neho ide do telefónu
 s OSM `id` uzlov a s tagmi, a cenu ráta telefón podľa profilu používateľa.
 Stavia to [`workers/routing/build.sh`](routing/build.sh) →
 [`tiles.py`](routing/tiles.py) zo slovníka
-[`workers/data/routing-tags.json`](data/routing-tags.json), poradie uzlov pre
+[`workers/data/routing-tags.json`](data/routing-tags.json), výšku na uzol
+odoberá zo Sonnyho [`vysky.py`](routing/vysky.py), poradie uzlov pre
 CCH počíta [`workers/routing/order.py`](routing/order.py) a strážia to
 [`workers/lint/routing-tiles.py`](lint/routing-tiles.py)
 a [`roadtypes.mjs`](lint/roadtypes.mjs). Formát je

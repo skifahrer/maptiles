@@ -791,6 +791,7 @@ jobs:
       region_name: ${{ needs.plan.outputs.name }}
       routing_country: ${{ needs.plan.outputs.iso }}
       routing_area: ${{ needs.plan.outputs.routing_area }}
+      dem_bbox: ${{ needs.plan.outputs.dem_bbox }}
       size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
       budget_pct: ${{ needs.plan.outputs.budget_routing_pct }}
 

@@ -25,10 +25,15 @@ a zahadzuje topológiu; presne to robí `-transport.pmtiles` nepoužiteľným na
 smerovanie. PMTiles ostáva ako obálka, lebo katalóg, fronta sťahovania,
 účtovanie miesta aj maska regiónu ten formát už vedia.
 
-Vo verzii 1 **nie je**: nadmorská výška uzlov v archíve kraja – stĺpec aj
-príznak `vyska` sú hotové a `tiles.py` ich zapíše, keď sieť výšky má, ale
-`network.py` ich z PBF nemá odkiaľ vziať; zatiaľ ich nesie len vzorový
-archív. Ďalej chýbajú: zábrany na uzloch (`barrier=*`), podmienené zákazy
+**Výška uzla** nie je z OSM – PBF ju nemá – ale zo Sonnyho 20 m modelu,
+toho istého, z ktorého sú vrstevnice: `build.sh` si ho pre bbox kraja stiahne
+zo skladu a `vysky.py` odoberie bilineárne výšku pod každou križovatkou,
+zaokrúhlenú na meter. Uzol, pod ktorým model nič nemá (za hranicou pokrytia),
+vezme výšku od suseda v grafe; keď ani ten ju nemá, má 0 m a beh to povie.
+Bez modelu ide archív bez stĺpca (`vyska` 0) a telefón hlási namiesto
+stúpania pomlčku.
+
+Vo verzii 1 **nie je**: zábrany na uzloch (`barrier=*`), podmienené zákazy
 (`restriction:conditional`), smerové rýchlosti (`maxspeed:forward`) a krajina
 hrany z `admin_level=2` – tú dnes dosadzuje `--krajina` na celý archív, lebo
 kraj je celý v jednej krajine.

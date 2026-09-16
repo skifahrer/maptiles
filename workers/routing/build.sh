@@ -41,7 +41,28 @@ if [ "$AFTER" -lt 2000 ]; then
   exit 0
 fi
 
-# ---- 2. archív ----
+# ---- 2. výšky uzlov ----
+# Sonny pokrýva všetko, tak sa neberie z výberu vo formulári. Bez modelu ide
+# archív bez výšok a `tiles.py` to povie – bicykel a chodec potom rátajú rovinu.
+DEM=()
+if [ -n "${DEM_BBOX:-}" ]; then
+  sudo apt-get install -y -qq gdal-bin
+  python3 -c 'import numpy' 2>/dev/null \
+    || python3 -m pip install --quiet --break-system-packages numpy
+  set +e
+  workers/dem/fetch.sh "$DEM_BBOX" dem/sonny steps-out/routing.tsv sonny
+  DRC=$?
+  set -e
+  if [ "$DRC" -eq 0 ] && [ -s dem/sonny/all.vrt ]; then
+    DEM=(--dem=dem/sonny/all.vrt)
+  else
+    echo "::warning::Výškový model kraja sa nestiahol (kód $DRC) – archív ide bez výšok uzlov."
+  fi
+else
+  echo "::warning::Kraj nemá bbox výškového modelu (DEM_BBOX) – archív ide bez výšok uzlov."
+fi
+
+# ---- 3. archív ----
 # Poradie uzlov sa počíta nad CELÝM stavaným územím (`order.sh`, z cache na
 # Drive alebo dopočítané) a leží tu. Keď tu nie je, archív ide bez neho
 # a `tiles.py` to povie.
@@ -63,7 +84,7 @@ python3 workers/routing/tiles.py \
   --region-key="$REGION_KEY" \
   --name="$REGION_NAME" \
   --krajina="$KRAJINA" \
-  "${PORADIE[@]}"
+  "${PORADIE[@]}" "${DEM[@]}"
 
 if [ ! -s "$OUT" ]; then
   echo "::warning::Archív so smerovaním nevznikol – v území nie je nič, po čom by sa dalo ísť."
