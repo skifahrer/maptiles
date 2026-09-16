@@ -26,6 +26,7 @@ import http.server
 import json
 import os
 import queue
+import random
 import socket
 import socketserver
 import ssl
@@ -191,6 +192,9 @@ class Pool:
         self.lock = threading.Lock()
         # neprázdne = Drive dáta odmietol a nemá zmysel pýtať sa ďalej
         self.refused = None
+        # dokedy sa nikto nemá pýtať: limit Drive je okno, a kým doň tlačia
+        # ostatné vlákna, neuplynie
+        self.cooldown = 0.0
         # file id → (host, cesta) z presmerovania: podpísaná adresa platí
         # krátko, ale vypýtať ju znova znamená request na každý blok
         self.redirect = {}
@@ -257,6 +261,32 @@ class Pool:
         with self.lock:
             self.redirect.pop(file_id, None)
 
+    # limit Drive
+
+    def _slow_down(self, retry_after, n):
+        """Limit Drive zastaví celý Pool, nie len vlákno, ktoré naň narazilo."""
+        wait = min(2.0 ** n, 60.0)
+        try:
+            wait = max(wait, float(retry_after))
+        except (TypeError, ValueError):
+            pass
+        with self.lock:
+            nove = max(self.cooldown, time.time() + wait)
+            hlasne = nove > self.cooldown + 1
+            self.cooldown = nove
+        if hlasne:
+            print(f"  drive-serve: limit Drive – čakám {wait:.0f} s "
+                  f"(všetky vlákna)", file=sys.stderr, flush=True)
+
+    def _wait_out(self):
+        while True:
+            with self.lock:
+                left = self.cooldown - time.time()
+            if left <= 0:
+                return
+            # rozptyl, aby po uplynutí okna nevyrazili všetky vlákna naraz
+            time.sleep(min(left, 5.0) + random.random() / 2)
+
     # čítanie
 
     def get(self, file_id, rng, tries=6, want=None):
@@ -270,12 +300,14 @@ class Pool:
         # presmerovanie a výmena vypršaného tokenu nie sú zlyhania, na ktoré
         # sa čaká – nech nezožerú pokusy určené na chyby siete
         extra, EXTRA_MAX = 0, 6
+        slow, SLOW_MAX = 0, 8
         renewed = False
         while attempt < tries:
             # limit nepustí ani o dvadsať sekúnd neskôr: stačí naraziť raz za
             # beh, nie raz za blok
             if self.refused:
                 raise RuntimeError(self.refused)
+            self._wait_out()
             host, path, cached = self._where(file_id)
             headers = {"Range": rng, "User-Agent": UA,
                        "Accept-Encoding": "identity"}
@@ -350,6 +382,14 @@ class Pool:
                 if hard:
                     self.refused = hard
                     raise RuntimeError(hard)
+            # limit má vlastný rozpočet: inak ho minie skôr než chyby siete
+            if status == 429 or reason in ("rateLimitExceeded",
+                                           "userRateLimitExceeded"):
+                if slow < SLOW_MAX:
+                    slow += 1
+                    self._slow_down(hdrs.get("Retry-After"), slow)
+                    continue
+            if reason:
                 last = f"HTTP {status} ({reason})"
             elif status == 200:
                 why = drive_refusal(body, self.creds is not None)

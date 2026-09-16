@@ -26,19 +26,26 @@ def main():
                    f"`{MARKER}`. Bez tej stopy sa prázdna vrstva uloží ako "
                    f"hotová a kraj ostane bez skál, kým platí kľúč cache.")
 
-    # hľadá sa podľa podmienky, nie podľa mena kroku: meno je len preklep
+    # krok sa hľadá podľa toho, čo ukladá, nie podľa mena: meno je preklep
     ulozenie = [ln for ln in flow.splitlines()
                 if "if:" in ln
                 and "steps.hotove.outputs.pocitaj == 'true'" in ln
-                and "hashFiles('contours-out/**')" in ln]
+                and "contours-out/rock" in ln]
     if not ulozenie:
         bad.append("v .github/workflows/dem-layers.yml sa nedá nájsť krok, "
-                   "ktorý ukladá `contours-out` do cache skál – oprav túto "
-                   "kontrolu spolu s workflowom.")
-    elif not any(f"hashFiles('{MARKER}') == ''" in ln for ln in ulozenie):
-        bad.append(f"ukladanie `contours-out` do cache v dem-layers.yml "
-                   f"neodmieta beh s `{MARKER}`. Prázdne skaly sa uložia pod "
-                   f"dnešným kľúčom a ďalšie behy ich vezmú ako hotové.")
+                   "ktorý ukladá skaly do cache – oprav túto kontrolu spolu "
+                   "s workflowom.")
+    else:
+        for podmienka, preco in (
+                ("hashFiles('contours-out/rocks.pmtiles') != ''",
+                 "beh, ktorý sa k dlaždiciam vôbec nedostal (napr. pád "
+                 "v sklone), sa uloží ako hotová vrstva"),
+                (f"hashFiles('{MARKER}') == ''",
+                 "prázdna vrstva z padnutého výpočtu sa uloží ako hotová")):
+            if not any(podmienka in ln for ln in ulozenie):
+                bad.append(f"ukladanie skál do cache v dem-layers.yml nemá "
+                           f"podmienku `{podmienka}` – {preco} a ďalšie behy "
+                           f"ju vezmú z cache.")
 
     if MARKER not in site:
         bad.append(f"workers/contours-rocks/site.sh sa nepozerá na `{MARKER}` "

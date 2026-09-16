@@ -755,7 +755,7 @@ jobs:
       # ukladá sa hneď a len to, čo sa naozaj spočítalo: vrstva vzatá po
       # predpone by o sebe tvrdila dnešný otlačok skriptov
       - name: Cache vrstevníc (save)
-        if: ${{ always() && inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' && hashFiles('contours-out/**') != '' }}
+        if: ${{ always() && inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' && hashFiles('contours-out/contours.pmtiles') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
         with:
@@ -959,10 +959,10 @@ jobs:
           DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
         run: bash workers/contours-rocks/build.sh
 
-      # `rock-failed.txt` = prázdna vrstva z pádu; uložiť ju znamená vydávať
-      # ju za hotovú, kým kľúč platí
+      # ukladá sa len hotová vrstva: bez `rocks.pmtiles` alebo s `rock-failed.txt`
+      # by sa pod dnešným kľúčom tvárilo ako hotové aj to, čo spadlo
       - name: Cache skál (save)
-        if: ${{ always() && inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' && hashFiles('contours-out/**') != '' && hashFiles('contours-out/rock-failed.txt') == '' }}
+        if: ${{ always() && inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' && hashFiles('contours-out/rocks.pmtiles') != '' && hashFiles('contours-out/rock-failed.txt') == '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
         with:

@@ -1645,7 +1645,9 @@ dva týždne balíka `vrstevnice-skaly` bez jedinej skaly. Odvtedy:
 | kde | čo drží |
 |---|---|
 | [`contours-rocks/rocks.sh`](contours-rocks/rocks.sh) | pád zaznačí do `contours-out/rock-failed.txt` a do štatistiky (`failed=1`) |
-| [`dem-layers.yml`](../.github/workflows/dem-layers.yml) | taký beh **neuloží do cache** – ďalší počíta znova |
+| [`dem-layers.yml`](../.github/workflows/dem-layers.yml) | do cache ide len beh s hotovým `rocks.pmtiles` a bez tej stopy – ďalší počíta znova |
+| [`drive/serve.py`](drive/serve.py) | limit Drive (HTTP 429) spomalí **celý** bazén spojení; kým doň tlačia ostatné vlákna, okno limitu neuplynie |
+| [`contours-rocks/slope-chunks.py`](contours-rocks/slope-chunks.py) | časti sklonu, ktoré spadli, sa po dvoch minútach skúsia ešte raz po jednej – sedem z 231 už nezhodí hodinový beh |
 | [`contours-rocks/site.sh`](contours-rocks/site.sh) | prázdnu vrstvu nedá do mapy ani do balíka: v mape sa nedá odlíšiť od kraja, v ktorom skaly nie sú |
 | [`deploy/summary.sh`](deploy/summary.sh) | v súhrne behu je to pád, nie „počet plôch: 0" |
 | [`contours-rocks/rock-plan.py`](contours-rocks/rock-plan.py) | v hláške pádu ostane stderr GDALu – bez neho je tam len „exit status 1" |
