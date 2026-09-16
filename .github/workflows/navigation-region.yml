@@ -37,6 +37,12 @@ on:
         required: false
         default: ""
         type: string
+      # výška na uzol zo Sonnyho; bez bboxu ide archív bez výšok
+      dem_bbox:
+        description: "Bbox W,S,E,N výškového modelu (`dem_bbox` z prípravy)"
+        required: false
+        default: ""
+        type: string
       size_limit_mb:
         description: "Rozpočet celej stránky v MB"
         required: false
@@ -53,7 +59,7 @@ on:
         default: "30"
         type: string
     # `workflow_call` nededí secrets sám. Bez nich sa cache na Drive nemá ako
-    # otvoriť a archív by šiel bez poradia uzlov.
+    # otvoriť a archív by šiel bez poradia uzlov aj bez výšok.
     secrets:
       GDRIVE_CREDENTIALS:
         required: false
@@ -142,6 +148,7 @@ jobs:
           REGION_KEY: ${{ inputs.region_key }}
           REGION_NAME: ${{ inputs.region_name }}
           ROUTING_COUNTRY: ${{ inputs.routing_country }}
+          DEM_BBOX: ${{ inputs.dem_bbox }}
           SIZE_LIMIT_MB: ${{ inputs.size_limit_mb }}
           BUDGET_ROUTING_PCT: ${{ inputs.budget_pct }}
         run: workers/routing/build.sh
