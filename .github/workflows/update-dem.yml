@@ -1,7 +1,8 @@
 name: Dáta · výškové modely
 
-# JEDINÁ sťahovacia pipeline pre výškové modely: vyber `source`, ona ho zoženie,
-# preveďie na dlaždice 1°×1° vo WGS84 a uloží do skladu na Drive.
+# JEDINÁ sťahovacia pipeline pre výškové modely: podľa `what` zoženie model,
+# prevedie ho na dlaždice 1°×1° vo WGS84 a uloží do skladu na Drive. Spúšťa sa
+# len z buildu kraja, ktorý si model vypýta sám.
 #
 # | source  | čo to je                    | sklad        | mriežka |
 # |---------|-----------------------------|--------------|---------|
@@ -25,41 +26,10 @@ name: Dáta · výškové modely
 # Licencia: Sonny's LiDAR DTM – CC BY 4.0, zdroj sa uvádza v atribúcii mapy.
 
 on:
-  workflow_dispatch:
-    inputs:
-      what:
-        description: "Čo stiahnuť"
-        required: true
-        default: "dmr35 | https://opendata.skgeodesy.sk/static/DMR3_5/dmr3_5-10.zip"
-        type: choice
-        options:
-          - "dmr35 | https://opendata.skgeodesy.sk/static/DMR3_5/dmr3_5-10.zip"
-          - "sonny | Google Drive (20 m, celé Slovensko)"
-          - "sonny1 | Google Drive (1″ .hgt, krok 1 m – hrubší, chce token)"
-          - "ugkk  | DMR 5.0 1 m – vyplň custom_url odkazom z exportu ZBGIS"
-          - "vlastné | vyplň custom_url"
-      custom_url:
-        description: "URL, keď je vyššie „vlastné“ alebo „ugkk“. ZIP/TIF/HGT; viac odkazov oddeľ medzerou"
-        required: false
-        default: ""
-        type: string
-      store:
-        description: "Do ktorého skladu na Drive uložiť (prázdne = podľa výberu)"
-        required: false
-        default: ""
-        type: string
-      area:
-        description: "Len pre ugkk: pohorie z workers/data/areas.json alebo bbox W,S,E,N"
-        required: false
-        default: vysoke_tatry
-        type: string
-      force:
-        description: "Stiahnuť nanovo, aj keď už dáta v sklade sú"
-        required: false
-        default: false
-        type: boolean
-  # volá ho aj Build map, keď v sklade nie sú dlaždice pre jeho územie.
-  # `workflow_call` nepozná `type: choice`, tak sem chodí holý kľúč zdroja.
+  # JEDINÝ VSTUP: volá ho Build map, keď v sklade nie sú dlaždice pre jeho
+  # územie – vrstevnice, tieňovanie a od 254 aj výšky uzlov navigácie.
+  # Ručné spúšťanie nemá: sklad, ktorý nikto nepýta, netreba napĺňať, a
+  # formulár, na ktorý sa zabudlo, stál dve kolá stavania ôsmich krajov.
   workflow_call:
     inputs:
       what:

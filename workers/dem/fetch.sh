@@ -97,7 +97,7 @@ if [ "$have" -eq 0 ]; then
     echo "Doplniť ich mal job 'Doplniť DMR 5.0 (dlaždice)' – pozri jeho log."
     echo "Ručne: workflow 'Dáta · DMR 5.0', area: $(python3 "$HERE/target.py" --source=dmr5 --bbox="$BBOX" | sed -n 's/^degrees=//p'), tiles: true, mriežka 5 m."
   else
-    echo "Spusti workflow 'Dáta · výškové modely' so zdrojom, ktorý toto územie pokrýva."
+    echo "Dopĺňa ho build kraja sám (job 'Doplniť výškový model') – pozri jeho log."
   fi
   [ "$SOURCE" = "sonny" ] && exit 1
   exit 3
@@ -105,7 +105,7 @@ fi
 if [ "$have" -lt "$WANT" ]; then
   # bbox je obdĺžnik, produkt pokrýva krajinu – rohové bunky za hranicou v ňom
   # byť nemusia. Radšej diera, ktorú vidno, než výplň z modelu povrchu.
-  echo "::warning::V sklade $SRC_STORE nie je $(( WANT - have )) z $WANT dlaždíc – tam vrstevnice, skaly ani tieňovanie nebudú. Ak to územie má mať terén, spusti 'Dáta · výškové modely' s priečinkom, ktorý ho pokrýva."
+  echo "::warning::V sklade $SRC_STORE nie je $(( WANT - have )) z $WANT dlaždíc – tam vrstevnice, skaly ani tieňovanie nebudú. Ak to územie má mať terén, tie stupne model nepokrýva; iný zdroj je vec výberu vo formulári Build map."
 fi
 echo "$SRC_LABEL: $have z $WANT dlaždíc zo skladu $SRC_STORE ✓"
 

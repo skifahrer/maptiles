@@ -37,11 +37,16 @@ on:
         required: false
         default: ""
         type: string
-      # výška na uzol zo Sonnyho; bez bboxu ide archív bez výšok
+      # výška na uzol; bez bboxu ide archív bez výšok
       dem_bbox:
         description: "Bbox W,S,E,N výškového modelu (`dem_bbox` z prípravy)"
         required: false
         default: ""
+        type: string
+      dem_source:
+        description: "Model, z ktorého sa berú výšky uzlov (sonny, dmr35, dmr5)"
+        required: false
+        default: "sonny"
         type: string
       size_limit_mb:
         description: "Rozpočet celej stránky v MB"
@@ -84,9 +89,46 @@ env:
   OSMFR_BASE: https://download.openstreetmap.fr/extracts
 
 jobs:
+  # Výškový model si navigácia dopĺňa sama. Kým ho pýtali len vrstevnice
+  # a tieňovanie, hotové z cache neprosili o nič a archív kraja ticho vyšiel
+  # bez výšok – dvakrát po sebe, pri zelenom behu.
+  vysky:
+    name: Výškový model pre výšky uzlov
+    runs-on: ubuntu-latest
+    if: ${{ inputs.dem_bbox != '' }}
+    outputs:
+      doplnit: ${{ steps.check.outputs.mirror_routing }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Je model v sklade?
+        id: check
+        env:
+          BBOX: ${{ inputs.dem_bbox }}
+          SRC_ROUTING: ${{ inputs.dem_source }}
+        run: workers/dem/check.sh
+
+  doplnit-vysky:
+    name: Doplniť výškový model
+    needs: [vysky]
+    if: ${{ !cancelled() && needs.vysky.outputs.doplnit != '' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/update-dem.yml
+    with:
+      what: ${{ needs.vysky.outputs.doplnit }}
+    secrets:
+      GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+      DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
+      DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
+
   routing:
     name: Smerovacia sieť z PBF kraja
     runs-on: ubuntu-latest
+    # `!cancelled()`: doplnenie sa preskočí, keď je model v sklade, a
+    # preskočený job by inak zhodil aj tento
+    needs: [vysky, doplnit-vysky]
+    if: ${{ !cancelled() }}
     outputs:
       enabled: ${{ steps.routing.outputs.enabled }}
       size_mb: ${{ steps.routing.outputs.size_mb }}
@@ -149,6 +191,7 @@ jobs:
           REGION_NAME: ${{ inputs.region_name }}
           ROUTING_COUNTRY: ${{ inputs.routing_country }}
           DEM_BBOX: ${{ inputs.dem_bbox }}
+          ROUTING_DEM_SOURCE: ${{ inputs.dem_source }}
           SIZE_LIMIT_MB: ${{ inputs.size_limit_mb }}
           BUDGET_ROUTING_PCT: ${{ inputs.budget_pct }}
         run: workers/routing/build.sh

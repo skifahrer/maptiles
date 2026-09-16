@@ -222,8 +222,8 @@ Trails) preto kombinuje OSM s externým DEM. Robíme to rovnako:
 | čo | zdroj | kde sa berie |
 |---|---|---|
 | výšky vrcholov | OSM tag `ele` | už v dlaždiciach, vrstva `mountain_peak` |
-| **vrstevnice a skaly** | **Sonny's LiDAR DTM, model 20m** | náš sklad `dem-sonny` na Drive (napĺňa ho workflow *Dáta · výškové modely*) |
-| **výška križovatiek v smerovacej sieti** | **ten istý Sonny DEM, 20 m** | `<kraj>-routing.pmtiles`, odoberá [`workers/routing/vysky.py`](routing/vysky.py) zo skladu `dem-sonny`; iný model cez `ROUTING_DEM_SOURCE` |
+| **vrstevnice a skaly** | **Sonny's LiDAR DTM, model 20m** | náš sklad `dem-sonny` na Drive (napĺňa ho *Dáta · výškové modely*, volaný z buildu kraja) |
+| **výška križovatiek v smerovacej sieti** | **ten istý Sonny DEM, 20 m** | `<kraj>-routing.pmtiles`, odoberá [`workers/routing/vysky.py`](routing/vysky.py) zo skladu `dem-sonny`; model si build kraja dopĺňa sám, iný je vec `dem_source` |
 | **tieňovanie reliéfu, 3D terén** | **ten istý Sonny DEM** | vlastný raster `.pmtiles` (terrarium PNG vnútri), uložený v sklade `dem-terrain` |
 | tieňovanie a 3D – záloha | AWS Terrain Tiles (Terrarium) | [registry.opendata.aws](https://registry.opendata.aws/terrain-tiles/), keď sa vlastné nevyrobia |
 
@@ -266,9 +266,9 @@ Vidno to aj na jednom bode: v dlaždici `N49E020` vyjde Gerlachovský štít
 [priečinok na Drive](https://drive.google.com/drive/folders/1FCXPutDU6DvnTEA4PY6iFOQKiuVd11j4)).
 Predvolený nie je a podľa tabuľky vyššie ani nemá byť: na skaly je `sonny`
 lepší a `dmr5` ešte lepší. Zmysel dáva tam, kde 20m model nesiaha, alebo keď
-si chceš to porovnanie zopakovať. Doplní sa ako ktorýkoľvek iný zdroj – buď
-sám (`Build map` si ho vypýta), alebo ručne cez *Dáta · výškové modely* so
-`what: sonny1`.
+si chceš to porovnanie zopakovať. Doplní sa ako ktorýkoľvek iný zdroj: `Build
+map` si ho vypýta sám, keď ho niektorá vrstva alebo navigácia vyberie – ručné
+spustenie *Dáta · výškové modely* nemá, od 254 je to volaný workflow.
 
 **Čo v tom priečinku naozaj je** (prečítané 2026-08-11, nie odhadnuté): 15
 dlaždíc `N47E017` … `N49E022`, každá ako `<dlaždica>.zip` s jedným

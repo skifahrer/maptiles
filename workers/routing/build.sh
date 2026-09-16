@@ -56,8 +56,8 @@ bez_vysok() {
 \`${REGION_KEY}\` ide s \`vyska: false\` – bicykel a chodec sa v ňom rátajú, ako
 keby bol kraj rovina, a trasa hlási namiesto stúpania pomlčku.
 
-Doplniť: **Dáta · výškové modely**, zdroj \`sonny\` (20 m, celé Slovensko, sklad
-\`dem-sonny\`), potom kraj postaviť znova.
+Model si build dopĺňa sám (job **Doplniť výškový model**) – keď archív aj tak
+ide bez výšok, odpoveď je v logu toho jobu.
 TEXT
 }
 

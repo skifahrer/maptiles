@@ -91,7 +91,7 @@ fetch_dem() { # $1 = zdroj → DEM_VRT, DEM_GOT (čo sa NAOZAJ použilo)
     elif [ "$src" = 'dmr5' ]; then
       how="workflow 'Dáta · DMR 5.0' s area: cele_slovensko"
     else
-      how="workflow 'Dáta · výškové modely' so zdrojom $src"
+      how="beh s týmto zdrojom, ktorý si model vypýta sám ($src)"
     fi
     if [ "$OPT_UGKK_FALLBACK" != 'true' ]; then
       echo "::error::Model $src pre toto územie nie je k dispozícii a ugkk_fallback je vypnutý. Naplň ho ($how), zapni fallback, alebo vyber iný zdroj."

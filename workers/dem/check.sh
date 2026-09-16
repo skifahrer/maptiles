@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Je v sklade na Drive výškový model pre naše územie – a keď nie, čo doplniť?
 #
-# Pre každú z troch vrstiev sa spýta `workers/dem/target.py`, ktorý sklad
-# a ktoré súbory jej zdroj potrebuje, a pozrie sa, či tam sú.
+# Pre každú vrstvu sa spýta `workers/dem/target.py`, ktorý sklad a ktoré súbory
+# jej zdroj potrebuje, a pozrie sa, či tam sú. Vrstvy sú tri kreslené
+# (vrstevnice, skaly, tieňovanie) a výšky uzlov smerovacej siete.
 #
 # `dmr5` má dve podoby a prepína medzi nimi kľúč výrezu, ktorý vrstva podá do
 # `fetch.sh`: vrstevnice a skaly podávajú výrez, tieňovanie nie (robí sa na
@@ -15,7 +16,7 @@
 #
 # Použitie:
 #   BBOX=W,S,E,N AREA_KEY=vysoke_tatry AREA_BBOX=W,S,E,N \
-#   SRC_CONTOURS=dmr5 SRC_ROCKS=dmr5 SRC_TERRAIN=dmr5 \
+#   SRC_CONTOURS=dmr5 SRC_ROCKS=dmr5 SRC_TERRAIN=dmr5 SRC_ROUTING=sonny \
 #   GDRIVE_CREDENTIALS=… workers/dem/check.sh
 #
 # Do $GITHUB_OUTPUT: `demkey_<vrstva>`, `mirror_<vrstva>`, `mirror_dmr5_area`,
@@ -35,7 +36,8 @@ OUT="${GITHUB_OUTPUT:-/dev/null}"
 # ktorá vrstva podáva kľúč výrezu – viď hlavičku
 layer_area_key() {
   case "$1" in
-    terrain) echo cely ;;
+    # oba sú na celý kraj: tieňovanie aj výšky uzlov, kde 1 m verzia neexistuje
+    terrain|routing) echo cely ;;
     *) echo "$AREA_KEY" ;;
   esac
 }
@@ -181,7 +183,8 @@ PY
 for pair in \
   "contours:${SRC_CONTOURS:-}" \
   "rocks:${SRC_ROCKS:-}" \
-  "terrain:${SRC_TERRAIN:-}"; do
+  "terrain:${SRC_TERRAIN:-}" \
+  "routing:${SRC_ROUTING:-}"; do
   layer="${pair%%:*}"
   src="${pair#*:}"
   DEMKEY=""
