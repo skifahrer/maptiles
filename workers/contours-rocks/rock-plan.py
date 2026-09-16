@@ -46,8 +46,20 @@ CONTOUR_SRC_CELLS_PER_S = 1.2e7
 MOSAIC_MB_PER_GCELL = 240    # Int16 + DEFLATE + PREDICTOR
 
 
+class ChybaPrikazu(subprocess.CalledProcessError):
+    """CalledProcessError, ktorý v hláške nesie aj stderr."""
+
+    def __str__(self):
+        chvost = (self.stderr or "").strip()[-2000:]
+        return super().__str__() + (f"\nstderr: {chvost}" if chvost else "")
+
+
 def run(cmd, **kw):
-    return subprocess.run(cmd, check=True, capture_output=True, text=True, **kw)
+    # bez tohto ostane z pádu len „exit status 1" a dôvod nikde
+    try:
+        return subprocess.run(cmd, check=True, capture_output=True, text=True, **kw)
+    except subprocess.CalledProcessError as exc:
+        raise ChybaPrikazu(exc.returncode, exc.cmd, exc.output, exc.stderr) from None
 
 
 def to_metric(bbox):

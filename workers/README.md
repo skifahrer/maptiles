@@ -1635,6 +1635,22 @@ nastaveniami ich len stiahne – sekundy namiesto desiatok minút. Iné nastaven
 dajú iné meno súboru, takže sa nikdy nepomiešajú. Ako to prepočítať nanovo,
 hovorí [Pregenerovanie](#pregenerovanie).
 
+**Padnutý výpočet sa neukladá.** Skaly sú bonus nad vrstevnicami, takže ich pád
+nezhodí build – vrstva ostane prázdna a beh je zelený. Kým sa taká vrstva
+ukladala do cache, bol z jedného pádu trvalý stav: Žilinskému kraju spadol
+`ogr2ogr` pri prevode obrysov do GPKG (beh 34872114514), `rocks.pmtiles` mal
+17 kB a nula plôch, a každý ďalší build si ho vzal z cache pod platným kľúčom –
+dva týždne balíka `vrstevnice-skaly` bez jedinej skaly. Odvtedy:
+
+| kde | čo drží |
+|---|---|
+| [`contours-rocks/rocks.sh`](contours-rocks/rocks.sh) | pád zaznačí do `contours-out/rock-failed.txt` a do štatistiky (`failed=1`) |
+| [`dem-layers.yml`](../.github/workflows/dem-layers.yml) | taký beh **neuloží do cache** – ďalší počíta znova |
+| [`contours-rocks/site.sh`](contours-rocks/site.sh) | prázdnu vrstvu nedá do mapy ani do balíka: v mape sa nedá odlíšiť od kraja, v ktorom skaly nie sú |
+| [`deploy/summary.sh`](deploy/summary.sh) | v súhrne behu je to pád, nie „počet plôch: 0" |
+| [`contours-rocks/rock-plan.py`](contours-rocks/rock-plan.py) | v hláške pádu ostane stderr GDALu – bez neho je tam len „exit status 1" |
+| [`lint/rocks-empty.py`](lint/rocks-empty.py) | stráži celú tú reťaz |
+
 Hotové skaly a vrstevnice si každý build odloží aj do **skladu `vysledky`**
 (`teren-{región}-s{prah}-g{mriežka}-{dátum}-r{beh}.tar.zst`) – aj s GPKG
 geometriou, takže sa dajú stiahnuť a pozrieť v QGISe bez ďalšieho buildu.

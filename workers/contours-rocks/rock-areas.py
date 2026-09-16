@@ -349,8 +349,11 @@ def main():
                 # preznačí. Bez toho ostane vrstva bez CRS, `-t_srs` nižšie nemá
                 # z čoho prepočítať a Planetiler dostane dĺžku 4 800 000 –
                 # `rocks.pmtiles` má nula dlaždíc a mapa je zelená a bez skál.
+                # zlepené švy sú polygóny, neprelepené bloky multipolygóny a
+                # jeden blok má aj stovky MB – oboje tu ogr2ogr zhadzuje
                 run(["ogr2ogr", "-f", "GPKG", bands, seq, "-nln", "band",
-                     "-a_srs", METRIC])
+                     "-a_srs", METRIC, "-nlt", "PROMOTE_TO_MULTI"],
+                    env={**os.environ, "OGR_GEOJSON_MAX_OBJ_SIZE": "0"})
             else:
                 # žiadny `max_s`: strop času tu nemá čo zachrániť. Tep dostane
                 # `--heartbeat`, nech sa dá zhora nastaviť, ako často má byť počuť.
