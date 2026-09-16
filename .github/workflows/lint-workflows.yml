@@ -496,6 +496,11 @@ jobs:
       - name: Prázdny stupeň sa overuje presne a podpisuje sa
         run: python3 workers/lint/dem-empty.py
 
+      # to isté o krok ďalej: prázdnu vrstvu z pádu si cache odložila ako
+      # hotovú a kraj ostal bez skál
+      - name: Pád výpočtu skál sa neukladá ako hotová vrstva
+        run: python3 workers/lint/rocks-empty.py
+
       # dno zoomu je napísané dvakrát (schéma vyrába, štýl kreslí); keď sa
       # rozídu, platíme dlaždice, ktoré nikto nevidí, alebo je v mape diera
       - name: "Štýl: vrstevnice a skaly majú v schéme a v štýle to isté dno"

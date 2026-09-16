@@ -103,6 +103,13 @@ elif [ -s steps-out/rock-stats.txt ]; then
     echo
     echo "## Skalné plochy – aký to je detail"
     echo
+    # inak je pád vidieť len ako „počet plôch: 0", čo vyzerá ako rovina
+    if [ "${failed:-0}" = '1' ]; then
+      echo "> ❌ **Výpočet skál spadol** – vrstva je prázdna, do mapy ani do"
+      echo "> cache nešla a ďalší beh ju počíta znova. Dôvod je v logu jobu"
+      echo "> *Skaly*, v hláške nad „Skalné plochy sa nevygenerovali\"."
+      echo
+    fi
     echo "| vlastnosť | hodnota |"
     echo "|---|---|"
     echo "| územie | ${area_name:-celý región}${area_bbox:+ (\`$area_bbox\`)} |"

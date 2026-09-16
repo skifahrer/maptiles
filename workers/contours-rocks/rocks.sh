@@ -175,8 +175,10 @@ if [ "$OPT_ROCKS" = 'true' ]; then
         && echo "Uložené do skladu $ROCK_STORE ako $ROCK_ASSET" \
         || echo "::warning::Skaly sa nepodarilo uložiť do skladu $ROCK_STORE – nabudúce sa budú počítať znova."
     else
-      echo "::warning::Skalné plochy sa nevygenerovali – vrstva bude prázdna."
+      echo "::warning::Skalné plochy sa nevygenerovali (dôvod je v hláške nad tým) – vrstva bude prázdna. Do cache ani do mapy taký beh nejde, takže ďalší to skúsi znova."
       make_empty_rock
+      # bez nej si ju cache odloží ako hotovú vrstvu
+      echo "$RC" > contours-out/rock-failed.txt
     fi
     echo "::endgroup::"
   fi
@@ -213,6 +215,10 @@ if [ "$OPT_ROCKS" = 'true' ]; then
   fi
   # z ktorého modelu sú skaly – do súhrnu; pri `tienovanie` prázdny
   printf "rock_dem='%s'\n" "$ROCK_DEM_USED" >> contours-out/rock-stats.txt
+  # nula plôch z pádu a nula plôch z roviny vyzerajú v súhrne rovnako
+  if [ -s contours-out/rock-failed.txt ]; then
+    echo "failed=1" >> contours-out/rock-stats.txt
+  fi
   # výrez do štatistiky, nech je v súhrne vidieť, že skaly nie sú všade.
   # Hodnoty v apostrofoch: súhrn si súbor načíta cez `.` a meno má medzeru.
   { printf "area_key='%s'\n" "$AREA_KEY"

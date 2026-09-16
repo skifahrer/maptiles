@@ -39,7 +39,9 @@ C_NASTAVENIA="contours-v11-c$CS-$B-i${CONTOUR_INTERVAL}-z${OPT_CONTOUR_MAXZOOM}-
 # skaly: prvý vlastný kľúč. Zdroj je v ňom preto, že `dmr5` a `tienovanie`
 # dávajú úplne iné plochy. `ROCK_ALGO`, `ROCK_VEC_RES`, `ROCK_SIMPLIFY`
 # a `ROCK_SMOOTH` sú v `env:` workflowu a menia tvar obrysu.
-R_NASTAVENIA="rocks-v1-r$RS-$B-z${OPT_ROCK_MAXZOOM}p${OPT_ROCK_PLNE}d${OPT_ROCK_ZAPLN_DIERY}-s${ROCK_SLOPE}g${OPT_ROCK_RES}-${ROCK_ALGO}v${ROCK_VEC_RES}t${ROCK_SIMPLIFY}x${ROCK_SMOOTH}-a$RA-${OPT_ROCK_IMG_ASSET}"
+# `v2`: pod `v1` ležia prázdne skaly z padnutých výpočtov a berie ich aj
+# predpona `rocks_hotove` – nový kľúč je jediné, čo ich obíde.
+R_NASTAVENIA="rocks-v2-r$RS-$B-z${OPT_ROCK_MAXZOOM}p${OPT_ROCK_PLNE}d${OPT_ROCK_ZAPLN_DIERY}-s${ROCK_SLOPE}g${OPT_ROCK_RES}-${ROCK_ALGO}v${ROCK_VEC_RES}t${ROCK_SIMPLIFY}x${ROCK_SMOOTH}-a$RA-${OPT_ROCK_IMG_ASSET}"
 # `v6`: za hranicou kraja terén pokračuje okolím namiesto roviny 0 m (rovina
 # tam robila zvislú stenu). Tvar dlaždíc sa nezmenil, len obsah – bez novej
 # verzie by ich cache vrátila po starom.

@@ -34,14 +34,22 @@ RZ=$(cat contours-out/rock-maxzoom.txt 2>/dev/null || echo '')
 case "$RZ" in ''|*[!0-9]*) RZ="$OPT_ROCK_MAXZOOM" ;; esac
 case "$RZ" in ''|*[!0-9]*) RZ=16 ;; esac
 if [ "$RZ" -gt 16 ]; then RZ=16; fi
-if [ "$OPT_ROCKS" = 'true' ] && [ -s "$RPM" ]; then
+# prázdna vrstva z pádu sa v mape nedá odlíšiť od kraja bez skál
+ZLYHALO=false
+if [ -s contours-out/rock-failed.txt ]; then
+  ZLYHALO=true
+fi
+if [ "$OPT_ROCKS" = 'true' ] && [ "$ZLYHALO" != 'true' ] && [ -s "$RPM" ]; then
   cp "$RPM" "_site/tiles/$KEY-rocks.pmtiles"
   echo "rocks_enabled=true" >> "$GITHUB_OUTPUT"
   echo "Skaly do z$RZ, $(du -h "$RPM" | cut -f1)"
 else
   echo "rocks_enabled=false" >> "$GITHUB_OUTPUT"
-  [ "$CHCE_ROCKS" = 'true' ] \
-    && echo "::warning::Skaly sa nevygenerovali – mapa pôjde bez nich."
+  if [ "$ZLYHALO" = 'true' ]; then
+    echo "::warning::Výpočet skál spadol – mapa aj balík \`vrstevnice-skaly\` idú len s vrstevnicami. Dôvod je v logu jobu Skaly; ďalší beh ich počíta znova."
+  elif [ "$CHCE_ROCKS" = 'true' ]; then
+    echo "::warning::Skaly sa nevygenerovali – mapa pôjde bez nich."
+  fi
 fi
 echo "rocks_maxzoom=$RZ" >> "$GITHUB_OUTPUT"
 
