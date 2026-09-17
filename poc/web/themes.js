@@ -1200,8 +1200,11 @@ export function trailGapPx(overrides) {
  * pravidelné (KČT má odporúčaných ~100–250 m), takže má byť pravidelné aj
  * v mape – a v pixeloch, nie v metroch: pri odzoomovaní by inak z trasy bola
  * šnúra štvorcov a pri priblížení by na obrazovke nebola ani jedna.
+ *
+ * Riedšie, než sa značí v teréne: značka hovorí, akou trasou cesta je, a to
+ * stačí povedať raz za kus cesty – hustý rad prekryje samotnú mapu.
  */
-export const TRAIL_MARK_SPACING = [[12, 150], [14, 190], [16, 230], [20, 260]];
+export const TRAIL_MARK_SPACING = [[12, 230], [14, 290], [16, 350], [20, 400]];
 
 /** Veľkosť značky (`icon-size` nad obrázkom širokým `MARK_BOX` px). */
 export const TRAIL_MARK_SIZE = [[12, 0.5], [14, 0.75], [16, 1], [20, 1.3]];
@@ -4337,7 +4340,7 @@ export function buildStyle({
         filter: ["in", num("oneway", 0), ["literal", [1, -1]]],
         layout: {
           "symbol-placement": "line",
-          "symbol-spacing": 120,
+          "symbol-spacing": 200,
           "icon-image": SPECIAL.arrow,
           "icon-size": zl([[16, 0.6], [20, 1.2]]),
           "icon-rotate": ["case", ["==", num("oneway", 0), -1], 180, 0],
@@ -4740,7 +4743,7 @@ export function buildStyle({
             : ["==", str("route"), id],
           layout: {
             "symbol-placement": "line",
-            "symbol-spacing": 260,
+            "symbol-spacing": 390,
             "icon-image": icon,
             "icon-size": zl([[13, 0.5], [16, 0.75], [20, 1]]),
             "icon-rotation-alignment": "viewport",
@@ -5134,7 +5137,7 @@ export function buildStyle({
         layout: {
           "symbol-placement": "line",
           // číslo cesty je značka – má sa dať prečítať kdekoľvek na nej
-          "symbol-spacing": zl([[7, 170], [12, 190], [16, 230]]),
+          "symbol-spacing": zl([[7, 260], [12, 290], [16, 350]]),
           "text-field": network ? routeRef(network) : ["get", "ref"],
           "text-font": BOLD,
           "text-size": zl([[7, 9], [12, 10], [16, 12]]),
