@@ -4702,8 +4702,9 @@ export function initDevMode({
           class: "dev-note",
           text:
             "Sieť pozná tvar aj farbu značky z terénu – „D1\u201c na červenej, " +
-            "chorvátske „A1\u201c v zelenom šesťuholníku. Sieť, ktorú tabuľka " +
-            "nepozná, dostane klasický štítok podľa triedy tak ako doteraz."
+            "chorvátske „A1\u201c v zelenom šesťuholníku, americká okresná cesta " +
+            "v modrom päťuholníku. Tabuľka je svetová (z OSM Americana); sieť, " +
+            "ktorú nepozná, dostane klasický štítok podľa triedy tak ako doteraz."
         })
       ]),
       el("div", { class: "dev-list" }, rows),

@@ -5144,6 +5144,8 @@ export function buildStyle({
     for (const n of ROUTE_SHIELD_NETWORKS) {
       if ((n === EURO_NETWORK) !== !!euro || !hasIcon(routeShieldName(n))) continue;
       const v = hodnota(n);
+      // sieť, ktorej vyjde to isté čo zálohe, netreba menovať
+      if (v === fallback) continue;
       if (!skupiny.has(v)) skupiny.set(v, []);
       skupiny.get(v).push(n);
     }
@@ -5170,7 +5172,8 @@ export function buildStyle({
       const farba = routeMatch(euro, routeShieldTextColor, c[textKey]);
       if (ikona) {
         shieldIcon = ikona;
-        textColor = farba;
+        // `null` = všetky siete majú tú istú farbu čísla ako klasický štítok
+        textColor = farba || c[textKey];
       }
     }
     add(

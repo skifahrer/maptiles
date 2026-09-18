@@ -16,12 +16,14 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { buildStyle, SHIELD_DEFS, EURO_NETWORK, THEMES } from "../../poc/web/themes.js";
 import {
-  ROUTE_SHIELDS,
   ROUTE_SHIELD_NETWORKS,
-  ROUTE_SHIELD_COLORS,
+  routeShieldDef,
   routeShieldName,
   routeShieldRecipes
 } from "../../poc/web/route-shields.js";
+import { EXTRA_SHIELDS } from "../../poc/web/route-shield-defs.js";
+import { outline, blankWidth, stretchable } from "../../poc/web/route-shield-shapes.js";
+import { AMERICANA_NETWORKS } from "../../poc/web/route-shield-americana.js";
 import { encodePng } from "../lib/png.mjs";
 
 let bad = 0;
@@ -30,18 +32,49 @@ const chyba = (subor, text) => {
   bad += 1;
 };
 
-// 1. každá sieť má farby, ktoré paleta pozná
-for (const [network, def] of Object.entries(ROUTE_SHIELDS)) {
-  for (const key of ["fill", "stroke", "text"]) {
-    if (!ROUTE_SHIELD_COLORS[def[key]]) {
-      chyba("poc/web/route-shields.js",
-        `sieť "${network}" má \`${key}\` = "${def[key]}", ktoré paleta nepozná ` +
-        `(pozná: ${Object.keys(ROUTE_SHIELD_COLORS).join(", ")}).`);
+// 1. každý recept sa dá nakresliť: tvar, farby a obrys, ktorý sa uzavrie
+const HEX = /^#[0-9a-f]{6}$/i;
+for (const { name, def } of routeShieldRecipes()) {
+  for (const key of ["fill", "text"]) {
+    if (!HEX.test(def[key] || "")) {
+      chyba("poc/web/route-shield-americana.js",
+        `štítok "${name}" má \`${key}\` = "${def[key]}", čo nie je #rrggbb ` +
+        `– importér pozná len mená "white" a "black".`);
     }
   }
-  if (!["rrect", "hex", "oct"].includes(def.shape)) {
-    chyba("poc/web/route-shields.js",
-      `sieť "${network}" má tvar "${def.shape}", ktorý sa nekreslí.`);
+  if (def.stroke && !HEX.test(def.stroke)) {
+    chyba("poc/web/route-shield-americana.js",
+      `štítok "${name}" má \`stroke\` = "${def.stroke}", čo nie je #rrggbb.`);
+  }
+  const pts = outline(def, 1);
+  if (!pts || pts.length < 3) {
+    chyba("poc/web/route-shield-shapes.js",
+      `tvar "${def.shape}" sa nekreslí – štítok "${name}" by ostal prázdny.`);
+    continue;
+  }
+  const sirka = blankWidth(def);
+  const mimo = pts.some(([x, y]) => x < -0.01 || y < -0.01 || x > sirka + 0.01);
+  if (mimo) {
+    chyba("poc/web/route-shield-shapes.js",
+      `obrys štítka "${name}" (tvar ${def.shape}) vychádza mimo obrázka ` +
+      `– v mape by bol orezaný.`);
+  }
+}
+
+// 1b. každá sieť ukazuje na recept, ktorý existuje
+for (const network of ROUTE_SHIELD_NETWORKS) {
+  if (!routeShieldDef(network)) {
+    chyba("poc/web/route-shield-defs.js",
+      `sieť "${network}" nemá recept – štýl by si pýtal obrázok, ktorý nie je.`);
+  }
+}
+
+// 1c. vlastné siete nie sú tiché prepísanie americkej tabuľky
+for (const network of Object.keys(EXTRA_SHIELDS)) {
+  if (AMERICANA_NETWORKS[network] !== undefined) {
+    chyba("poc/web/route-shield-defs.js",
+      `sieť "${network}" je aj v generovanej tabuľke – vlastná ju ticho prebíja. ` +
+      `Buď ju z \`EXTRA_SHIELDS\` vyhoď, alebo si to obhaj poznámkou.`);
   }
 }
 
@@ -77,8 +110,8 @@ try {
         `štítok "${name}" je označený ako \`sdf\` – obrázok je farebný, ` +
         `vzdialenostné pole tam nepatrí a v mape je z neho rozmazaný kríž.`);
     }
-    // hrot šesť- a osemuholníka rovnú časť nemá, tie sa škálujú celé
-    if (def.shape !== "rrect") continue;
+    // tvar s hrotom rovnú časť hrany nemá, ten sa škáluje celý
+    if (!stretchable(def)) continue;
     for (const kluc of ["stretchX", "stretchY", "content"]) {
       if (!e[kluc]) {
         chyba("workers/assets/route-shields.mjs",
@@ -100,7 +133,7 @@ try {
   });
   // posledná vetva `match`-u je záloha – tú hľadá aj aplikácia
   const zaloha = (hodnota) => {
-    if (!Array.isArray(hodnota) || hodnota[0] !== "let") return null;
+    if (!Array.isArray(hodnota) || hodnota[0] !== "let") return hodnota;
     const telo = hodnota[hodnota.length - 1];
     if (!Array.isArray(telo) || telo[0] !== "match") return null;
     return telo[telo.length - 1];
@@ -142,8 +175,8 @@ try {
     }
   }
 
-  if (!ROUTE_SHIELDS[EURO_NETWORK]) {
-    chyba("poc/web/route-shields.js",
+  if (!routeShieldDef(EURO_NETWORK)) {
+    chyba("poc/web/route-shield-defs.js",
       `európska cesta ("${EURO_NETWORK}") vlastný štítok nemá, hoci vrstva pre ňu je.`);
   }
 } finally {
