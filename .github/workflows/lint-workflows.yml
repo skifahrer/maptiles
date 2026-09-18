@@ -491,6 +491,10 @@ jobs:
       - name: "Štítky ciest: obrázok, rozťahovanie a poradie"
         run: node workers/lint/shields.mjs
 
+      # štítok podľa siete ticho spadne na klasický, keď sa obrázok nedopečie
+      - name: "Štítky podľa siete: obrázok, rozťahovanie a záloha"
+        run: node workers/lint/route-shields.mjs
+
       # „v tomto stupni terén nie je" je doživotná odpoveď – keď ju vysloví
       # vzorkovaná štatistika, je beh zelený a v mape chýba pol kraja
       - name: Prázdny stupeň sa overuje presne a podpisuje sa
