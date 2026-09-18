@@ -14,7 +14,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { buildStyle, SHIELD_DEFS, EURO_NETWORK } from "../../poc/web/themes.js";
+import { buildStyle, SHIELD_DEFS, EURO_NETWORK, THEMES } from "../../poc/web/themes.js";
 import {
   ROUTE_SHIELDS,
   ROUTE_SHIELD_NETWORKS,
@@ -98,26 +98,29 @@ try {
     glyphsUrl: "g/{fontstack}/{range}",
     icons
   });
-  for (const [id, , , , , , , , network] of SHIELD_DEFS) {
+  // posledná vetva `match`-u je záloha – tú hľadá aj aplikácia
+  const zaloha = (hodnota) => {
+    if (!Array.isArray(hodnota) || hodnota[0] !== "let") return null;
+    const telo = hodnota[hodnota.length - 1];
+    if (!Array.isArray(telo) || telo[0] !== "match") return null;
+    return telo[telo.length - 1];
+  };
+
+  for (const [id, , , , , , textKey] of SHIELD_DEFS) {
     const vrstva = style.layers.find((l) => l.id === `road-shield-${id}`);
     if (!vrstva) {
       chyba("poc/web/themes.js", `vrstva "road-shield-${id}" v štýle nie je.`);
       continue;
     }
-    const obrazok = vrstva.layout["icon-image"];
-    if (network) {
-      if (obrazok !== routeShieldName(network)) {
-        chyba("poc/web/themes.js",
-          `"road-shield-${id}" je na sieti "${network}", ale kreslí "${obrazok}" ` +
-          `namiesto "${routeShieldName(network)}".`);
-      }
-      continue;
-    }
-    const konci = JSON.stringify(obrazok).endsWith(`"shield-${id}-svetla"]]`);
-    if (!konci) {
+    if (zaloha(vrstva.layout["icon-image"]) !== `shield-${id}-svetla`) {
       chyba("poc/web/themes.js",
-        `"road-shield-${id}" nemá na konci \`match\` klasický štítok ako zálohu ` +
-        `– cesta v sieti, ktorú tabuľka nepozná, by ostala bez podkladu.`);
+        `"road-shield-${id}" nemá na konci \`match\`-u klasický štítok ako zálohu ` +
+        `– cesta v sieti, ktorú tabuľka nepozná, by ostala bez podkladu a ` +
+        `aplikácia by sa nemala ako prepnúť späť.`);
+    }
+    if (zaloha(vrstva.paint["text-color"]) !== THEMES.svetla[textKey]) {
+      chyba("poc/web/themes.js",
+        `"road-shield-${id}" nemá na konci \`match\`-u farbu čísla zo štýlu ako zálohu.`);
     }
   }
 

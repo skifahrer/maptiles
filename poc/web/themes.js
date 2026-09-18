@@ -5122,24 +5122,27 @@ export function buildStyle({
     return ["any", ...vetvy];
   };
 
-  // prvá sieť zo slotov, ktorá nie je európska – tú kreslí vlastná vrstva
-  const nationalNetwork = () => {
+  // prvá sieť zo slotov; európsku kreslí vlastná vrstva, tak sa buď len ona,
+  // alebo všetko okrem nej
+  const networkExpr = (euro) => {
     const vetvy = [];
     for (let i = 1; i <= ROUTE_SLOTS; i += 1) {
-      vetvy.push(["all",
-        ["has", `route_${i}_network`],
-        ["!=", ["get", `route_${i}_network`], EURO_NETWORK]],
-        ["to-string", ["get", `route_${i}_network`]]);
+      const je = [euro ? "==" : "!=", ["get", `route_${i}_network`], EURO_NETWORK];
+      vetvy.push(["all", ["has", `route_${i}_network`], je],
+                 ["to-string", ["get", `route_${i}_network`]]);
     }
     return ["case", ...vetvy, ""];
   };
 
-  // siete s vlastným štítkom, zoskupené podľa toho, čo z nich vyjde: `match`
-  // berie aj zoznam hodnôt, takže 73 sietí je zopár vetiev
-  const routeMatch = (hodnota, fallback) => {
+  /**
+   * Siete s vlastným štítkom, zoskupené podľa toho, čo z nich vyjde. Zálohou
+   * je posledná vetva `match`-u, takže ju vie nájsť aj aplikácia – prepnúť
+   * späť na klasický štítok je vziať posledný prvok.
+   */
+  const routeMatch = (euro, hodnota, fallback) => {
     const skupiny = new Map();
     for (const n of ROUTE_SHIELD_NETWORKS) {
-      if (n === EURO_NETWORK || !hasIcon(routeShieldName(n))) continue;
+      if ((n === EURO_NETWORK) !== !!euro || !hasIcon(routeShieldName(n))) continue;
       const v = hodnota(n);
       if (!skupiny.has(v)) skupiny.set(v, []);
       skupiny.get(v).push(n);
@@ -5147,7 +5150,7 @@ export function buildStyle({
     if (!skupiny.size) return null;
     const vetvy = [];
     for (const [v, siete] of skupiny) vetvy.push(siete, v);
-    return ["let", "net", nationalNetwork(), ["match", ["var", "net"], ...vetvy, fallback]];
+    return ["let", "net", networkExpr(euro), ["match", ["var", "net"], ...vetvy, fallback]];
   };
 
   for (const [id, label, classes, colorKey, mz, shapeId, textKey, borderKey, network]
@@ -5156,19 +5159,15 @@ export function buildStyle({
     // všetky tvary naraz, takže prepnutie je zmena mena, nie nový sprite.
     const shieldName = `${shieldShapeFor(id, shapeId, overrides)}-${id}-${theme}`;
     const classicIcon = hasIcon(shieldName) ? shieldName : null;
-    const routeName = network ? routeShieldName(network) : null;
-    const routeOn = overrides?.routeShields !== false;
 
     // sieť pozná tvar aj farbu značky z terénu; klasický štítok podľa triedy
     // ostáva ako záloha pre siete, ktoré v tabuľke nie sú
     let shieldIcon = classicIcon;
     let textColor = c[textKey];
-    if (routeOn && network && routeName && hasIcon(routeName)) {
-      shieldIcon = routeName;
-      textColor = routeShieldTextColor(network) || textColor;
-    } else if (routeOn && !network && classicIcon) {
-      const ikona = routeMatch(routeShieldName, classicIcon);
-      const farba = routeMatch(routeShieldTextColor, c[textKey]);
+    if (overrides?.routeShields !== false && classicIcon) {
+      const euro = network === EURO_NETWORK;
+      const ikona = routeMatch(euro, routeShieldName, classicIcon);
+      const farba = routeMatch(euro, routeShieldTextColor, c[textKey]);
       if (ikona) {
         shieldIcon = ikona;
         textColor = farba;

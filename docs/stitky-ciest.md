@@ -42,7 +42,9 @@ je 14 obrázkov.
 
 Štýl nevyrába nové vrstvy. `road-shield-*` dostanú `icon-image` a `text-color`
 ako `match` cez sieť a **na konci `match`‑u je klasický štítok podľa triedy** –
-záloha je v tom istom výraze, nie vedľa neho. Cesta v sieti, ktorú tabuľka
+záloha je v tom istom výraze, nie vedľa neho. Rovnako aj vrstva európskych
+ciest, hoci sieť má jednu: aplikácia sa vie prepnúť späť tým, že z každého
+`match`‑u vezme poslednú vetvu, a na to musia byť všetky štyri rovnaké. Cesta v sieti, ktorú tabuľka
 nepozná, vyzerá presne ako predtým. To isté, keď sa obrázky nedopečú alebo keď
 sa v developer móde prepne *Podklad štítka* na *Klasický podľa triedy*
 (`overrides.routeShields: false`).
