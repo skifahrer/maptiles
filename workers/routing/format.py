@@ -8,6 +8,13 @@ VERZIA = 1
 # `priznaky` v hlavičke: pole, ktoré v archíve nie je, sa nekóduje vôbec
 P_VYSKA = 1
 P_PORADIE = 2
+# výškový profil hrany; blok je AŽ ZA `okraj`, takže čítačka bez neho dočíta
+# dlaždicu do konca a zvyšok nechá ležať – preto sa `VERZIA` nedvíha
+P_PROFIL = 4
+
+# krok profilu v decimetroch: 5 m. Decimeter, nie meter – zaokrúhlenie na meter
+# je pri 5 m kroku väčší šum než sám terén a sčítané stúpanie z neho rastie.
+KROK_DM = 50
 
 # hrana je prejazdná v smere uzlov way, proti nemu, alebo oboma
 S_VPRED = 1
@@ -27,6 +34,14 @@ VYNIMKY = ["foot", "bicycle", "psv", "hgv", "motorcar", "moped",
 # strop na jednu dlaždicu; nad ním sa archív sťahuje po kusoch, ktoré sa
 # v telefóne nedajú rozumne držať v pamäti
 ROZPOCET_KB = 1024
+
+
+def pocet_vzoriek(dlzka_m, krok_m):
+    """Koľko vzoriek má profil hrany – posledná sedí na jej konci, nie na kroku."""
+    if dlzka_m <= 0:
+        return 0
+    celych = int(dlzka_m // krok_m)
+    return celych + (2 if dlzka_m - celych * krok_m > 0.01 else 1)
 
 
 def zigzag(n):
@@ -92,8 +107,11 @@ def zapis(dlazdica):
     w = Zapis()
     w.b += MAGIC
     w.bajt(VERZIA)
+    profily = [h.get("profil") or [] for h in dlazdica["hrany"]]
+    ma_profil = any(profily)
     priznaky = ((P_VYSKA if dlazdica["vyska"] else 0)
-                | (P_PORADIE if dlazdica["poradie"] else 0))
+                | (P_PORADIE if dlazdica["poradie"] else 0)
+                | (P_PROFIL if ma_profil else 0))
     w.bajt(priznaky)
     w.b += struct.pack(">II", dlazdica["slovnik_id"], dlazdica["poradie_id"])
     for v in dlazdica["zxy"]:
@@ -156,7 +174,24 @@ def zapis(dlazdica):
     w.u(len(dlazdica["okraj"]))
     for i in dlazdica["okraj"]:
         w.u(i)
+
+    if ma_profil:
+        _zapis_profily(w, profily, dlazdica.get("krok_dm") or KROK_DM)
     return bytes(w.b)
+
+
+def _zapis_profily(w, profily, krok_dm):
+    """Výšky pozdĺž hrán po `krok_dm`, v decimetroch – posledný blok tela."""
+    w.u(krok_dm)
+    w.u(len(profily))
+    for p in profily:
+        w.u(len(p))
+    _stlpec_z(w, [p[0] for p in profily if p], delta=True)
+    for p in profily:
+        prev = p[0] if p else 0
+        for v in p[1:]:
+            w.z(v - prev)
+            prev = v
 
 
 def citaj(raw):
@@ -201,7 +236,8 @@ def citaj(raw):
             lon += r.z()
             geom.append((lat, lon))
         hrany.append({"od": od[i], "do": do[i], "tagset": tagset[i],
-                      "dlzka_cm": dlzka[i], "smer": smer[i], "geom": geom})
+                      "dlzka_cm": dlzka[i], "smer": smer[i], "geom": geom,
+                      "profil": []})
 
     tagsety = []
     for _ in range(r.u()):
@@ -215,12 +251,43 @@ def citaj(raw):
                        "hrany": [(r.u(), r.u()) for _ in range(r.u())]})
     okraj = [r.u() for _ in range(r.u())]
 
+    krok_dm = KROK_DM
+    if priznaky & P_PROFIL:
+        krok_dm = _citaj_profily(r, hrany)
+
     return {"verzia": verzia, "vyska": bool(priznaky & P_VYSKA),
             "poradie": bool(priznaky & P_PORADIE),
+            "profil": bool(priznaky & P_PROFIL), "krok_dm": krok_dm,
             "slovnik_id": slovnik_id, "poradie_id": poradie_id,
             "zxy": zxy, "bbox": bbox, "uzly": uzly, "hrany": hrany,
             "tagsety": tagsety, "retazce": retazce, "zakazy": zakazy,
             "okraj": okraj}
+
+
+def _citaj_profily(r, hrany):
+    """Blok profilov do `hrany[i]["profil"]`; vráti krok v decimetroch."""
+    krok_dm = r.u()
+    pocet = r.u()
+    if pocet != len(hrany):
+        raise ValueError(f"blok profilov hovorí o {pocet} hranách, dlaždica "
+                         f"ich má {len(hrany)}")
+    pocty = [r.u() for _ in range(pocet)]
+    prve, prev = [], 0
+    for n in pocty:
+        if n:
+            prev += r.z()
+            prve.append(prev)
+        else:
+            prve.append(None)
+    for h, n, zaciatok in zip(hrany, pocty, prve):
+        if not n:
+            h["profil"] = []
+            continue
+        p = [zaciatok]
+        for _ in range(n - 1):
+            p.append(p[-1] + r.z())
+        h["profil"] = p
+    return krok_dm
 
 
 def _stlpec_z(w, hodnoty, delta):

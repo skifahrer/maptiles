@@ -5,7 +5,7 @@
   2. trieda, podľa ktorej sa way berie do grafu, sa aj vezie;
   3. voľba profilu stojí na `key=value`, ktoré slovník pozná;
   4. krajina so známkou musí byť medzi hodnotami `krajina`;
-  5. telo dlaždice sa zapíše a prečíta na to isté;
+  5. telo dlaždice sa zapíše a prečíta na to isté, aj s výškovým profilom;
   6. hustá dlaždica sa reže hlbšie, kým sa telo nezmestí do rozpočtu;
   7. archívy behu (keď sú zadané): jeden slovník, jedno poradie, dlaždice
      v rozpočte a prekryv susedov sa nesmie rozísť.
@@ -42,7 +42,7 @@ class Lint:
         self.bad += 1
 
 
-def skus_telo(fmt, lint, vyska=False):
+def skus_telo(fmt, lint, vyska=False, profil=False):
     """Zápis a čítanie musia dať to isté – inak sa archív číta ako iný graf."""
     v = (420, 380) if vyska else (0, 0)
     d = {"vyska": vyska, "poradie": True, "slovnik_id": 0x01020304,
@@ -51,7 +51,9 @@ def skus_telo(fmt, lint, vyska=False):
          "uzly": [(10, 490000000, 190000000, v[0], 1),
                   (2000000000000, 490010000, 190020000, v[1], 9)],
          "hrany": [{"od": 0, "do": 1, "tagset": 0, "dlzka_cm": 1234,
-                    "smer": fmt.S_VPRED, "geom": [(490005000, 190010000)]}],
+                    "smer": fmt.S_VPRED, "geom": [(490005000, 190010000)],
+                    "profil": [4200, 4190, 4150, 4020, 3860, 3800]
+                              if profil else []}],
          "tagsety": [[(0, 1), (4, 0)]], "retazce": ["Hlavná"],
          "zakazy": [{"druh": 0, "vynimky": 3, "hrany": [(10, 20), (20, 30)]}],
          "okraj": [1]}
@@ -67,6 +69,11 @@ def skus_telo(fmt, lint, vyska=False):
                      f"pole `{kluc}` sa po zápise a čítaní zmenilo "
                      f"({cakane} → {spat[kluc]}). Telefón by na tom mieste "
                      f"čítal iný graf a trasa by vyšla – len iná.")
+    if spat["profil"] != profil:
+        lint.err("workers/routing/format.py",
+                 f"príznak profilu je po čítaní {spat['profil']}, má byť "
+                 f"{profil} – telefón by stúpanie buď nenašiel, alebo hľadal "
+                 f"blok, ktorý v tele nie je.")
 
 
 def _hustá_siet(fmt, krok=0.01, mriezka=24):
@@ -221,6 +228,7 @@ def archivy(cesty, slovnik, fmt, lint):
                                     f"{d['zxy']} – archív by sa spojil na "
                                     f"nesprávnom mieste.")
                 _tagsety(cesta, z, x, y, d, slovnik, lint)
+                _profil(cesta, z, x, y, d, lint)
                 obsah.setdefault((z, x, y), {})[cesta] = d
     if len(poradia) > 1:
         lint.err("workers/routing/order.py",
@@ -246,6 +254,38 @@ def _tagsety(cesta, z, x, y, d, slovnik, lint):
             if slovnik.druh[kluc] == "volny" and kod >= len(d["retazce"]):
                 lint.err(cesta, f"dlaždica {z}/{x}/{y}: `{kluc}` ukazuje na "
                                 f"reťazec {kod}, ktorý v dlaždici nie je.")
+
+
+def _profil(cesta, z, x, y, d, lint):
+    """Vzoriek musí byť podľa dĺžky hrany a konce musia sedieť s uzlami."""
+    if not d["profil"]:
+        return
+    krok_m = d["krok_dm"] / 10
+    for i, h in enumerate(d["hrany"]):
+        p = h.get("profil")
+        if not p:
+            continue
+        dlzka = h["dlzka_cm"] / 100
+        caka = int(dlzka // krok_m) + 1
+        if dlzka - int(dlzka // krok_m) * krok_m > 0.01:
+            caka += 1
+        # dĺžka hrany je haversine, vzorky sa kladú rovinne – rozdiel je vzorka
+        if abs(len(p) - caka) > 1:
+            lint.err(cesta, f"dlaždica {z}/{x}/{y}, hrana {i} je {dlzka:.0f} m "
+                            f"dlhá a má {len(p)} vzoriek po {krok_m:g} m; "
+                            f"čakalo sa {caka}. Telefón kladie vzorky podľa "
+                            f"kroku, takže by profil natiahol alebo skrátil.")
+            continue
+        if not d["vyska"]:
+            continue
+        for kde, vzorka in ((h["od"], p[0]), (h["do"], p[-1])):
+            uzol = d["uzly"][kde][3]
+            if abs(round(vzorka / 10) - uzol) > 1:
+                lint.err(cesta, f"dlaždica {z}/{x}/{y}, hrana {i} končí v "
+                                f"{vzorka / 10:.0f} m, ale jej uzol má "
+                                f"{uzol} m. Stúpanie by na každej križovatke "
+                                f"skočilo o ten rozdiel.")
+                return
 
 
 def _prekryv(obsah, slovnik, lint):
@@ -277,7 +317,8 @@ def _hrany_podla_id(d, slovnik):
     von = {}
     for h in d["hrany"]:
         kluc = (d["uzly"][h["od"]][0], d["uzly"][h["do"]][0])
-        von[kluc] = (h["dlzka_cm"], h["smer"], _znacky(d, h["tagset"], slovnik))
+        von[kluc] = (h["dlzka_cm"], h["smer"], len(h.get("profil") or []),
+                     _znacky(d, h["tagset"], slovnik))
     return von
 
 
@@ -333,6 +374,7 @@ def main():
     znamky_proti_slovniku(slovnik, lint)
     skus_telo(fmt, lint)
     skus_telo(fmt, lint, vyska=True)
+    skus_telo(fmt, lint, vyska=True, profil=True)
     skus_delenie(fmt, lint)
     if args.archivy:
         archivy(args.archivy, slovnik, fmt, lint)
