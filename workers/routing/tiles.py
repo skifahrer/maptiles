@@ -20,6 +20,11 @@ ZOOM_MAX = 13
 E7 = 1e7
 
 
+def vysky_krok():
+    """Predvolený krok profilu – jedno číslo pre `format.py` aj pre `--help`."""
+    return fmt.KROK_DM / 10
+
+
 def dlazdica_z(lat_e7, lon_e7, z=ZOOM):
     lat, lon = lat_e7 / E7, lon_e7 / E7
     n = 2 ** z
@@ -66,7 +71,8 @@ class Dlazdica:
         kluc = tuple(polozky)
         return self._tagsety.setdefault(kluc, len(self._tagsety))
 
-    def telo(self, slovnik_id, poradie_id, s_poradim, s_vyskou=False):
+    def telo(self, slovnik_id, poradie_id, s_poradim, s_vyskou=False,
+             krok_dm=fmt.KROK_DM):
         poradie = sorted(self.uzly)
         idx = {osm: i for i, osm in enumerate(poradie)}
         uzly = [(osm, *self.uzly[osm]) for osm in poradie]
@@ -91,9 +97,11 @@ class Dlazdica:
             "zxy": list(self.zxy),
             "bbox": [lon_min, lat_min, lon_max, lat_max],
             "uzly": uzly,
+            "krok_dm": krok_dm,
             "hrany": [{"od": idx[h["od"]], "do": idx[h["do"]],
                        "tagset": h["tagset"], "dlzka_cm": h["dlzka_cm"],
-                       "smer": h["smer"], "geom": h["geom"]} for h in self.hrany],
+                       "smer": h["smer"], "geom": h["geom"],
+                       "profil": h.get("profil") or []} for h in self.hrany],
             "tagsety": [list(k) for k, _ in
                         sorted(self._tagsety.items(), key=lambda kv: kv[1])],
             "retazce": [s for s, _ in
@@ -131,7 +139,7 @@ def postav(zxy, hrany, zakazy, siet, slovnik, krajina, poradie):
                                poradie.rank(ref))
         d.hrany.append({"od": h["od"], "do": h["do"], "geom": h["geom"],
                         "dlzka_cm": h["dlzka_cm"], "smer": h["smer"],
-                        "tagset": d.tagset(tagy)})
+                        "profil": h.get("profil"), "tagset": d.tagset(tagy)})
     for zakaz in zakazy:
         d.zakazy.append({"druh": zakaz["druh"], "vynimky": zakaz["vynimky"],
                          "hrany": zakaz["hrany"]})
@@ -143,24 +151,35 @@ def vysky_siete(siet):
     return getattr(siet, "vysky", None) or {}
 
 
-def vzorkuj_vysky(siet, dem):
+def vzorkuj_vysky(siet, dem, krok_m=0.0):
     """Výšky z modelu; keď to nejde, archív ide bez nich a beh to povie."""
     import vysky                                                  # noqa: PLC0415
     t0 = time.time()
     try:
-        z_modelu, od_susedov, bez = vysky.dopln(siet, dem)
+        if krok_m > 0:
+            z_modelu, od_susedov, bez, s_prof, bez_prof = \
+                vysky.dopln_profilmi(siet, dem, krok_m)
+        else:
+            z_modelu, od_susedov, bez = vysky.dopln(siet, dem)
+            s_prof, bez_prof = 0, len(siet.hrany)
     except Exception as e:                                        # noqa: BLE001
-        print(f"::warning::Výšky uzlov z {dem} sa nedali odobrať ({e}) – "
-              f"archív ide bez nich.")
+        print(f"::warning::Výšky z {dem} sa nedali odobrať ({e}) – archív ide "
+              f"bez nich.")
         return
     print(f"Výšky: {z_modelu} uzlov z modelu, {od_susedov} od susedov "
           f"({time.time() - t0:.0f} s)")
+    if krok_m > 0:
+        print(f"Profil po {krok_m:g} m: {s_prof} hrán, {bez_prof} bez profilu")
     if bez:
         print(f"::warning::{bez} z {len(siet.uzly)} uzlov nemá výšku ani od "
               f"suseda – model {dem} ich územie nepokrýva; v archíve majú 0 m.")
+    if krok_m > 0 and bez_prof:
+        print(f"::warning::{bez_prof} z {len(siet.hrany)} hrán nemá výškový "
+              f"profil – model {dem} ich územie nepokrýva a stúpanie po nich "
+              f"sa počíta len z výšok koncov.")
 
 
-def rozdel(siet, slovnik, krajina, poradie, rozpocet=None):
+def rozdel(siet, slovnik, krajina, poradie, rozpocet=None, krok_dm=fmt.KROK_DM):
     """Dlaždice z9; ktorej sa telo nezmestí do rozpočtu, tá sa reže hlbšie.
 
     Delí sa tá istá mriežka, takže dieťa celé leží vo svojej z9 a na jej
@@ -174,7 +193,7 @@ def rozdel(siet, slovnik, krajina, poradie, rozpocet=None):
         zxy, (hrany, zakazy) = fronta.pop()
         d = postav(zxy, hrany, zakazy, siet, slovnik, krajina, poradie)
         telo = gzip.compress(
-            d.telo(slovnik.id, poradie.id, bool(poradie), s_vyskou), 9)
+            d.telo(slovnik.id, poradie.id, bool(poradie), s_vyskou, krok_dm), 9)
         if len(telo) > strop and zxy[0] < ZOOM_MAX:
             fronta.extend(po_dlazdiciach(siet, hrany, zakazy, zxy[0] + 1).items())
             continue
@@ -223,7 +242,9 @@ def main():
     ap.add_argument("--poradie", default="",
                     help="súbor s poradím uzlov z workers/routing/order.py")
     ap.add_argument("--dem", default="",
-                    help="mozaika výškového modelu (VRT) – výška na uzol")
+                    help="mozaika výškového modelu (VRT) – výšky a profily")
+    ap.add_argument("--profil-krok", type=float, default=vysky_krok(),
+                    help="krok výškového profilu hrany v metroch; 0 = bez neho")
     args = ap.parse_args()
 
     import network                                                # noqa: PLC0415
@@ -243,7 +264,7 @@ def main():
           f"({time.time() - t0:.0f} s)")
 
     if args.dem:
-        vzorkuj_vysky(siet, args.dem)
+        vzorkuj_vysky(siet, args.dem, args.profil_krok)
     else:
         print("::warning::Archív ide BEZ VÝŠOK UZLOV (`--dem`): bicykel a "
               "chodec sa v ňom rátajú, ako keby bol kraj rovina, a trasa "
@@ -264,7 +285,8 @@ def main():
               "a to je jediná drahá časť CCH, ktorá do telefónu nepatrí "
               "(docs/navigation.md §11).")
 
-    telá = rozdel(siet, slovnik, args.krajina, poradie)
+    krok_dm = max(1, int(round(args.profil_krok * 10)))
+    telá = rozdel(siet, slovnik, args.krajina, poradie, krok_dm=krok_dm)
     if not telá:
         print("::warning::V tomto území nie je ani jedna cesta, po ktorej by "
               "sa dalo ísť – archív so smerovaním sa nevyrobí.")
@@ -300,6 +322,9 @@ def main():
         "hran": len(siet.hrany),
         "zakazov": len(siet.zakazy),
         "vyska": bool(vysky_siete(siet)),
+        "profil": bool(args.profil_krok) and any(h.get("profil")
+                                                 for h in siet.hrany),
+        "profil_krok_m": args.profil_krok or None,
         "multimodal": False,
         # dlaždica sa reže mriežkou, nie hranicou kraja: susedné kraje majú
         # okrajové dlaždice tej istej z/x/y a telefón ich spojí podľa OSM id

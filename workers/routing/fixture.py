@@ -3,6 +3,7 @@
 import argparse
 import gzip
 import json
+import math
 import os
 import sys
 
@@ -13,6 +14,7 @@ import tags as slovnik_modul                                      # noqa: E402
 import tiles                                                      # noqa: E402
 
 E7 = 10_000_000
+KROK_M = fmt.KROK_DM / 10
 # dlaždica pre hustú časť sa má rozdeliť, kraje nie – rozpočet je preto nízky
 ROZPOCET = 900
 # mriežka je okolo stredu z9 dlaždice, nech sa pri delení rozpadne na štvrtiny
@@ -160,7 +162,21 @@ def kopce():
     for od, do in zip(u, u[1:]):
         s.hrana(od, do, {"highway": "secondary", "name": "Cez hrebeň",
                          "ref": "II/520"})
+    vlnky(s)
     return s
+
+
+def vlnky(s, krok_m=KROK_M, amplituda_m=40):
+    """Dve vlny na hrane – bez nich by stúpanie z profilu bolo rozdiel koncov."""
+    for h in s.hrany:
+        od, do = s.vysky.get(h["od"]), s.vysky.get(h["do"])
+        if od is None or do is None:
+            continue
+        n = fmt.pocet_vzoriek(h["dlzka_cm"] / 100, krok_m)
+        h["profil"] = [
+            round((od + (do - od) * i / (n - 1)) * 10
+                  + amplituda_m * 10 * math.sin(4 * math.pi * i / (n - 1)))
+            for i in range(n)]
 
 
 def krizovatky():
@@ -306,6 +322,8 @@ def zapis(cesta, s, slovnik, kluc, poradie):
         "delenych": sum(1 for z, _, _ in telá if z > tiles.ZOOM),
         "dlazdic": len(telá), "uzlov": len(s.uzly), "hran": len(s.hrany),
         "zakazov": len(s.zakazy), "vyska": bool(s.vysky),
+        "profil": any(h.get("profil") for h in s.hrany),
+        "profil_krok_m": KROK_M,
         "multimodal": False,
         "built_at": "2026-09-13T00:00:00Z", "run": "", "run_id": "",
     }

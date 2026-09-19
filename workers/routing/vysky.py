@@ -1,18 +1,30 @@
 #!/usr/bin/env python3
-"""Výška na uzol z výškového modelu – bilineárne z mozaiky, po stupňových poliach."""
+"""Výšky z modelu – profil pozdĺž hrany po pevnom kroku, bilineárne z mozaiky."""
 import json
 import math
 import os
 import re
 import subprocess
+import sys
 
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import format as fmt                                              # noqa: E402
 
 E7 = 1e7
 # `gdalwarp` sentinel; nesmie byť 0 – nula je platná výška
 NODATA = -9999.0
 # o toľko pixelov sa pole zväčší, nech má bilineárny odber suseda aj na okraji
 OKRAJ_PX = 2
+# strana okna odberu v pixeloch; pri 5 m modeli má celý stupeň 22 000 px
+# a jeho pole by malo 1,3 GB
+OKNO_PX = 4096
+STUPEN_M = 111320.0
+# vzdialenosť medzi vzorkami profilu
+KROK_M = 5.0
+# most a tunel nestoja na teréne, tak ich profil vedie priamka medzi koncami
+NAD_TERENOM = ("bridge", "tunnel")
 
 
 def rozlisenie(dem):
@@ -62,21 +74,23 @@ def bilinearne(grid, stlpec, riadok):
         return np.where(vahy > 0, sucet / vahy, np.nan)
 
 
-def _po_stupnoch(lat, lon):
-    """Uzly po stupňových poliach – jedno pole v pamäti naraz."""
-    kluc = np.stack([np.floor(lon), np.floor(lat)], axis=1).astype(np.int64)
+def _po_oknach(lat, lon, okno):
+    """Body po štvorcoch strany `okno` – jedno pole v pamäti naraz."""
+    kluc = np.stack([np.floor(lon / okno), np.floor(lat / okno)],
+                    axis=1).astype(np.int64)
     polia, kde = np.unique(kluc, axis=0, return_inverse=True)
     for i, (zapad, juh) in enumerate(polia):
-        yield int(zapad), int(juh), np.flatnonzero(kde.ravel() == i)
+        yield zapad * okno, juh * okno, np.flatnonzero(kde.ravel() == i)
 
 
 def odober(dem, lat, lon, tmp="/tmp/routing-vysky"):
     """Výška (m) pre každý bod, NaN kde model nič nemá."""
     dx, dy = rozlisenie(dem)
+    okno = min(1.0, max(dx, dy) * OKNO_PX)
     von = np.full(len(lat), np.nan)
     os.makedirs(tmp, exist_ok=True)
     cesta = os.path.join(tmp, "pole.raw")
-    for zapad, juh, idx in _po_stupnoch(lat, lon):
+    for zapad, juh, idx in _po_oknach(lat, lon, okno):
         la, lo = lat[idx], lon[idx]
         # výrez sa zarovná na pixely zdroja, aby sa stred pixela neposunul
         w = zapad + math.floor((lo.min() - zapad) / dx - OKRAJ_PX) * dx
@@ -121,3 +135,90 @@ def dopln(siet, dem):
     bez = dopln_susedmi(vysky, siet.hrany, ids)
     siet.vysky = vysky
     return z_modelu, len(vysky) - z_modelu, bez
+
+
+def _vzorky(body, krok_m):
+    """Body pozdĺž lomenej čiary po `krok_m`; posledný je vždy koniec hrany."""
+    lat = np.array([b[0] for b in body], dtype=np.float64) / E7
+    lon = np.array([b[1] for b in body], dtype=np.float64) / E7
+    # rovinná aproximácia stačí: umiestňuje vzorky, dĺžku hrany počíta network.py
+    dy = np.diff(lat) * STUPEN_M
+    dx = np.diff(lon) * STUPEN_M * math.cos(math.radians(float(lat.mean())))
+    kde = np.concatenate([[0.0], np.cumsum(np.hypot(dx, dy))])
+    dlzka = float(kde[-1])
+    if dlzka <= 0:
+        return lat[:1], lon[:1]
+    n = fmt.pocet_vzoriek(dlzka, krok_m)
+    poz = np.arange(n - 1) * krok_m
+    poz = np.append(poz, dlzka)
+    return np.interp(poz, kde, lat), np.interp(poz, kde, lon)
+
+
+def _bez_dier(v):
+    """Diery v profile sa preklenú od platných susedov; celý prázdny ostáva."""
+    plati = ~np.isnan(v)
+    if not plati.any():
+        return None
+    if plati.all():
+        return v
+    kde = np.flatnonzero(plati)
+    return np.interp(np.arange(len(v)), kde, v[kde])
+
+
+def _vyhladene(v):
+    """Dvakrát [1 2 1] – pri 5 m kroku je šum modelu väčší než sklon cesty."""
+    if len(v) < 3:
+        return v
+    for _ in range(2):
+        v = np.concatenate([v[:1], (v[:-2] + 2 * v[1:-1] + v[2:]) / 4, v[-1:]])
+    return v
+
+
+def _priamka(v):
+    return np.linspace(v[0], v[-1], len(v))
+
+
+def profily(siet, dem, krok_m=KROK_M):
+    """`hrana["profil"]` – výšky v dm po `krok_m`; vráti (s profilom, bez)."""
+    lat, lon, kusy = [], [], []
+    for h in siet.hrany:
+        la, lo = _vzorky([siet.uzly[h["od"]], *h["geom"], siet.uzly[h["do"]]],
+                         krok_m)
+        kusy.append(len(la))
+        lat.append(la)
+        lon.append(lo)
+    if not kusy:
+        return 0, 0
+    v = odober(dem, np.concatenate(lat), np.concatenate(lon))
+    del lat, lon
+
+    s_profilom = 0
+    for h, kus in zip(siet.hrany, np.split(v, np.cumsum(kusy)[:-1])):
+        cely = _bez_dier(kus)
+        if cely is None or len(cely) < 2:
+            h["profil"] = []
+            continue
+        if any(h["tagy"].get(k, "no") not in ("no", "") for k in NAD_TERENOM):
+            cely = _priamka(cely)
+        else:
+            cely = _vyhladene(cely)
+        h["profil"] = [int(round(x * 10)) for x in cely]
+        s_profilom += 1
+    return s_profilom, len(siet.hrany) - s_profilom
+
+
+def dopln_profilmi(siet, dem, krok_m=KROK_M):
+    """Profily hrán a z ich koncov výšky uzlov – jeden odber na oboje."""
+    s_profilom, bez_profilu = profily(siet, dem, krok_m)
+    vysky = {}
+    for h in siet.hrany:
+        p = h.get("profil")
+        if p:
+            vysky[h["od"]] = int(round(p[0] / 10))
+            vysky[h["do"]] = int(round(p[-1] / 10))
+    z_modelu = len(vysky)
+    if not vysky:
+        return 0, 0, len(siet.uzly), s_profilom, bez_profilu
+    bez = dopln_susedmi(vysky, siet.hrany, list(siet.uzly))
+    siet.vysky = vysky
+    return (z_modelu, len(vysky) - z_modelu, bez, s_profilom, bez_profilu)

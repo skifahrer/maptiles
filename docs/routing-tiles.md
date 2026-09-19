@@ -25,13 +25,35 @@ a zahadzuje topológiu; presne to robí `-transport.pmtiles` nepoužiteľným na
 smerovanie. PMTiles ostáva ako obálka, lebo katalóg, fronta sťahovania,
 účtovanie miesta aj maska regiónu ten formát už vedia.
 
-**Výška uzla** nie je z OSM – PBF ju nemá – ale zo Sonnyho 20 m modelu,
-toho istého, z ktorého sú vrstevnice: `build.sh` si ho pre bbox kraja stiahne
-zo skladu a `vysky.py` odoberie bilineárne výšku pod každou križovatkou,
-zaokrúhlenú na meter. Uzol, pod ktorým model nič nemá (za hranicou pokrytia),
-vezme výšku od suseda v grafe; keď ani ten ju nemá, má 0 m a beh to povie.
-Bez modelu ide archív bez stĺpca (`vyska` 0) a telefón hlási namiesto
-stúpania pomlčku.
+**Výšky nie sú z OSM** – PBF ich nemá – ale z DMR 5.0 (sklad `dem-dmr5-v2`,
+prevzorkovaný na 5 m): `build.sh` si ho pre bbox kraja stiahne a `vysky.py`
+odoberie bilineárne výšku pod cestou. Keď ho pre kraj v sklade ešte nikto
+nevyrobil, spadne sa na Sonnyho 20 m a beh to napíše do súhrnu.
+
+**Výška uzla** je meter nad morom pod križovatkou a berie sa z konca profilu
+susednej hrany, takže sa tie dve čísla nemôžu rozísť. Uzol, pod ktorým model
+nič nemá, vezme výšku od suseda v grafe; keď ani ten ju nemá, má 0 m a beh to
+povie.
+
+**Výškový profil hrany** je to, čo z výšok robí stúpanie. Do verzie s ním
+niesla hrana len výšku svojich dvoch koncov, a medzi dvomi križovatkami je aj
+desať kilometrov cesty: sedlo, na ktoré sa vyšlo a z ktorého sa zišlo, nebolo
+v žiadnom z tých dvoch čísel a trasa cez hrebeň hlásila nulové stúpanie.
+Hrana preto nesie výšku **každých 5 m svojej dĺžky** (`profil_krok_m`
+v `graf`, `krok_dm` v tele), v **decimetroch** – zaokrúhlenie na meter je pri
+takom kroku väčší šum než sám sklon a sčítané stúpanie z neho rastie.
+
+Vzorka `i` leží `i × krok` od uzla `od` pozdĺž geometrie hrany; **posledná
+leží na jej konci**, nech je hrana akokoľvek dlhá. Prvá a posledná sú teda
+výšky oboch uzlov. Koľko ich je, hovorí `format.pocet_vzoriek` – jedno
+pravidlo pre zápis, lint aj čítačku.
+
+Profil sa pred zápisom **vyhladí** dvomi prechodmi `[1 2 1]` s pevnými koncami:
+pri 5 m kroku je priečny šum modelu (priekopa, zárez vedľa osi cesty)
+porovnateľný so sklonom a surový súčet kladných rozdielov z neho spraví
+stúpanie, ktoré tam nie je. **Most a tunel** dostanú namiesto terénu priamku
+medzi koncami – model je zem pod nimi, takže most cez dolinu by inak hlásil
+jej dno.
 
 Vo verzii 1 **nie je**: zábrany na uzloch (`barrier=*`), podmienené zákazy
 (`restriction:conditional`), smerové rýchlosti (`maxspeed:forward`) a krajina
@@ -67,13 +89,20 @@ gzip potom komprimuje rovnaké veci vedľa seba.
 
 | úsek | obsah |
 |---|---|
-| hlavička | `RTIL`, verzia formátu, príznaky (`vyska`, `poradie`), `id` slovníka, `id` poradia, `z/x/y`, bbox obsahu |
+| hlavička | `RTIL`, verzia formátu, príznaky (`vyska`, `poradie`, `profil`), `id` slovníka, `id` poradia, `z/x/y`, bbox obsahu |
 | `uzly` | zoradené podľa OSM `id`: Δ`id`, Δ`lat_e7`, Δ`lon_e7`, [výška], [rank] |
 | `hrany` | index `od`, index `do`, index sady značiek, dĺžka v cm, smer, počet bodov geometrie, potom body ako Δ od predošlého |
 | `tagsety` | sady značiek, každá zoznam `(index kľúča, hodnota)`; rovnaká sada je v dlaždici raz |
 | `retazce` | hodnoty voľných kľúčov (`name`, `ref`, `maxheight`…) |
 | `zakazy` | druh, výnimky (`except`), reťaz hrán ako dvojice OSM `id` uzlov v smere jazdy |
 | `okraj` | uzly, ktoré ležia mimo tejto dlaždice – tie sa nájdu aj vedľa |
+| `profil` | krok v dm, počet hrán, počet vzoriek na hranu, prvé vzorky ako Δ medzi hranami, potom v každej hrane Δ od predošlej |
+
+**Blok `profil` je až za `okrajom` a preto sa verzia formátu nedvíha.**
+Čítačka, ktorá o ňom nevie, dočíta dlaždicu po `okraj` a zvyšok nechá ležať,
+takže archív s profilmi je čitateľný aj pre appku spred neho – hlásila by len
+stúpanie z koncov hrán, tak ako dovtedy. Nová čítačka nad starým archívom vidí
+príznak `profil` nulový a nesiaha za `okraj`.
 
 Hodnota v sade značiek sa číta podľa druhu kľúča v slovníku: vymenovaný kľúč
 nesie index hodnoty, `cislo` zigzag číslo, `volny` index do `retazce`.
@@ -182,7 +211,8 @@ python3 workers/routing/order.py --pbf=data/routing.osm.pbf \
 python3 workers/routing/tiles.py --pbf=data/region.osm.pbf \
     --out=_site/tiles/presovsky-routing.pmtiles \
     --region-key=presovsky --name=Prešovský --krajina=SK \
-    --poradie=data/routing-order.json
+    --poradie=data/routing-order.json \
+    --dem=dem/dmr5/all.vrt --profil-krok=5
 
 python3 workers/lint/routing-tiles.py _site/tiles/*-routing.pmtiles
 
@@ -196,7 +226,8 @@ z10. `--out` napíše šesť súborov – celú sieť a jej západný a východn
 ktoré zdieľajú hranu cez hranicu a spájajú sa podľa OSM id, sieť ciest:
 hlavný ťah s obchádzkami po miestnych uliciach a dve ulice spojené jedine
 poľnou cestou, raz krátkou a raz dlhou, cestu cez hrebeň, ktorá jediná má
-výšky uzlov, a sieť križovatiek na pokyny: diaľnica s výjazdom a nájazdom,
+výšky a profily (dve vlny na hrane, aby sa stúpanie z profilu nedalo
+zameniť s rozdielom koncov), a sieť križovatiek na pokyny: diaľnica s výjazdom a nájazdom,
 kruhový objazd so štyrmi ramenami, vidlica, zmena mena ulice a slepý koniec
 s jedinou odbočkou. Poradie uzlov je nad všetkým, čo `fixture.py` píše, takže
 archívy sa dajú čítať aj spolu.

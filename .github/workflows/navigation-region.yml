@@ -37,11 +37,16 @@ on:
         required: false
         default: ""
         type: string
-      # výška na uzol zo Sonnyho; bez bboxu ide archív bez výšok
+      # výšky a profily hrán; bez bboxu ide archív bez oboch
       dem_bbox:
         description: "Bbox W,S,E,N výškového modelu (`dem_bbox` z prípravy)"
         required: false
         default: ""
+        type: string
+      routing_dem_source:
+        description: "Výškový model pre profily hrán; pri chýbajúcom sklade sa spadne na `sonny`"
+        required: false
+        default: "dmr5"
         type: string
       size_limit_mb:
         description: "Rozpočet celej stránky v MB"
@@ -149,6 +154,7 @@ jobs:
           REGION_NAME: ${{ inputs.region_name }}
           ROUTING_COUNTRY: ${{ inputs.routing_country }}
           DEM_BBOX: ${{ inputs.dem_bbox }}
+          ROUTING_DEM_SOURCE: ${{ inputs.routing_dem_source }}
           SIZE_LIMIT_MB: ${{ inputs.size_limit_mb }}
           BUDGET_ROUTING_PCT: ${{ inputs.budget_pct }}
         run: workers/routing/build.sh

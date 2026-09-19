@@ -41,24 +41,49 @@ if [ "$AFTER" -lt 2000 ]; then
   exit 0
 fi
 
-# ---- 2. výšky uzlov ----
-# Sonny 20 m: výška sa berie na križovatke, a medzi dvomi križovatkami tvar
-# cesty nenesie žiadnu – jemnejší model by tú chybu nezmenšil, len by stiahol
-# rádovo viac bajtov. Iný je vec `ROUTING_DEM_SOURCE`.
-DEM_SOURCE="${ROUTING_DEM_SOURCE:-sonny}"
+# ---- 2. výšky a profily ----
+# DMR 5.0: archív nesie výšku každých 5 m pozdĺž cesty, takže rozlíšenie modelu
+# je odteraz to, čo o stúpaní rozhoduje. Sonny 20 m je záloha, kde DMR nie je.
+DEM_SOURCE="${ROUTING_DEM_SOURCE:-dmr5}"
+DEM_ZALOHA="${ROUTING_DEM_FALLBACK:-sonny}"
+PROFIL_KROK="${ROUTING_PROFILE_STEP_M:-5}"
 
 # Warning v logu prehliadne každý: kraje sa už dvakrát prestavali a `vyska`
 # zostala `false`. Toto je na stránke behu, kde sa výsledok číta.
 bez_vysok() {
   [ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
   cat >> "$GITHUB_STEP_SUMMARY" <<TEXT
-### Navigácia: archív bez výšok uzlov
+### Navigácia: archív bez výšok
 \`${REGION_KEY}\` ide s \`vyska: false\` – bicykel a chodec sa v ňom rátajú, ako
 keby bol kraj rovina, a trasa hlási namiesto stúpania pomlčku.
 
-Doplniť: **Dáta · výškové modely**, zdroj \`sonny\` (20 m, celé Slovensko, sklad
-\`dem-sonny\`), potom kraj postaviť znova.
+Doplniť: **Dáta · DMR 5.0** (5 m, sklad \`dem-dmr5-v2\`) alebo **Dáta · výškové
+modely**, zdroj \`sonny\` (20 m, celé Slovensko), potom kraj postaviť znova.
 TEXT
+}
+
+# ten istý dôvod ako `bez_vysok`: warning v logu prehliadne každý
+z_zalohy() {
+  [ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
+  cat >> "$GITHUB_STEP_SUMMARY" <<TEXT
+### Navigácia: profil z hrubšieho modelu
+\`${REGION_KEY}\` nemá v sklade \`dmr5\` ani jednu dlaždicu, tak profil hrán ide
+z \`${DEM_ZALOHA}\`. Krok ostáva ${PROFIL_KROK} m, ale štyri po sebe idúce vzorky
+vtedy sedia v jednej bunke modelu – stúpanie je vyhladené, nie namerané.
+
+Doplniť: **Dáta · DMR 5.0**, \`tiles: true\` nad stupňami tohto kraja, potom
+kraj postaviť znova.
+TEXT
+}
+
+# vráti 0 a nastaví DEM, keď sa zdroj stiahol
+skus_dem() {
+  local zdroj="$1"
+  set +e
+  workers/dem/fetch.sh "$DEM_BBOX" "dem/$zdroj" steps-out/routing.tsv "$zdroj"
+  local rc=$?
+  set -e
+  [ "$rc" -eq 0 ] && [ -s "dem/$zdroj/all.vrt" ]
 }
 
 DEM=()
@@ -66,18 +91,18 @@ if [ -n "${DEM_BBOX:-}" ]; then
   sudo apt-get install -y -qq gdal-bin
   python3 -c 'import numpy' 2>/dev/null \
     || python3 -m pip install --quiet --break-system-packages numpy
-  set +e
-  workers/dem/fetch.sh "$DEM_BBOX" "dem/$DEM_SOURCE" steps-out/routing.tsv "$DEM_SOURCE"
-  DRC=$?
-  set -e
-  if [ "$DRC" -eq 0 ] && [ -s "dem/$DEM_SOURCE/all.vrt" ]; then
-    DEM=(--dem="dem/$DEM_SOURCE/all.vrt")
+  if skus_dem "$DEM_SOURCE"; then
+    DEM=(--dem="dem/$DEM_SOURCE/all.vrt" --profil-krok="$PROFIL_KROK")
+  elif [ "$DEM_ZALOHA" != "$DEM_SOURCE" ] && skus_dem "$DEM_ZALOHA"; then
+    echo "::warning::$DEM_SOURCE pre tento kraj v sklade nie je – profil ide z $DEM_ZALOHA."
+    z_zalohy
+    DEM=(--dem="dem/$DEM_ZALOHA/all.vrt" --profil-krok="$PROFIL_KROK")
   else
-    echo "::warning::Výškový model kraja ($DEM_SOURCE) sa nestiahol (kód $DRC) – archív ide bez výšok uzlov."
+    echo "::warning::Výškový model kraja ($DEM_SOURCE ani $DEM_ZALOHA) sa nestiahol – archív ide bez výšok."
     bez_vysok
   fi
 else
-  echo "::warning::Kraj nemá bbox výškového modelu (DEM_BBOX) – archív ide bez výšok uzlov."
+  echo "::warning::Kraj nemá bbox výškového modelu (DEM_BBOX) – archív ide bez výšok."
   bez_vysok
 fi
 
