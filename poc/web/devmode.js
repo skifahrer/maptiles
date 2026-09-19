@@ -80,6 +80,7 @@ import {
 import { CUSTOM_SET_PREFIX } from "./icon-sources.js";
 import { MARK_SHAPES } from "./marks.js";
 import { SHIELD_SHAPES } from "./shields.js";
+import { ROUTE_SHIELD_NETWORKS } from "./route-shields.js";
 import { snapshotStyle, pasteStyle, valueAtZoom } from "./layer-style.js";
 import { el } from "./dom.js";
 import {
@@ -4684,6 +4685,28 @@ export function initDevMode({
           "(v prehliadači je vidieť len na náhľade vľavo). Zoom, veľkosť čísla " +
           "a rozostup po ceste sú pod každou triedou – tie platia hneď."
       }),
+      el("div", { class: `dev-item${overrides.routeShields === false ? " changed" : ""}` }, [
+        selectField({
+          label: "Podklad štítka",
+          value: overrides.routeShields === false ? "class" : "network",
+          options: [
+            ["network", `Podľa siete cesty (${ROUTE_SHIELD_NETWORKS.length} sietí)`],
+            ["class", "Klasický podľa triedy cesty"]
+          ],
+          onChange: (v) => {
+            overrides.routeShields = v !== "class";
+            apply({ immediate: true });
+          }
+        }),
+        el("p", {
+          class: "dev-note",
+          text:
+            "Sieť pozná tvar aj farbu značky z terénu – „D1\u201c na červenej, " +
+            "chorvátske „A1\u201c v zelenom šesťuholníku, americká okresná cesta " +
+            "v modrom päťuholníku. Tabuľka je svetová (z OSM Americana); sieť, " +
+            "ktorú nepozná, dostane klasický štítok podľa triedy tak ako doteraz."
+        })
+      ]),
       el("div", { class: "dev-list" }, rows),
       el("div", { class: "dev-bulk on" }, [
         el("button", {
@@ -4692,6 +4715,7 @@ export function initDevMode({
           text: "Späť na pôvodné štítky",
           onclick: () => {
             overrides.shields = {};
+            overrides.routeShields = true;
             for (const [id, , , colorKey, , , textKey, borderKey] of SHIELD_DEFS) {
               for (const key of [colorKey, textKey, borderKey]) setPaletteColor(key, undefined);
               // aj zoom, veľkosť a rozostup: sedia v `layers`, nie v `shields`

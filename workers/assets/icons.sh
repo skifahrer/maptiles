@@ -68,6 +68,11 @@ while read -r id url; do
     # (viď `hasIcon` v `poc/web/themes.js`), takže je to varovanie, nie chyba.
     node workers/assets/shields.mjs --sprite="_site/sprites/$id" \
       || echo "::warning::Štítky ciest sa do sady $id nepodarilo dopiecť – čísla ciest budú bez podkladu."
+    # A ŠTÍTKY PODĽA SIETE („D1" na červenej, „E 75" na zelenej). Keď sa
+    # nedopečú, mapa nespadne: štýl siahne po klasickom štítku podľa triedy
+    # cesty – ten je v `match` ako záloha (rozpis v `docs/stitky-ciest.md`).
+    node workers/assets/route-shields.mjs --sprite="_site/sprites/$id" \
+      || echo "::warning::Štítky podľa siete sa do sady $id nepodarilo dopiecť – čísla ciest budú s klasickým štítkom."
     # To isté pre TURISTICKÉ A CYKLISTICKÉ ZNAČKY (biely či žltý štvorec
     # s farebným pásom): v cudzej sade ikoniek nie sú a byť nemôžu – je to
     # obrázok konkrétnej tabuľky z terénu, nie symbol. Keď sa nedopečú, mapa

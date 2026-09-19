@@ -39,6 +39,11 @@ import {
 } from "./marks.js";
 import { SHIELD_SHAPE_IDS } from "./shields.js";
 import {
+  ROUTE_SHIELD_NETWORKS,
+  routeShieldName,
+  routeShieldTextColor
+} from "./route-shields.js";
+import {
   MAP_TYPE_IDS,
   DEFAULT_MAP_TYPE,
   normalizeMapType,
@@ -1425,6 +1430,8 @@ export function emptyOverrides() {
     trails: { gap: {}, types: {}, marks: {} },
     // štítok je tvar obrázka zo spritu, nie `paint` vlastnosť jednej vrstvy
     shields: {},
+    // štítok podľa siete cesty; `false` = klasický podľa triedy
+    routeShields: true,
     // sada je „iné ikony na všetko", vlastná ikona „túto jednu vec inak"
     iconSets: [],
     customIcons: [],
@@ -2277,6 +2284,8 @@ export function normalizeOverrides(raw) {
   }
   out.order = [...presuny.values()];
 
+  out.routeShields = raw.routeShields !== false;
+
   for (const [id, def] of Object.entries(raw.shields || {})) {
     const trieda = SHIELD_DEFS.find(([sid]) => sid === id);
     if (!trieda) {
@@ -2622,6 +2631,7 @@ export function hasOverrides(o) {
     Object.keys(o.trails?.types || {}).length > 0 ||
     Object.keys(o.trails?.marks || {}).length > 0 ||
     Object.keys(o.shields || {}).length > 0 ||
+    o.routeShields === false ||
     (o.iconSets || []).length > 0 ||
     (o.customIcons || []).length > 0 ||
     (o.poi?.hidden || []).length > 0 ||
@@ -5112,12 +5122,60 @@ export function buildStyle({
     return ["any", ...vetvy];
   };
 
+  // prvá sieť zo slotov; európsku kreslí vlastná vrstva, tak sa buď len ona,
+  // alebo všetko okrem nej
+  const networkExpr = (euro) => {
+    const vetvy = [];
+    for (let i = 1; i <= ROUTE_SLOTS; i += 1) {
+      const je = [euro ? "==" : "!=", ["get", `route_${i}_network`], EURO_NETWORK];
+      vetvy.push(["all", ["has", `route_${i}_network`], je],
+                 ["to-string", ["get", `route_${i}_network`]]);
+    }
+    return ["case", ...vetvy, ""];
+  };
+
+  /**
+   * Siete s vlastným štítkom, zoskupené podľa toho, čo z nich vyjde. Zálohou
+   * je posledná vetva `match`-u, takže ju vie nájsť aj aplikácia – prepnúť
+   * späť na klasický štítok je vziať posledný prvok.
+   */
+  const routeMatch = (euro, hodnota, fallback) => {
+    const skupiny = new Map();
+    for (const n of ROUTE_SHIELD_NETWORKS) {
+      if ((n === EURO_NETWORK) !== !!euro || !hasIcon(routeShieldName(n))) continue;
+      const v = hodnota(n);
+      // sieť, ktorej vyjde to isté čo zálohe, netreba menovať
+      if (v === fallback) continue;
+      if (!skupiny.has(v)) skupiny.set(v, []);
+      skupiny.get(v).push(n);
+    }
+    if (!skupiny.size) return null;
+    const vetvy = [];
+    for (const [v, siete] of skupiny) vetvy.push(siete, v);
+    return ["let", "net", networkExpr(euro), ["match", ["var", "net"], ...vetvy, fallback]];
+  };
+
   for (const [id, label, classes, colorKey, mz, shapeId, textKey, borderKey, network]
        of SHIELD_DEFS) {
     // obrázok je upečený na tvar × triedu × tému, farba je v ňom. V sprite sú
     // všetky tvary naraz, takže prepnutie je zmena mena, nie nový sprite.
     const shieldName = `${shieldShapeFor(id, shapeId, overrides)}-${id}-${theme}`;
-    const shieldIcon = hasIcon(shieldName) ? shieldName : null;
+    const classicIcon = hasIcon(shieldName) ? shieldName : null;
+
+    // sieť pozná tvar aj farbu značky z terénu; klasický štítok podľa triedy
+    // ostáva ako záloha pre siete, ktoré v tabuľke nie sú
+    let shieldIcon = classicIcon;
+    let textColor = c[textKey];
+    if (overrides?.routeShields !== false && classicIcon) {
+      const euro = network === EURO_NETWORK;
+      const ikona = routeMatch(euro, routeShieldName, classicIcon);
+      const farba = routeMatch(euro, routeShieldTextColor, c[textKey]);
+      if (ikona) {
+        shieldIcon = ikona;
+        // `null` = všetky siete majú tú istú farbu čísla ako klasický štítok
+        textColor = farba || c[textKey];
+      }
+    }
     add(
       {
         id: `road-shield-${id}`,
@@ -5160,7 +5218,7 @@ export function buildStyle({
         paint: shieldIcon
           ? {
               // obrázok nie je SDF, farbu má v sebe; zafarbiť sa dá len číslo
-              "text-color": c[textKey]
+              "text-color": textColor
             }
           : {
               // bez obrázka aspoň hrubé halo vo farbe štítka
