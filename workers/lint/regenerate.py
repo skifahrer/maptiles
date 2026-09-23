@@ -32,7 +32,7 @@ WF_DIR = ".github/workflows"
 VLASTNE = {"country", "co", "pokracovanie"}
 # podiely na rozpočte musia byť rovnaké ako v builde – `env:` sa nededí
 PODIELY = ("BUDGET_TRAILS_PCT", "BUDGET_FEATURES_PCT", "BUDGET_TRANSPORT_PCT",
-           "BUDGET_BOUNDARIES_PCT", "BUDGET_WATER_PCT",
+           "BUDGET_BOUNDARIES_PCT", "BUDGET_WATER_PCT", "BUDGET_RAIL_PCT",
            "BUDGET_CONTOURS_PCT", "BUDGET_ROCKS_PCT", "BUDGET_TERRAIN_PCT")
 KRAJ_LEVEL = 4
 

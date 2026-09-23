@@ -122,7 +122,7 @@ PM="$SITE/tiles/$REGION_KEY.pmtiles"
 for pair in "contours:vrstevnice" "rocks:skaly" "trails:značené trasy" \
             "features:krajinné prvky" "points:body v krajine" \
             "transport:dopravná sieť (aj obmedzenia na ceste)" \
-            "boundaries:hranice území" "water:vodstvo"; do
+            "boundaries:hranice území" "water:vodstvo" "rail:železnice"; do
   src="${pair%%:*}"; popis="${pair#*:}"
   jq -e ".sources.$src" "$STYLE" >/dev/null || continue
   f="$SITE/tiles/$REGION_KEY-$src.pmtiles"

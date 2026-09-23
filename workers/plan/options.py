@@ -81,6 +81,10 @@ DEFAULTS = {
                       "`vodstvo`"),
     # 14: najvyšší `min_zoom` v schéme je 13, o jeden vyššie je rezerva
     "water_maxzoom": ("14", "max zoom dlaždíc s vodstvom"),
+    "rail": ("true", "generovať železnice so stanicami a koľajovou sieťou "
+                     "na navigáciu – balík `zeleznice`"),
+    # 15: kilometrovníky sú od z15
+    "rail_maxzoom": ("15", "max zoom dlaždíc so železnicami"),
     # z DMR 5.0 je 5 m dobrý default takmer všade
     "contour_interval": ("5", "interval vrstevníc v metroch (10 = redšie)"),
     # 15, nie 14: schéma má triedy s `min_zoom: 15` a Planetiler ich inak zahodí
@@ -323,7 +327,8 @@ def main():
         print(f"::error::Voľba „transport“ musí byť true alebo false, "
               f"nie „{values['transport']}“.", file=sys.stderr)
         return 1
-    for volba, co in (("boundaries", "hranice"), ("water", "vodstvo")):
+    for volba, co in (("boundaries", "hranice"), ("water", "vodstvo"),
+                      ("rail", "železnice")):
         if values[volba] not in ("true", "false"):
             print(f"::error::Voľba „{volba}“ ({co}) musí byť true alebo "
                   f"false, nie „{values[volba]}“.", file=sys.stderr)
@@ -447,7 +452,8 @@ def main():
           f"Krajinné prvky: {values['features']}   "
           f"Dopravná sieť: {values['transport']}   "
           f"Hranice: {values['boundaries']}   "
-          f"Vodstvo: {values['water']}")
+          f"Vodstvo: {values['water']}   "
+          f"Železnice: {values['rail']}")
     print("Rýchly test: " + (f"ZAPNUTÝ, terén (vrstevnice, skaly, tieňovanie) "
                              f"len na {values['test_km2']} km² zo stredu "
                              f"výrezu; mapa ostáva celý región a otvorí sa tam"

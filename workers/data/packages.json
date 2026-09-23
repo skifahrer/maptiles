@@ -147,6 +147,18 @@
       "regeneruj": "vodstvo"
     },
     {
+      "kluc": "zeleznice",
+      "meno": "Železnice",
+      "app": "Railways",
+      "symbol": "train.side.front.car",
+      "app_popis": "Every railway, tram and metro line, stations and the network to ride on",
+      "popis": "všetky trate z OSM vrátane zrušených, stanice s menami, značky na trati a koľajová sieť, po ktorej telefón počíta trasu vlakom (.pmtiles)",
+      "manifest": ["rail", "rail_routing"],
+      "pripony": ["-rail.pmtiles", "-rail-routing.pmtiles"],
+      "zdroj": "site",
+      "regeneruj": "zeleznice"
+    },
+    {
       "kluc": "wikipedia",
       "meno": "Články z Wikipédie",
       "app": "Wikipedia articles",

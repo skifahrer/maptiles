@@ -85,6 +85,9 @@ jq -n \
   --argjson bmaxzoom "$BOUNDARIES_MAXZOOM" \
   --argjson water "$WATER_ENABLED" \
   --argjson wmaxzoom "$WATER_MAXZOOM" \
+  --argjson rail "${RAIL_ENABLED:-false}" \
+  --argjson railmaxzoom "${RAIL_MAXZOOM:-15}" \
+  --argjson railrouting "${RAIL_ROUTING:-false}" \
   --argjson transport "$TRANSPORT_ENABLED" \
   --argjson trmaxzoom "$TRANSPORT_MAXZOOM" \
   --argjson routing "$ROUTING_ENABLED" \
@@ -175,6 +178,14 @@ jq -n \
       + (if $water then {
         water: ("tiles/" + $region + "-water.pmtiles"),
         water_maxzoom: $wmaxzoom
+      } else {} end)
+      + (if $rail then {
+        rail: ("tiles/" + $region + "-rail.pmtiles"),
+        rail_maxzoom: $railmaxzoom
+      } else {} end)
+      # koľajová sieť na navigáciu vo vlakovom režime
+      + (if $rail and $railrouting then {
+        rail_routing: ("tiles/" + $region + "-rail-routing.pmtiles")
       } else {} end)
       # celá dopravná sieť. V manifeste je, hoci z nej štýl kreslí len
       # obmedzenia na ceste: manifest je zoznam toho, čo v mape je (číta ho

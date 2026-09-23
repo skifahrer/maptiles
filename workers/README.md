@@ -3030,6 +3030,33 @@ schémy)**, farby v rovnomennej skupine palety. Job sa **necachuje** a beží
 súbežne so všetkým ostatným; podiel na rozpočte stránky je
 `BUDGET_FEATURES_PCT` (4 %).
 
+## Železnice (balík `zeleznice`)
+
+Všetky koľaje z OSM v `{kraj}-rail.pmtiles` – trate, vlečky, električky,
+metro, ozubnice aj zrušené, nepoužívané a plánované trate – a k nim stanice
+s menami a značky na trati (priecestia, návestidlá, výhybky, kilometrovníky).
+Schéma je `workers/rail/rail.yml`, stavia ju job `zeleznice` (`rail.yml`)
+pri každom builde kraja aj krajiny.
+
+| vrstva | čo nesie |
+|---|---|
+| `railway` | trate; `class`, `usage`, `service`, `maxspeed`, `gauge`, `electrified`, `voltage`, `frequency`, `name`, `ref` |
+| `railway_area` | nástupištia a stanice ako plochy |
+| `railway_point` | značky na trati; `position` je poloha kilometrovníka |
+| `station` | stanice, zastávky a električkové zastávky s menom |
+
+Farby podľa rýchlosti, rozchodu či trakcie si kreslí aplikácia z atribútov,
+v každom štýle inak.
+
+`{kraj}-rail-routing.pmtiles` je koľajová sieť na navigáciu vlakom: ten istý
+formát ako cestná sieť (`docs/routing-tiles.md`), ale vlastný slovník
+`workers/data/rail-routing-tags.json`, teda iné `id` – s cestnou sa nespája.
+Stavia ju `workers/routing/tiles.py --slovnik=…`.
+
+Ovládanie: `rail=false` balík vypne, `rail_maxzoom` (15) je strop dlaždíc,
+`BUDGET_RAIL_PCT` podiel na rozpočte stránky. Samostatne sa pregeneruje
+voľbou `zeleznice` v „Mapa · Pregeneruj vrstvu kraja".
+
 ## Typy máp – čo ktorá mapa ukazuje
 
 Jedna mapa nemôže byť dobrá turistická aj dobrá cestná naraz. Turista chce

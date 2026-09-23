@@ -1,0 +1,40 @@
+{
+  "_comment": [
+    "Slovník značiek pre smerovanie po koľajach – archív `<kraj>-rail-routing.pmtiles`.",
+    "Ten istý formát ako `routing-tags.json`, iný slovník a teda iné `id`:",
+    "koľajová sieť sa s cestnou v telefóne nespája."
+  ],
+
+  "verzia": 1,
+
+  "siet": {
+    "railway": ["rail", "light_rail", "subway", "tram", "narrow_gauge",
+                "monorail", "funicular", "preserved"]
+  },
+
+  "kluce": {
+    "railway": {"z_siete": true, "co": "druh trate"},
+    "name": {"volny": true, "co": "meno trate do pokynu"},
+    "ref": {"volny": true, "co": "číslo trate"},
+    "usage": {"hodnoty": ["main", "branch", "industrial", "military", "tourism",
+                          "scientific", "test"],
+              "co": "význam trate"},
+    "service": {"hodnoty": ["yard", "siding", "spur", "crossover"],
+                "co": "vedľajšia koľaj – drahšia, nie zakázaná"},
+    "maxspeed": {"volny": true, "co": "traťová rýchlosť"},
+    "gauge": {"volny": true, "co": "rozchod v mm"},
+    "electrified": {"hodnoty": ["contact_line", "rail", "yes", "no",
+                                "4th_rail", "ground-level_power_supply"],
+                    "co": "trakcia"},
+    "oneway": {"hodnoty": ["yes", "no", "-1"], "co": "jednosmerná koľaj"},
+    "railway:preferred_direction": {"hodnoty": ["forward", "backward", "both"],
+                                    "co": "prednostný smer jazdy"},
+    "access": {"pristup": true, "co": "prístup"},
+    "bridge": {"hodnoty": ["yes", "viaduct"], "co": "most"},
+    "tunnel": {"hodnoty": ["yes", "building_passage"], "co": "tunel"}
+  },
+
+  "_pristup": {
+    "hodnoty": ["yes", "no", "private", "permissive", "unknown"]
+  }
+}

@@ -1,0 +1,314 @@
+# Planetiler custom schema – železnice z OSM v jednom `.pmtiles`.
+#
+# Všetky koľaje vrátane zrušených, stanice s menom a značky na trati. Farby
+# (rýchlosť, rozchod, trakcia) si kreslí aplikácia z atribútov.
+schema_name: FricoMaps železnice
+schema_description: >-
+  Železnice, električky, metro, zrušené a plánované trate, stanice s menami
+  a značky na trati z OSM
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>
+
+sources:
+  osm:
+    type: osm
+    local_path: data/rail.osm.pbf
+
+tag_mappings:
+  layer: integer
+
+definitions:
+  - &line_attrs
+    - key: class
+      type: match_value
+    - key: name
+    - key: ref
+    - key: usage
+    - key: service
+    - key: maxspeed
+    - key: gauge
+    - key: electrified
+    - key: voltage
+    - key: frequency
+    - key: tracks
+    - key: highspeed
+    - key: operator
+    - key: bridge
+    - key: tunnel
+    - key: layer
+  - &point_attrs
+    - key: class
+      type: match_value
+    - key: name
+    - key: ref
+    - key: position
+      value:
+        tag_value: "railway:position"
+    - key: signal_direction
+      value:
+        tag_value: "railway:signal:direction"
+    - key: osm_id
+      value: '${ feature.id }'
+      type: long
+  - &station_attrs
+    - key: class
+      type: match_value
+    - key: name
+    - key: name_en
+      value:
+        tag_value: "name:en"
+    - key: ref
+      value:
+        tag_value: "railway:ref"
+    - key: station
+    - key: operator
+    - key: uic_ref
+    - key: wikidata
+    - key: osm_id
+      value: '${ feature.id }'
+      type: long
+    - key: osm_type
+      value: '${ feature.osm_type }'
+
+layers:
+  - id: railway
+    features:
+      - source: osm
+        geometry: line
+        min_zoom: 6
+        include_when:
+          railway: [rail, narrow_gauge]
+        exclude_when:
+          service: __any__
+        attributes: *line_attrs
+
+      # vedľajšie koľaje by na prehľadovom zoome zliali stanicu do fľaku
+      - source: osm
+        geometry: line
+        min_zoom: 12
+        include_when:
+          __all__:
+            - railway: [rail, narrow_gauge]
+            - service: __any__
+        attributes: *line_attrs
+
+      - source: osm
+        geometry: line
+        min_zoom: 10
+        include_when:
+          railway: [light_rail, subway, tram, monorail, funicular, preserved,
+                    miniature]
+        attributes: *line_attrs
+
+      - source: osm
+        geometry: line
+        min_zoom: 10
+        include_when:
+          railway: [abandoned, disused, razed, dismantled, construction,
+                    proposed]
+        attributes: *line_attrs
+
+      - source: osm
+        geometry: line
+        min_zoom: 15
+        include_when:
+          railway: [platform]
+        attributes: *line_attrs
+
+    tile_post_process:
+      merge_line_strings:
+        min_length: 0
+
+  - id: railway_area
+    features:
+      - source: osm
+        geometry: polygon
+        min_zoom: 14
+        include_when:
+          railway: [platform, station, turntable]
+        attributes: *line_attrs
+
+  - id: railway_point
+    features:
+      - source: osm
+        geometry: point
+        min_zoom: 14
+        include_when:
+          railway: [level_crossing, crossing, tram_level_crossing,
+                    tram_crossing, railway_crossing, signal, switch,
+                    buffer_stop, derail, turntable, subway_entrance,
+                    border, owner_change, water_crane]
+        attributes: *point_attrs
+
+      - source: osm
+        geometry: point
+        min_zoom: 15
+        include_when:
+          railway: [milestone]
+        attributes: *point_attrs
+
+  - id: station
+    features:
+      - source: osm
+        geometry: point
+        min_zoom: 9
+        include_when:
+          railway: [station]
+        attributes: *station_attrs
+
+      - source: osm
+        geometry: point
+        min_zoom: 12
+        include_when:
+          railway: [halt]
+        attributes: *station_attrs
+
+      - source: osm
+        geometry: point
+        min_zoom: 14
+        include_when:
+          railway: [tram_stop]
+        attributes: *station_attrs
+
+      # stanica zmapovaná ako plocha nemá bod, na ktorom by stálo meno
+      - source: osm
+        geometry: polygon_centroid
+        min_zoom: 12
+        include_when:
+          railway: [station, halt]
+        attributes: *station_attrs
+
+# testy: `java -jar planetiler.jar verify workers/rail/rail.yml`
+examples:
+  - name: Hlavná trať je od z6 a nesie rýchlosť, rozchod aj trakciu
+    input:
+      source: osm
+      geometry: line
+      tags:
+        railway: rail
+        usage: main
+        maxspeed: "120"
+        gauge: "1435"
+        electrified: contact_line
+        voltage: "25000"
+    output:
+      - layer: railway
+        geometry: line
+        min_zoom: 6
+        tags:
+          class: rail
+          usage: main
+          maxspeed: "120"
+          gauge: "1435"
+          electrified: contact_line
+          voltage: "25000"
+
+  - name: Vlečka je až od z12
+    input:
+      source: osm
+      geometry: line
+      tags:
+        railway: rail
+        service: siding
+    output:
+      - layer: railway
+        geometry: line
+        min_zoom: 12
+        tags:
+          class: rail
+          service: siding
+
+  - name: Zrušená trať v tomto balíku JE
+    input:
+      source: osm
+      geometry: line
+      tags:
+        railway: abandoned
+        name: Trnava – Kúty
+    output:
+      - layer: railway
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: abandoned
+          name: Trnava – Kúty
+
+  - name: Električka a metro sú od z10
+    input:
+      source: osm
+      geometry: line
+      tags:
+        railway: tram
+    output:
+      - layer: railway
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: tram
+
+  - name: Stanica je bod s menom od z9
+    input:
+      source: osm
+      geometry: point
+      tags:
+        railway: station
+        name: Žilina
+        uic_ref: "5613206"
+    output:
+      - layer: station
+        geometry: point
+        min_zoom: 9
+        tags:
+          class: station
+          name: Žilina
+          uic_ref: "5613206"
+
+  - name: Zastávka je od z12
+    input:
+      source: osm
+      geometry: point
+      tags:
+        railway: halt
+        name: Pezinok zastávka
+    output:
+      - layer: station
+        geometry: point
+        min_zoom: 12
+        tags:
+          class: halt
+          name: Pezinok zastávka
+
+  - name: Priecestie je značka na trati
+    input:
+      source: osm
+      geometry: point
+      tags:
+        railway: level_crossing
+    output:
+      - layer: railway_point
+        geometry: point
+        min_zoom: 14
+        tags:
+          class: level_crossing
+
+  - name: Kilometrovník nesie polohu
+    input:
+      source: osm
+      geometry: point
+      tags:
+        railway: milestone
+        railway:position: "12.4"
+    output:
+      - layer: railway_point
+        geometry: point
+        min_zoom: 15
+        tags:
+          class: milestone
+          position: "12.4"
+
+  - name: Cesta do železníc nepatrí
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: primary
+    output: []
