@@ -243,13 +243,15 @@ def main():
                     help="súbor s poradím uzlov z workers/routing/order.py")
     ap.add_argument("--dem", default="",
                     help="mozaika výškového modelu (VRT) – výšky a profily")
+    ap.add_argument("--slovnik", default="",
+                    help="iný slovník značiek, napr. workers/data/rail-routing-tags.json")
     ap.add_argument("--profil-krok", type=float, default=vysky_krok(),
                     help="krok výškového profilu hrany v metroch; 0 = bez neho")
     args = ap.parse_args()
 
     import network                                                # noqa: PLC0415
 
-    slovnik = slovnik_modul.slovnik()
+    slovnik = slovnik_modul.slovnik(args.slovnik or None)
     if args.krajina and slovnik.hodnota_index("krajina", args.krajina) is None:
         print(f"::error::Krajina `{args.krajina}` nie je v `krajina` vo "
               f"workers/data/routing-tags.json, takže by sa do archívu "
@@ -356,7 +358,8 @@ def main():
              "min_lon_e7": w, "min_lat_e7": s, "max_lon_e7": e, "max_lat_e7": n,
              "center_zoom": ZOOM, "center_lon_e7": (w + e) // 2,
              "center_lat_e7": (s + n) // 2},
-            {"name": f"{args.region_key}-routing", "format": "rtil",
+            {"name": os.path.basename(args.out).removesuffix(".pmtiles"),
+             "format": "rtil",
              "description": "Smerovacia sieť so značkami – cenu počíta telefón",
              "graf": graf},
         )

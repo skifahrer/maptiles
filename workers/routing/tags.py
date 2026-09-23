@@ -99,14 +99,15 @@ def _id(verzia, siet, kluce, druh, hodnoty):
     return int.from_bytes(hashlib.sha256(raw).digest()[:4], "big")
 
 
-_CACHE = None
+_CACHE = {}
+ZELEZNICE = os.path.join(os.path.dirname(_HERE), "data", "rail-routing-tags.json")
 
 
-def slovnik():
-    global _CACHE
-    if _CACHE is None:
-        _CACHE = Slovnik()
-    return _CACHE
+def slovnik(path=None):
+    path = path or os.environ.get("ROUTING_TAGS") or CISELNIK
+    if path not in _CACHE:
+        _CACHE[path] = Slovnik(path)
+    return _CACHE[path]
 
 
 def export(s=None):
@@ -127,8 +128,17 @@ def filter_vyrazy(s=None):
     return riadky
 
 
+def _cesta_z_argv(argv):
+    for i, a in enumerate(argv):
+        if a.startswith("--slovnik="):
+            return a.split("=", 1)[1]
+        if a == "--slovnik" and i + 1 < len(argv):
+            return argv[i + 1]
+    return None
+
+
 if __name__ == "__main__":
-    s = slovnik()
+    s = slovnik(_cesta_z_argv(sys.argv[1:]))
     if "--filter" in sys.argv[1:]:
         print("\n".join(filter_vyrazy(s)))
         sys.exit(0)

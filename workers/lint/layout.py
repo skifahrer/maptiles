@@ -30,6 +30,7 @@ ZNAME = {
     "transport": "workflow „Mapa · dopravná sieť“ (transport.yml)",
     "boundaries": "workflow „Mapa · hranice území“ (boundaries.yml)",
     "water": "workflow „Mapa · vodstvo“ (water.yml)",
+    "rail": "workflow „Mapa · železnice“ (rail.yml)",
     "routing": "navigácia: profil, smerovacie dlaždice a poradie uzlov",
     "tiles": "job `tiles`",
     "wiki": "workflow „Build wiki“ (wiki.yml)",

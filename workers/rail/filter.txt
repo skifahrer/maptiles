@@ -1,0 +1,6 @@
+# predfilter pbf pre `rail.yml` (`osmium tags-filter --expressions`)
+#
+# širší než schéma – opačne to stráži `workers/lint/rail.py`
+
+# trate, stanice, značky na trati aj plochy nástupíšť
+nwr/railway

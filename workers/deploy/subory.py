@@ -99,10 +99,18 @@ def subory_baliku(site, man, b):
     if not rel and b.get("pripony"):
         tiles = os.path.join(site, "tiles")
         rel = [os.path.join("tiles", n) for n in sorted(os.listdir(tiles))
-               if n.endswith(tuple(b["pripony"]))] \
+               if koncovka(n, b["pripony"])] \
             if os.path.isdir(tiles) else []
     return [os.path.join(site, p) for p in rel
             if os.path.exists(os.path.join(site, p))]
+
+
+def koncovka(meno, pripony):
+    """Koncovka balíka, nie dlhšia cudzia – `-routing` nie je `-rail-routing`."""
+    vsetky = {q for x in baliky.zoznam() for q in x.get("pripony") or ()}
+    return any(meno.endswith(p) and not any(
+        len(q) > len(p) and q.endswith(p) and meno.endswith(q) and q not in pripony
+        for q in vsetky) for p in pripony)
 
 
 def baliky_vrstiev(site, man):
@@ -156,7 +164,7 @@ def navigacia_subory(site, man):
     if not rel:
         base = os.path.join(site, "tiles")
         rel = [os.path.join("tiles", n) for n in sorted(os.listdir(base))
-               if n.endswith("-routing.pmtiles")] if os.path.isdir(base) else []
+               if koncovka(n, ("-routing.pmtiles",))] if os.path.isdir(base) else []
     return [os.path.join(site, p) for p in rel
             if os.path.exists(os.path.join(site, p))]
 

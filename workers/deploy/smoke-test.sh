@@ -96,7 +96,8 @@ for pair in "${CONTOURS:-}:contours:vrstevnice" \
             "${FEATURES:-}:features:krajinné prvky" \
             "${POINTS:-}:points:body v krajine" \
             "${BOUNDARIES:-}:boundaries:hranice území" \
-            "${WATER:-}:water:vodstvo"; do
+            "${WATER:-}:water:vodstvo" \
+            "${RAIL:-}:rail:železnice"; do
   IFS=: read -r on src popis <<<"$pair"
   [ "$on" = 'true' ] || continue
   check "$BASE/tiles/$REGION-$src.pmtiles" 206 "$popis (Range request)" \

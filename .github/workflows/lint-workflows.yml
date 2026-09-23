@@ -584,6 +584,10 @@ jobs:
       - name: "Vodstvo: filter, členovia relácií, meno a pobrežie ako čiara"
         run: python3 workers/lint/water.py
 
+      # navigácia po koľajach smie jazdiť len po tom, čo balík kreslí
+      - name: "Železnice: filter, sľúbené triedy a koľajová sieť"
+        run: python3 workers/lint/rail.py
+
       # kraj má na osm.fr vlastný súbor rezaný po jeho hranici, tak sa sťahuje
       # priamo ten – nie 373 MB Slovenska
       - name: PBF regiónu sa sťahuje priamo z osm.fr

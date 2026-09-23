@@ -1,0 +1,168 @@
+name: Mapa · železnice
+
+# železnice z OSM do vlastného `.pmtiles` aj s koľajovou sieťou na navigáciu –
+# balík `zeleznice`; samostatný súbor, lebo `build-map-region.yml` má strop 128 KiB
+
+on:
+  workflow_call:
+    inputs:
+      region_key:
+        description: "Kľúč regiónu – z neho je meno `{region}-rail.pmtiles`"
+        required: true
+        type: string
+      region_name:
+        description: "Meno regiónu do metadát koľajovej siete"
+        required: false
+        default: ""
+        type: string
+      region_bbox:
+        description: "Bbox regiónu pre orez dlaždíc (workers/lib/region-clip.sh)"
+        required: true
+        type: string
+      maxzoom:
+        description: "Najvyšší zoom dlaždíc so železnicami"
+        required: false
+        default: "15"
+        type: string
+      region_clip:
+        description: "Orezať dlaždice na hranicu regiónu"
+        required: false
+        default: "false"
+        type: string
+      size_limit_mb:
+        description: "Rozpočet celej stránky v MB"
+        required: false
+        default: "900"
+        type: string
+      budget_pct:
+        description: "Podiel železníc na rozpočte stránky v percentách"
+        required: false
+        default: "5"
+        type: string
+      day:
+        description: "Dátum pre kľúč cache Planetileru"
+        required: false
+        default: ""
+        type: string
+    outputs:
+      enabled:
+        description: "Vznikla vrstva? (vo výreze nemusí byť ani jedna koľaj)"
+        value: ${{ jobs.rail.outputs.enabled }}
+      maxzoom:
+        description: "Zoom, po ktorý dlaždice naozaj sú"
+        value: ${{ jobs.rail.outputs.maxzoom }}
+      routing:
+        description: "Vznikla koľajová sieť na navigáciu?"
+        value: ${{ jobs.rail.outputs.routing }}
+      size_mb:
+        description: "Veľkosť vrstvy v MB"
+        value: ${{ jobs.rail.outputs.size_mb }}
+    # `workflow_call` nededí secrets sám. Bez nich sa cache na Drive nemá ako
+    # otvoriť a Planetiler (93 MB) sa ťahá pri každom behu.
+    secrets:
+      GDRIVE_CREDENTIALS:
+        required: false
+      DRIVE_SECRET:
+        required: false
+      DRIVE_REFRESH:
+        required: false
+
+# Prihlásenie na Drive pre celý workflow, nie po kroku: cache-restore
+# a cache-save sú dva kroky a keby token stál pri jednom z nich, druhý by sa
+# ticho vrátil k sťahovaniu všetkého odznova. Stráži to „Kontrola · lint
+# workflowov".
+env:
+  GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+  DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
+  DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
+  DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
+
+jobs:
+  rail:
+    name: Železnice
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.rail.outputs.enabled }}
+      maxzoom: ${{ steps.rail.outputs.maxzoom }}
+      routing: ${{ steps.rail.outputs.routing }}
+      size_mb: ${{ steps.rail.outputs.size_mb }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Priprav priečinok na meranie
+        run: mkdir -p steps-out
+
+      - name: Stiahni PBF z prípravy
+        uses: actions/download-artifact@v8
+        with:
+          name: pbf
+          path: data
+
+      # polygón regiónu je `--polygon` pre Planetiler; `continue-on-error`,
+      # lebo aj bez neho sa beh dokončiť dá (dlaždice budú na bboxe)
+      - name: Stiahni polygón regiónu
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: region-poly
+          path: data
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Cache Planetileru (restore)
+        id: planetiler-cache
+        uses: ./.github/actions/cache-restore
+        with:
+          path: planetiler.jar
+          key: planetiler-latest-${{ inputs.day }}
+
+      - name: Stiahni Planetiler
+        run: workers/lib/planetiler.sh
+      - name: Cache Planetileru (save)
+        if: ${{ always() && steps.planetiler-cache.outputs.cache-hit != 'true' && hashFiles('planetiler.jar') != '' }}
+        continue-on-error: true
+        uses: ./.github/actions/cache-save
+        with:
+          path: planetiler.jar
+          key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
+
+      # testy schémy pred stavbou (`examples`) – jediná vec, ktorá o schéme
+      # povie pravdu bez celého behu. Beží ako prvé.
+      - name: Testy schémy železníc
+        run: java -jar planetiler.jar verify workers/rail/rail.yml
+
+      # rozpis je vo `workers/rail/build.sh`
+      - name: Železnice z OSM → PMTiles
+        id: rail
+        env:
+          OPT_RAIL_MAXZOOM: ${{ inputs.maxzoom }}
+          OPT_REGION_CLIP: ${{ inputs.region_clip }}
+          REGION_BBOX: ${{ inputs.region_bbox }}
+          REGION_KEY: ${{ inputs.region_key }}
+          REGION_NAME: ${{ inputs.region_name }}
+          SIZE_LIMIT_MB: ${{ inputs.size_limit_mb }}
+          BUDGET_RAIL_PCT: ${{ inputs.budget_pct }}
+        run: workers/rail/build.sh
+
+      - name: Odlož časť stránky
+        if: ${{ always() && hashFiles('_site/**') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-rail
+          path: _site
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+
+      - name: Odlož meranie krokov
+        if: ${{ always() && hashFiles('steps-out/*') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: steps-rail
+          path: steps-out
+          retention-days: 1
+          if-no-files-found: ignore
