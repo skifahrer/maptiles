@@ -46,6 +46,8 @@ fi
 
 mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
 
+python3 workers/rail/lines.py --pbf=data/rail.osm.pbf --out=data/rail-lines.osm.pbf
+
 T_PM=$(date +%s)
 OUT="_site/tiles/${REGION_KEY}-rail.pmtiles"
 java -Xmx4g -jar planetiler.jar generate-custom \

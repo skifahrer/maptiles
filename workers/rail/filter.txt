@@ -4,3 +4,6 @@
 
 # trate, stanice, značky na trati aj plochy nástupíšť
 nwr/railway
+
+# linky nesú farbu a číslo, ktoré `lines.py` prepíše na koľaje
+r/route=tram,subway,light_rail,monorail,train,railway,funicular
