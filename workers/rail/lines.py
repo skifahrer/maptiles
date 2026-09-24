@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Farbu a číslo linky z `type=route` relácie prepíše na jej koľaje."""
 import argparse
+from pathlib import Path
 
 import osmium
 
@@ -68,7 +69,8 @@ def main():
 
     linky = Linky()
     linky.apply_file(a.pbf)
-    writer = osmium.SimpleWriter(a.out, overwrite=True)
+    Path(a.out).unlink(missing_ok=True)
+    writer = osmium.SimpleWriter(a.out)
     try:
         prepis = Prepis(linky, writer)
         prepis.apply_file(a.pbf)
