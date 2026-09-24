@@ -3042,7 +3042,7 @@ pri každom builde kraja aj krajiny.
 |---|---|
 | `railway` | trate; `class`, `usage`, `service`, `maxspeed`, `gauge`, `electrified`, `voltage`, `frequency`, `name`, `ref`, `colour`, `route_ref`, `network`, `start_date`, `end_date`, `wikidata`, `wikipedia` |
 | `railway_area` | nástupištia a stanice ako plochy |
-| `railway_point` | značky na trati; `position` je poloha kilometrovníka |
+| `railway_point` | značky na trati; `position` je poloha kilometrovníka, `switch_type` druh výhybky, `signal_main`, `signal_distant`, `signal_combined`, `signal_shunting`, `signal_minor` druh návestidla |
 | `station` | stanice, zastávky a električkové zastávky s menom, `network`, `colour`, `wikidata`, `wikipedia` |
 
 Farbu linky (`colour`) a čísla liniek (`route_ref`) nesie v OSM `type=route`
