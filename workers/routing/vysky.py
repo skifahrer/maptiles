@@ -137,20 +137,21 @@ def dopln(siet, dem):
     return z_modelu, len(vysky) - z_modelu, bez
 
 
-def _vzorky(body, krok_m):
+def _vzorky(body, krok_m, dlzka_m):
     """Body pozdĺž lomenej čiary po `krok_m`; posledný je vždy koniec hrany."""
     lat = np.array([b[0] for b in body], dtype=np.float64) / E7
     lon = np.array([b[1] for b in body], dtype=np.float64) / E7
-    # rovinná aproximácia stačí: umiestňuje vzorky, dĺžku hrany počíta network.py
+    # rovinná aproximácia stačí na umiestnenie vzoriek, nie na dĺžku
     dy = np.diff(lat) * STUPEN_M
     dx = np.diff(lon) * STUPEN_M * math.cos(math.radians(float(lat.mean())))
     kde = np.concatenate([[0.0], np.cumsum(np.hypot(dx, dy))])
-    dlzka = float(kde[-1])
-    if dlzka <= 0:
+    if kde[-1] <= 0 or dlzka_m <= 0:
         return lat[:1], lon[:1]
-    n = fmt.pocet_vzoriek(dlzka, krok_m)
+    # telefón počíta vzorky z `dlzka_cm`, tak sa aj kladú po jej dĺžke
+    kde *= dlzka_m / kde[-1]
+    n = fmt.pocet_vzoriek(dlzka_m, krok_m)
     poz = np.arange(n - 1) * krok_m
-    poz = np.append(poz, dlzka)
+    poz = np.append(poz, dlzka_m)
     return np.interp(poz, kde, lat), np.interp(poz, kde, lon)
 
 
@@ -183,7 +184,7 @@ def profily(siet, dem, krok_m=KROK_M):
     lat, lon, kusy = [], [], []
     for h in siet.hrany:
         la, lo = _vzorky([siet.uzly[h["od"]], *h["geom"], siet.uzly[h["do"]]],
-                         krok_m)
+                         krok_m, h["dlzka_cm"] / 100)
         kusy.append(len(la))
         lat.append(la)
         lon.append(lo)
