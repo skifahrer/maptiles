@@ -11,7 +11,7 @@ attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap 
 sources:
   osm:
     type: osm
-    local_path: data/rail.osm.pbf
+    local_path: data/rail-lines.osm.pbf
 
 tag_mappings:
   layer: integer
@@ -35,6 +35,14 @@ definitions:
     - key: bridge
     - key: tunnel
     - key: layer
+    - key: colour
+    - key: route_ref
+    - key: network
+    - key: description
+    - key: start_date
+    - key: end_date
+    - key: wikidata
+    - key: wikipedia
   - &point_attrs
     - key: class
       type: match_value
@@ -62,7 +70,10 @@ definitions:
     - key: station
     - key: operator
     - key: uic_ref
+    - key: network
+    - key: colour
     - key: wikidata
+    - key: wikipedia
     - key: osm_id
       value: '${ feature.id }'
       type: long
@@ -244,6 +255,23 @@ examples:
         min_zoom: 10
         tags:
           class: tram
+
+  - name: Linka električky nesie svoju farbu a článok
+    input:
+      source: osm
+      geometry: line
+      tags:
+        railway: tram
+        colour: "#E30613"
+        wikipedia: sk:Električková doprava v Bratislave
+    output:
+      - layer: railway
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: tram
+          colour: "#E30613"
+          wikipedia: sk:Električková doprava v Bratislave
 
   - name: Stanica je bod s menom od z9
     input:
