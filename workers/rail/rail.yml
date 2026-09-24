@@ -54,6 +54,24 @@ definitions:
     - key: signal_direction
       value:
         tag_value: "railway:signal:direction"
+    - key: switch_type
+      value:
+        tag_value: "railway:switch"
+    - key: signal_main
+      value:
+        tag_value: "railway:signal:main"
+    - key: signal_distant
+      value:
+        tag_value: "railway:signal:distant"
+    - key: signal_combined
+      value:
+        tag_value: "railway:signal:combined"
+    - key: signal_shunting
+      value:
+        tag_value: "railway:signal:shunting"
+    - key: signal_minor
+      value:
+        tag_value: "railway:signal:minor"
     - key: osm_id
       value: '${ feature.id }'
       type: long
@@ -317,6 +335,23 @@ examples:
         min_zoom: 14
         tags:
           class: level_crossing
+
+  - name: Výhybka nesie druh, návestidlo druh návesti
+    input:
+      source: osm
+      geometry: point
+      tags:
+        railway: switch
+        railway:switch: double_slip
+        ref: "12"
+    output:
+      - layer: railway_point
+        geometry: point
+        min_zoom: 14
+        tags:
+          class: switch
+          switch_type: double_slip
+          ref: "12"
 
   - name: Kilometrovník nesie polohu
     input:
