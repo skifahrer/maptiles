@@ -3063,6 +3063,13 @@ formát ako cestná sieť (`docs/routing-tiles.md`), ale vlastný slovník
 `workers/data/rail-routing-tags.json`, teda iné `id` – s cestnou sa nespája.
 Stavia ju `workers/routing/tiles.py --slovnik=…`.
 
+`{kraj}-signs.json/.png` (+`@2x`) sú značky krajiny – návestidlá a tabule pri
+trati, obmedzenie rýchlosti na ceste – ako sprite (`workers/rail/signs.mjs`).
+Mená sú `sk.rail.signal`, `sk.road.speedLimit`; tabuľa s číslom má `content`
+(kam číslo patrí) a `figures` (`tens` = desiatky km/h). Krajina bez vlastnej
+sady nedostane nič a appka kreslí predvolené. Ide v balíku `zeleznice`
+(`rail_signs` v manifeste) aj v základnej mape (časť `znacky`).
+
 Ovládanie: `rail=false` balík vypne, `rail_maxzoom` (15) je strop dlaždíc,
 `BUDGET_RAIL_PCT` podiel na rozpočte stránky. Samostatne sa pregeneruje
 voľbou `zeleznice` v „Mapa · Pregeneruj vrstvu kraja".

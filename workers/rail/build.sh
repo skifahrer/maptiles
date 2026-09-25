@@ -62,6 +62,9 @@ printf '%s\t%s\t%s\t%s\n' "68" "Železnice → PMTiles" "$(( $(date +%s) - T_PM 
   "maxzoom $RZ_, $(du -h "$OUT" | cut -f1)" \
   >> steps-out/rail.tsv
 
+# značky krajiny idú s mapou, appka ich nekreslí sama
+node workers/rail/signs.mjs --region="$REGION_KEY" --out="_site/tiles/${REGION_KEY}-signs"
+
 # koľajová sieť na navigáciu – ten istý formát ako cestná, vlastný slovník
 T_R=$(date +%s)
 ROUT="_site/tiles/${REGION_KEY}-rail-routing.pmtiles"
