@@ -72,6 +72,62 @@ definitions:
     - key: signal_minor
       value:
         tag_value: "railway:signal:minor"
+    - key: signal_main_form
+      value:
+        tag_value: "railway:signal:main:form"
+    - key: signal_distant_form
+      value:
+        tag_value: "railway:signal:distant:form"
+    - key: signal_speed_limit
+      value:
+        tag_value: "railway:signal:speed_limit"
+    - key: speed_limit
+      value:
+        tag_value: "railway:signal:speed_limit:speed"
+    - key: signal_speed_limit_distant
+      value:
+        tag_value: "railway:signal:speed_limit_distant"
+    - key: speed_limit_distant
+      value:
+        tag_value: "railway:signal:speed_limit_distant:speed"
+    - key: signal_crossing
+      value:
+        tag_value: "railway:signal:crossing"
+    - key: signal_crossing_distant
+      value:
+        tag_value: "railway:signal:crossing_distant"
+    - key: signal_whistle
+      value:
+        tag_value: "railway:signal:whistle"
+    - key: signal_ring
+      value:
+        tag_value: "railway:signal:ring"
+    - key: signal_electricity
+      value:
+        tag_value: "railway:signal:electricity"
+    - key: electricity_type
+      value:
+        tag_value: "railway:signal:electricity:type"
+    - key: signal_train_protection
+      value:
+        tag_value: "railway:signal:train_protection"
+    - key: signal_stop
+      value:
+        tag_value: "railway:signal:stop"
+    - key: signal_route
+      value:
+        tag_value: "railway:signal:route"
+    - key: signal_main_repeated
+      value:
+        tag_value: "railway:signal:main_repeated"
+    - key: signal_wrong_road
+      value:
+        tag_value: "railway:signal:wrong_road"
+    # smer koľaje pri návestidle v stupňoch, dopočíta ho `lines.py`
+    - key: bearing
+      type: integer
+      value:
+        tag_value: rail_bearing
     - key: osm_id
       value: '${ feature.id }'
       type: long
@@ -174,6 +230,24 @@ layers:
         include_when:
           railway: [milestone]
         attributes: *point_attrs
+
+      # kde sa mení traťová rýchlosť – body dopočíta `lines.py`
+      - source: osm
+        geometry: point
+        min_zoom: 14
+        include_when:
+          rail_speed: __any__
+        attributes:
+          - key: class
+            value: speed_change
+          - key: speed
+            type: integer
+            value:
+              tag_value: rail_speed
+          - key: speed_prev
+            type: integer
+            value:
+              tag_value: rail_speed_prev
 
   - id: station
     features:
@@ -352,6 +426,41 @@ examples:
           class: switch
           switch_type: double_slip
           ref: "12"
+
+  - name: Rýchlostník nesie rýchlosť a návestidlo smer koľaje
+    input:
+      source: osm
+      geometry: point
+      tags:
+        railway: signal
+        railway:signal:speed_limit: DE-ESO:lf7
+        railway:signal:speed_limit:speed: "80"
+        rail_bearing: "270"
+    output:
+      - layer: railway_point
+        geometry: point
+        min_zoom: 14
+        tags:
+          class: signal
+          signal_speed_limit: DE-ESO:lf7
+          speed_limit: "80"
+          bearing: 270
+
+  - name: Zmena traťovej rýchlosti je bod s oboma rýchlosťami
+    input:
+      source: osm
+      geometry: point
+      tags:
+        rail_speed: "80"
+        rail_speed_prev: "120"
+    output:
+      - layer: railway_point
+        geometry: point
+        min_zoom: 14
+        tags:
+          class: speed_change
+          speed: 80
+          speed_prev: 120
 
   - name: Kilometrovník nesie polohu
     input:
