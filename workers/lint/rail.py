@@ -13,6 +13,9 @@ FILTER = os.path.join(_WORKERS, "rail", "filter.txt")
 BUILD = os.path.join(_WORKERS, "rail", "build.sh")
 SLOVNIK = os.path.join(_WORKERS, "data", "rail-routing-tags.json")
 
+# kľúče, ktoré na body dopíše `lines.py` – predfilter ich pustiť nemusí
+DOPOCITANE = {"rail_speed"}
+
 # čo balík sľubuje v aplikácii
 SLUBY = {"rail", "tram", "subway", "light_rail", "abandoned", "disused",
          "station", "halt", "level_crossing"}
@@ -54,7 +57,7 @@ def main():
             if kluc == "railway":
                 triedy |= set(map(str, hodnoty))
         # pri `__all__` stačí jeden kľúč – ostatné prídu s tým istým objektom
-        if kluce and not kluce & pusta:
+        if kluce and not kluce & (pusta | DOPOCITANE):
             bad.append(f"{FILTER}: schéma sa pýta na {', '.join(sorted(kluce))}, "
                        f"predfilter to nepúšťa – dlaždice by vznikli bez toho.")
 
