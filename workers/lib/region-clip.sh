@@ -4,9 +4,10 @@
 # Spoločný súbor, lebo dlaždice z regionálneho PBF robia tri joby (`tiles`,
 # `trails`, `features`) a orez musí byť vo všetkých rovnaký.
 #
-# Planetiler si rozsah berie z obdĺžnika bboxu a do dlaždíc kreslí aj
-# celosvetové vodstvo, pobrežia a Natural Earth – bbox Prešovského kraja je
-# takmer dvojnásobok jeho plochy, takže mapa pokračovala do Poľska.
+# Planetiler si rozsah berie z obdĺžnika bboxu, nie z tvaru regiónu – bbox
+# Prešovského kraja je takmer dvojnásobok jeho plochy, takže mapa pokračovala
+# do Poľska. Za hranicou je len riedky lem OSM z nášho PBF, nie celosvetové
+# vodstvo ani Natural Earth (tie končia na nízkych zoomoch).
 #
 # `--bounds` a `--polygon` naraz nedávaj: `tileExtents` sa počíta už
 # v konštruktore, takže polygón je v logu vidieť a neoreže nič. Namerané na
@@ -45,7 +46,7 @@ PY
 # argumenty na stdout (volajúci si ich načíta), vysvetlenie do logu
 if [ -s "$POLY" ] && [ "$CLIP_ON" != 'true' ]; then
   if [ -n "$BBOX" ]; then echo "--bounds=$(pad_bbox "$BBOX")"; fi
-  echo "::warning::Orez na región je vypnutý (\`region_clip=false\`), takže sa dlaždice vyrobia na celom obdĺžniku bboxu – na Bratislavskom kraji je to o 26 % dlaždíc viac a je v nich územie za hranicou kraja (aj cudzie sídla). V mape to nevidno, lebo hranicu dokresľuje maska v štýle. Späť to zapneš \`region_clip=true\` v inpute \`options\`." >&2
+  echo "::warning::Orez na región je vypnutý (\`region_clip=false\`), takže sa dlaždice vyrobia na celom obdĺžniku bboxu – na Bratislavskom kraji je to o 26 % dlaždíc a 0,7 % bajtov viac a je v nich lem dát cez hranicu kraja. V mape to nevidno, lebo hranicu dokresľuje maska v štýle. Späť to zapneš \`region_clip=true\` v inpute \`options\`." >&2
 elif [ -s "$POLY" ]; then
   echo "--polygon=$POLY"
   echo "Orez na región: $POLY – dlaždice mimo regiónu sa nevyrobia. (\`--bounds\` sa zámerne NEPRIDÁVA, tichý vypínač polygónu – viď hlavičku skriptu.)" >&2
