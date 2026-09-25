@@ -180,6 +180,8 @@ env:
   BUDGET_WATER_PCT: "5"
   # železnice: tratí je málo, ale nesú aj koľajovú sieť na navigáciu
   BUDGET_RAIL_PCT: "3"
+  # sídla: budov je veľa a idú bez zjednodušenia
+  BUDGET_BUILDINGS_PCT: "6"
   # dopravná sieť je najhustejšia vrstva, akú pipeline stavia vlastnou schémou;
   # keď to prestane stačiť, povie to `workers/transport/build.sh`
   BUDGET_TRANSPORT_PCT: "8"
@@ -346,6 +348,9 @@ jobs:
       opt_rail: ${{ steps.opts.outputs.opt_rail }}
       opt_rail_maxzoom: ${{ steps.opts.outputs.opt_rail_maxzoom }}
       budget_rail_pct: ${{ env.BUDGET_RAIL_PCT }}
+      opt_buildings: ${{ steps.opts.outputs.opt_buildings }}
+      opt_buildings_maxzoom: ${{ steps.opts.outputs.opt_buildings_maxzoom }}
+      budget_buildings_pct: ${{ env.BUDGET_BUILDINGS_PCT }}
       # `env` sa vo `with:` volaného workflowu čítať nesmie, tak ide cez výstup
       # prípravy; tie isté čísla si odpočítava job `tiles`
       budget_contours_pct: ${{ env.BUDGET_CONTOURS_PCT }}
@@ -801,6 +806,22 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_rail_pct }}
       day: ${{ needs.plan.outputs.day }}
 
+  # budovy s výmerou a menom – `workers/buildings/buildings.yml`
+  sidla:
+    name: Sídla
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.opt_buildings == 'true' }}
+    uses: ./.github/workflows/buildings.yml
+    secrets: inherit                      # cache na Drive; `env` sa nededí
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      region_bbox: ${{ needs.plan.outputs.bbox }}
+      maxzoom: ${{ needs.plan.outputs.opt_buildings_maxzoom }}
+      region_clip: ${{ needs.plan.outputs.opt_region_clip }}
+      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      budget_pct: ${{ needs.plan.outputs.budget_buildings_pct }}
+      day: ${{ needs.plan.outputs.day }}
+
   # smerovacia sieť vo vlastnom súbore; rozpis je v `navigation-region.yml`
   navigacia:
     name: Smerovacia sieť
@@ -992,7 +1013,7 @@ jobs:
   # mapa sa má nasadiť aj tak.
   deploy:
     name: Zloženie a nasadenie
-    needs: [plan, dem, trails, features, transport, hranice, vodstvo, zeleznice, navigacia, tiles, assets]
+    needs: [plan, dem, trails, features, transport, hranice, vodstvo, zeleznice, sidla, navigacia, tiles, assets]
     if: ${{ !cancelled() && needs.tiles.result == 'success' && needs.assets.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -1028,7 +1049,7 @@ jobs:
       - name: Čo prišlo od ostatných jobov
         run: |
           set -uo pipefail
-          echo "Výsledky jobov: vrstevnice=${{ needs.dem.outputs.res_contours }}, trasy=${{ needs.trails.result }}, prvky=${{ needs.features.result }}, doprava=${{ needs.transport.result }}, hranice=${{ needs.hranice.result }}, vodstvo=${{ needs.vodstvo.result }}, železnice=${{ needs.zeleznice.result }}, navigácia=${{ needs.navigacia.result }}, terén=${{ needs.dem.outputs.res_terrain }}, dlaždice=${{ needs.tiles.result }}, ikonky=${{ needs.assets.result }}"
+          echo "Výsledky jobov: vrstevnice=${{ needs.dem.outputs.res_contours }}, trasy=${{ needs.trails.result }}, prvky=${{ needs.features.result }}, doprava=${{ needs.transport.result }}, hranice=${{ needs.hranice.result }}, vodstvo=${{ needs.vodstvo.result }}, železnice=${{ needs.zeleznice.result }}, sídla=${{ needs.sidla.result }}, navigácia=${{ needs.navigacia.result }}, terén=${{ needs.dem.outputs.res_terrain }}, dlaždice=${{ needs.tiles.result }}, ikonky=${{ needs.assets.result }}"
           find _site -maxdepth 2 -mindepth 1 -type d -exec du -sh {} \; 2>/dev/null || true
           du -sm _site | cut -f1 | xargs -I{} echo "_site spolu: {} MB"
 
@@ -1080,6 +1101,8 @@ jobs:
             --boundaries-maxzoom='${{ needs.hranice.outputs.maxzoom || '12' }}' \
             --water='${{ needs.vodstvo.outputs.enabled || 'false' }}' \
             --water-maxzoom='${{ needs.vodstvo.outputs.maxzoom || '14' }}' \
+            --buildings='${{ needs.sidla.outputs.enabled || 'false' }}' \
+            --buildings-maxzoom='${{ needs.sidla.outputs.maxzoom || '14' }}' \
             --dem-source='${{ needs.dem.outputs.contours_dem_source || 'sonny' }}' \
             --dem-tiles-source='${{ needs.dem.outputs.terrain_dem_source || needs.dem.outputs.contours_dem_source || 'sonny' }}' \
             --dem-bounds='${{ needs.plan.outputs.test_bbox }}' \
@@ -1124,6 +1147,8 @@ jobs:
           RAIL_ENABLED: ${{ needs.zeleznice.outputs.enabled || 'false' }}
           RAIL_MAXZOOM: ${{ needs.zeleznice.outputs.maxzoom || '15' }}
           RAIL_ROUTING: ${{ needs.zeleznice.outputs.routing || 'false' }}
+          BUILDINGS_ENABLED: ${{ needs.sidla.outputs.enabled || 'false' }}
+          BUILDINGS_MAXZOOM: ${{ needs.sidla.outputs.maxzoom || '14' }}
           ICONS_AVAILABLE: ${{ needs.assets.outputs.available }}
           ICONS_NAME: ${{ needs.assets.outputs.name }}
           REGION_BBOX: ${{ needs.plan.outputs.bbox }}
@@ -1192,6 +1217,7 @@ jobs:
           BOUNDARIES: ${{ needs.hranice.outputs.enabled }}
           WATER: ${{ needs.vodstvo.outputs.enabled }}
           RAIL: ${{ needs.zeleznice.outputs.enabled }}
+          BUILDINGS: ${{ needs.sidla.outputs.enabled }}
           PAGES_BUILD_TYPE: ${{ needs.plan.outputs.pages_build_type }}
         run: workers/deploy/smoke-test.sh
 
@@ -1212,6 +1238,7 @@ jobs:
           BOUNDARIES_ENABLED: ${{ needs.hranice.outputs.enabled || 'false' }}
           WATER_ENABLED: ${{ needs.vodstvo.outputs.enabled || 'false' }}
           RAIL_ENABLED: ${{ needs.zeleznice.outputs.enabled || 'false' }}
+          BUILDINGS_ENABLED: ${{ needs.sidla.outputs.enabled || 'false' }}
           REGION_KEY: ${{ needs.plan.outputs.key }}
           ROCKS_ENABLED: ${{ needs.dem.outputs.rocks_enabled || 'false' }}
           ROCKS_SOURCE: ${{ needs.dem.outputs.rock_source }}
@@ -1253,6 +1280,7 @@ jobs:
           R_HRANICE: ${{ needs.hranice.result }}
           R_VODSTVO: ${{ needs.vodstvo.result }}
           R_ZELEZNICE: ${{ needs.zeleznice.result }}
+          R_SIDLA: ${{ needs.sidla.result }}
           R_TERRAIN: ${{ needs.dem.outputs.res_terrain }}
           R_TILES: ${{ needs.tiles.result }}
           R_ASSETS: ${{ needs.assets.result }}
@@ -1283,7 +1311,7 @@ jobs:
   # a tento job k nim `.aar` dopíše. Keď spadne, mapa tým netrpí.
   apple-archive:
     name: Balíky ako Apple Archive (.aar)
-    needs: [plan, deploy, dem, trails, features, transport, hranice, vodstvo, zeleznice, tiles]
+    needs: [plan, deploy, dem, trails, features, transport, hranice, vodstvo, zeleznice, sidla, tiles]
     if: ${{ !cancelled() && needs.deploy.result == 'success' && needs.plan.outputs.opt_publish == 'true' && needs.plan.outputs.opt_apple_archive == 'true' }}
     runs-on: macos-latest
     permissions:
@@ -1321,6 +1349,7 @@ jobs:
           BOUNDARIES_ENABLED: ${{ needs.hranice.outputs.enabled || 'false' }}
           WATER_ENABLED: ${{ needs.vodstvo.outputs.enabled || 'false' }}
           RAIL_ENABLED: ${{ needs.zeleznice.outputs.enabled || 'false' }}
+          BUILDINGS_ENABLED: ${{ needs.sidla.outputs.enabled || 'false' }}
           REGION_KEY: ${{ needs.plan.outputs.key }}
           ROCKS_ENABLED: ${{ needs.dem.outputs.rocks_enabled || 'false' }}
           ROCKS_SOURCE: ${{ needs.dem.outputs.rock_source }}

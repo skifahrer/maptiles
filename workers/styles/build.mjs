@@ -23,6 +23,7 @@
  *                  `boundary` OpenMapTiles je čiara bez mena
  *   --water      … vodstvo; meno je tam na geometrii, takže odtiaľ idú názvy
  *                  vôd namiesto `water_name` OpenMapTiles
+ *   --buildings  … sídla; budovy s výmerou a menom namiesto `building` OpenMapTiles
  *   --features   … krajinné prvky (línie a plochy), ktoré schéma OpenMapTiles
  *                  nemá – násypy, múry, vedenia, zjazdovky (vlastný .pmtiles)
  *   --points     … body v krajine – pramene, jaskyne, rozhľadne, pamiatky
@@ -103,6 +104,8 @@ const boundariesMaxzoom = Number(args["boundaries-maxzoom"] || 12);
 const hasBoundaries = args.boundaries === "true" || args.boundaries === "1";
 const waterMaxzoom = Number(args["water-maxzoom"] || 14);
 const hasWater = args.water === "true" || args.water === "1";
+const buildingsMaxzoom = Number(args["buildings-maxzoom"] || 14);
+const hasBuildings = args.buildings === "true" || args.buildings === "1";
 // zdroj výšok ovplyvňuje atribúciu vrstevníc a skál
 const demSource = DEM_SOURCES[args["dem-source"]]
   ? args["dem-source"]
@@ -347,6 +350,10 @@ for (const type of MAP_TYPES) {
         ? `pmtiles://${baseUrl}/tiles/${region}-water.pmtiles`
         : null,
       waterMaxzoom,
+      buildingsUrl: hasBuildings
+        ? `pmtiles://${baseUrl}/tiles/${region}-buildings.pmtiles`
+        : null,
+      buildingsMaxzoom,
       demSource,
       demTiles,
       demTilesSource,
@@ -387,6 +394,7 @@ console.log(
   `Dopravná sieť (obmedzenia na ceste): ${hasTransport ? `áno (do z${transportMaxzoom})` : "nie"}, ` +
   `Názvy území: ${hasBoundaries ? `áno (do z${boundariesMaxzoom})` : "nie"}, ` +
   `Názvy vôd: ${hasWater ? `áno (do z${waterMaxzoom})` : "nie"}, ` +
+  `Sídla: ${hasBuildings ? `áno (do z${buildingsMaxzoom})` : "nie"}, ` +
   `Vrstevnice: ${
     hasContours ? `áno (do z${contoursMaxzoom}, výšky: ${DEM_SOURCES[demSource].label})` : "nie"
   }, ` +

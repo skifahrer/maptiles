@@ -76,7 +76,8 @@ def region_entry(man):
 
 
 VRSTVY_TILES = ("pmtiles", "contours", "rocks", "trails", "features", "points",
-                "transport", "boundaries", "water", "rail", "rail_routing")
+                "transport", "boundaries", "water", "rail", "rail_routing",
+                "buildings")
 
 
 def tiles_paths(man, reg):
@@ -380,7 +381,7 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
               "rocks_maxzoom", "rock_slope", "dem_source", "rock_source",
               "trails_maxzoom", "features_maxzoom", "points_maxzoom",
               "transport_maxzoom", "boundaries_maxzoom", "water_maxzoom",
-              "rail_maxzoom"):
+              "rail_maxzoom", "buildings_maxzoom"):
         if reg.get(k) is not None:
             polozka[k] = reg[k]
     # cesty k dlaždiciam sa neodvodzujú z kľúča uzla (viď `tiles_paths`)

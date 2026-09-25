@@ -592,6 +592,9 @@ jobs:
       - name: "Železnice: filter, sľúbené triedy a koľajová sieť"
         run: python3 workers/lint/rail.py
 
+      - name: "Sídla: filter, výmera a meno na budove"
+        run: python3 workers/lint/buildings.py
+
       # kraj má na osm.fr vlastný súbor rezaný po jeho hranici, tak sa sťahuje
       # priamo ten – nie 373 MB Slovenska
       - name: PBF regiónu sa sťahuje priamo z osm.fr

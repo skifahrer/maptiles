@@ -3269,6 +3269,8 @@ export const SHIELD_DEFS = [
  * @param {string} [opts.waterUrl]    vodstvo (balík `vodstvo`); meno je na
  *                                    geometrii, tak z neho idú názvy vôd
  * @param {number} [opts.waterMaxzoom]
+ * @param {string} [opts.buildingsUrl] sídla (balík `sidla`); budovy s výmerou a menom
+ * @param {number} [opts.buildingsMaxzoom]
  * @param {string} [opts.demSource]   zdroj výšok – určuje atribúciu
  * @param {string|null} [opts.demTiles] raster-dem dlaždice (null = bez nich)
  * @param {string} [opts.demTilesSource] zdroj výšok pre tie dlaždice; nemusí
@@ -3310,6 +3312,8 @@ export function buildStyle({
   boundariesMaxzoom = 12,
   waterUrl = null,
   waterMaxzoom = 14,
+  buildingsUrl = null,
+  buildingsMaxzoom = 14,
   demSource = DEFAULT_DEM_SOURCE,
   demTiles = DEFAULT_DEM_TILES,
   demTilesSource = null,
@@ -3465,6 +3469,16 @@ export function buildStyle({
       type: "vector",
       url: waterUrl,
       maxzoom: waterMaxzoom,
+      attribution:
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
+    };
+  }
+  // sídla: každá budova, aj tá, ktorú OpenMapTiles zlúči alebo zahodí
+  if (buildingsUrl) {
+    style.sources.buildings = {
+      type: "vector",
+      url: buildingsUrl,
+      maxzoom: buildingsMaxzoom,
       attribution:
         '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
     };
@@ -4112,6 +4126,30 @@ export function buildStyle({
     },
     ["budovy", "Budovy 3D", "3d", { "fill-extrusion-color": "buildingTop" }]
   );
+  // balík `sidla` má každú budovu, aj tú, ktorú OpenMapTiles zahodí
+  if (buildingsUrl) {
+    add(
+      {
+        id: "building-pkg",
+        type: "fill",
+        source: "buildings",
+        "source-layer": "building",
+        minzoom: 13,
+        maxzoom: 16,
+        paint: {
+          "fill-color": c.building,
+          "fill-outline-color": c.buildingOutline,
+          "fill-opacity": zl([[13, 0.5], [15, 1]])
+        }
+      },
+      [
+        "budovy",
+        "Budovy (balík sídla)",
+        "area",
+        { "fill-color": "building", "fill-outline-color": "buildingOutline" }
+      ]
+    );
+  }
 
   // ================= doprava =================
 
@@ -5027,6 +5065,63 @@ export function buildStyle({
         "Názvy bodových vôd (balík vodstvo)",
         "text",
         { "text-color": "waterText", "text-halo-color": "textHalo" }
+      ]
+    );
+  }
+
+  // mená budov a ich výmera z balíka `sidla`
+  if (buildingsUrl) {
+    add(
+      {
+        id: "building-pkg-name",
+        type: "symbol",
+        source: "buildings",
+        "source-layer": "building_name",
+        minzoom: 16,
+        layout: {
+          "text-field": nameExpr,
+          "text-font": REG,
+          "text-size": zl([[16, 10], [19, 13]]),
+          "text-max-width": 7
+        },
+        paint: {
+          "text-color": c.placeText,
+          "text-halo-color": c.textHalo,
+          "text-halo-width": 1
+        }
+      },
+      [
+        "popisky",
+        "Názvy budov (balík sídla)",
+        "text",
+        { "text-color": "placeText", "text-halo-color": "textHalo" }
+      ]
+    );
+    add(
+      {
+        id: "building-pkg-area",
+        type: "symbol",
+        source: "buildings",
+        "source-layer": "building",
+        minzoom: 18,
+        filter: ["has", "area"],
+        layout: {
+          "text-field": ["concat", ["to-string", ["get", "area"]], " m²"],
+          "text-font": REG,
+          "text-size": 10,
+          "text-optional": true
+        },
+        paint: {
+          "text-color": c.poiText,
+          "text-halo-color": c.textHalo,
+          "text-halo-width": 1
+        }
+      },
+      [
+        "popisky",
+        "Výmera budov (balík sídla)",
+        "text",
+        { "text-color": "poiText", "text-halo-color": "textHalo" }
       ]
     );
   }

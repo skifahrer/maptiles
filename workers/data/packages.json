@@ -169,6 +169,19 @@
       "regeneruj": "zeleznice"
     },
     {
+      "kluc": "sidla",
+      "meno": "Sídla",
+      "app": "Settlements",
+      "symbol": "building.2.fill",
+      "app_popis": "Every building with its floor area and name, and the places they make up",
+      "popis": "všetky budovy z OSM s výmerou v m², menom, druhom, podlažiami a adresou, a mená sídiel od mesta po samotu (.pmtiles)",
+      "zdroje": ["osm"],
+      "manifest": ["buildings"],
+      "pripony": ["-buildings.pmtiles"],
+      "zdroj": "site",
+      "regeneruj": "sidla"
+    },
+    {
       "kluc": "wikipedia",
       "meno": "Články z Wikipédie",
       "app": "Wikipedia articles",
