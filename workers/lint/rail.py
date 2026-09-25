@@ -78,6 +78,13 @@ def main():
                    f"s cestným by v nej nebola ani jedna trať.")
     if " -R" in build or "--omit-referenced" in build:
         bad.append(f"{BUILD}: `-R` vyhodí členov relácií – plochy staníc zmiznú.")
+    if "signs.mjs" not in build:
+        bad.append(f"{BUILD}: značky krajiny sa nepečú – appka by kreslila predvolené.")
+    with open(os.path.join(_WORKERS, "data", "packages.json"), encoding="utf-8") as f:
+        zel = [b for b in json.load(f)["baliky"] if b["kluc"] == "zeleznice"]
+    if not zel or "rail_signs" not in (zel[0].get("manifest") or []):
+        bad.append("workers/data/packages.json: `zeleznice` nenesie `rail_signs` – "
+                   "značky by do balíka nešli.")
 
     for b in bad:
         print(f"::error::{b}")

@@ -90,6 +90,7 @@ jq -n \
   --argjson railrouting "${RAIL_ROUTING:-false}" \
   --argjson buildings "${BUILDINGS_ENABLED:-false}" \
   --argjson bldmaxzoom "${BUILDINGS_MAXZOOM:-14}" \
+  --argjson railsigns "$(find _site/tiles -maxdepth 1 -name "${REGION_KEY}-signs*" 2>/dev/null | sed 's|^_site/||' | sort | jq -R . | jq -s .)" \
   --argjson transport "$TRANSPORT_ENABLED" \
   --argjson trmaxzoom "$TRANSPORT_MAXZOOM" \
   --argjson routing "$ROUTING_ENABLED" \
@@ -193,6 +194,8 @@ jq -n \
         buildings: ("tiles/" + $region + "-buildings.pmtiles"),
         buildings_maxzoom: $bldmaxzoom
       } else {} end)
+      # značky krajiny pri trati a na ceste – sprite, ktorý si appka číta sama
+      + (if $railsigns != [] then { rail_signs: $railsigns } else {} end)
       # celá dopravná sieť. V manifeste je, hoci z nej štýl kreslí len
       # obmedzenia na ceste: manifest je zoznam toho, čo v mape je (číta ho
       # `subory.py` pri skladaní balíkov aj katalóg), nie toho, čo pýta štýl.

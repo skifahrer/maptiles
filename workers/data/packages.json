@@ -163,8 +163,9 @@
       "app_popis": "Every railway, tram and metro line, stations and the network to ride on",
       "popis": "všetky trate z OSM vrátane zrušených, stanice s menami, značky na trati a koľajová sieť, po ktorej telefón počíta trasu vlakom (.pmtiles)",
       "zdroje": ["osm"],
-      "manifest": ["rail", "rail_routing"],
-      "pripony": ["-rail.pmtiles", "-rail-routing.pmtiles"],
+      "manifest": ["rail", "rail_routing", "rail_signs"],
+      "pripony": ["-rail.pmtiles", "-rail-routing.pmtiles", "-signs.json", "-signs.png",
+                  "-signs@2x.json", "-signs@2x.png"],
       "zdroj": "site",
       "regeneruj": "zeleznice"
     },

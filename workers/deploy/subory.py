@@ -95,7 +95,9 @@ def subory_baliku(site, man, b):
     podal workflow.
     """
     reg = catalog.region_entry(man)
-    rel = [reg[k] for k in b.get("manifest") or () if reg.get(k)]
+    # sprite je viac súborov pod jedným kľúčom
+    rel = [p for k in b.get("manifest") or () if reg.get(k)
+           for p in (reg[k] if isinstance(reg[k], list) else [reg[k]])]
     if not rel and b.get("pripony"):
         tiles = os.path.join(site, "tiles")
         rel = [os.path.join("tiles", n) for n in sorted(os.listdir(tiles))
@@ -169,6 +171,21 @@ def navigacia_subory(site, man):
             if os.path.exists(os.path.join(site, p))]
 
 
+def znacky_subory(site, man):
+    """Časť `znacky` – značky krajiny (`-signs.json/.png`), aj pre cestu, nielen trať."""
+    reg = catalog.region_entry(man)
+    rel = list(reg.get("rail_signs") or [])
+    if not rel:
+        base = os.path.join(site, "tiles")
+        rel = [os.path.join("tiles", n) for n in sorted(os.listdir(base))
+               if koncovka(n, ZNACKY_PRIPONY)] if os.path.isdir(base) else []
+    return [os.path.join(site, p) for p in rel
+            if os.path.exists(os.path.join(site, p))]
+
+
+ZNACKY_PRIPONY = ("-signs.json", "-signs.png", "-signs@2x.json", "-signs@2x.png")
+
+
 def casti_baliku(site, man):
     """Časti základnej mapy: `[(kľúč, popis, súbory)]` – aj tie, čo nie sú.
 
@@ -185,6 +202,8 @@ def casti_baliku(site, man):
          trasy_subory(site, man)),
         ("navigacia", "smerovacia sieť so značkami (.pmtiles)",
          navigacia_subory(site, man)),
+        ("znacky", "značky krajiny pri trati a na ceste (sprite)",
+         znacky_subory(site, man)),
     ]
 
 
