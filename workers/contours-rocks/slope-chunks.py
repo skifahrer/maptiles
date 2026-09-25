@@ -55,6 +55,7 @@ store = load("drive_store", os.path.join(os.pardir, "drive", "store.py"))
 CHUNK_PX = 4096
 MARGIN_PX = 8    # presah, aby sklon na okraji časti nebol zrezaný
 MAX_CHUNKS = 600  # nad tým prestáva byť sklad výhodou (viď poistku v main)
+RETRY_S = 120     # okno limitu Drive je dlhšie než pokusy jednej časti
 
 
 def chunk_grid(bbox, res, chunk_px=CHUNK_PX):
@@ -452,22 +453,40 @@ def main():
     if args.heartbeat > 0:
         threading.Thread(target=beat, daemon=True).start()
 
-    try:
-        with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as ex:
-            tiles = list(ex.map(one, chunks))
-    except Exception:
-        # čo z toho ostalo: sklad je celý zmysel tohto skriptu, takže pri páde
-        # musí byť vidieť, že hotová práca sa nezahodila
-        stop.set()
+    def priechod(davka, jobs):
+        """Čo prešlo a čo spadlo; pád jednej časti nezhodí ostatné."""
+        hotove, zle = [], []
+        with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
+            for fut, chunk in [(ex.submit(one, c), c) for c in davka]:
+                try:
+                    hotove.append(fut.result())
+                except Exception:               # noqa: BLE001
+                    zle.append(chunk)
+        return hotove, zle
+
+    tiles, zvysok = priechod(chunks, args.jobs)
+    if zvysok:
+        # limit Drive drží okno, kým doň tlačia ostatné vlákna – druhý
+        # priechod ide po jednom a až jeho pád je koniec
+        print(f"::warning::Sklon: {len(zvysok)} z {len(chunks)} častí spadlo. "
+              f"Po {RETRY_S} s ich skúšam ešte raz, po jednej.", flush=True)
+        time.sleep(RETRY_S)
         with lock:
-            bad = list(failed)
-        have_now = sum(1 for n in names if sklad.local(n))
-        print(f"::error::Sklon spadol na {len(bad)} častiach"
-              + (f" ({', '.join(bad[:6])})" if bad else "")
-              + f"; v sklade ich je {have_now} z {len(chunks)} – ďalší beh "
-              f"dopočíta len zvyšok, nič sa nezahodilo.", flush=True)
-        raise
+            failed.clear()
+        znova, zvysok = priechod(zvysok, 1)
+        tiles += znova
     stop.set()
+    if zvysok:
+        # sklad je celý zmysel tohto skriptu, takže pri páde musí byť vidieť,
+        # že hotová práca sa nezahodila
+        bad = [chunk_name(c[0], c[1], res) for c in zvysok]
+        have_now = sum(1 for n in names if sklad.local(n))
+        print(f"::error::Sklon spadol na {len(bad)} častiach "
+              f"({', '.join(bad[:6])}); v sklade ich je {have_now} z "
+              f"{len(chunks)} – ďalší beh dopočíta len zvyšok, nič sa "
+              f"nezahodilo.", flush=True)
+        return 1
+    tiles.sort()
 
     vrt = os.path.join(args.out, f"slope-r{res:g}.vrt")
     subprocess.run(["gdalbuildvrt", "-q", vrt] + tiles, check=True)
