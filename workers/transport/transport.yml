@@ -217,6 +217,37 @@ layers:
       merge_line_strings:
         min_length: 0
 
+  # adresy: ulica s číslom domu, aby sa dali hľadať offline
+  - id: adresy
+    features:
+      - source: osm
+        geometry: point
+        min_zoom: 14
+        include_when: &adresa
+          addr:housenumber: __any__
+          addr:conscriptionnumber: __any__
+        attributes: &adresa_attrs
+          - key: addr:housenumber
+          - key: addr:conscriptionnumber
+          - key: addr:streetnumber
+          - key: addr:street
+          # obec bez ulíc má miesto `addr:place`
+          - key: addr:place
+          - key: addr:city
+          - key: addr:postcode
+          - key: osm_id
+            value: '${ feature.id }'
+            type: long
+          - key: osm_type
+            value: '${ feature.osm_type }'
+
+      # to isté miesto ako `housenumber` v základnej mape
+      - source: osm
+        geometry: polygon_centroid_if_convex
+        min_zoom: 14
+        include_when: *adresa
+        attributes: *adresa_attrs
+
 # testy: `java -jar planetiler.jar verify workers/transport/transport.yml`
 examples:
   - name: Diaľnica je v sieti od z6 aj s číslom
@@ -466,6 +497,51 @@ examples:
           name: Levočská
           maxspeed: "90"
           lanes: 2
+
+  - name: Adresný bod nesie ulicu aj číslo
+    input:
+      source: osm
+      geometry: point
+      tags:
+        addr:street: Hlavná
+        addr:housenumber: 1234/5
+        addr:conscriptionnumber: "1234"
+        addr:streetnumber: "5"
+        addr:city: Poprad
+    output:
+      - layer: adresy
+        geometry: point
+        min_zoom: 14
+        tags:
+          addr:street: Hlavná
+          addr:housenumber: 1234/5
+          addr:conscriptionnumber: "1234"
+          addr:streetnumber: "5"
+          addr:city: Poprad
+
+  - name: Budova s adresou je bod adresy
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        building: house
+        addr:place: Ždiar
+        addr:conscriptionnumber: "112"
+    output:
+      - layer: adresy
+        geometry: point
+        min_zoom: 14
+        tags:
+          addr:place: Ždiar
+          addr:conscriptionnumber: "112"
+
+  - name: Budova bez adresy v adresách nie je
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        building: house
+    output: []
 
   - name: Rieka nie je doprava
     input:

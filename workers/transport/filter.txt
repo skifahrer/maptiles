@@ -24,3 +24,7 @@ w/route=ferry
 
 # --- lanovky a vleky ---
 w/aerialway
+
+# --- adresy: body aj budovy s číslom domu ---
+nwr/addr:housenumber
+nwr/addr:conscriptionnumber
