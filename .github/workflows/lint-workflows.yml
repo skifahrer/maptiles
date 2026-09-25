@@ -440,6 +440,10 @@ jobs:
       - name: Katalóg máp drží tvar a nikto ho neobchádza
         run: python3 workers/lint/catalog.py
 
+      # CC BY aj ODbL chcú autora pri každej mape, katalóg ho nesie k balíku
+      - name: Každý balík má autorov dát
+        run: python3 workers/lint/credits.py
+
       # dávka „Build map state" je formulár pred formulárom – vstup, ktorý
       # `relay.sh` nepodá ďalej, znamená celú krajinu s predvolenými hodnotami
       - name: Dávka krajiny stavia to isté, čo jeden kraj ručne

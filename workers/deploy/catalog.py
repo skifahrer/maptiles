@@ -112,8 +112,14 @@ def teraz():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t)), int(t)
 
 
+def modely_kraja(man, reg):
+    """Z ktorého výškového modelu je ktorá vrstva kraja."""
+    return {"contours": reg.get("dem_source"), "rocks": reg.get("rock_source"),
+            "shading": man.get("dem_source")}
+
+
 def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None,
-                sha=""):
+                sha="", modely=None):
     """Jeden balík v jednom formáte do `maps` položky katalógu.
 
     Vrch položky ukazuje na ZIP kvôli starším čitateľom, `.aar` ho neprepisuje.
@@ -146,6 +152,9 @@ def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None,
     polozka["symbol"] = meta["symbol"]
     polozka["detail"] = meta["app_popis"]
     polozka["popis"] = meta["popis"]
+    kredity = katalog_balikov.kredity(kind or "mapa", modely)
+    if kredity:
+        polozka["credits"] = kredity
 
 
 # odkaz, za ktorým už súbor nie je; `zive=None` = neoverovalo sa, nemaže sa nič
@@ -349,7 +358,7 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
         for kind, name, velkost, fid, fmt, sha in baliky:
             zapis_balik(mapy, kind, name, velkost, fid, fmt,
                         kedy=data["_updated_at"], kedy_ts=data["_updated_ts"],
-                        sha=sha)
+                        sha=sha, modely=modely_kraja(man, reg))
         # `casti` sa tu neprepisujú; zrušený balík a mŕtvy odkaz sa upratujú
         uprac(mapy, zrusene, zive, {fid for _k, _n, _v, fid, _f, _s in baliky})
         return zapis(path, data,
@@ -415,7 +424,7 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
     for kind, name, velkost, fid, fmt, sha in baliky:
         zapis_balik(polozka["maps"], kind, name, velkost, fid, fmt,
                     kedy=data["_updated_at"], kedy_ts=data["_updated_ts"],
-                    sha=sha)
+                    sha=sha, modely=modely_kraja(man, reg))
     if casti is not None:
         zapis_casti(polozka["maps"], casti)
     # až teraz, keď sú v položke aj balíky tohto behu; tie sú `chranene`

@@ -1,0 +1,59 @@
+{
+  "_comment": [
+    "Autori a licencie dát v tvare, ktorý číta aj appka (`LayerCredit`).",
+    "Balík ich menuje v `zdroje` v packages.json; `dem:*` je model, z ktorého kraj stavali.",
+    "`changes`: CC BY chce povedať, čo sme s dielom urobili."
+  ],
+  "osm": {
+    "holder": "OpenStreetMap contributors",
+    "work": "OpenStreetMap",
+    "license": "ODbL 1.0",
+    "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+    "source_url": "https://www.openstreetmap.org/copyright"
+  },
+  "wikipedia": {
+    "holder": "Wikipedia contributors",
+    "work": "Wikipedia",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "source_url": "https://www.wikipedia.org"
+  },
+  "dmr5": {
+    "holder": "ÚGKK SR",
+    "work": "DMR 5.0 (LiDAR)",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/deed.sk",
+    "source_url": "https://www.geoportal.sk",
+    "changes": "Hillshading, 3D terrain, contours and rock faces computed by Riki Maps"
+  },
+  "dmr35": {
+    "holder": "ÚGKK SR",
+    "work": "DMR 3.5",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/deed.sk",
+    "source_url": "https://www.geoportal.sk",
+    "changes": "Hillshading, 3D terrain, contours and rock faces computed by Riki Maps"
+  },
+  "tienovanie": {
+    "holder": "freemap.sk",
+    "work": "Slovakia hi-res shading tiles",
+    "source_url": "https://www.freemap.sk/",
+    "changes": "Rock faces traced from the shading by Riki Maps"
+  },
+  "sonny": {
+    "holder": "Sonny",
+    "work": "Sonny's LiDAR DTM",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "source_url": "https://sonny.4lima.de/",
+    "changes": "Hillshading, 3D terrain, contours and rock faces computed by Riki Maps"
+  },
+  "sonny1": {
+    "holder": "Sonny",
+    "work": "Sonny's LiDAR DTM",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "source_url": "https://sonny.4lima.de/",
+    "changes": "Hillshading, 3D terrain, contours and rock faces computed by Riki Maps"
+  }
+}
