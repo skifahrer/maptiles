@@ -11,6 +11,7 @@ ktoré sa z neho odvodzujú:
     kluce()           len kľúče
     zrusene()         balíky, ktoré UŽ NIE SÚ – ich starý súbor sa maže
     pre_katalog()     `{kľúč: {app, symbol, detail, popis}}` do `maps.json`
+    kredity(kluc, …)  autori a licencie dát balíka do `maps.json`
 
 PREČO SA TO NEČÍTA PRIAMO. Súbor sa načíta RAZ (`_CACHE`) a chyba v ňom padá
 s vetou, ktorá povie, kde sa opravuje – volajúci sú štyria (packer, súbory
@@ -24,6 +25,9 @@ import sys
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _DATA = os.path.join(os.path.dirname(_HERE), "data")
 CISELNIK = os.path.join(_DATA, "packages.json")
+KREDITY = os.path.join(_DATA, "credits.json")
+# mapy sa stavajú z DMR 5.0, kým kraj nepovie iný model
+PREDVOLENY_MODEL = "dmr5"
 
 _CACHE = None
 
@@ -72,6 +76,23 @@ def pre_katalog():
     return {b["kluc"]: {"app": b["app"], "symbol": b["symbol"],
                         "detail": b["app_popis"], "popis": b["popis"]}
             for b in zoznam()}
+
+
+def kredity(kluc, modely=None):
+    """Autori dát balíka; `modely` = `{contours|rocks|shading: kľúč modelu}` kraja."""
+    with open(KREDITY, encoding="utf-8") as f:
+        zdroje = json.load(f)
+    modely = modely or {}
+    out = []
+    for zdroj in balik(kluc).get("zdroje") or ():
+        if zdroj.startswith("dem:"):
+            zdroj = modely.get(zdroj[4:])
+            if zdroj not in zdroje:
+                zdroj = PREDVOLENY_MODEL
+        kredit = zdroje.get(zdroj)
+        if kredit and kredit not in out:
+            out.append(dict(kredit))
+    return out
 
 
 def main():
