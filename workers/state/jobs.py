@@ -109,6 +109,8 @@ CENA = {
     "zeleznice": ("Železnice",
                   "všetky trate aj zrušené, stanice s menami, značky na trati "
                   "a koľajová sieť na navigáciu"),
+    "sidla": ("Sídla",
+              "všetky budovy s výmerou, menom, druhom a adresou a mená sídiel"),
     "vrstevnice": ("Vrstevnice",
                    "izolínie z výškového modelu (skaly v balíku prídu "
                    "z cache)"),

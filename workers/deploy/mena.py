@@ -159,6 +159,8 @@ def vrstvy():
         out.append("vodstvo")
     if env("RAIL_ENABLED") == "true":
         out.append("zeleznice")
+    if env("BUILDINGS_ENABLED") == "true":
+        out.append("sidla")
     return out
 
 

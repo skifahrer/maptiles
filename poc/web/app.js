@@ -40,6 +40,7 @@ const featuresCheck = $("features");
 const roadsCheck = $("roads");
 const boundariesCheck = $("boundaries");
 const waterCheck = $("water");
+const buildingsCheck = $("buildings");
 const terrainCheck = $("terrain");
 const hillshadeCheck = $("hillshade");
 const devCheck = $("devmode");
@@ -257,6 +258,11 @@ function styleFor(manifest) {
         ? `pmtiles://${baseUrl}/${region.water}`
         : null,
     waterMaxzoom: region.water_maxzoom || 14,
+    buildingsUrl:
+      region.buildings && buildingsCheck.checked
+        ? `pmtiles://${baseUrl}/${region.buildings}`
+        : null,
+    buildingsMaxzoom: region.buildings_maxzoom || 14,
     demSource: region.dem_source || DEFAULT_DEM_SOURCE,
     demTiles,
     // Tieňovanie má vo formulári pipeline vlastný výber modelu, takže
@@ -624,6 +630,7 @@ async function main() {
     $("row-roads").hidden = !region.transport;
     $("row-boundaries").hidden = !region.boundaries;
     $("row-water").hidden = !region.water;
+    $("row-buildings").hidden = !region.buildings;
     $("row-terrain").hidden = manifest.dem === null;
     $("row-hillshade").hidden = manifest.dem === null;
   };
@@ -662,6 +669,9 @@ async function main() {
     applyStyle(manifest);
   });
   waterCheck.addEventListener("change", () => {
+    applyStyle(manifest);
+  });
+  buildingsCheck.addEventListener("change", () => {
     applyStyle(manifest);
   });
   trailsCheck.addEventListener("change", () => {

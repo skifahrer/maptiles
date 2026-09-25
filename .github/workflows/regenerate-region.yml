@@ -3,7 +3,7 @@ name: Mapa · Pregeneruj vrstvu kraja
 # JEDNA VRSTVA JEDNÉHO KRAJA NANOVO – bez toho, aby sa prestavala mapa.
 #
 # Voľby `co`: body, cesty (celá dopravná sieť aj so smerovacou sieťou),
-# hranice, vodstvo, zeleznice, vrstevnice, skaly, tienovanie. Na Drive sa prepíše len
+# hranice, vodstvo, zeleznice, sidla, vrstevnice, skaly, tienovanie. Na Drive sa prepíše len
 # príslušný balík.
 #
 # `body` a `linie` sú minúty (z toho istého PBF ako mapa), vrstvy z výškového
@@ -52,6 +52,7 @@ on:
           - hranice
           - vodstvo
           - zeleznice
+          - sidla
           - vrstevnice
           - skaly
           - tienovanie
@@ -132,6 +133,7 @@ env:
   BUDGET_BOUNDARIES_PCT: "3"
   BUDGET_WATER_PCT: "5"
   BUDGET_RAIL_PCT: "3"
+  BUDGET_BUILDINGS_PCT: "6"
   # to isté pre vrstvy z výškového modelu; `dem-layers.yml` ich dostáva inputom
   BUDGET_CONTOURS_PCT: "25"
   BUDGET_ROCKS_PCT: "12"
@@ -163,6 +165,7 @@ jobs:
       opt_boundaries_maxzoom: ${{ steps.opts.outputs.opt_boundaries_maxzoom }}
       opt_water_maxzoom: ${{ steps.opts.outputs.opt_water_maxzoom }}
       opt_rail_maxzoom: ${{ steps.opts.outputs.opt_rail_maxzoom }}
+      opt_buildings_maxzoom: ${{ steps.opts.outputs.opt_buildings_maxzoom }}
       opt_custom_pbf_url: ${{ steps.opts.outputs.opt_custom_pbf_url }}
       opt_custom_name: ${{ steps.opts.outputs.opt_custom_name }}
       budget_transport_pct: ${{ env.BUDGET_TRANSPORT_PCT }}
@@ -170,6 +173,7 @@ jobs:
       budget_boundaries_pct: ${{ env.BUDGET_BOUNDARIES_PCT }}
       budget_water_pct: ${{ env.BUDGET_WATER_PCT }}
       budget_rail_pct: ${{ env.BUDGET_RAIL_PCT }}
+      budget_buildings_pct: ${{ env.BUDGET_BUILDINGS_PCT }}
       # podiely idú cez výstup, lebo `env` sa vo `with:` volaného workflowu
       # čítať nesmie
       budget_contours_pct: ${{ env.BUDGET_CONTOURS_PCT }}
@@ -474,6 +478,22 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_rail_pct }}
       day: ${{ needs.plan.outputs.day }}
 
+  # ten istý workflow, aký volá build mapy (`workers/buildings/buildings.yml`)
+  sidla:
+    name: Sídla
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'sidla' }}
+    uses: ./.github/workflows/buildings.yml
+    secrets: inherit                      # cache na Drive; `env` sa nededí
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      region_bbox: ${{ needs.plan.outputs.bbox }}
+      maxzoom: ${{ needs.plan.outputs.opt_buildings_maxzoom }}
+      region_clip: ${{ needs.plan.outputs.opt_region_clip }}
+      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      budget_pct: ${{ needs.plan.outputs.budget_buildings_pct }}
+      day: ${{ needs.plan.outputs.day }}
+
   # druhá polovica balíka `cesty`: smerovacia sieť ide v ňom (a v základnej
   # mape), vlastný balík nemá – takže ju voľba `cesty` stavia tiež
   navigacia:
@@ -549,7 +569,7 @@ jobs:
 
   publish:
     name: Balík na Drive a katalóg
-    needs: [plan, body, doprava, hranice, vodstvo, zeleznice, navigacia, dem]
+    needs: [plan, body, doprava, hranice, vodstvo, zeleznice, sidla, navigacia, dem]
     # `skipped` je v poriadku, `failure` nie: balík sa prepisuje celý a
     # z polovice novej a polovice starej vrstvy by vznikol balík, ktorý klame
     if: >-
@@ -559,6 +579,7 @@ jobs:
           && needs.hranice.result != 'failure'
           && needs.vodstvo.result != 'failure'
           && needs.zeleznice.result != 'failure'
+          && needs.sidla.result != 'failure'
           && needs.navigacia.result != 'failure'
           && needs.dem.result != 'failure'
           && needs.plan.outputs.opt_publish == 'true' }}
@@ -584,7 +605,7 @@ jobs:
       - name: Čo prišlo od jobov vrstvy
         run: |
           set -uo pipefail
-          echo "body=${{ needs.body.result }}, cesty=${{ needs.doprava.result }}, hranice=${{ needs.hranice.result }}, vodstvo=${{ needs.vodstvo.result }}, železnice=${{ needs.zeleznice.result }}, navigácia=${{ needs.navigacia.result }}, vrstvy z DEM=${{ needs.dem.result }} (vrstevnice=${{ needs.dem.outputs.res_contours }}, tieňovanie=${{ needs.dem.outputs.res_terrain }})"
+          echo "body=${{ needs.body.result }}, cesty=${{ needs.doprava.result }}, hranice=${{ needs.hranice.result }}, vodstvo=${{ needs.vodstvo.result }}, železnice=${{ needs.zeleznice.result }}, sídla=${{ needs.sidla.result }}, navigácia=${{ needs.navigacia.result }}, vrstvy z DEM=${{ needs.dem.result }} (vrstevnice=${{ needs.dem.outputs.res_contours }}, tieňovanie=${{ needs.dem.outputs.res_terrain }})"
           find _site -type f -printf '%10s  %p\n' 2>/dev/null || true
 
       # ten istý packer a zápis do katalógu ako pri builde, len s `--only`:
@@ -601,7 +622,7 @@ jobs:
           # tvrdil „bez_vrstevnic, bez_skal…", teda lož o mape, ktorú beh nevidel.
           # Pri vrstvách z DEM je prázdne: `publish-map.py` si meno zloží z toho,
           # čo mu o vrstve povie job (zdroj, interval, prah).
-          MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'cesty' || inputs.co == 'hranice' || inputs.co == 'vodstvo' || inputs.co == 'zeleznice') && inputs.co || '' }}
+          MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'cesty' || inputs.co == 'hranice' || inputs.co == 'vodstvo' || inputs.co == 'zeleznice' || inputs.co == 'sidla') && inputs.co || '' }}
           CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
           CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
           CONTOUR_INTERVAL: ${{ needs.plan.outputs.opt_contour_interval }}
@@ -690,7 +711,7 @@ jobs:
           CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
           # musia to byť tie isté hodnoty, aké dostal job so ZIPom – `obsah.json`
           # sa skladá z nich
-          MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'cesty' || inputs.co == 'hranice' || inputs.co == 'vodstvo' || inputs.co == 'zeleznice') && inputs.co || '' }}
+          MAP_LAYERS: ${{ (inputs.co == 'body' || inputs.co == 'cesty' || inputs.co == 'hranice' || inputs.co == 'vodstvo' || inputs.co == 'zeleznice' || inputs.co == 'sidla') && inputs.co || '' }}
           CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
           CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
           CONTOUR_INTERVAL: ${{ needs.plan.outputs.opt_contour_interval }}

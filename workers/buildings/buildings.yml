@@ -1,0 +1,214 @@
+# planetiler custom schema – sídla: každá budova s výmerou a menom, a mená sídiel
+schema_name: FricoMaps sídla
+schema_description: >-
+  Všetky budovy z OSM s výmerou (m²), menom, druhom, podlažiami a adresou,
+  a pomenované sídla od mesta po samotu
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>
+
+sources:
+  osm:
+    type: osm
+    local_path: data/buildings-area.osm.pbf
+
+# `area_m2` dopíše `areas.py`
+tag_mappings:
+  area_m2: integer
+  building:levels: integer
+  population: integer
+
+definitions:
+  - &building_attrs
+    - key: class
+      value:
+        tag_value: building
+    - key: name
+    - key: name_en
+      value:
+        tag_value: "name:en"
+    - key: area
+      value:
+        tag_value: area_m2
+    - key: levels
+      value:
+        tag_value: "building:levels"
+    - key: height
+    - key: min_height
+    - key: housenumber
+      value:
+        tag_value: "addr:housenumber"
+    - key: street
+      value:
+        tag_value: "addr:street"
+    - key: amenity
+    - key: shop
+    - key: wikidata
+    - key: osm_id
+      value: '${ feature.id }'
+      type: long
+    - key: osm_type
+      value: '${ feature.osm_type }'
+  - &settlement_attrs
+    - key: class
+      type: match_value
+    - key: name
+    - key: name_en
+      value:
+        tag_value: "name:en"
+    - key: area
+      value:
+        tag_value: area_m2
+    - key: population
+    - key: wikidata
+    - key: osm_id
+      value: '${ feature.id }'
+      type: long
+    - key: osm_type
+      value: '${ feature.osm_type }'
+
+layers:
+  - id: building
+    features:
+      - source: osm
+        geometry: polygon
+        min_zoom: 13
+        include_when:
+          building: __any__
+        exclude_when:
+          building: ["no"]
+        attributes: *building_attrs
+
+  # bod na budove, aby sa meno nekreslilo na každom kúsku dlaždice
+  - id: building_name
+    features:
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 14
+        include_when:
+          __all__:
+            - building: __any__
+            - name: __any__
+        exclude_when:
+          building: ["no"]
+        attributes: *building_attrs
+
+  - id: settlement
+    features:
+      - source: osm
+        geometry: point
+        min_zoom: 6
+        include_when:
+          place: [city, town]
+        attributes: *settlement_attrs
+      - source: osm
+        geometry: point
+        min_zoom: 10
+        include_when:
+          place: [village, suburb, borough]
+        attributes: *settlement_attrs
+      - source: osm
+        geometry: point
+        min_zoom: 13
+        include_when:
+          place: [hamlet, quarter, neighbourhood, isolated_dwelling, farm, locality]
+        attributes: *settlement_attrs
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 10
+        include_when:
+          place: [city, town, village, suburb, borough, hamlet, quarter, neighbourhood,
+                  isolated_dwelling, farm, locality]
+        attributes: *settlement_attrs
+
+examples:
+  - name: Budova nesie výmeru, meno a adresu
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        building: church
+        name: Kostol sv. Martina
+        area_m2: "812"
+        building:levels: "2"
+        addr:housenumber: "12"
+    output:
+      - layer: building
+        geometry: polygon
+        min_zoom: 13
+        tags:
+          class: church
+          name: Kostol sv. Martina
+          area: 812
+          levels: 2
+          housenumber: "12"
+      - layer: building_name
+        geometry: point
+        min_zoom: 14
+        tags:
+          class: church
+          name: Kostol sv. Martina
+          area: 812
+          levels: 2
+          housenumber: "12"
+
+  - name: Budova bez mena je len plocha
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        building: "yes"
+        area_m2: "96"
+    output:
+      - layer: building
+        geometry: polygon
+        min_zoom: 13
+        tags:
+          class: "yes"
+          area: 96
+
+  - name: building=no budova nie je
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        building: "no"
+    output: []
+
+  - name: Mesto je od z6
+    input:
+      source: osm
+      geometry: point
+      tags:
+        place: town
+        name: Poprad
+        population: "50000"
+    output:
+      - layer: settlement
+        geometry: point
+        min_zoom: 6
+        tags:
+          class: town
+          name: Poprad
+          population: 50000
+
+  - name: Osada je od z13
+    input:
+      source: osm
+      geometry: point
+      tags:
+        place: hamlet
+        name: Lazy
+    output:
+      - layer: settlement
+        geometry: point
+        min_zoom: 13
+        tags:
+          class: hamlet
+          name: Lazy
+
+  - name: Obytná zóna budova nie je
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        landuse: residential
+    output: []

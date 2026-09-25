@@ -37,6 +37,8 @@ Mapa · Build map region      deväť jobov, tie dlhé bežia súbežne:
                                hranice  hranice území a ich názvy ─► balík
                                         `hranice`
                                vodstvo  rieky, jazerá, more ─► balík `vodstvo`
+                               sidla    budovy s výmerou a menom, mená sídiel
+                                        ─► balík `sidla`
                                navigacia smerovacia sieť so značkami ─►
                                         v mape aj v balíku `cesty`
                                assets   SDF sprity a glyfy
@@ -73,6 +75,7 @@ kraja (manuálne, jeden kraj) aby sa prestavala mapa:
                                              aj smerovacia sieť)
                                hranice    ─► {kraj}-hranice.zip
                                vodstvo    ─► {kraj}-vodstvo.zip
+                               sidla      ─► {kraj}-sidla.zip
                                vrstevnice ┐ {kraj}-vrstevnice-skaly.zip
                                skaly      ┘ (druhá polovica ide z cache)
                                tieňovanie ─► {kraj}-tienovanie.zip

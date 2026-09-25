@@ -60,6 +60,7 @@ def napln(site):
                 "tiles/kraj-transport.pmtiles", "tiles/kraj-trails.pmtiles",
                 "tiles/kraj-points.pmtiles", "tiles/kraj-boundaries.pmtiles",
                 "tiles/kraj-water.pmtiles",
+                "tiles/kraj-buildings.pmtiles",
                 "tiles/kraj-routing.pmtiles",
                 "tiles/search-index.db"):
         cesta = os.path.join(site, rel)
@@ -218,7 +219,8 @@ for druh, meno in (("vrstevnice-skaly", "tiles/kraj-contours.pmtiles"),
                    ("cesty", "tiles/kraj-transport.pmtiles"),
                    ("body", "tiles/kraj-points.pmtiles"),
                    ("hranice", "tiles/kraj-boundaries.pmtiles"),
-                   ("vodstvo", "tiles/kraj-water.pmtiles")):
+                   ("vodstvo", "tiles/kraj-water.pmtiles"),
+                   ("sidla", "tiles/kraj-buildings.pmtiles")):
     if not baliky:
         break
     if meno in mapa_zip:
@@ -243,7 +245,7 @@ for _k in sorted(_zive & _mrtve):
         f"{CISELNIK}: balík `{_k}` je medzi živými AJ v `zrusene`. `zrusene` "
         f"znamená „starý sa maže“ – balík by tak zmizol z Drive aj z katalógu "
         f"hneď po tom, čo ho beh nahral.")
-for _k in ("cesty", "hranice", "vodstvo"):
+for _k in ("cesty", "hranice", "vodstvo", "sidla"):
     if _k not in _zive:
         bad.append(
             f"{CISELNIK}: balík `{_k}` v číselníku nie je, takže sa nevyrobí "

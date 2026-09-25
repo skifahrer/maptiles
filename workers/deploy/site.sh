@@ -88,6 +88,8 @@ jq -n \
   --argjson rail "${RAIL_ENABLED:-false}" \
   --argjson railmaxzoom "${RAIL_MAXZOOM:-15}" \
   --argjson railrouting "${RAIL_ROUTING:-false}" \
+  --argjson buildings "${BUILDINGS_ENABLED:-false}" \
+  --argjson bldmaxzoom "${BUILDINGS_MAXZOOM:-14}" \
   --argjson transport "$TRANSPORT_ENABLED" \
   --argjson trmaxzoom "$TRANSPORT_MAXZOOM" \
   --argjson routing "$ROUTING_ENABLED" \
@@ -186,6 +188,10 @@ jq -n \
       # koľajová sieť na navigáciu vo vlakovom režime
       + (if $rail and $railrouting then {
         rail_routing: ("tiles/" + $region + "-rail-routing.pmtiles")
+      } else {} end)
+      + (if $buildings then {
+        buildings: ("tiles/" + $region + "-buildings.pmtiles"),
+        buildings_maxzoom: $bldmaxzoom
       } else {} end)
       # celá dopravná sieť. V manifeste je, hoci z nej štýl kreslí len
       # obmedzenia na ceste: manifest je zoznam toho, čo v mape je (číta ho
