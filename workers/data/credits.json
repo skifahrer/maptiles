@@ -2,7 +2,7 @@
   "_comment": [
     "Autori a licencie dát v tvare, ktorý číta aj appka (`LayerCredit`).",
     "Balík ich menuje v `zdroje` v packages.json; `dem:*` je model, z ktorého kraj stavali.",
-    "`changes`: čo sme s dielom urobili; `copyright: false` = zdroj bez ©."
+    "`copyright: false` = zdroj bez ©."
   ],
   "osm": {
     "holder": "OpenStreetMap contributors",
@@ -41,23 +41,20 @@
   "tienovanie": {
     "holder": "freemap.sk",
     "work": "Slovakia hi-res shading tiles",
-    "source_url": "https://www.freemap.sk/",
-    "changes": "Rock faces traced from the shading by Richard Dvorský"
+    "source_url": "https://www.freemap.sk/"
   },
   "sonny": {
     "holder": "Sonny",
     "work": "Sonny's LiDAR DTM",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "source_url": "https://sonny.4lima.de/",
-    "changes": "Hillshading, 3D terrain, contours and rock faces computed from it by Richard Dvorský"
+    "source_url": "https://sonny.4lima.de/"
   },
   "sonny1": {
     "holder": "Sonny",
     "work": "Sonny's LiDAR DTM",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
-    "source_url": "https://sonny.4lima.de/",
-    "changes": "Hillshading, 3D terrain, contours and rock faces computed from it by Richard Dvorský"
+    "source_url": "https://sonny.4lima.de/"
   }
 }
