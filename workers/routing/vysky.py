@@ -208,15 +208,29 @@ def profily(siet, dem, krok_m=KROK_M):
     return s_profilom, len(siet.hrany) - s_profilom
 
 
+def _na_uzly(h, od_dm, do_dm):
+    """Konce profilu na výšku uzlov; rozdiel sa rozloží pozdĺž hrany, nie skokom."""
+    p = h["profil"]
+    d0, d1 = od_dm - p[0], do_dm - p[-1]
+    if d0 or d1:
+        oprava = np.linspace(d0, d1, len(p))
+        h["profil"] = [int(round(v + o)) for v, o in zip(p, oprava)]
+
+
 def dopln_profilmi(siet, dem, krok_m=KROK_M):
     """Profily hrán a z ich koncov výšky uzlov – jeden odber na oboje."""
     s_profilom, bez_profilu = profily(siet, dem, krok_m)
-    vysky = {}
+    konce = {}
     for h in siet.hrany:
         p = h.get("profil")
         if p:
-            vysky[h["od"]] = int(round(p[0] / 10))
-            vysky[h["do"]] = int(round(p[-1] / 10))
+            konce.setdefault(h["od"], []).append(p[0])
+            konce.setdefault(h["do"], []).append(p[-1])
+    uzol_dm = {u: int(round(sum(v) / len(v))) for u, v in konce.items()}
+    for h in siet.hrany:
+        if h.get("profil"):
+            _na_uzly(h, uzol_dm[h["od"]], uzol_dm[h["do"]])
+    vysky = {u: int(round(dm / 10)) for u, dm in uzol_dm.items()}
     z_modelu = len(vysky)
     if not vysky:
         return 0, 0, len(siet.uzly), s_profilom, bez_profilu
