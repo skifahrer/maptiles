@@ -8,7 +8,7 @@
 #   major = násobky 100 m, mid = násobky 50 m, minor = ostatné
 schema_name: FricoMaps vrstevnice
 schema_description: Vrstevnice a nadmorská výška z DEM
-attribution: <a href="https://www.geoportal.sk/">© ÚGKK SR</a> – DMR 5.0 (CC BY 4.0), upravené Riki Maps / <a href="https://sonny.4lima.de/">Sonny's LiDAR DTM</a> / <a href="https://spacedata.copernicus.eu/">Copernicus DEM</a>
+attribution: © Richard Dvorský / <a href="https://www.geoportal.sk/">© ÚGKK SR</a> – DMR 5.0 (CC BY 4.0) / <a href="https://sonny.4lima.de/">Sonny's LiDAR DTM</a> / <a href="https://spacedata.copernicus.eu/">Copernicus DEM</a>
 
 sources:
   contours:

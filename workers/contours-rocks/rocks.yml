@@ -9,7 +9,7 @@
 # Diery v plochách sú súčasť tvaru; zapĺňanie je vypnutá voľba.
 schema_name: FricoMaps skaly
 schema_description: Skalné plochy z výškového modelu alebo z tieňovaných dlaždíc
-attribution: <a href="https://www.geoportal.sk/">© ÚGKK SR</a> – DMR 5.0 (CC BY 4.0), upravené Riki Maps / <a href="https://sonny.4lima.de/">Sonny's LiDAR DTM</a> / <a href="https://spacedata.copernicus.eu/">Copernicus DEM</a> / <a href="https://www.freemap.sk/">freemap.sk</a>
+attribution: © Richard Dvorský / <a href="https://www.geoportal.sk/">© ÚGKK SR</a> – DMR 5.0 (CC BY 4.0) / <a href="https://sonny.4lima.de/">Sonny's LiDAR DTM</a> / <a href="https://spacedata.copernicus.eu/">Copernicus DEM</a> / <a href="https://www.freemap.sk/">freemap.sk</a>
 
 sources:
   rock:

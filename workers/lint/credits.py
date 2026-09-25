@@ -58,11 +58,12 @@ def main():
                 bad.append(f"{PACKAGES}: `{b['kluc']}` – zdroj `{z}` nie je v {CREDITS}")
 
     baliky_mod = nacitaj("deploy_baliky", "workers/deploy/baliky.py")
-    ugkk = kredity.get("dmr5", {})
-    if baliky_mod.kredity("tienovanie", {"shading": "dmr5"}) != [ugkk]:
-        bad.append("baliky.kredity: tieňovanie z DMR 5.0 nemenuje ÚGKK SR")
-    if baliky_mod.kredity("vrstevnice-skaly", {}) != [ugkk]:
-        bad.append("baliky.kredity: kraj bez modelu nemenuje predvolený DMR 5.0")
+    # autor výpočtu ide pred dáta, z ktorých počítal
+    relief = [kredity.get("autor"), kredity.get("dmr5")]
+    if baliky_mod.kredity("tienovanie", {"shading": "dmr5"}) != relief:
+        bad.append("baliky.kredity: tieňovanie nemenuje autora a potom ÚGKK SR")
+    if baliky_mod.kredity("vrstevnice-skaly", {}) != relief:
+        bad.append("baliky.kredity: kraj bez modelu nemenuje autora a predvolený DMR 5.0")
     if baliky_mod.kredity("mapa") != [kredity.get("osm")]:
         bad.append("baliky.kredity: základná mapa nemenuje OpenStreetMap")
 

@@ -18,13 +18,17 @@
     "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
     "source_url": "https://www.wikipedia.org"
   },
+  "autor": {
+    "holder": "Richard Dvorský",
+    "work": "Hillshading, 3D terrain, contours and rock faces"
+  },
   "dmr5": {
     "holder": "ÚGKK SR",
     "work": "DMR 5.0 (LiDAR)",
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/deed.sk",
     "source_url": "https://www.geoportal.sk",
-    "changes": "Hillshading, 3D terrain, contours and rock faces computed by Riki Maps"
+    "changes": "Hillshading, 3D terrain, contours and rock faces computed from it by Richard Dvorský"
   },
   "dmr35": {
     "holder": "ÚGKK SR",
@@ -32,13 +36,13 @@
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/deed.sk",
     "source_url": "https://www.geoportal.sk",
-    "changes": "Hillshading, 3D terrain, contours and rock faces computed by Riki Maps"
+    "changes": "Hillshading, 3D terrain, contours and rock faces computed from it by Richard Dvorský"
   },
   "tienovanie": {
     "holder": "freemap.sk",
     "work": "Slovakia hi-res shading tiles",
     "source_url": "https://www.freemap.sk/",
-    "changes": "Rock faces traced from the shading by Riki Maps"
+    "changes": "Rock faces traced from the shading by Richard Dvorský"
   },
   "sonny": {
     "holder": "Sonny",
@@ -46,7 +50,7 @@
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
     "source_url": "https://sonny.4lima.de/",
-    "changes": "Hillshading, 3D terrain, contours and rock faces computed by Riki Maps"
+    "changes": "Hillshading, 3D terrain, contours and rock faces computed from it by Richard Dvorský"
   },
   "sonny1": {
     "holder": "Sonny",
@@ -54,6 +58,6 @@
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
     "source_url": "https://sonny.4lima.de/",
-    "changes": "Hillshading, 3D terrain, contours and rock faces computed by Riki Maps"
+    "changes": "Hillshading, 3D terrain, contours and rock faces computed from it by Richard Dvorský"
   }
 }
