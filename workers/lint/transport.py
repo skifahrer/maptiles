@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dopravná sieť: filter pustí, čo schéma chce – a balík naozaj nesie sieť.
 
-Šesť tichých vecí:
+Sedem tichých vecí:
 
   1. predfilter (`filter.txt`) a schéma (`transport.yml`) sa rozídu –
      Planetiler dostane PBF, v ktorom ten tag už nie je, a beh zazelená;
@@ -14,7 +14,8 @@
   5. obmedzenia na ceste (výška, šírka, hmotnosť, rýchlosť) z nej vypadnú –
      a hodnoty musia ostať reťazcom, `double` spraví z „12'6\"" ticho 12 m;
   6. `class` a `druh` prestanú byť z `match_value`/`match_key` a stanú sa
-     druhou kópiou zoznamu tried z `include_when`.
+     druhou kópiou zoznamu tried z `include_when`;
+  7. vrstva `adresy` stratí ulicu alebo číslo domu.
 """
 import json
 import os
@@ -54,6 +55,10 @@ OBMEDZENIA = {
 # zahodil – TICHO, s platnou dlaždicou a zeleným behom.
 RETAZCE = {"maxheight", "maxheight_physical", "maxwidth", "maxweight",
            "maxspeed", "width", "incline"}
+
+# Bez týchto sa adresa nedá nájsť ani ukázať.
+ADRESA = {"addr:housenumber", "addr:conscriptionnumber", "addr:street",
+          "addr:place", "addr:city"}
 
 # Hodnoty `railway`, po ktorých sa ísť NEDÁ – v sieti nemajú čo robiť.
 NEPREJAZDNE = {"abandoned", "disused", "razed", "construction", "proposed",
@@ -189,7 +194,9 @@ def main():
                 f"nespadne pri tom nič. Nechaj ju reťazcom.")
 
     # ---- 6. `class` a `druh` sú z toho, čím sa blok trafil ----
-    for i, b in enumerate(bloky, start=1):
+    siet = [b for v in vrstvy if v.get("id") == "transport"
+            for b in (v.get("features") or [])]
+    for i, b in enumerate(siet, start=1):
         atr = {a.get("key"): a for a in (b.get("attributes") or [])
                if isinstance(a, dict)}
         for kluc, typ in (("class", "match_value"), ("druh", "match_key")):
@@ -202,6 +209,20 @@ def main():
                     f"vypísaný ručne je to druhá kópia zoznamu tried "
                     f"z `include_when` a rozíde sa s ním pri prvej pridanej "
                     f"triede.")
+
+    # ---- 8. adresy nesú ulicu aj číslo, inak sa podľa nich nedá hľadať ----
+    adresy = [b for v in vrstvy if v.get("id") == "adresy"
+              for b in (v.get("features") or [])]
+    if not adresy:
+        err(f"{SCHEMA}: chýba vrstva `adresy` – v balíku `cesty` by sa nedala "
+            f"nájsť ulica s číslom domu.")
+    for i, b in enumerate(adresy, start=1):
+        atr = {a.get("key") for a in (b.get("attributes") or [])
+               if isinstance(a, dict)}
+        chyba = sorted(ADRESA - atr)
+        if chyba:
+            err(f"{SCHEMA}: blok adries {i} nenesie {', '.join(chyba)} – "
+                f"hľadanie by našlo číslo bez ulice alebo ulicu bez čísla.")
 
     # ---- 7. vrstva sa naozaj dostane do balíka `cesty` ----
     # Postaviť ju a nezabaliť je presne ten tichý omyl, pre ktorý balík
@@ -231,7 +252,8 @@ def hotovo():
           "železnice, trajekty aj lanovky, každá sľúbená trieda je v schéme, "
           "neprejazdné koľajnice v nej nie sú, "
           "obmedzenia na ceste v nej sú a ostali reťazcom, `class` s `druh` "
-          "idú z toho, čím sa blok trafil, a balík `cesty` ju naozaj nesie.")
+          "idú z toho, čím sa blok trafil, adresy nesú ulicu aj číslo "
+          "a balík `cesty` ju naozaj nesie.")
     return 0
 
 
