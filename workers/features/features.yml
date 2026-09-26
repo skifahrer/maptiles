@@ -158,6 +158,48 @@ layers:
           - key: osm_type
             value: '${ feature.osm_type }'
 
+      # lanovky mimo prevádzky – tie v nej kreslí OpenMapTiles (`aerialway`)
+      - source: osm
+        geometry: line
+        min_zoom: 11
+        include_when:
+          aerialway: [construction, proposed, disused, abandoned]
+          "construction:aerialway": __any__
+          "proposed:aerialway": __any__
+          "disused:aerialway": __any__
+          "abandoned:aerialway": __any__
+          "razed:aerialway": __any__
+        exclude_when:
+          aerialway: [cable_car, gondola, mixed_lift, chair_lift, drag_lift,
+                      t-bar, j-bar, platter, rope_tow, magic_carpet, zip_line,
+                      goods, station, pylon]
+        attributes:
+          - key: name
+          - key: class
+            value:
+              - if: {aerialway: construction, "construction:aerialway": __any__}
+                value: aerialway_construction
+              - if: {aerialway: proposed, "proposed:aerialway": __any__}
+                value: aerialway_proposed
+              - else: aerialway_disused
+          - key: subclass
+            value:
+              coalesce:
+                - tag_value: "construction:aerialway"
+                - tag_value: "proposed:aerialway"
+                - tag_value: "disused:aerialway"
+                - tag_value: "abandoned:aerialway"
+                - tag_value: "razed:aerialway"
+                - tag_value: construction
+                - tag_value: proposed
+                - tag_value: disused
+                - tag_value: abandoned
+          - key: osm_id
+            value: '${ feature.id }'
+            type: long
+          - key: osm_type
+            value: '${ feature.osm_type }'
+
       # priesek: v lese výrazná rovná čiara, často hranica alebo trasa vedenia
       - source: osm
         geometry: line

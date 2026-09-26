@@ -79,7 +79,7 @@ env:
 
 jobs:
   rail:
-    name: Železnice
+    name: Železnice a lanovky
     runs-on: ubuntu-latest
     outputs:
       enabled: ${{ steps.rail.outputs.enabled }}
@@ -136,7 +136,7 @@ jobs:
         run: java -jar planetiler.jar verify workers/rail/rail.yml
 
       # rozpis je vo `workers/rail/build.sh`
-      - name: Železnice z OSM → PMTiles
+      - name: Železnice a lanovky z OSM → PMTiles
         id: rail
         env:
           OPT_RAIL_MAXZOOM: ${{ inputs.maxzoom }}

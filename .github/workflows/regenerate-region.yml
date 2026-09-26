@@ -463,7 +463,7 @@ jobs:
 
   # ten istý workflow, aký volá build mapy (`workers/rail/rail.yml`)
   zeleznice:
-    name: Železnice
+    name: Železnice a lanovky
     needs: plan
     if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.co == 'zeleznice' }}
     uses: ./.github/workflows/rail.yml

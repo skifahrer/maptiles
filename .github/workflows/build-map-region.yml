@@ -791,7 +791,7 @@ jobs:
 
   # železnice aj s koľajovou sieťou na navigáciu – `workers/rail/rail.yml`
   zeleznice:
-    name: Železnice
+    name: Železnice a lanovky
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.opt_rail == 'true' }}
     uses: ./.github/workflows/rail.yml

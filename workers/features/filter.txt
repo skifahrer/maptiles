@@ -41,5 +41,13 @@ nwr/mountain_pass
 # triedu (na rozdiel od `construction`), takže si ju berieme sami.
 nwr/highway=emergency_access_point,proposed
 
+# lanovky mimo prevádzky (v prevádzke ich má OpenMapTiles)
+w/aerialway=construction,proposed,disused,abandoned
+w/construction:aerialway
+w/proposed:aerialway
+w/disused:aerialway
+w/abandoned:aerialway
+w/razed:aerialway
+
 # --- zjazdovky, bežky, skialp ---
 nwr/piste:type

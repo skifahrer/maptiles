@@ -7,3 +7,11 @@ nwr/railway
 
 # linky nesú farbu a číslo, ktoré `lines.py` prepíše na koľaje
 r/route=tram,subway,light_rail,monorail,train,railway,funicular
+
+# lanovky a vleky aj rozostavané, plánované a zrušené
+nwr/aerialway
+w/construction:aerialway
+w/proposed:aerialway
+w/disused:aerialway
+w/abandoned:aerialway
+w/razed:aerialway

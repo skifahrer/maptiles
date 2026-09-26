@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Železnice: filter pustí, čo schéma chce, a navigácia jazdí po tom, čo mapa kreslí."""
+"""Železnice a lanovky: filter pustí, čo schéma chce, a navigácia jazdí po tom, čo mapa kreslí."""
 import json
 import os
 import sys
@@ -19,6 +19,11 @@ DOPOCITANE = {"rail_speed"}
 # čo balík sľubuje v aplikácii
 SLUBY = {"rail", "tram", "subway", "light_rail", "abandoned", "disused",
          "station", "halt", "level_crossing"}
+# lanovky v každom stave – aj rozostavané, plánované a zrušené
+SLUBY_LANOVKY = {"cable_car", "gondola", "chair_lift", "construction",
+                 "proposed", "disused", "abandoned", "station"}
+STAVY = {"construction:aerialway", "proposed:aerialway", "disused:aerialway",
+         "abandoned:aerialway"}
 
 
 def filter_keys(path):
@@ -49,13 +54,16 @@ def main():
         schema = yaml.safe_load(f)
     bloky = [b for v in schema.get("layers") or [] for b in v.get("features") or []]
 
-    pusta, triedy = filter_keys(FILTER), set()
+    pusta, triedy, lanovky, kluce_vsetky = filter_keys(FILTER), set(), set(), set()
     for b in bloky:
         kluce = set()
         for kluc, hodnoty in podmienky(b.get("include_when")):
             kluce.add(kluc)
+            kluce_vsetky.add(kluc)
             if kluc == "railway":
                 triedy |= set(map(str, hodnoty))
+            if kluc == "aerialway":
+                lanovky |= set(map(str, hodnoty))
         # pri `__all__` stačí jeden kľúč – ostatné prídu s tým istým objektom
         if kluce and not kluce & (pusta | DOPOCITANE):
             bad.append(f"{FILTER}: schéma sa pýta na {', '.join(sorted(kluce))}, "
@@ -64,6 +72,16 @@ def main():
     for sluba in sorted(SLUBY - triedy):
         bad.append(f"{SCHEMA}: `railway={sluba}` v schéme nie je, balík ho "
                    f"pritom sľubuje.")
+
+    for sluba in sorted(SLUBY_LANOVKY - lanovky):
+        bad.append(f"{SCHEMA}: `aerialway={sluba}` v schéme nie je, balík ho "
+                   f"pritom sľubuje.")
+    for kluc in sorted(STAVY - kluce_vsetky):
+        bad.append(f"{SCHEMA}: lanovky s `{kluc}` v schéme nie sú – stav by "
+                   f"sa stratil.")
+    for kluc in sorted((STAVY | {"aerialway"}) - pusta):
+        bad.append(f"{FILTER}: predfilter nepúšťa `{kluc}` – lanovky by v "
+                   f"dlaždiciach neboli.")
 
     with open(SLOVNIK, encoding="utf-8") as f:
         siet = set(json.load(f)["siet"]["railway"])
@@ -90,7 +108,7 @@ def main():
         print(f"::error::{b}")
     if not bad:
         print(f"železnice ✓ ({len(bloky)} blokov, {len(triedy)} tried, "
-              f"sieť {len(siet)} tried)")
+              f"{len(lanovky)} druhov lanoviek, sieť {len(siet)} tried)")
     return 1 if bad else 0
 
 

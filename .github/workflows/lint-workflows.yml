@@ -589,7 +589,7 @@ jobs:
         run: python3 workers/lint/water.py
 
       # navigácia po koľajach smie jazdiť len po tom, čo balík kreslí
-      - name: "Železnice: filter, sľúbené triedy a koľajová sieť"
+      - name: "Železnice a lanovky: filter, sľúbené triedy a koľajová sieť"
         run: python3 workers/lint/rail.py
 
       - name: "Sídla: filter, výmera a meno na budove"

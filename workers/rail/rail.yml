@@ -1,11 +1,11 @@
-# Planetiler custom schema – železnice z OSM v jednom `.pmtiles`.
+# Planetiler custom schema – železnice a lanovky z OSM v jednom `.pmtiles`.
 #
-# Všetky koľaje vrátane zrušených, stanice s menom a značky na trati. Farby
-# (rýchlosť, rozchod, trakcia) si kreslí aplikácia z atribútov.
-schema_name: FricoMaps železnice
+# Všetky koľaje a lanovky vrátane zrušených, stanice s menom a značky na trati.
+# Farby (rýchlosť, rozchod, trakcia) si kreslí aplikácia z atribútov.
+schema_name: FricoMaps železnice a lanovky
 schema_description: >-
-  Železnice, električky, metro, zrušené a plánované trate, stanice s menami
-  a značky na trati z OSM
+  Železnice, električky, metro, lanovky a vleky – v prevádzke, rozostavané,
+  plánované aj zrušené –, stanice s menami a značky na trati z OSM
 attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>
 
 sources:
@@ -131,6 +131,51 @@ definitions:
     - key: osm_id
       value: '${ feature.id }'
       type: long
+  - &lifts [cable_car, gondola, mixed_lift, chair_lift, drag_lift, t-bar, j-bar,
+             platter, rope_tow, magic_carpet, zip_line, goods]
+  - &lift_attrs
+    - key: class
+      value:
+        - if: {aerialway: *lifts}
+          value: {tag_value: aerialway}
+        - else:
+            coalesce:
+              - tag_value: "construction:aerialway"
+              - tag_value: "proposed:aerialway"
+              - tag_value: "disused:aerialway"
+              - tag_value: "abandoned:aerialway"
+              - tag_value: "razed:aerialway"
+              - tag_value: construction
+              - tag_value: proposed
+              - tag_value: disused
+              - tag_value: abandoned
+    - key: state
+      value:
+        - if: {aerialway: *lifts}
+          value: active
+        - if: {aerialway: construction, "construction:aerialway": __any__}
+          value: construction
+        - if: {aerialway: proposed, "proposed:aerialway": __any__}
+          value: proposed
+        - if: {aerialway: disused, "disused:aerialway": __any__}
+          value: disused
+        - else: abandoned
+    - key: name
+    - key: ref
+    - key: operator
+    - key: occupancy
+      value:
+        tag_value: "aerialway:occupancy"
+    - key: capacity
+      value:
+        tag_value: "aerialway:capacity"
+    - key: duration
+      value:
+        tag_value: "aerialway:duration"
+    - key: start_date
+    - key: end_date
+    - key: wikidata
+    - key: wikipedia
   - &station_attrs
     - key: class
       type: match_value
@@ -278,6 +323,47 @@ layers:
         min_zoom: 12
         include_when:
           railway: [station, halt]
+        attributes: *station_attrs
+
+  # lanovky a vleky; `class` je druh, `state` či premáva
+  - id: aerialway
+    features:
+      - source: osm
+        geometry: line
+        min_zoom: 10
+        include_when:
+          aerialway: *lifts
+        attributes: *lift_attrs
+
+      # rozostavané, plánované a zrušené – druh je v inom kľúči
+      - source: osm
+        geometry: line
+        min_zoom: 10
+        include_when:
+          aerialway: [construction, proposed, disused, abandoned]
+          "construction:aerialway": __any__
+          "proposed:aerialway": __any__
+          "disused:aerialway": __any__
+          "abandoned:aerialway": __any__
+          "razed:aerialway": __any__
+        exclude_when:
+          aerialway: *lifts
+        attributes: *lift_attrs
+
+  - id: aerialway_station
+    features:
+      - source: osm
+        geometry: point
+        min_zoom: 12
+        include_when:
+          aerialway: station
+        attributes: *station_attrs
+
+      - source: osm
+        geometry: polygon_centroid
+        min_zoom: 12
+        include_when:
+          aerialway: station
         attributes: *station_attrs
 
 # testy: `java -jar planetiler.jar verify workers/rail/rail.yml`
@@ -476,6 +562,112 @@ examples:
         tags:
           class: milestone
           position: "12.4"
+
+  - name: Kabínka v prevádzke je od z10
+    input:
+      source: osm
+      geometry: line
+      tags:
+        aerialway: gondola
+        name: Skalnaté pleso
+        aerialway:occupancy: "8"
+    output:
+      - layer: aerialway
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: gondola
+          state: active
+          name: Skalnaté pleso
+          occupancy: "8"
+
+  - name: Plánovaná lanovka nesie druh aj stav
+    input:
+      source: osm
+      geometry: line
+      tags:
+        aerialway: proposed
+        proposed: cable_car
+    output:
+      - layer: aerialway
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: cable_car
+          state: proposed
+
+  - name: Rozostavaná lanovka v prefixe kľúča
+    input:
+      source: osm
+      geometry: line
+      tags:
+        construction:aerialway: chair_lift
+    output:
+      - layer: aerialway
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: chair_lift
+          state: construction
+
+  - name: Zrušený vlek je stará lanovka
+    input:
+      source: osm
+      geometry: line
+      tags:
+        abandoned:aerialway: drag_lift
+    output:
+      - layer: aerialway
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: drag_lift
+          state: abandoned
+
+  - name: Nepoužívaná sedačka
+    input:
+      source: osm
+      geometry: line
+      tags:
+        aerialway: disused
+        disused: chair_lift
+    output:
+      - layer: aerialway
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: chair_lift
+          state: disused
+
+  - name: Sedačka s plánovanou náhradou ostáva v prevádzke
+    input:
+      source: osm
+      geometry: line
+      tags:
+        aerialway: chair_lift
+        proposed:aerialway: gondola
+    output:
+      - layer: aerialway
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: chair_lift
+          state: active
+
+  - name: Stanica lanovky je bod s menom
+    input:
+      source: osm
+      geometry: point
+      tags:
+        aerialway: station
+        name: Lomnické sedlo
+    output:
+      - layer: aerialway_station
+        geometry: point
+        min_zoom: 12
+        tags:
+          class: station
+          name: Lomnické sedlo
 
   - name: Cesta do železníc nepatrí
     input:

@@ -2974,7 +2974,7 @@ data/region.osm.pbf
 
 | súbor | vrstva | čo v nej je | od zoomu |
 |---|---|---|--:|
-| `features.pmtiles` | `feature_line` | **násyp**, zárez, múr, hradby, plot, živý plot, elektrické vedenie, **plánovaná cesta**, priesek, nadzemné potrubie, stromoradie, priehradný múr, hať, výmoľ | 11–15 |
+| `features.pmtiles` | `feature_line` | **násyp**, zárez, múr, hradby, plot, živý plot, elektrické vedenie, **plánovaná cesta**, **lanovka mimo prevádzky** (`aerialway_construction`, `aerialway_proposed`, `aerialway_disused`), priesek, nadzemné potrubie, stromoradie, priehradný múr, hať, výmoľ | 11–15 |
 | `features.pmtiles` | `feature_area` | parkovisko, skládka, halda, hospodársky dvor, skleníky, opustený priemysel, kamenné pole | 11–14 |
 | `features.pmtiles` | `piste` | zjazdovka, bežkárska trať, skialp, sánkarská dráha – čiara aj plocha, s obťažnosťou | 11 |
 | `points.pmtiles` | `feature_point` | prameň, vodopád, jaskyňa, závrt, rozhľadňa, stožiar, vodojem, kríž pri ceste, pomník, archeologické nálezisko, štôlňa, útulňa, horský priechod, núdzový bod, geodetický bod | 11–15 |
@@ -3035,13 +3035,16 @@ schémy)**, farby v rovnomennej skupine palety. Job sa **necachuje** a beží
 súbežne so všetkým ostatným; podiel na rozpočte stránky je
 `BUDGET_FEATURES_PCT` (4 %).
 
-## Železnice (balík `zeleznice`)
+## Železnice a lanovky (balík `zeleznice`)
 
 Všetky koľaje z OSM v `{kraj}-rail.pmtiles` – trate, vlečky, električky,
 metro, ozubnice aj zrušené, nepoužívané a plánované trate – a k nim stanice
 s menami a značky na trati (priecestia, návestidlá, výhybky, kilometrovníky).
-Schéma je `workers/rail/rail.yml`, stavia ju job `zeleznice` (`rail.yml`)
-pri každom builde kraja aj krajiny.
+V tom istom archíve sú **lanovky a vleky** v každom stave: v prevádzke,
+rozostavané, plánované, nepoužívané aj zrušené. Schéma je
+`workers/rail/rail.yml`, stavia ju job `zeleznice` (`rail.yml`) pri každom
+builde kraja aj krajiny. Kľúč balíka ostal `zeleznice`, aby staré mapy
+a manifesty platili.
 
 | vrstva | čo nesie |
 |---|---|
@@ -3049,6 +3052,12 @@ pri každom builde kraja aj krajiny.
 | `railway_area` | nástupištia a stanice ako plochy |
 | `railway_point` | značky na trati; `position` je poloha kilometrovníka, `switch_type` druh výhybky, `signal_main`, `signal_distant`, `signal_combined`, `signal_shunting`, `signal_minor` druh návestidla |
 | `station` | stanice, zastávky a električkové zastávky s menom, `network`, `colour`, `wikidata`, `wikipedia` |
+| `aerialway` | lanovky a vleky; `class` je druh (`cable_car`, `gondola`, `chair_lift`, `drag_lift`, …), `state` je `active`, `construction`, `proposed`, `disused` alebo `abandoned`; `occupancy`, `capacity`, `duration`, `name`, `operator` |
+| `aerialway_station` | stanice lanoviek s menom |
+
+Druh rozostavanej, plánovanej či zrušenej lanovky je v OSM dvojako –
+`aerialway=proposed` + `proposed=gondola`, alebo `proposed:aerialway=gondola`;
+berú sa oba. Lanovka v prevádzke s plánovanou náhradou ostáva `active`.
 
 Farbu linky (`colour`) a čísla liniek (`route_ref`) nesie v OSM `type=route`
 relácia, nie koľaj. `workers/rail/lines.py` ich pred Planetilerom prepíše na

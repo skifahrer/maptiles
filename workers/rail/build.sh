@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Železnice z OSM → `{región}-rail.pmtiles` a `{región}-rail-routing.pmtiles`.
+# Železnice a lanovky z OSM → `{región}-rail.pmtiles` a `{región}-rail-routing.pmtiles`.
 #
 # Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
 # Podiel na veľkosti stránky berie z `BUDGET_RAIL_PCT`.
@@ -21,13 +21,13 @@ osmium tags-filter --overwrite -o data/rail.osm.pbf \
 BEFORE=$(stat -c%s data/region.osm.pbf)
 AFTER=$(stat -c%s data/rail.osm.pbf)
 echo "Predfilter: $(du -h data/region.osm.pbf | cut -f1) → $(du -h data/rail.osm.pbf | cut -f1)"
-printf '%s\t%s\t%s\t%s\n' "67" "Predfilter železníc" "$(( $(date +%s) - T_F ))" \
+printf '%s\t%s\t%s\t%s\n' "67" "Predfilter železníc a lanoviek" "$(( $(date +%s) - T_F ))" \
   "$(( BEFORE / 1048576 )) MB → $(( AFTER / 1048576 )) MB" \
   >> steps-out/rail.tsv
 
-# prázdny výrez nie je chyba – v horách trať byť nemusí
+# prázdny výrez nie je chyba – trať ani lanovka byť nemusí
 if [ "$AFTER" -lt 2000 ]; then
-  echo "::warning::V tomto území nie je ani jedna koľaj – balík \`zeleznice\` sa nevyrobí."
+  echo "::warning::V tomto území nie je ani jedna koľaj ani lanovka – balík \`zeleznice\` sa nevyrobí."
   echo "enabled=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi
@@ -58,7 +58,7 @@ java -Xmx4g -jar planetiler.jar generate-custom \
   --simplify_tolerance_at_max_zoom=0 \
   --min_feature_size_at_max_zoom=0 \
   --force
-printf '%s\t%s\t%s\t%s\n' "68" "Železnice → PMTiles" "$(( $(date +%s) - T_PM ))" \
+printf '%s\t%s\t%s\t%s\n' "68" "Železnice a lanovky → PMTiles" "$(( $(date +%s) - T_PM ))" \
   "maxzoom $RZ_, $(du -h "$OUT" | cut -f1)" \
   >> steps-out/rail.tsv
 
