@@ -151,6 +151,11 @@ definitions:
               - tag_value: abandoned
     - key: state
       value:
+        # vlek mimo prevádzky často ostáva `aerialway=*` s `disused=yes`
+        - if: {__all__: [{aerialway: *lifts}, {abandoned: "yes"}]}
+          value: abandoned
+        - if: {__all__: [{aerialway: *lifts}, {disused: "yes"}]}
+          value: disused
         - if: {aerialway: *lifts}
           value: active
         - if: {aerialway: construction, "construction:aerialway": __any__}
@@ -653,6 +658,36 @@ examples:
         tags:
           class: chair_lift
           state: active
+
+  - name: Vlek s disused=yes nepremáva
+    input:
+      source: osm
+      geometry: line
+      tags:
+        aerialway: drag_lift
+        disused: "yes"
+    output:
+      - layer: aerialway
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: drag_lift
+          state: disused
+
+  - name: Sedačka s abandoned=yes je opustená
+    input:
+      source: osm
+      geometry: line
+      tags:
+        aerialway: chair_lift
+        abandoned: "yes"
+    output:
+      - layer: aerialway
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: chair_lift
+          state: abandoned
 
   - name: Stanica lanovky je bod s menom
     input:
