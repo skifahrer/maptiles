@@ -2055,6 +2055,12 @@ bez ikony a bez vety, čo kreslí.
 Kým bol napísaný na piatich miestach, znamenal nový balík päť úprav a
 ktorákoľvek zabudnutá bola tichá.
 
+**Podbalíky základnej mapy** sú `vodstvo`, `hranice`, `cesty`, `zeleznice`,
+`sidla` a `body` (`"cast": "mapa"` v číselníku, v `maps.json` ako
+`part_of`). Kreslia časť toho, čo kreslí aj základná mapa, preto ich appka
+v jednom štýle nezapne naraz s ňou: buď základná mapa, alebo ľubovoľný počet
+podbalíkov.
+
 **Dopravná sieť, body záujmu, hranice, vodstvo a smerovacia sieť sú VONKU zo
 základnej mapy** z rovnakého dôvodu ako vrstvy z výškového modelu – s tým
 rozdielom, že od nich mapa vyzerá rovnako aj bez nich, takže tu ide výlučne

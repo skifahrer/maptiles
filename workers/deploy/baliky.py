@@ -10,7 +10,8 @@ ktoré sa z neho odvodzujú:
     balik(kluc)       jeden, alebo tvrdý pád s tým, čo sa dá zadať
     kluce()           len kľúče
     zrusene()         balíky, ktoré UŽ NIE SÚ – ich starý súbor sa maže
-    pre_katalog()     `{kľúč: {app, symbol, detail, popis}}` do `maps.json`
+    pre_katalog()     `{kľúč: {app, symbol, detail, popis, part_of?}}` do `maps.json`
+    podbaliky(kluc)   kľúče balíkov, ktoré sú časťou `kluc`
     kredity(kluc, …)  autori a licencie dát balíka do `maps.json`
 
 PREČO SA TO NEČÍTA PRIAMO. Súbor sa načíta RAZ (`_CACHE`) a chyba v ňom padá
@@ -74,8 +75,14 @@ def pre_katalog():
     jej vlastná tabuľka je záloha pre staršie katalógy, nie jediný zdroj.
     """
     return {b["kluc"]: {"app": b["app"], "symbol": b["symbol"],
-                        "detail": b["app_popis"], "popis": b["popis"]}
+                        "detail": b["app_popis"], "popis": b["popis"],
+                        **({"part_of": b["cast"]} if b.get("cast") else {})}
             for b in zoznam()}
+
+
+def podbaliky(kluc):
+    """Podbalíky balíka `kluc` v poradí zo súboru."""
+    return [b["kluc"] for b in zoznam() if b.get("cast") == kluc]
 
 
 def kredity(kluc, modely=None):
