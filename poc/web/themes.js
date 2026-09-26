@@ -4464,7 +4464,14 @@ export function buildStyle({
       // plánovaná cesta je tu, medzi prvkami, lebo ide z vlastných dlaždíc.
       // Bodkovaná a šedšia než rozostavaná: „stavia sa" proti „je to na papieri".
       ["road-proposed", "Plánované cesty", ["road_proposed"], "roadProposed",
-        [[11, 0.8], [14, 1.6], [16, 2.6], [20, 6]], [1, 2.5], 11]
+        [[11, 0.8], [14, 1.6], [16, 2.6], [20, 6]], [1, 2.5], 11],
+      // lanovky mimo prevádzky; tie v prevádzke kreslí vrstva `aerialway`
+      ["aerialway-construction", "Rozostavané lanovky", ["aerialway_construction"],
+        "aerialway", [[11, 0.6], [16, 1.6], [20, 3]], [3, 3], 11],
+      ["aerialway-proposed", "Plánované lanovky", ["aerialway_proposed"],
+        "roadProposed", [[11, 0.6], [16, 1.6], [20, 3]], [1, 2.5], 11],
+      ["aerialway-disused", "Zrušené lanovky", ["aerialway_disused"], "roadProposed",
+        [[11, 0.5], [16, 1.2], [20, 2.4]], [6, 4], 11]
     ];
     for (const [id, label, classes, paletteKey, stops, dash, mz] of featureLines) {
       add(

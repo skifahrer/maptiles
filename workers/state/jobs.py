@@ -106,9 +106,9 @@ CENA = {
                 "hranice štátu, kraja, okresu a obce aj s ich menami"),
     "vodstvo": ("Vodstvo",
                 "rieky, potoky, jazerá, priehrady a more aj s ich menami"),
-    "zeleznice": ("Železnice",
-                  "všetky trate aj zrušené, stanice s menami, značky na trati "
-                  "a koľajová sieť na navigáciu"),
+    "zeleznice": ("Železnice a lanovky",
+                  "všetky trate a lanovky aj plánované a zrušené, stanice "
+                  "s menami, značky na trati a koľajová sieť na navigáciu"),
     "sidla": ("Sídla",
               "všetky budovy s výmerou, menom, druhom a adresou a mená sídiel"),
     "vrstevnice": ("Vrstevnice",
