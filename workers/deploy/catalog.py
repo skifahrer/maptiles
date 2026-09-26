@@ -153,6 +153,8 @@ def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None,
     polozka["symbol"] = meta["symbol"]
     polozka["detail"] = meta["app_popis"]
     polozka["popis"] = meta["popis"]
+    if meta.get("cast"):
+        polozka["part_of"] = meta["cast"]
     kredity = katalog_balikov.kredity(kind or "mapa", modely)
     if kredity:
         polozka["credits"] = kredity

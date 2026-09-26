@@ -46,6 +46,13 @@ FOLDER_PY = "workers/drive/folder.py"
 
 bad = []
 
+# podbalík patrí balíku, ktorý sám podbalíkom nie je
+_CASTI = {b["kluc"]: b.get("cast") for b in _CISELNIK.get("baliky") or []}
+for _k, _c in _CASTI.items():
+    if _c and (_c not in _CASTI or _CASTI[_c]):
+        bad.append(f"workers/data/packages.json: `{_k}` je časťou `{_c}`, ale "
+                   f"`{_c}` nie je balík, ktorý by podbalíky mohol mať.")
+
 # číta sa raz: treba to pri katalógoch aj nižšie pri kontrole skriptu
 try:
     pmap_text = open(PUBLISH_MAP, encoding="utf-8").read()
