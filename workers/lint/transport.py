@@ -5,10 +5,9 @@ Sedem tichých vecí:
 
   1. predfilter (`filter.txt`) a schéma (`transport.yml`) sa rozídu –
      Planetiler dostane PBF, v ktorom ten tag už nie je, a beh zazelená;
-  2. zo siete vypadne celá rodina – kontroluje sa `highway`, `railway`,
-     `route` (trajekt) aj `aerialway`;
-  3. do siete sa vráti, po čom sa ísť nedá (`railway=abandoned`, `disused`,
-     `razed`, `construction`, `proposed`, `platform`);
+  2. zo siete vypadne celá rodina – kontroluje sa `highway`, `route`
+     (trajekt) aj `aerialway`;
+  3. do siete sa vrátia železnice – tie nesie balík `zeleznice`;
   4. zo siete ticho vypadne trieda – `include_when` je biela listina, takže
      čo v nej nie je, sa do dlaždíc nedostane a nepovie o tom nič;
   5. obmedzenia na ceste (výška, šírka, hmotnosť, rýchlosť) z nej vypadnú –
@@ -32,7 +31,6 @@ CISELNIK = os.path.join(_WORKERS, "data", "packages.json")
 # Rodiny dopravy, ktoré vrstva SĽUBUJE. Kľúč → čím to je v OSM.
 RODINY = {
     "highway": "cesty (od diaľnice po schody)",
-    "railway": "železnice, električky a metro",
     "route": "trajekty a prievozy",
     "aerialway": "lanovky a vleky",
 }
@@ -60,9 +58,8 @@ RETAZCE = {"maxheight", "maxheight_physical", "maxwidth", "maxweight",
 ADRESA = {"addr:housenumber", "addr:conscriptionnumber", "addr:street",
           "addr:place", "addr:city"}
 
-# Hodnoty `railway`, po ktorých sa ísť NEDÁ – v sieti nemajú čo robiť.
-NEPREJAZDNE = {"abandoned", "disused", "razed", "construction", "proposed",
-               "platform", "razed", "dismantled"}
+# železnice nesie balík `zeleznice`, v cestách by boli dvakrát
+ZELEZNICE = "railway"
 
 # Triedy, ktoré vrstva sľubuje; chýba tu, po čom sa ísť nedá a plochy s bodmi.
 PREJAZDNE = {
@@ -73,10 +70,6 @@ PREJAZDNE = {
         "pedestrian", "road", "busway", "bus_guideway", "escape", "raceway",
         "track", "path", "footway", "cycleway", "bridleway", "steps",
         "corridor", "via_ferrata", "elevator", "ladder", "service",
-    },
-    "railway": {
-        "rail", "narrow_gauge", "light_rail", "subway", "tram", "monorail",
-        "funicular", "preserved", "miniature",
     },
     "route": {"ferry"},
     "aerialway": {
@@ -133,7 +126,7 @@ def main():
             f"dostal PBF, v ktorom ten tag už nie je – dlaždice by vznikli, "
             f"beh by bol zelený a tá časť siete by v nich jednoducho nebola.")
 
-    # ---- 2. všetky štyri rodiny dopravy sú v sieti ----
+    # ---- 2. všetky tri rodiny dopravy sú v sieti ----
     for kluc, popis in RODINY.items():
         if kluc not in chce:
             err(f"{SCHEMA}: v sieti nie sú {popis} (`{kluc}`). Vrstva sľubuje "
@@ -141,18 +134,10 @@ def main():
                 f"vážil menej a nikto by sa nedozvedel, že v ňom chýba celý "
                 f"spôsob dopravy.")
 
-    # ---- 3. neprejazdné koľajnice v sieti nie sú ----
-    for b in bloky:
-        hodnoty = (b.get("include_when") or {}).get("railway")
-        if not hodnoty:
-            continue
-        if not isinstance(hodnoty, list):
-            hodnoty = [hodnoty]
-        zle = sorted(set(map(str, hodnoty)) & NEPREJAZDNE)
-        if zle:
-            err(f"{SCHEMA}: v sieti je `railway={', '.join(zle)}` – po tom sa "
-                f"ísť nedá (zrušená alebo rozobraná trať, nástupište). Vrstva "
-                f"je „po čom sa dá cestovať“, nie „čo v OSM má koľajnice“.")
+    # ---- 3. železnice v sieti nie sú ----
+    if ZELEZNICE in chce or ZELEZNICE in pusta:
+        err(f"{SCHEMA}, {FILTER}: v cestách je `railway`. Železnice nesie "
+            f"balík `zeleznice` – v balíku `cesty` by boli druhý raz.")
 
     # ---- 4. sľúbené triedy sú naozaj v schéme ----
     v_scheme = {}
@@ -249,8 +234,8 @@ def hotovo():
         print(f"\n{len(bad)} problém(ov) v dopravnej sieti.")
         return 1
     print("Dopravná sieť: predfilter pustí, čo schéma chce, v sieti sú cesty, "
-          "železnice, trajekty aj lanovky, každá sľúbená trieda je v schéme, "
-          "neprejazdné koľajnice v nej nie sú, "
+          "trajekty aj lanovky, každá sľúbená trieda je v schéme, "
+          "železnice v nej nie sú, "
           "obmedzenia na ceste v nej sú a ostali reťazcom, `class` s `druh` "
           "idú z toho, čím sa blok trafil, adresy nesú ulicu aj číslo "
           "a balík `cesty` ju naozaj nesie.")

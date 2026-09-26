@@ -1,7 +1,7 @@
 # Predfilter PBF pre `transport.yml` (`osmium tags-filter --expressions`).
 #
 # Jeden priechod: `tags-filter` vie len ALEBO, a dopravná sieť je „cesta ALEBO
-# železnica ALEBO trajekt ALEBO lanovka".
+# trajekt ALEBO lanovka". Železnice nesie balík `zeleznice`.
 #
 # Obmedzenia (`maxheight`, `maxspeed`, …) sa sem nepíšu: `tags-filter` berie
 # objekt celý aj so všetkými tagmi, takže `w/highway` prinesie aj výšku
@@ -15,9 +15,6 @@
 
 # --- cesty: od diaľnice po schody ---
 w/highway
-
-# --- koľajová doprava: vlak, električka, metro, ozubnica, lanovková dráha ---
-w/railway
 
 # --- trajekty a prievozy (na Dunaji jediné spojenie cez rieku) ---
 w/route=ferry

@@ -34,7 +34,7 @@ printf '%s\t%s\t%s\t%s\n' "61" "Predfilter dopravnej siete" "$(( $(date +%s) - T
 # jedinej cesty. Balík `cesty` sa vtedy nevyrobí; že tam nie je, povie
 # `obsah.json` v balíku mapy.
 if [ "$AFTER" -lt 2000 ]; then
-  echo "::warning::V tomto území nie je ani jedna cesta, trať, trajekt ani lanovka – balík \`cesty\` sa nevyrobí."
+  echo "::warning::V tomto území nie je ani jedna cesta, trajekt ani lanovka – balík \`cesty\` sa nevyrobí."
   echo "enabled=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi
