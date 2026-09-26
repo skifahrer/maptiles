@@ -31,7 +31,7 @@ Mapa · Build map region      deväť jobov, tie dlhé bežia súbežne:
                                         (`dem-layers.yml` – vlastný workflow,
                                         volá ho aj pregenerovanie vrstvy)
                                trails   značené trasy z OSM relácií
-                               transport CELÁ dopravná sieť (cesty, trate,
+                               transport CELÁ cestná sieť (cesty,
                                         trajekty, lanovky) aj s obmedzeniami
                                         na ceste ─► balík `cesty`
                                hranice  hranice území a ich názvy ─► balík
@@ -2068,15 +2068,15 @@ o veľkosť sťahovania:
 | `vodstvo` | rieky, potoky, kanály, jazerá, priehrady, zálivy, pobrežie – každý prvok aj s menom | `-water` |
 | `navigacia` | smerovacia sieť so značkami – cenu trasy počíta telefón | `-routing` |
 
-**`-transport.pmtiles` je celý balík `cesty`** a je to celá cestná, koľajová
-a chodníková sieť kraja: cesty od diaľnice po schody, železnice, električky
-a metro, trajekty a lanovky – s menom, číslom, povrchom, prístupom
-a smerovosťou ([`workers/transport/transport.yml`](transport/transport.yml)).
+**`-transport.pmtiles` je celý balík `cesty`** a je to celá cestná
+a chodníková sieť kraja: cesty od diaľnice po schody, trajekty a lanovky –
+s menom, číslom, povrchom, prístupom a smerovosťou. Železnice v nej nie sú,
+nesie ich balík `zeleznice` ([`workers/transport/transport.yml`](transport/transport.yml)).
 Cestná sieť v mape je vrstva `transportation` schémy OpenMapTiles: stavaná na
 **kreslenie**, so zjednodušenou geometriou a v jednom archíve s vodstvom,
 krajinnou pokrývkou a popismi – takže „chcem len siete, po ktorých sa dá
 cestovať" znamenalo stiahnuť stovky MB a vytiahnuť si to z nich sám. Zoomy sú
-tam to hlavné rozhodnutie (diaľnice a hlavné trate od z6, `service` cesty až
+tam to hlavné rozhodnutie (diaľnice od z6, `service` cesty až
 od z14) a rozhodujú o veľkosti súboru.
 
 **Obmedzenia na ceste sú ATRIBÚTMI tej siete, nie vlastnou vrstvou.** Výška

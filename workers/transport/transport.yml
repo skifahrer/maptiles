@@ -4,8 +4,8 @@
 # zjednodušená podľa zoomu, atribúty pre štýl a všetko v jednom archíve so
 # zvyškom mapy. Kto chce len siete, po ktorých sa dá cestovať, musel by si
 # stiahnuť stovky MB. Tu je jeden archív so všetkým, po čom sa dá ísť: cesty,
-# železnice, trajekty a lanovky – s menom, číslom, povrchom, prístupom
-# a smerovosťou.
+# trajekty a lanovky – s menom, číslom, povrchom, prístupom a smerovosťou.
+# Železnice tu nie sú, nesie ich balík `zeleznice`.
 #
 # Obmedzenia na ceste (výška, šírka, hmotnosť, rýchlosť) sú tu, nie vedľa:
 # sú to atribúty tých istých ciest a v samostatnom archíve sa museli spájať
@@ -23,10 +23,9 @@
 # Zoomy sú tu hlavné rozhodnutie – chodníkov a poľných ciest je rádovo viac
 # než ciest I. triedy:
 #
-#     diaľnice, cesty I. triedy, hlavné železnice   od z6
+#     diaľnice, cesty I. triedy                     od z6
 #     cesty II. a III. triedy                        od z9
-#     ostatné cesty pre autá, električky, metro,     od z11
-#       trajekty, lanovky
+#     ostatné cesty pre autá, trajekty, lanovky      od z11
 #     poľné a lesné cesty (`track`)                  od z12
 #     chodníky, pešie cesty, schody, výťahy, rebríky od z13
 #     `service` (príjazdy, uličky parkovísk)         od z14
@@ -39,9 +38,8 @@
 # berie objekt celý aj s ostatnými tagmi.
 schema_name: FricoMaps dopravná sieť
 schema_description: >-
-  Všetko, po čom sa dá cestovať – cesty od diaľnice po schody, železnice,
-  električky a metro, trajekty a lanovky, s menom, číslom, povrchom
-  a prístupom
+  Všetko, po čom sa dá cestovať – cesty od diaľnice po schody, trajekty
+  a lanovky, s menom, číslom, povrchom a prístupom
 attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>
 
 sources:
@@ -60,9 +58,8 @@ definitions:
   - &transport_attrs
     # oboje sa berie z toho, čím sa blok trafil (`match_value`, `match_key`),
     # nie vypisuje pri každom bloku – druhá kópia zoznamu tried by sa rozišla:
-    #   class  hodnota tagu z OSM (`motorway`, `track`, `rail`, `ferry`)
-    #   druh   kľúč tagu, teda rodina (`highway`, `railway`, `route`,
-    #          `aerialway`) – „všetko koľajové" je jedna podmienka
+    #   class  hodnota tagu z OSM (`motorway`, `track`, `ferry`)
+    #   druh   kľúč tagu, teda rodina (`highway`, `route`, `aerialway`)
     - key: class
       type: match_value
     - key: druh
@@ -90,10 +87,6 @@ definitions:
     - key: bridge
     - key: tunnel
     - key: layer
-    # železnica: `usage` a `electrified` robia z koľaje trať. Na ceste tie
-    # tagy nie sú, takže atribút nevznikne.
-    - key: usage
-    - key: electrified
     # či sa tam vozidlo zmestí – reťazce s jednotkou tak, ako sú v OSM.
     # `maxheight:physical` je nameraná výška podjazdu, keď tabuľa chýba.
     - key: maxheight
@@ -172,26 +165,7 @@ layers:
           highway: [service]
         attributes: *transport_attrs
 
-      # 7. hlavné železnice: od z6, kostra ako diaľnice. `construction`,
-      # `abandoned`, `disused`, `razed` a `platform` sem nepatria – po tých sa
-      # nedá ísť a meno vrstvy je sľub.
-      - source: osm
-        geometry: line
-        min_zoom: 6
-        include_when:
-          railway: [rail, narrow_gauge]
-        attributes: *transport_attrs
-
-      # 8. mestská a horská koľajová doprava: od z11
-      - source: osm
-        geometry: line
-        min_zoom: 11
-        include_when:
-          railway: [light_rail, subway, tram, monorail, funicular,
-                    preserved, miniature]
-        attributes: *transport_attrs
-
-      # 9. trajekty: od z11 – na niektorých miestach jediný spôsob, ako sa
+      # 7. trajekty: od z11 – na niektorých miestach jediný spôsob, ako sa
       # dostať cez rieku
       - source: osm
         geometry: line
@@ -200,7 +174,7 @@ layers:
           route: [ferry]
         attributes: *transport_attrs
 
-      # 10. lanovky a vleky: od z11 – v horách doprava ako každá iná
+      # 8. lanovky a vleky: od z11 – v horách doprava ako každá iná
       - source: osm
         geometry: line
         min_zoom: 11
@@ -344,54 +318,21 @@ examples:
           druh: highway
           tracktype: grade3
 
-  - name: Trať je v sieti od z6 a povie, či je elektrifikovaná
+  - name: Trať v cestách NIE JE – nesie ju balík `zeleznice`
     input:
       source: osm
       geometry: line
       tags:
         railway: rail
-        usage: main
-        electrified: contact_line
         name: Košice – Žilina
-    output:
-      - layer: transport
-        geometry: line
-        min_zoom: 6
-        tags:
-          class: rail
-          druh: railway
-          usage: main
-          electrified: contact_line
-          name: Košice – Žilina
+    output: []
 
-  - name: Električka je koľajová doprava, ale až od z11
+  - name: Električka v cestách tiež nie je
     input:
       source: osm
       geometry: line
       tags:
         railway: tram
-    output:
-      - layer: transport
-        geometry: line
-        min_zoom: 11
-        tags:
-          class: tram
-          druh: railway
-
-  - name: Zrušená trať v sieti NIE JE – po nej sa ísť nedá
-    input:
-      source: osm
-      geometry: line
-      tags:
-        railway: abandoned
-    output: []
-
-  - name: Nástupište nie je trať
-    input:
-      source: osm
-      geometry: line
-      tags:
-        railway: platform
     output: []
 
   - name: Trajekt je spojenie ako každé iné

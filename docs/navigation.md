@@ -223,8 +223,8 @@ z prvej verzie tým nepadol, len ho drží katalóg a nie balenie.
 **Chvíľu cestoval graf v balíku `linie` a vrátil sa do vlastného.** Argument
 pre spojenie bol, že značené trasy, obmedzenia na ceste aj graf sú **tá istá
 sieť z toho istého PBF**, raz nakreslená a raz zjazdná. Odkedy je v balíku
-**celá dopravná sieť** (`-transport.pmtiles`: cesty od diaľnice po schody,
-železnice, trajekty, lanovky – rozpis v hlavičke
+**celá cestná sieť** (`-transport.pmtiles`: cesty od diaľnice po schody,
+trajekty, lanovky – rozpis v hlavičke
 [`workers/transport/transport.yml`](../workers/transport/transport.yml)), to už
 neplatí: tá kreslená sieť váži desiatky MB proti 170–190 za graf, takže by
 z balíka bolo deväť desatín graf a kto chce sieť len vidieť, sťahoval by ho
