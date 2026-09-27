@@ -26,6 +26,11 @@ definitions:
     - key: service
     - key: maxspeed
     - key: gauge
+    # najširší rozchod v mm, dopočíta ho `lines.py`
+    - key: gauge_mm
+      type: integer
+      value:
+        tag_value: rail_gauge
     - key: electrified
     - key: voltage
     - key: frequency
@@ -132,7 +137,8 @@ definitions:
       value: '${ feature.id }'
       type: long
   - &lifts [cable_car, gondola, mixed_lift, chair_lift, drag_lift, t-bar, j-bar,
-             platter, rope_tow, magic_carpet, zip_line, goods]
+             platter, rope_tow, magic_carpet, zip_line, goods, canopy, explosive,
+             wire_cable, "yes", unknown]
   - &lift_attrs
     - key: class
       value:
@@ -145,6 +151,10 @@ definitions:
               - tag_value: "disused:aerialway"
               - tag_value: "abandoned:aerialway"
               - tag_value: "razed:aerialway"
+              - tag_value: "was:aerialway"
+              - tag_value: "removed:aerialway"
+              - tag_value: "demolished:aerialway"
+              - tag_value: "historic:aerialway"
               - tag_value: construction
               - tag_value: proposed
               - tag_value: disused
@@ -168,6 +178,8 @@ definitions:
     - key: name
     - key: ref
     - key: operator
+    # nákladná lanovka baní a fabrík
+    - key: usage
     - key: occupancy
       value:
         tag_value: "aerialway:occupancy"
@@ -351,6 +363,10 @@ layers:
           "disused:aerialway": __any__
           "abandoned:aerialway": __any__
           "razed:aerialway": __any__
+          "was:aerialway": __any__
+          "removed:aerialway": __any__
+          "demolished:aerialway": __any__
+          "historic:aerialway": __any__
         exclude_when:
           aerialway: *lifts
         attributes: *lift_attrs
@@ -395,6 +411,23 @@ examples:
           gauge: "1435"
           electrified: contact_line
           voltage: "25000"
+
+  - name: Široký rozchod nesie šírku v mm
+    input:
+      source: osm
+      geometry: line
+      tags:
+        railway: rail
+        gauge: "1435;1520"
+        rail_gauge: "1520"
+    output:
+      - layer: railway
+        geometry: line
+        min_zoom: 6
+        tags:
+          class: rail
+          gauge: "1435;1520"
+          gauge_mm: 1520
 
   - name: Vlečka je až od z12
     input:
@@ -628,6 +661,36 @@ examples:
         tags:
           class: drag_lift
           state: abandoned
+
+  - name: Rozobratá nákladná lanovka je opustená
+    input:
+      source: osm
+      geometry: line
+      tags:
+        removed:aerialway: goods
+        usage: industrial
+    output:
+      - layer: aerialway
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: goods
+          state: abandoned
+          usage: industrial
+
+  - name: Lanovka bez druhu je tiež lanovka
+    input:
+      source: osm
+      geometry: line
+      tags:
+        aerialway: "yes"
+    output:
+      - layer: aerialway
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: "yes"
+          state: active
 
   - name: Nepoužívaná sedačka
     input:

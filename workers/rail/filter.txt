@@ -15,3 +15,7 @@ w/proposed:aerialway
 w/disused:aerialway
 w/abandoned:aerialway
 w/razed:aerialway
+w/was:aerialway
+w/removed:aerialway
+w/demolished:aerialway
+w/historic:aerialway
