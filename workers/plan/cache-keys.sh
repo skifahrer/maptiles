@@ -39,16 +39,12 @@ C_NASTAVENIA="contours-v11-c$CS-$B-i${CONTOUR_INTERVAL}-z${OPT_CONTOUR_MAXZOOM}-
 # skaly: prvý vlastný kľúč. Zdroj je v ňom preto, že `dmr5` a `tienovanie`
 # dávajú úplne iné plochy. `ROCK_ALGO`, `ROCK_VEC_RES`, `ROCK_SIMPLIFY`
 # a `ROCK_SMOOTH` sú v `env:` workflowu a menia tvar obrysu.
-# `v2`: pod `v1` ležia prázdne skaly z padnutých výpočtov a berie ich aj
-# predpona `rocks_hotove` – nový kľúč je jediné, čo ich obíde.
-R_NASTAVENIA="rocks-v2-r$RS-$B-z${OPT_ROCK_MAXZOOM}p${OPT_ROCK_PLNE}d${OPT_ROCK_ZAPLN_DIERY}-s${ROCK_SLOPE}g${OPT_ROCK_RES}-${ROCK_ALGO}v${ROCK_VEC_RES}t${ROCK_SIMPLIFY}x${ROCK_SMOOTH}-a$RA-${OPT_ROCK_IMG_ASSET}"
-# `v6`: za hranicou kraja terén pokračuje okolím namiesto roviny 0 m (rovina
-# tam robila zvislú stenu). Tvar dlaždíc sa nezmenil, len obsah – bez novej
-# verzie by ich cache vrátila po starom.
-# Staršie: `v5` orez na hranicu regiónu, `v4` priemerovanie až od dvojnásobku
-# bunky, `v3` oprava zväčšovania. To isté číslo nesie meno assetu v sklade
-# a stráži to `workers/lint/terrain.py`.
-T_NASTAVENIA="terrain-v6-t$TS-$B-z${OPT_TERRAIN_MAXZOOM}"
+# `v3`: skaly orezané na polygón kraja; `v2` siahali po celý bbox.
+R_NASTAVENIA="rocks-v3-r$RS-$B-z${OPT_ROCK_MAXZOOM}p${OPT_ROCK_PLNE}d${OPT_ROCK_ZAPLN_DIERY}-s${ROCK_SLOPE}g${OPT_ROCK_RES}-${ROCK_ALGO}v${ROCK_VEC_RES}t${ROCK_SIMPLIFY}x${ROCK_SMOOTH}-a$RA-${OPT_ROCK_IMG_ASSET}"
+# `v7`: za hranicou kraja rovina, netieňuje sa tam. Staršie: `v6` pokračovanie
+# okolím, `v5` orez na hranicu regiónu. To isté číslo nesie meno assetu
+# v sklade a stráži to `workers/lint/terrain.py`.
+T_NASTAVENIA="terrain-v7-t$TS-$B-z${OPT_TERRAIN_MAXZOOM}"
 
 {
   # ---------- celé kľúče: nastavenia + otlačky ----------
@@ -61,14 +57,12 @@ T_NASTAVENIA="terrain-v6-t$TS-$B-z${OPT_TERRAIN_MAXZOOM}"
   echo "rocks_hotove=$R_NASTAVENIA-"
   echo "terrain_hotove=$T_NASTAVENIA-"
   # ---------- kľúče spred rozdelenia ----------
-  # Migrácia: záznamy z behov spred rozdelenia sú hodiny výpočtu. Podávajú sa
-  # ako presný kľúč, nie predpona – staré skaly ležia pod tým istým kľúčom
-  # s príponou `-rocks` a predpona by ich vrátila ako vrstevnice.
+  # Migrácia: záznamy z behov spred rozdelenia sú hodiny výpočtu. Podáva sa
+  # ako presný kľúč, nie predpona. Skaly a tieňovanie ho už nemajú – ich staré
+  # záznamy siahajú za hranicu kraja.
   # Až priečinok prejde obrátkou (30 dní), dajú sa tieto riadky zmazať.
   STARY="contours-v10-c$CS$DC-r$RS$DR-$B-i${CONTOUR_INTERVAL}-z${OPT_CONTOUR_MAXZOOM}-rz${OPT_ROCK_MAXZOOM}p${OPT_ROCK_PLNE}d${OPT_ROCK_ZAPLN_DIERY}-s${OPT_CONTOUR_SMOOTHING}h${CONTOUR_DEM_LOWPASS}t${CONTOUR_SIMPLIFY}x${CONTOUR_SMOOTH}-${ROCK_SLOPE}g${OPT_ROCK_RES}a$RA-${OPT_ROCK_IMG_ASSET}-${SCHEMA_HASH}"
   echo "contours_stary=$STARY"
-  echo "rocks_stary=$STARY-rocks"
-  echo "terrain_stary=terrain-v6-$TS-$DT-$B-z${OPT_TERRAIN_MAXZOOM}"
   # ---------- stiahnuté DEM dlaždice ----------
   # Sú v podpriečinku podľa zdroja, takže jeden job môže mať naraz dva modely.
   # `v3`: vrstevnice a skaly majú vlastný kľúč podľa vlastného zdroja.

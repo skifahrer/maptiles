@@ -528,16 +528,14 @@ jobs:
     outputs:
       # Tri vrstvy, tri nezávislé kľúče – a ku každému predpona `*_hotove`
       # (tie isté nastavenia, iný otlačok skladu či skriptov) a kľúč
-      # `*_stary` spred rozdelenia. Rozpis je vo `workers/plan/cache-keys.sh`.
+      # `contours_stary` spred rozdelenia. Rozpis je vo `workers/plan/cache-keys.sh`.
       contours: ${{ steps.keys.outputs.contours }}
       contours_hotove: ${{ steps.keys.outputs.contours_hotove }}
       contours_stary: ${{ steps.keys.outputs.contours_stary }}
       rocks: ${{ steps.keys.outputs.rocks }}
       rocks_hotove: ${{ steps.keys.outputs.rocks_hotove }}
-      rocks_stary: ${{ steps.keys.outputs.rocks_stary }}
       terrain: ${{ steps.keys.outputs.terrain }}
       terrain_hotove: ${{ steps.keys.outputs.terrain_hotove }}
-      terrain_stary: ${{ steps.keys.outputs.terrain_stary }}
       demtiles_contours: ${{ steps.keys.outputs.demtiles_contours }}
       demtiles_rocks: ${{ steps.keys.outputs.demtiles_rocks }}
       demtiles_terrain: ${{ steps.keys.outputs.demtiles_terrain }}
@@ -600,11 +598,9 @@ jobs:
           fi
           if [ '${{ inputs.opt_rocks_rebuild }}' = 'true' ]; then
             drop '${{ steps.keys.outputs.rocks }}'
-            drop '${{ steps.keys.outputs.rocks_stary }}'
           fi
           if [ '${{ inputs.opt_terrain_rebuild }}' = 'true' ]; then
             drop '${{ steps.keys.outputs.terrain }}'
-            drop '${{ steps.keys.outputs.terrain_stary }}'
           fi
 
   # najdlhší job (skaly sú desiatky minút). Vlastný job = vlastný timeout,
@@ -876,21 +872,12 @@ jobs:
           # job `shading-rocks` a vziať hotové by znamenalo zahodiť jeho prácu
           restore-keys: ${{ (inputs.opt_reuse_layers == 'true' && (inputs.opt_rock_source != 'tienovanie' || inputs.opt_rock_img_asset != '')) && needs.keys.outputs.rocks_hotove || '' }}
 
-      - name: Cache skál – kľúč spred rozdelenia (restore)
-        id: contours-cache-stary
-        if: ${{ inputs.opt_contours == 'true' && inputs.opt_rocks_rebuild != 'true' && steps.contours-cache.outputs.cache-hit != 'true' && steps.contours-cache.outputs.cache-matched-key == '' }}
-        uses: ./.github/actions/cache-restore
-        with:
-          path: contours-out
-          key: ${{ needs.keys.outputs.rocks_stary }}
-
       - name: Sú skaly hotové?
         id: hotove
         env:
           VRSTVA: Skaly
           HIT: ${{ steps.contours-cache.outputs.cache-hit }}
           MATCHED: ${{ steps.contours-cache.outputs.cache-matched-key }}
-          HIT_STARY: ${{ steps.contours-cache-stary.outputs.cache-hit }}
         run: workers/plan/hotova-vrstva.sh
 
       # bez polygónu by sa vrstva počítala na celom bboxe regiónu
@@ -1073,23 +1060,12 @@ jobs:
           # hotové tieňovanie z predošlého behu – viď `opt_reuse_layers` hore
           restore-keys: ${{ inputs.opt_reuse_layers == 'true' && needs.keys.outputs.terrain_hotove || '' }}
 
-      # jednorazová migrácia: kľúč mal otlačok skladu pred bboxom, takže sa naň
-      # nová predpona netrafí. Dá sa zmazať, keď cache prejde obrátkou (30 dní).
-      - name: Cache výškových dlaždíc – starý kľúč (restore)
-        id: terrain-cache-stary
-        if: ${{ inputs.opt_terrain == 'true' && inputs.opt_terrain_rebuild != 'true' && steps.terrain-cache.outputs.cache-hit != 'true' && steps.terrain-cache.outputs.cache-matched-key == '' }}
-        uses: ./.github/actions/cache-restore
-        with:
-          path: terrain-out
-          key: ${{ needs.keys.outputs.terrain_stary }}
-
       - name: Je tieňovanie hotové?
         id: hotove
         env:
           VRSTVA: Tieňovanie
           HIT: ${{ steps.terrain-cache.outputs.cache-hit }}
           MATCHED: ${{ steps.terrain-cache.outputs.cache-matched-key }}
-          HIT_STARY: ${{ steps.terrain-cache-stary.outputs.cache-hit }}
         run: workers/plan/hotova-vrstva.sh
 
       # až za rozhodnutím a len keď sa počíta: model je gigabajty a hotové

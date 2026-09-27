@@ -125,12 +125,8 @@ def mask_from_file(path, bbox, cells=2048):
 #
 # Teda dvojnásobok kraja aj viac – presne to, čo je na mape vidieť ako
 # tieňovaný reliéf za jeho hranicou. Odpoveď na to je jemnejšia otázka: „ktoré
-# PIXELY rastra ležia v kraji?" Za nimi `terrain/tiles.py` výšku DOPĹŇA
-# OKOLÍM (`pokracuj_okolim`), nie zrovnáva na rovinu: rovina 0 m by na hranici
-# kraja spravila zvislú stenu (namerané 89,4° proti 17,9°, ktoré má terén sám)
-# a v 3D múr po obvode regiónu, kým pokračovanie nepridá sklon, ktorý by terén
-# nemal – a ďalej ako o kúsok za hranicu sa nedostane, lebo dlaždica bez
-# jediného pixela kraja sa nezapíše.
+# PIXELY rastra ležia v kraji?" Za nimi `terrain/tiles.py` výšku zrovná na
+# rovinu (`zarovnaj_za_hranicou`), takže sa tam netieňuje.
 
 
 def _edges(rings):
@@ -150,11 +146,8 @@ def _edges(rings):
 def _dilate(mask, r, np):
     """Maska rozšírená o `r` pixelov (štvorcové okolie, separabilne).
 
-    PREČO SA VÔBEC ROZŠIRUJE. Tieňovanie sa počíta zo SUSEDNÝCH pixelov
-    a klient si dlaždicu ešte prevzorkuje, takže pixel presne na hranici kraja
-    by mal susedov už z doplneného okolia. S rezervou pár pixelov stojí
-    tieňovanie na hranici na skutočnom teréne a dopĺňa sa až za ňou, kde je
-    v štýle aj tak plocha `mimo` (`deploy/region-mask.py`).
+    Tieňovanie sa počíta zo susedných pixelov, takže bez rezervy by pixel na
+    hranici kraja tieňoval hranu roviny za ňou (`deploy/region-mask.py`).
     """
     if r <= 0:
         return mask
