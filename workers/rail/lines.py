@@ -2,7 +2,8 @@
 """Farbu a číslo linky z `type=route` relácie prepíše na jej koľaje.
 
 Dopočíta aj body, kde sa mení traťová rýchlosť (`rail_speed`, `rail_speed_prev`),
-a smer koľaje pri návestidle (`rail_bearing`), ktorým ukazuje jeho šípka.
+smer koľaje pri návestidle (`rail_bearing`), ktorým ukazuje jeho šípka,
+a najširší rozchod koľaje v mm (`rail_gauge`).
 """
 import argparse
 import math
@@ -31,6 +32,12 @@ def rychlost(hodnota):
         return None
     km = float(zhoda.group(1)) * (1.609344 if zhoda.group(2) else 1)
     return int(round(km))
+
+
+def rozchod(hodnota):
+    """Najširší rozchod v mm z `gauge`; `1435;1520` je 1520, `standard` nič."""
+    cisla = [int(c) for c in re.findall(r"\d+", hodnota or "")]
+    return max(cisla) if cisla else None
 
 
 def azimut(a, b):
@@ -137,7 +144,8 @@ class Prepis(osmium.SimpleHandler):
     def way(self, w):
         farba = self.linky.farba.get(w.id)
         cisla = self.linky.cisla.get(w.id)
-        if not farba and not cisla:
+        mm = rozchod(w.tags.get("gauge"))
+        if not farba and not cisla and not mm:
             self.w.add_way(w)
             return
         tagy = dict(w.tags)
@@ -145,8 +153,10 @@ class Prepis(osmium.SimpleHandler):
             tagy["colour"] = farba[1]
         if cisla:
             tagy["route_ref"] = ";".join(sorted(cisla, key=lambda c: (len(c), c)))
+        if mm:
+            tagy["rail_gauge"] = str(mm)
         self.w.add_way(w.replace(tags=tagy))
-        self.zmenene += 1
+        self.zmenene += bool(farba or cisla)
 
     def relation(self, r):
         self.w.add_relation(r)

@@ -20,10 +20,11 @@ DOPOCITANE = {"rail_speed"}
 SLUBY = {"rail", "tram", "subway", "light_rail", "abandoned", "disused",
          "station", "halt", "level_crossing"}
 # lanovky v každom stave – aj rozostavané, plánované a zrušené
-SLUBY_LANOVKY = {"cable_car", "gondola", "chair_lift", "construction",
+SLUBY_LANOVKY = {"cable_car", "gondola", "chair_lift", "goods", "construction",
                  "proposed", "disused", "abandoned", "station"}
 STAVY = {"construction:aerialway", "proposed:aerialway", "disused:aerialway",
-         "abandoned:aerialway"}
+         "abandoned:aerialway", "razed:aerialway", "was:aerialway",
+         "removed:aerialway", "demolished:aerialway", "historic:aerialway"}
 
 
 def filter_keys(path):
