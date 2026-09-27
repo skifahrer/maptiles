@@ -341,7 +341,8 @@ def main():
             continue
         veci.append({"osm": {"typ": o["typ"], "id": o["id"],
                              "name": o["tags"].get("name"),
-                             "lat": o["lat"], "lon": o["lon"]},
+                             "lat": o["lat"], "lon": o["lon"],
+                             "qid": qid or None},
                      "titles": tituly, "qid": qid})
 
     qids = sorted({v["qid"] for v in veci if v["qid"] and not v["titles"]})
@@ -448,7 +449,7 @@ def main():
                 # v mape podľa jazyka.
                 zaznam = kde_je.setdefault(f"{o['typ']}/{o['id']}", {
                     "keys": {}, "name": o["name"],
-                    "lat": o["lat"], "lon": o["lon"]})
+                    "lat": o["lat"], "lon": o["lon"], "qid": o["qid"]})
                 zaznam["keys"][lang] = z["key"]
 
     os.remove(maly)
