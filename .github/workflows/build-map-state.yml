@@ -80,6 +80,7 @@ on:
           - vrstevnice
           - skaly
           - tienovanie
+          - clanky
           - vsetko
       # pri dávke je to skúška samotnej dávky, nie mapy: osem krajov po pár
       # minútach namiesto po hodinách

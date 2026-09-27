@@ -10,8 +10,79 @@ name: Mapa · Build wiki
 #
 # Balík aj katalóg robí ďalej `workers/deploy/publish-map.py`, len
 # s `--only=wikipedia`: publikuje jediný balík a položku regiónu doplní.
+#
+# Volá ho aj Build map (`workflow_call`) so `skip_cached`: región, ktorý články
+# v cache aj v katalógu už má, sa preskočí.
 
 on:
+  workflow_call:
+    inputs:
+      region:
+        description: "Región z formulára Build map"
+        required: true
+        type: string
+      region_key:
+        description: "Kľúč regiónu z prípravy buildu (na kontrolu cache)"
+        required: false
+        default: ""
+        type: string
+      wiki_format:
+        description: "Podoba článku"
+        required: false
+        default: text
+        type: string
+      wiki_langs:
+        description: "Jazyky NAVYŠE, čiarkou"
+        required: false
+        default: ""
+        type: string
+      wiki_max:
+        description: "Strop počtu článkov na jeden beh"
+        required: false
+        default: "5000"
+        type: string
+      country:
+        description: "Krajina pre domáci jazyk (prázdne = podľa regiónu)"
+        required: false
+        default: ""
+        type: string
+      rebuild:
+        description: "Stiahnuť články odznova (obíde cache na Drive)"
+        required: false
+        default: false
+        type: boolean
+      skip_cached:
+        description: "Preskočiť región, ktorý má články v cache aj v katalógu"
+        required: false
+        default: false
+        type: boolean
+      publish:
+        description: "Nahrať na Drive a zapísať do maps.json"
+        required: false
+        default: true
+        type: boolean
+      apple_archive:
+        description: "Nahrať balík aj ako .aar"
+        required: false
+        default: true
+        type: boolean
+      custom_pbf_url:
+        description: "Vlastný .osm.pbf"
+        required: false
+        default: ""
+        type: string
+      custom_name:
+        description: "Meno vlastného regiónu"
+        required: false
+        default: ""
+        type: string
+    secrets:
+      GDRIVE_CREDENTIALS:
+        required: false
+      DRIVE_SECRET:
+        required: false
+      DRIVE_REFRESH:
+        required: false
   workflow_dispatch:
     inputs:
       region:
@@ -93,8 +164,29 @@ env:
   OSMFR_BASE: https://download.openstreetmap.fr/extracts
 
 jobs:
+  need:
+    name: Treba články?
+    if: ${{ inputs.skip_cached && !inputs.rebuild }}
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.need.outputs.skip }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Cache a katalóg
+        id: need
+        env:
+          REGION_KEY: ${{ inputs.region_key || inputs.region }}
+          COUNTRY: ${{ inputs.country }}
+          LANGS: ${{ inputs.wiki_langs }}
+          FMT: ${{ inputs.wiki_format }}
+          RUN_ID: ${{ github.run_id }}
+        run: workers/wiki/need.sh
+
   wiki:
     name: Články z Wikipédie
+    needs: need
+    if: ${{ !cancelled() && !failure() && needs.need.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
       # katalóg `maps.json` je súbor v repozitári a dopisuje ho beh
     permissions:
@@ -134,14 +226,7 @@ jobs:
           FMT: ${{ inputs.wiki_format }}
           COUNTRY: ${{ inputs.country }}
           RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          # do kľúča ide všetko, čo mení obsah balíka. Na konci je číslo behu,
-          # lebo existujúci kľúč sa neprepisuje – predpona vyberie najnovší.
-          S=$(printf '%s|%s|%s|%s' "$REGION" "$COUNTRY" "$LANGS" "$FMT" \
-              | tr -c 'a-zA-Z0-9._-' '_')
-          echo "prefix=wiki-v2-$S-" >> "$GITHUB_OUTPUT"
-          echo "key=wiki-v2-$S-$RUN_ID" >> "$GITHUB_OUTPUT"
+        run: workers/wiki/key.sh >> "$GITHUB_OUTPUT"
 
       # obnovuje sa cez predponu (najnovší záznam toho regiónu). Šetria sa tým
       # bajty a čas prevodu, nie požiadavky: `collect.py` sa dávkovo spýta na

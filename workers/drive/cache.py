@@ -20,6 +20,7 @@ hodiny výpočtu na kraj, ostatné sa dá zohnať znova.
 
     python3 workers/drive/cache.py --check | --list
     python3 workers/drive/cache.py --restore --key=abc --path=dem
+    python3 workers/drive/cache.py --lookup --key=abc --restore-keys=ab
     python3 workers/drive/cache.py --save --key=abc --path=dem
     python3 workers/drive/cache.py --prune --keep-days=30 --keep-gb=100
 """
@@ -286,6 +287,16 @@ def do_restore(args):
     return 0
 
 
+def do_lookup(args):
+    """Je záznam na kľúč alebo predponu? Nič nesťahuje."""
+    creds = creds_or_die("hľadá sa záznam cache")
+    hit, exact = find(entries(creds), args.key, args.restore_keys)
+    out("cache-hit", "true" if exact else "false")
+    out("cache-matched-key", hit["plny_kluc"] if hit else "")
+    log(f"Cache na Drive: {hit['plny_kluc'] if hit else 'nič'} pre `{args.key}`")
+    return 0
+
+
 def _uprac(tmp):
     """Stiahnutý archív po sebe – aj rozrobený `.part`."""
     for p in (tmp, tmp + ".part"):
@@ -512,6 +523,7 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--restore", action="store_true")
+    ap.add_argument("--lookup", action="store_true")
     ap.add_argument("--save", action="store_true")
     ap.add_argument("--delete", action="store_true")
     ap.add_argument("--list", action="store_true")
@@ -538,7 +550,7 @@ def main():
     args.path = lines(args.path)
     args.restore_keys = lines(args.restore_keys)
 
-    if (args.restore or args.save or args.delete) and not args.key:
+    if (args.restore or args.lookup or args.save or args.delete) and not args.key:
         ap.error("--key je povinný")
     if args.save and not args.path:
         ap.error("--save potrebuje aspoň jednu --path")
@@ -552,6 +564,8 @@ def main():
             return do_prune(args)
         if args.restore:
             return do_restore(args)
+        if args.lookup:
+            return do_lookup(args)
         if args.save:
             return do_save(args)
         if args.delete:
@@ -563,7 +577,7 @@ def main():
     except RuntimeError as exc:
         print(f"::error::{exc}")
         return 1
-    ap.error("povedz, čo robiť: --restore / --save / --delete / --list / "
+    ap.error("povedz, čo robiť: --restore / --lookup / --save / --delete / --list / "
              "--prune / --check")
 
 

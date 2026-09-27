@@ -126,6 +126,7 @@ on:
           - vrstevnice
           - skaly
           - tienovanie
+          - clanky
           - vsetko
       # desiaty a posledný input – ďalší prepínač musí ísť do `options`.
       # Vypnuté neznamená, že sa mapa nepostaví: `_site` vznikne rovnako, len sa
@@ -272,6 +273,25 @@ jobs:
       budget_rocks_pct: ${{ needs.plan.outputs.budget_rocks_pct }}
       budget_terrain_pct: ${{ needs.plan.outputs.budget_terrain_pct }}
 
+  # články len tam, kde nie sú v cache a v katalógu; test ich neťahá
+  wiki:
+    name: Články z Wikipédie
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.opt_wikipedia == 'true' && needs.plan.outputs.test_km2 == '0' }}
+    uses: ./.github/workflows/wiki.yml
+    secrets: inherit
+    permissions:
+      contents: write
+    with:
+      region: ${{ inputs.region }}
+      region_key: ${{ needs.plan.outputs.key }}
+      rebuild: ${{ needs.plan.outputs.opt_wiki_rebuild == 'true' }}
+      skip_cached: true
+      publish: ${{ needs.plan.outputs.opt_publish == 'true' }}
+      apple_archive: ${{ needs.plan.outputs.opt_apple_archive == 'true' }}
+      custom_pbf_url: ${{ needs.plan.outputs.opt_custom_pbf_url }}
+      custom_name: ${{ needs.plan.outputs.opt_custom_name }}
+
   # krátky job, ktorý zistí všetko, čo ostatné potrebujú, a stiahne PBF
   plan:
     name: Príprava (región, kľúče, PBF)
@@ -374,6 +394,8 @@ jobs:
       opt_contours_rebuild: ${{ steps.opts.outputs.opt_contours_rebuild }}
       opt_rocks_rebuild: ${{ steps.opts.outputs.opt_rocks_rebuild }}
       opt_terrain_rebuild: ${{ steps.opts.outputs.opt_terrain_rebuild }}
+      opt_wikipedia: ${{ steps.opts.outputs.opt_wikipedia }}
+      opt_wiki_rebuild: ${{ steps.opts.outputs.opt_wiki_rebuild }}
       # `reuse_layers`: nepočítať vrstvu, ktorá s týmito nastaveniami už vznikla
       opt_reuse_layers: ${{ steps.opts.outputs.opt_reuse_layers }}
     steps:
