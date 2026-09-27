@@ -10,8 +10,8 @@ Zvislý krok sa riadi vodorovným pixelom (`SLOPE_EPS × pixel`, plus rezerva
 `FRAC_BITS_MARGIN`) – hrubý krok robí z terénu plošinky a hillshade z ich hrán
 mriežku. Resampling volí `resampling()` podľa pomeru pixela a bunky.
 
-Za hranicou kraja sa výška dopĺňa okolím (`pokracuj_okolim`), nie rovinou:
-rovina tam robila zvislú stenu. Dlaždica bez jediného pixela kraja sa nezapíše.
+Za hranicou kraja je rovina (`zarovnaj_za_hranicou`), aby sa tam netieňovalo.
+Dlaždica bez jediného pixela kraja sa nezapíše.
 
 Použitie:
     python3 workers/terrain/tiles.py --dem=dem/all.vrt \\
@@ -36,7 +36,8 @@ from cell import (SLOPE_EPS, dem_cell_metres, frac_bits,  # noqa: E402
                   resampling, tile_m_per_px)
 # práca nad mriežkou výšok leží vo `vyska.py`; tu je plán, warp a kódovanie
 sys.path.insert(0, _HERE)
-from vyska import NODATA, pokracuj_okolim, vypln_nodata  # noqa: E402
+from vyska import (NODATA, vypln_nodata, vyska_okraja,  # noqa: E402
+                   zarovnaj_za_hranicou)
 
 R_EARTH = 6378137.0
 ORIGIN = math.pi * R_EARTH  # 20037508.342789244
@@ -181,19 +182,29 @@ def load_mask(poly, bbox):
     return mod, mod.mask_from_file(poly, bbox), rings
 
 
+def vyska_roviny(dem, rm, rings, w, s, e, n, width=1024):
+    """Výška roviny za hranicou – jedna pre všetky zoomy, inak by boli švy medzi nimi."""
+    minx, maxx, miny, maxy = merc_x(w), merc_x(e), merc_y(s), merc_y(n)
+    height = max(16, int(width * (maxy - miny) / (maxx - minx)))
+    warp_level(dem, "/tmp/okraj.raw", minx, miny, maxx, maxy, width, height,
+               "average")
+    grid = np.fromfile("/tmp/okraj.raw", dtype="<f4").reshape(height, width)
+    znam = rm.pixel_mask(rings, (minx, miny, maxx, maxy), width, height)
+    return round(vyska_okraja(grid, znam & (grid > NODATA + 1.0)))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dem", required=True, help="vstupný DEM (.vrt/.tif)")
     ap.add_argument("--bbox", required=True, help="west,south,east,north")
     ap.add_argument("--poly", default="",
                     help="GeoJSON kraja – dlaždice mimo neho sa nekreslia "
-                         "a v tých, čo prečnievajú, terén za hranicou "
-                         "pokračuje okolím (žiadna stena)")
+                         "a v tých, čo prečnievajú, je za hranicou rovina")
     ap.add_argument("--grow", type=float, default=0.5,
                     help="o koľko svojej strany smie dlaždica prečnievať za kraj")
     ap.add_argument("--edge", type=int, default=2,
                     help="koľko pixelov skutočného terénu ostáva ešte za "
-                         "hranicou kraja, než sa začne pokračovanie okolím")
+                         "hranicou kraja, než začne rovina")
     ap.add_argument("--maxzoom", type=int, default=12)
     ap.add_argument("--minzoom", type=int, default=0)
     ap.add_argument("--out", required=True, help="adresár s dlaždicami {z}/{x}/{y}.png")
@@ -211,11 +222,13 @@ def main():
     # nízkych zoomoch obrovská, takže sám dlaždicový orez presahoval za kraj
     maska = load_mask(args.poly, (w, s, e, n))
     rm, mask, rings = maska if maska else (None, None, None)
+    rovina = None
     if mask:
+        rovina = vyska_roviny(args.dem, rm, rings, w, s, e, n)
         print(f"Orez na kraj: v kraji je {mask.pct:.0f} % bboxu "
               f"(maska {mask.nx}×{mask.ny}); dlaždica smie prečnievať "
               f"{args.grow:g} svojej strany a za hranicou (+{args.edge} px "
-              f"terénu) sa výška dopĺňa okolím, nie rovinou.", flush=True)
+              f"terénu) je rovina {rovina} m – tam sa netieňuje.", flush=True)
     else:
         print("::warning::Polygón kraja nie je – kreslí sa celý bbox regiónu, "
               "teda aj mimo kraj. (`--poly` nedostal súbor.)", flush=True)
@@ -304,26 +317,21 @@ def main():
             warp_level(args.dem, "/tmp/level.raw", minx, miny, maxx, maxy,
                        width, height, resample)
             grid = np.fromfile("/tmp/level.raw", dtype="<f4").reshape(height, width)
-            # najprv „kde model dáta nemá" (výplň priamkou medzi stranami
-            # diery), až potom „kde sme za hranicou kraja" (hladké dopĺňanie
-            # po pyramíde). Opačne by výplň modelu roznášala vymyslené výšky
-            # dovnútra kraja. `chyba` sa drží zvlášť – doplnená mriežka sa už
-            # od skutočnej nedá odlíšiť.
+            # najprv „kde model dáta nemá", až potom „kde sme za hranicou
+            # kraja"; `chyba` sa drží zvlášť – doplnená mriežka sa už od
+            # skutočnej nedá odlíšiť
             chyba = grid <= NODATA + 1.0
             grid = vypln_nodata(grid, chyba)
 
-            # mimo kraja terén pokračuje okolím, nezrovnáva sa: rovina tam
-            # robila zvislú stenu po obvode regiónu. `--edge` pixelov
-            # skutočného terénu ostáva za hranicou, nech tieňovanie NA hranici
-            # stojí na okolí. `chyba` sa tým nemení – to je otázka o modeli.
+            # `--edge` px terénu za hranicou: tieňovanie NA hranici stojí na
+            # teréne a hrana roviny padne pod plochu `mimo`
             keep = None
             if rings is not None:
                 keep = rm.pixel_mask(rings, (minx, miny, maxx, maxy),
                                      width, height, grow=args.edge)
                 cut_px += int(keep.size - keep.sum())
                 all_px += keep.size
-                if keep.any() and not chyba.all():
-                    grid = pokracuj_okolim(grid, keep, SLOPE_EPS * px_m)
+                grid = zarovnaj_za_hranicou(grid, keep, rovina)
 
             for ty in range(ry, ry_end + 1):
                 for tx in range(x0, x1 + 1):
@@ -393,8 +401,7 @@ def main():
         f.write(f"{made}\n")
     if all_px:
         print(f"Za hranicou kraja bolo {100 * cut_px / all_px:.0f} % "
-              f"pixelov – tam výška pokračuje okolím, takže hranica nie je "
-              f"stena a tieňovanie za ňou slabne.")
+              f"pixelov – tam je rovina {rovina} m, takže sa tam netieňuje.")
     print(f"Spolu: {total_tiles} dlaždíc, {total_bytes / 1048576:.1f} MB, "
           f"maxzoom z{made}"
           + (f"; mimo kraja vynechaných {skipped} dlaždíc "

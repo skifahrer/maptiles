@@ -5,8 +5,8 @@
 #
 # Meno assetu nesie zdroj, maxzoom aj podobu kódovania
 # (`terrain-<kľúč>-<model>-z<maxzoom>-v<verzia>.pmtiles`): tieňovanie zo
-# Sonnyho a z DMR 3.5 nie je to isté a `v6` dopĺňa výšku za hranicou kraja
-# okolím, kým `v5` ju tam zrovnával na rovinu (zvislá stena po obvode).
+# Sonnyho a z DMR 3.5 nie je to isté a `v7` má za hranicou kraja rovinu, kým
+# `v6` tam terén dopĺňal okolím (tieňovalo sa aj mimo kraja).
 # Bez tej prípony by sa oprava na už spočítanom regióne neprejavila.
 #
 # Použitie:
@@ -36,7 +36,7 @@ REBUILD="${TERRAIN_REBUILD:-false}"
 # (strop veľkosti ho môže zraziť), tak sa meno skladá funkciou a volá dvakrát.
 # Podoba kódovania je tu raz – kým bola napísaná dvakrát, hľadalo sa v sklade
 # niečo iné, než sa doň ukladalo.
-ENC_VER=v6
+ENC_VER=v7
 # a nesie aj prekryv so susedným krajom: nafúknutie polygónu mení obsah aj
 # rozsah dlaždíc. Kým to číslo v mene nebolo, sklad vrátil dlaždice spočítané
 # podľa pôvodnej tesnej hranice – mapa pokračovala za hranicu, reliéf pod ňou nie.
@@ -99,9 +99,8 @@ if ! have_tiles; then
     exit "$TRC"
   fi
   echo "::group::Výškové dlaždice do z$TZ z modelu $TDEM (strop ${TBUDGET_MB} MB)"
-  # `--poly`: dlaždice mimo kraja sa nekreslia, za hranicou sa výška dopĺňa
-  # okolím a dlaždica bez pixela kraja sa nezapíše – tieňovanie sa tak zastaví
-  # na hranici regiónu. Keď polygón nie je, `tiles.py` to povie a kreslí celý
+  # `--poly`: dlaždice mimo kraja sa nekreslia, za hranicou je rovina a dlaždica
+  # bez pixela kraja sa nezapíše – tieňovanie sa tak zastaví na hranici regiónu. Keď polygón nie je, `tiles.py` to povie a kreslí celý
   # bbox: vrstva teda nikdy nezmizne, len je väčšia.
   python3 workers/terrain/tiles.py --dem="dem/$TDEM/all.vrt" --bbox="$BBOX" \
     --poly=data/region.geojson \

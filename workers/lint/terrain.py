@@ -161,11 +161,7 @@ def main():
     else:
         print(f"  ✓ podoba kódovania v{v_cache.pop()} v sklade aj v cache")
 
-    # 5. tieňovanie končí na hranici kraja
-    # Dlaždicový orez (`--poly`) nemôže byť jemnejší než dlaždica, takže tieň
-    # vychádzal až 6× väčší než kraj. Zastaví to až orez po pixeloch
-    # (`pixel_mask`). Zrovnať to na rovinu sa nesmie – z hrany terénu a roviny
-    # je zvislá stena. Obe polovice sa strážia textom (numpy tu nie je).
+    # 5. tieňovanie končí na hranici kraja: dlaždice aj pixely, a za hranicou rovina
     if "--poly=data/region.geojson" not in build:
         bad.append("`workers/terrain/build.sh` nepodáva `tiles.py` polygón "
                    "kraja (`--poly=data/region.geojson`) – dlaždice sa vyrobia "
@@ -178,51 +174,48 @@ def main():
                    "byť nemôže, takže tieňovanie zase presiahne za hranicu "
                    "regiónu – na z10 na dvojnásobok jeho plochy, a build bude "
                    "zelený.")
-    if "pokracuj_okolim(" not in strip:
-        bad.append("`terrain/tiles.py` nedopĺňa výšku za hranicou kraja "
-                   "okolím (`pokracuj_okolim`). Bez toho tam ostane terén, "
-                   "ktorý mal orez schovať – a zrovnať sa to tam nesmie, "
-                   "z roviny je na hranici stena.")
-    # rovina za hranicou sa nesmie vrátiť – bola to zvislá stena po obvode
-    # regiónu; `--edge` ju len schovával pod plochu `mimo`
-    if re.search(r"grid\[~keep\]\s*=", strip):
-        bad.append("`terrain/tiles.py` zase zrovnáva pixely mimo kraja na "
-                   "rovinu (`grid[~keep] = …`). Hrana terénu a roviny je pre "
-                   "hillshade zvislá stena (89,4° proti 17,9°, ktoré má terén "
-                   "sám) a v 3D múr po obvode regiónu – výška za hranicou má "
-                   "pokračovať okolím.")
+    if "zarovnaj_za_hranicou(" not in strip:
+        bad.append("`terrain/tiles.py` nezrovnáva výšku za hranicou kraja "
+                   "(`zarovnaj_za_hranicou`). Čokoľvek iné než rovina má sklon "
+                   "a klient z neho kreslí tieňovanie mimo regiónu – na mape "
+                   "bez plochy `mimo` (vrstva nad iným podkladom) je to vidieť.")
+    if "pokracuj_okolim" in src:
+        bad.append("`terrain/tiles.py` zase dopĺňa výšku za hranicou okolím "
+                   "(`pokracuj_okolim`) – pokračovanie má sklon, takže sa "
+                   "tieňuje aj mimo kraja.")
+    # jedna výška pre celý beh: rovina po pásoch či zoomoch by mala švy
+    if strip.count("vyska_roviny(") != 1 or "def vyska_roviny" not in src:
+        bad.append("`terrain/tiles.py` nemá výšku roviny za hranicou spočítanú "
+                   "raz na beh (`vyska_roviny`). Iná výška v inom páse alebo "
+                   "zoome je schod, teda tieňovaná čiara mimo kraja.")
     if not re.search(r"keep\[[^\]]*\][^\n]*\.any\(\)", strip):
         bad.append("`terrain/tiles.py` nevynecháva dlaždicu, v ktorej nie je "
-                   "ani jeden pixel kraja. Odkedy sa za hranicou dopĺňa "
-                   "okolím, nie je taká dlaždica rovina a `je_rovina` ju "
-                   "nezachytí – tieňovanie by rástlo do dlaždíc, ktoré s "
-                   "krajom nemajú spoločné nič.")
-    if "def pokracuj_okolim" not in open(VYSKA).read():
-        bad.append("`workers/terrain/vyska.py` už nemá `pokracuj_okolim` – "
-                   "to je to, čím výška za hranicou kraja pokračuje okolím "
-                   "namiesto roviny, ktorá tam robila stenu.")
+                   "ani jeden pixel kraja – rovina za hranicou by sa zapisovala "
+                   "do dlaždíc, ktoré s krajom nemajú spoločné nič.")
+    if "def zarovnaj_za_hranicou" not in open(VYSKA).read():
+        bad.append("`workers/terrain/vyska.py` už nemá `zarovnaj_za_hranicou` – "
+                   "to je to, čím sa za hranicou kraja prestane tieňovať.")
     if "def pixel_mask" not in open(MASK).read():
         bad.append("`workers/lib/region-mask.py` už nemá `pixel_mask` – "
                    "na to, ktoré PIXELY ležia v kraji, je jedna odpoveď "
                    "a býva vedľa tej dlaždicovej, nie druhýkrát v `tiles.py`.")
-    # rezerva okolo hranice musí ostať: s `--edge 0` by pixel na hranici mal
-    # susedov už z doplneného okolia
+    # rezerva: s `--edge 0` by posledný prúžok v kraji tieňoval hranu roviny
     edge = re.search(r'"--edge",\s*type=int,\s*default=(\d+)', src)
     if not edge:
         bad.append("`terrain/tiles.py` nemá prepínač `--edge` (koľko pixelov "
                    "skutočného terénu ostáva ešte za hranicou kraja).")
     elif int(edge.group(1)) < 1:
-        bad.append("`--edge` má predvolene 0 pixelov: dopĺňanie okolím začne "
-                   "presne na hranici kraja, takže posledný prúžok tieňovania "
-                   "V MAPE sa počíta z výplne a nie z terénu. Rezerva ho "
-                   "posunie za hranicu, kde je v štýle aj tak plocha `mimo`.")
+        bad.append("`--edge` má predvolene 0 pixelov: rovina začne presne na "
+                   "hranici kraja, takže posledný prúžok tieňovania V KRAJI "
+                   "kreslí jej hranu, nie terén. Rezerva ju posunie za hranicu, "
+                   "kde je v štýle plocha `mimo`.")
 
     if bad:
         for b in bad:
             print(f"::error::{b}")
         return 1
     print("Tieňovanie: zvislý krok ide za pixelom, priemeruje sa len nadol, "
-          "warp nesie zlomok, za hranicou kraja terén pokračuje okolím ✓")
+          "warp nesie zlomok, za hranicou kraja je rovina ✓")
     return 0
 
 

@@ -183,6 +183,17 @@ if [ "$OPT_ROCKS" = 'true' ]; then
     echo "::endgroup::"
   fi
 
+  # sklad aj výpočet idú po bboxe; do mapy len to, čo leží v kraji
+  if [ -s data/region.geojson ]; then
+    ogr2ogr -f GPKG work/rock-kraj.gpkg data/rock.gpkg rock -nln rock \
+      -clipsrc data/region.geojson -explodecollections -nlt POLYGON \
+      -lco GEOMETRY_NAME=geom
+    mv work/rock-kraj.gpkg data/rock.gpkg
+    echo "Skaly orezané na kraj (data/region.geojson)."
+  else
+    echo "::warning::Polygón kraja nie je (data/region.geojson) – skaly idú na celom bboxe, teda aj mimo kraja."
+  fi
+
   # štatistika ide do contours-out, takže ju nesie aj cache – pri cache hite
   # sa tento krok nespustí, ale súhrn čísla má
   ROCK_N=$(ogrinfo -so data/rock.gpkg rock 2>/dev/null \
