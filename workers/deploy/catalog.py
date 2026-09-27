@@ -123,7 +123,7 @@ def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None,
                 sha="", modely=None):
     """Jeden balík v jednom formáte do `maps` položky katalógu.
 
-    Vrch položky ukazuje na ZIP kvôli starším čitateľom, `.aar` ho neprepisuje.
+    Vrch položky ukazuje na ZIP kvôli starším čitateľom; bez ZIPu na to, čo je.
     """
     zaznam = {
         "file": name,
@@ -142,7 +142,8 @@ def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None,
         zaznam["sha256"] = sha
     polozka = mapy.setdefault(kind or "mapa", {})
     polozka.setdefault("formats", {})[fmt] = zaznam
-    if fmt == "zip":
+    # položka bez vrchu je položka bez odkazu a appke rozbije celú krajinu
+    if fmt == "zip" or "zip" not in polozka["formats"]:
         polozka.update(zaznam)
     # meno a ikona balíka z číselníka; kľúč, ktorý v ňom nie je, sa nedopĺňa
     try:

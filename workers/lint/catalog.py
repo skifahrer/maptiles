@@ -22,7 +22,7 @@ ZRUSENE = set(_CISELNIK.get("zrusene") or ())
 # meno balíka; sedí so `zaklad()` a `meno()` v deploy/publish-map.py
 MENO = re.compile(r"^[a-z0-9_]+(-[a-z0-9_]+)*(-test[0-9.]+km2)?"
                   r"(-vrstevnice-skaly|-tienovanie|-wikipedia|-navigacia"
-                  r"|-search)?\.zip$")
+                  r"|-search)?\.(zip|aar)$")
 CATALOG = "maps.json"
 # rýchly test má vlastný súbor – v maps.json vyzeral ako ďalší výsek,
 # ale zapisovať sa musí (inak sa o balíku bez tokenu nedá dozvedieť)
@@ -398,6 +398,12 @@ def _skuska_katalogu():
             mod.zapis_katalog(path, parts, regions, mapa_baliky, man,
                               spravuje=mapove + ["wikipedia"])
             po_vypnuti = maps_v(path)
+            # a späť, tentoraz len `.aar`: ZIP toho balíka ešte nie je
+            mod.zapis_katalog(path, parts, regions,
+                              [("wikipedia", "bratislavsky-wikipedia.aar",
+                                1, "id5", "aar", "sha5")], {},
+                              iba="wikipedia")
+            len_aar = maps_v(path)
     if "wikipedia" not in po_wiki:
         chyby.append(f"{CATALOG_PY}: `--only=wikipedia` balík do položky "
                      f"nedoplní – pipeline článkov by nahrala ZIP na Drive "
@@ -411,6 +417,11 @@ def _skuska_katalogu():
         chyby.append(f"{CATALOG_PY}: balík, o ktorom beh ROZHODUJE a "
                      f"nevyrobil ho, ostal v katalógu – odkazoval by na "
                      f"súbor, ktorý ten istý beh na Drive zmazal.")
+    sam_aar = len_aar.get("wikipedia") or {}
+    if not (sam_aar.get("file") and sam_aar.get("link")):
+        chyby.append(f"{CATALOG_PY}: balík len s `.aar` nechal položku bez "
+                     f"vrchu – appka ju nerozkóduje a stratí s ňou celú "
+                     f"krajinu, nielen ten balík.")
 
     # kedy mapa vznikla: `updated_ts` môže v module byť a do položky sa
     # nedostať, preto naostro
