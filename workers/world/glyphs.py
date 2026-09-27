@@ -33,6 +33,10 @@ import sys
 # a meno regiónu sťahovania. Keď v štýle pribudne ďalší `text-field`, patrí
 # sem – inak sa oreže rozsah, ktorý mapa potrebuje.
 TEXTOVE = ("name", "name_en")
+PREDPONA = "name:"
+
+# CJK kreslí MapLibre systémovým písmom, rozsahy by boli desiatky MB
+LOKALNE = set(range(0x2E80 // 256, 0xA000 // 256)) | set(range(0xAC00 // 256, 0xD800 // 256))
 
 # Rozsah 0–255 sa nechá VŽDY, aj keby v podkladoch nebol: sú v ňom číslice
 # a základná latinka, teda to, čím sa dá nakresliť čokoľvek náhradné.
@@ -46,11 +50,10 @@ def rozsahy_z_geojsonu(cesta):
     out = set()
     for feat in data.get("features") or []:
         props = feat.get("properties") or {}
-        for kluc in TEXTOVE:
-            hodnota = props.get(kluc)
-            if isinstance(hodnota, str):
+        for kluc, hodnota in props.items():
+            if (kluc in TEXTOVE or kluc.startswith(PREDPONA)) and isinstance(hodnota, str):
                 out.update(ord(z) // 256 for z in hodnota)
-    return out
+    return out - LOKALNE
 
 
 def main():

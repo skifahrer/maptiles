@@ -3326,6 +3326,7 @@ export function buildStyle({
   terrain3d = false,
   terrainExaggeration = DEFAULT_TERRAIN_EXAGGERATION,
   mapType = DEFAULT_MAP_TYPE,
+  languages = ["sk"],
   overrides: rawOverrides = null
 }) {
   // typ mapy určuje profil aj to, ktoré úpravy platia
@@ -3355,7 +3356,7 @@ export function buildStyle({
 
   const nameExpr = [
     "coalesce",
-    ["get", "name:sk"],
+    ...languages.map((l) => ["get", `name:${l}`]),
     ["get", "name"],
     ["get", "name:latin"],
     ""
