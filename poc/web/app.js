@@ -20,6 +20,7 @@ import {
   normalizeMapType
 } from "./themes.js";
 import { initDevMode, loadOverrides, saveOverrides } from "./devmode.js";
+import { labelLanguages, localName } from "./languages.js";
 import { parsePatternName, renderPattern } from "./patterns.js";
 import { ICON_SOURCES, DEFAULT_ICON_SOURCE, customIconSources } from "./icon-sources.js";
 
@@ -28,6 +29,12 @@ const baseUrl = new URL(".", location.href).href.replace(/\/$/, "");
 
 const protocol = new pmtiles.Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
+
+const LABEL_LANGUAGES = labelLanguages(navigator.languages || [navigator.language]);
+// arabčina a hebrejčina sa bez pluginu kreslia pospiatky a nespojene
+maplibregl
+  .setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js", true)
+  ?.catch?.(() => {});
 
 const $ = (id) => document.getElementById(id);
 const themeSelect = $("theme");
@@ -190,6 +197,7 @@ function styleFor(manifest) {
   const set = currentIconSet();
 
   return buildStyle({
+    languages: LABEL_LANGUAGES,
     theme: themeSelect.value,
     mapType: mapTypeSelect.value,
     tilesUrl: `pmtiles://${baseUrl}/${region.pmtiles}`,
@@ -461,7 +469,7 @@ function applyStyle(manifest) {
       // `ref` je záloha za meno: plánovaná diaľnica meno väčšinou nemá, ale
       // `D3` je presne to, čo od nej človek chce vedieť. Bez tejto zálohy by
       // popup na nej hlásil „(bez názvu)“, hoci označenie v dátach je.
-      const title = p["name:sk"] || p.name || p.ref || "(bez názvu)";
+      const title = localName(p, LABEL_LANGUAGES) || p.ref || "(bez názvu)";
       // `difficulty` je pri zjazdovkách to hlavné – modrá alebo čierna je
       // odpoveď na to, prečo si tam človek klikol.
       const detail = [p.subclass, p.class, p.difficulty].filter(Boolean).join(" · ");

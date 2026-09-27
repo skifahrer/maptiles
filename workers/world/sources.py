@@ -236,6 +236,23 @@ def vlastnost(props, *mena, default=""):
     return default
 
 
+# pole Natural Earth → jazyk `name:xx`, len jazyky aplikácie
+JAZYKY_NE = {"AR": "ar", "DE": "de", "EL": "el", "EN": "en", "ES": "es", "FR": "fr",
+             "HI": "hi", "HU": "hu", "IT": "it", "JA": "ja", "KO": "ko", "NL": "nl",
+             "PL": "pl", "PT": "pt", "RU": "ru", "SV": "sv", "TR": "tr", "UK": "uk",
+             "ZH": "zh-Hans", "ZHT": "zh-Hant"}
+
+
+def mena_v_jazykoch(props):
+    """`name:xx` z polí `NAME_XX`, prázdne vynechané."""
+    out = {}
+    for pole, jazyk in JAZYKY_NE.items():
+        meno = vlastnost(props, f"NAME_{pole}")
+        if meno:
+            out[f"name:{jazyk}"] = meno
+    return out
+
+
 # ---------- jednotlivé vrstvy ----------
 
 def priprav_countries(src, out):
@@ -263,6 +280,7 @@ def priprav_countries(src, out):
             "properties": {
                 "name": vlastnost(p, "NAME", "NAME_EN"),
                 "name_en": vlastnost(p, "NAME_EN", "NAME"),
+                **mena_v_jazykoch(p),
                 "iso": vlastnost(p, "ISO_A2_EH", "ISO_A2"),
                 "continent": vlastnost(p, "CONTINENT"),
                 # Trieda popisku miesto čísla: `include_when` v schéme

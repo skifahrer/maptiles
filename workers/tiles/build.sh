@@ -86,6 +86,9 @@ du -sh data/sources 2>/dev/null || true
 # lebo to isté potrebujú joby `trails` a `features` (pravidlo 1).
 mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
 
+# mená vo všetkých jazykoch aplikácie; ktorý ukázať, vyberá aplikácia podľa telefónu
+TILE_LANGUAGES="${TILE_LANGUAGES:-sk,cs,en,de,fr,pl,hu,it,es,pt,nl,da,sv,no,nb,fi,is,et,lv,lt,ro,bg,hr,sl,sr,sr-Latn,cnr,bs,mk,sq,el,ga,mt,cy,eu,ca,gl,lb,be,ru,uk,tr,zh,zh-Hans,zh-Hant,ko,ja,hi,ar}"
+
 Z=$MAXZOOM
 while : ; do
   echo "::group::Planetiler – maxzoom $Z"
@@ -101,7 +104,7 @@ while : ; do
     --simplify_tolerance_at_max_zoom=0 \
     --transportation_z13_paths=true \
     --building_merge_z13=false \
-    --languages=sk,en \
+    --languages="$TILE_LANGUAGES" \
     --http_timeout=120s --http_retries=10 --http_retry_wait=10s \
     --force
   echo "::endgroup::"

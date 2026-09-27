@@ -111,6 +111,26 @@ layers:
         attributes: &country_attributes
           - key: name
           - key: name_en
+          - key: "name:ar"
+          - key: "name:de"
+          - key: "name:el"
+          - key: "name:en"
+          - key: "name:es"
+          - key: "name:fr"
+          - key: "name:hi"
+          - key: "name:hu"
+          - key: "name:it"
+          - key: "name:ja"
+          - key: "name:ko"
+          - key: "name:nl"
+          - key: "name:pl"
+          - key: "name:pt"
+          - key: "name:ru"
+          - key: "name:sv"
+          - key: "name:tr"
+          - key: "name:uk"
+          - key: "name:zh-Hans"
+          - key: "name:zh-Hant"
           - key: iso
           - key: continent
           - key: rank
