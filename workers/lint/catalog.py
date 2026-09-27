@@ -205,6 +205,9 @@ for wf_path in PIPELINE:
         bad.append(f"{wf_path} sa nedá prečítať: {exc}")
         continue
     for job, jd in ((wwf.get("jobs") or {})).items():
+        # job bez publikovania (napr. kontrola cache) katalóg nepíše
+        if not any(s.get("id") == "publish" for s in (jd.get("steps") or [])):
+            continue
         if (jd.get("permissions") or {}).get("contents") != "write":
             bad.append(f"{wf_path}: job `{job}` nemá `contents: write`, "
                        f"takže {CATALOG} nemá ako commitnúť – balík by sa "

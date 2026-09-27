@@ -97,6 +97,9 @@ DEFAULTS = {
     # vypnutý, vypnutý sa hlási `::warning::`-om v každom behu.
     "region_clip": ("false", "orezať dlaždice na hranicu regiónu (dočasne vypnuté)"),
     "publish": ("true", "nahrať hotovú mapu ako ZIPy na Google Drive"),
+    # sťahuje sa, len keď článkov regiónu niet v cache alebo v katalógu
+    "wikipedia": ("true", "články z Wikipédie k objektom regiónu (workflow "
+                          "„Build wiki“ volaný z buildu)"),
     # `.aar` robí vlastný job na macOS – nástroj `aa` inde neexistuje
     "apple_archive": ("true", "nahrať mapu aj ako .aar (Apple Archive, job na macOS)"),
     # prázdne = najnovší asset pre daný výrez
@@ -121,9 +124,6 @@ MOVED = {
     "publish_pages": "je switch vo formulári (nasadiť na GitHub Pages), "
                      "nie voľba. Publikovanie na Drive je samostatná voľba "
                      "`publish`",
-    # články z Wikipédie majú vlastný workflow
-    "wikipedia": "už nie je: články z Wikipédie robí samostatný workflow "
-                 "„Build wiki“ (wiki.yml), nie Build map",
     "wiki_langs": "je input workflowu „Build wiki“ (wiki.yml) – "
                   "angličtina a jazyk krajiny sa doplnia samy",
     "wiki_format": "je input workflowu „Build wiki“ (wiki.yml)",
@@ -159,23 +159,23 @@ REBUILD = {
     "vrstevnice": ("contours_rebuild",),
     "skaly": ("rocks_rebuild",),
     "tienovanie": ("terrain_rebuild",),
-    # `clanky` tu už nie je: články sťahuje len workflow „Build wiki“
-    "vsetko": ("contours_rebuild", "rocks_rebuild", "terrain_rebuild"),
+    "clanky": ("wiki_rebuild",),
+    "vsetko": ("contours_rebuild", "rocks_rebuild", "terrain_rebuild",
+               "wiki_rebuild"),
 }
 # staré mená hodnoty → nové; prekladá sa nahlas, „Re-run“ nesie starý formulár
 REBUILD_ALIAS = {"teren": "tienovanie"}
 # príznaky, ktoré `rebuild` prepína – jeden zoznam, nech sa nedá zabudnúť
-REBUILD_FLAGS = ("contours_rebuild", "rocks_rebuild", "terrain_rebuild")
+REBUILD_FLAGS = ("contours_rebuild", "rocks_rebuild", "terrain_rebuild",
+                 "wiki_rebuild")
 
-# čo `rebuild` NEpregeneruje: „vsetko“ je páka na tri vrstvy, ostatné sa
+# čo `rebuild` NEpregeneruje: „vsetko“ je páka na vrstvy a články, ostatné sa
 # obnovuje inak. Vypisuje sa, inak „vsetko“ vyzerá ako lož.
 REBUILD_MIMO = [
     ("výškový model (DEM)",
      "z Drive sa číta raz a ostáva v sklade; jeho podobu nesie MENO SKLADU "
      "(dnes `dem-dmr5-v2`), takže keď sa zmení pravidlo, ktorým vzniká, "
      "zmení sa meno a `check-dem` si ho doplní sám"),
-    ("články z Wikipédie",
-     "vlastná pipeline `Mapa · Build wiki`, tam je na to `rebuild: clanky`"),
     ("balíky na Drive (ZIP/AAR) a katalóg (`maps.json`, pri teste "
      "`maps-test.json`)",
      "prepisujú sa pri KAŽDOM behu, ktorý ich vyrobí (nahraj a až potom zmaž "
@@ -345,6 +345,10 @@ def main():
     if values["apple_archive"] not in ("true", "false"):
         print(f"::error::Voľba „apple_archive“ musí byť true alebo false, "
               f"nie „{values['apple_archive']}“.", file=sys.stderr)
+        return 1
+    if values["wikipedia"] not in ("true", "false"):
+        print(f"::error::Voľba „wikipedia“ musí byť true alebo false, "
+              f"nie „{values['wikipedia']}“.", file=sys.stderr)
         return 1
     if values["publish"] not in ("true", "false"):
         print(f"::error::Voľba „publish“ musí byť true alebo false, "

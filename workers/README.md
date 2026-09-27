@@ -86,7 +86,7 @@ kraja (manuálne, jeden kraj) aby sa prestavala mapa:
                                workflow, aký nad nimi púšťa build mapy
 
 Mapa · Build wiki            objekty regiónu s `wikipedia`/`wikidata`
-(manuálne, ten istý región)  ─► články (NDJSON, dávky po 50)
+(ručne, alebo z Build map)   ─► články (NDJSON, dávky po 50)
                              ─► {región}-wikipedia.zip na Drive
                              ▲ na Pages NEJDE – do `_site` z toho nič
                              ▲ vlastná pipeline: iná sieť, iná životnosť
@@ -1693,7 +1693,7 @@ prepočítaná verzia zahodila a ďalší build by dostal späť tú starú. Pre
 lebo skaly majú vlastný job a tým aj vlastný záznam).
 
 **Články sú jediná výnimka z toho mazania a nie je to nedôslednosť:** ich kľúč
-má na konci číslo behu (`wiki-v1-…-<run_id>`), takže nový záznam vždy vznikne
+má na konci číslo behu (`wiki-v2-…-<run_id>`), takže nový záznam vždy vznikne
 a ďalší beh si cez predponu vezme najnovší – čiže ten čerstvý. `rebuild:
 clanky` preto len **preskočí obnovenie**: nesťahuje z Drive nič, čo by potom
 zahodil.
@@ -2263,6 +2263,12 @@ Balík aj zápis do `maps.json` robí ďalej `publish-map.py`, len s
 namiesto aby ju prepísal – inak by zmazal odkazy na mapu, o ktorej nič nevie.
 Druhý packer by bol druhá pravda o tom istom.
 
+**Build map (kraj aj celá krajina) ho volá sám** (`workflow_call`, job `wiki`)
+so `skip_cached`: región, ktorý má články v cache **aj** balík `wikipedia`
+v `maps.json`, sa preskočí (job `need`, `workers/wiki/need.sh`). Keď jedno
+chýba, články sa stiahnu. Nanovo ich stiahne `rebuild: clanky` (alebo
+`vsetko`), vypnú sa voľbou `options: wikipedia=false`, rýchly test ich neťahá.
+
 Kto v regióne odkazuje na wiki, dostane článok. Body, čiary aj plochy majú v OSM
 tagy `wikipedia` a `wikidata`; workflow ich z regionálneho PBF vyberie
 a stiahne články **po päťdesiatich na požiadavku do jedného súboru**:
@@ -2378,12 +2384,12 @@ balíka, než si vypýtal – pravidlo 8.
 **Na Pages to NEIDE.** Desiatky MB textu by zjedli rozpočet stránky
 (`size_limit_mb`) a v mape ich nikto nekreslí, takže články idú vlastným
 artefaktom do jobu `deploy` a odtiaľ na Drive ako **štvrtý balík**
-`<kraj>[-<výsek>]-wikipedia.zip` (a do `maps.json` ako `wikipedia`). Vypína sa
-**switchom `wikipedia`** vo formulári, jazyky sa vyberajú `wiki_langs=sk,en`,
-strop počtu článkov je `wiki_max`.
+`<kraj>[-<výsek>]-wikipedia.zip` (a do `maps.json` ako `wikipedia`). V Build
+map sa vypína **voľbou `wikipedia=false`**, jazyky (`wiki_langs`) a strop
+počtu článkov (`wiki_max`) sú inputy workflowu Build wiki.
 
 **Cache je na Drive a neplatí ju kalendár, ale `lastrevid`.** Obnovuje sa cez
-predponu (`wiki-v1-<región>-<jazyky>-<podoba>-`), takže sa berie najnovší
+predponu (`wiki-v2-<región>-<jazyky>-<podoba>-`), takže sa berie najnovší
 záznam toho istého regiónu; plný kľúč má na konci číslo behu, aby sa dal
 doplniť (existujúci kľúč sa neprepisuje). Keď je v cache z čoho recyklovať,
 `collect.py` si najprv dá **jednu dávkovú otázku `prop=info` na 50 článkov**
@@ -3544,9 +3550,8 @@ pre celé Slovensko nechaj pipeline zvoliť najvyšší zoom, ktorý sa zmestí.
    | `contour_source` | **výber** | odkiaľ **vrstevnice**: `sonny` (20 m), `dmr35` (10 m), `dmr5` (LiDAR – s výrezom 1 m, inak 5 m), `ziadne` |
    | `rock_source` | **výber** | odkiaľ **skaly**: ten istý zoznam modelov (počíta sa sklon), alebo `tienovanie` (hotové polygóny z tieňovaných dlaždíc), alebo `ziadne` |
    | `shading_source` | **výber** | odkiaľ **tieňovanie a 3D terén**: `sonny`, `dmr35`, `dmr5`, `ziadne` |
-   | `wikipedia` | **switch** | stiahnuť **články z Wikipédie** k objektom v regióne (vlastný ZIP na Drive; predvolene zapnuté) |
    | `rock_slope` | text | od akého sklonu (°) je terén skala |
-   | `rebuild` | výber | `nic` / `vrstevnice` / `skaly` / `tienovanie` / `vsetko` (staré `teren` sa ešte prijme, ale už sa neponúka) |
+   | `rebuild` | výber | `nic` / `vrstevnice` / `skaly` / `tienovanie` / `clanky` / `vsetko` (staré `teren` sa ešte prijme, ale už sa neponúka) |
    | `options` | text | zriedka menené nastavenia ako `kľúč=hodnota` (napr. veľkosť testu `test_km2=5`, mriežka na obrys skál `rock_res=1`) |
 
    **Defaulty sú jedno rozhodnutie, nie tri nezávislé voľby** – Bratislavský
