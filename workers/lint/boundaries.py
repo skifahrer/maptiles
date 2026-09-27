@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Hranice území: filter pustí, čo schéma chce – a v dlaždici je meno.
+"""Hranice území: filter pustí, čo schéma chce, v dlaždici je meno – a nič cudzie.
 
-Tri tiché veci:
+Štyri tiché veci:
 
   1. predfilter (`filter.txt`) a schéma (`boundaries.yml`) sa rozídu;
   2. filter prestane doťahovať členov relácií – hranica obce je relácia,
      ktorej členmi sú cesty bez `boundary=administrative`, takže s `-R`
      nemá Planetiler z čoho zložiť polygón a vrstva je prázdna;
   3. z dlaždice zmizne `name` – kvôli tomu vrstva existuje (vrstva `boundary`
-     v OpenMapTiles je čiara bez mena územia).
+     v OpenMapTiles je čiara bez mena územia);
+  4. balík kraja začne niesť hranice celého štátu – relácia štátnej hranice
+     príde z `plan/pbf.sh` celá, takže bez rezu PBF a orezu dlaždíc mal balík
+     Bratislavského kraja na z12 dlaždice od Bratislavy po Užhorod.
 """
 import os
 import sys
@@ -118,6 +121,18 @@ def main():
             f"územia nesie RELÁCIA, nie jej cesty – bez nej sú v dlaždici "
             f"čiary bez toho, kvôli čomu vrstva existuje.")
 
+    # ---- 2b. z PBF aj z dlaždíc ide preč, čo je mimo regiónu ----
+    if "region-cut.sh" not in build:
+        err(f"{BUILD}: PBF sa nereže na región (`workers/lib/region-cut.sh`). "
+            f"Relácia štátnej hranice je v ňom celá, takže balík jedného kraja "
+            f"nesie hranice cez celé Slovensko – a na najnižších zoomoch, kde "
+            f"je dlaždica široká tisíce kilometrov, ich aj nakreslí.")
+    if "region-clip.sh" not in build:
+        err(f"{BUILD}: dlaždice sa neorezávajú na región "
+            f"(`workers/lib/region-clip.sh`). Okres sa tým nerozpadne – obec "
+            f"leží v okrese a okres v kraji –, ale bez orezu vyrobí balík "
+            f"kraja dlaždice na ploche celého štátu.")
+
     # ---- 3. každý blok nesie meno ----
     for i, b in enumerate(bloky, start=1):
         atr = {a.get("key") for a in (b.get("attributes") or [])
@@ -152,7 +167,8 @@ def hotovo():
         print(f"\n{len(bad)} problém(ov) v hraniciach území.")
         return 1
     print("Hranice území: predfilter pustí, čo schéma chce, doťahuje členov "
-          "relácií, v dlaždici je meno a všetky štyri úrovne sú v schéme.")
+          "relácií, v dlaždici je meno, všetky štyri úrovne sú v schéme "
+          "a mimo región sa nechodí.")
     return 0
 
 

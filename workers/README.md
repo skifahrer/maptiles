@@ -2119,12 +2119,21 @@ vlastný zdroj `water_polygons`, a preto more v základnej mape je). Z rezaného
 PBF kraja by vzniklo more, ktoré končí na hranici výrezu, takže
 `natural=coastline` ide ako **čiara** a plochu kreslí základná mapa.
 
-**Hranice sa ako jediná vrstva NEOREZÁVAJÚ na región.** Hranica kraja je
-hranicou aj pre suseda a orezaním presne po nej by z nej ostala polovica čiary;
-plocha okresu na okraji by sa zrezala na obdĺžnik bboxu a odpoveď „v ktorom
-okrese som" by pri kraji bola NESPRÁVNA, nie chýbajúca. PBF je aj tak vyrezaný
-po hranicu regiónu, takže „všetko, čo v ňom je" je presne to, čo sa má
-nakresliť.
+**Hranice a vodstvo sa režú DVAKRÁT: raz PBF, raz dlaždice.** „PBF je aj tak
+vyrezaný po hranicu regiónu" neplatí – `plan/pbf.sh` reže `-s smart -S
+types=multipolygon,boundary`, takže relácia štátnej hranice príde celá aj s tým
+kusom, čo je od kraja 300 km. Orez dlaždíc to nezastúpi: Planetiler reže po
+celých dlaždiciach a na z6 je jedna široká 5 600 km, takže sa do tej, ktorá
+región pretína, zmestí aj Tisa – a v mape ju vidno presne na jednom zoome.
+Preto ide medzi predfilter a Planetiler ešte
+[`workers/lib/region-cut.sh`](lib/region-cut.sh), ktorý z PBF vyhodí, čo leží
+celé mimo obdĺžnika regiónu.
+
+Namerané na balíku `bratislavsky-hranice` (beh 250): archív hlásil bbox celej
+republiky (`16,41 47,68 22,57 49,61`) a na z12 mal 1325 dlaždíc od Bratislavy
+po Užhorod, na každom zoome vyše tisíc čiar hraníc celého Slovenska a body
+sídel až po Banskú Bystricu. Okres sa rezom nerozpadne: obec leží v okrese
+a okres v kraji, takže hranica kraja nepretína ani jeden z nich.
 
 **Body majú VLASTNÝ `.pmtiles`** (`workers/features/points.yml`) presne kvôli
 balíku `body`: `feature_line`, `feature_area` aj `feature_point` kedysi
