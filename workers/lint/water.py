@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Vodstvo: filter pustí, čo schéma chce – a meno je na tom istom prvku.
 
-Štyri tiché veci:
+Päť tichých vecí:
 
   1. predfilter (`filter.txt`) a schéma (`water.yml`) sa rozídu – Planetiler
      dostane PBF, v ktorom ten tag už nie je, a beh zazelená;
@@ -11,7 +11,10 @@
   3. z dlaždice zmizne `name` – kvôli tomu vrstva existuje (v OpenMapTiles je
      meno vody vo vlastnej vrstve mimo geometrie);
   4. more sa začne kresliť ako plocha – plocha oceánu v OSM neexistuje, takže
-     z rezaného PBF by vzniklo more končiace na hranici výrezu.
+     z rezaného PBF by vzniklo more končiace na hranici výrezu;
+  5. PBF sa prestane rezať na región – Planetiler reže po dlaždiciach a na z6
+     je jedna široká 5 600 km, takže sa do nej zmestí aj Tisa, 270 km za
+     Bratislavským krajom (v PBF ako člen relácie štátnej hranice).
 """
 import os
 import sys
@@ -122,6 +125,13 @@ def main():
             f"Domaši by v dlaždiciach ticho neostalo nič. Bez toho prepínača "
             f"ich osmium doťahuje sám.")
 
+    # ---- 2b. z PBF ide preč, čo je mimo regiónu ----
+    if "region-cut.sh" not in build:
+        err(f"{BUILD}: PBF sa nereže na región (`workers/lib/region-cut.sh`). "
+            f"Orez dlaždíc to nezastúpi – reže sa po celých dlaždiciach, takže "
+            f"na nízkom zoome sa do tej jednej, čo región pretína, zmestia aj "
+            f"rieky stovky kilometrov za ním a v mape ich vidno.")
+
     # ---- 3. meno je na tom istom prvku ----
     for i, b in enumerate(bloky, start=1):
         atr = {a.get("key") for a in (b.get("attributes") or [])
@@ -160,7 +170,8 @@ def hotovo():
         print(f"\n{len(bad)} problém(ov) vo vodstve.")
         return 1
     print("Vodstvo: predfilter pustí, čo schéma chce, doťahuje členov relácií, "
-          "meno je na tom istom prvku a pobrežie ide ako čiara.")
+          "PBF sa reže na región, meno je na tom istom prvku a pobrežie ide "
+          "ako čiara.")
     return 0
 
 

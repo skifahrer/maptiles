@@ -18,10 +18,15 @@ mkdir -p _site/tiles data steps-out
 sudo apt-get update -qq
 sudo apt-get install -y -qq osmium-tool
 
-# ---- 1. predfilter: len voda ----
+# ---- 1. predfilter: len voda, a len z regiónu ----
 T_F=$(date +%s)
 osmium tags-filter --overwrite -o data/water.osm.pbf \
   data/region.osm.pbf --expressions=workers/water/filter.txt
+
+# Tisa a Uh sú v PBF ako členovia relácie štátnej hranice, teda 270 km za krajom;
+# Planetiler reže po dlaždiciach, takže na z6 sa do jednej zmestia. Rozpis je
+# v hlavičke `workers/lib/region-cut.sh`.
+workers/lib/region-cut.sh data/water.osm.pbf "$REGION_BBOX"
 
 BEFORE=$(stat -c%s data/region.osm.pbf)
 AFTER=$(stat -c%s data/water.osm.pbf)

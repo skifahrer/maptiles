@@ -24,6 +24,11 @@ T_F=$(date +%s)
 osmium tags-filter --overwrite -o data/boundaries.osm.pbf \
   data/region.osm.pbf --expressions=workers/boundaries/filter.txt
 
+# Relácia štátnej hranice je v PBF celá (`plan/pbf.sh` reže `-s smart -S
+# types=…,boundary`), takže bez rezu nesie balík kraja hranice cez celé Slovensko.
+# Rozpis je v hlavičke `workers/lib/region-cut.sh`.
+workers/lib/region-cut.sh data/boundaries.osm.pbf "$REGION_BBOX"
+
 BEFORE=$(stat -c%s data/region.osm.pbf)
 AFTER=$(stat -c%s data/boundaries.osm.pbf)
 echo "Predfilter: $(du -h data/region.osm.pbf | cut -f1) → $(du -h data/boundaries.osm.pbf | cut -f1)"
@@ -53,16 +58,19 @@ if [ "${TOPZ:-0}" -gt "$BZ_" ]; then
   exit 1
 fi
 
-# HRANICE SA NEOREZÁVAJÚ NA REGIÓN, a je to jediná vrstva, kde to tak je.
-# Hranica kraja je hranicou aj pre suseda a orezaním presne po nej by z nej
-# ostala polovica čiary; plocha okresu na okraji by sa navyše zrezala na
-# obdĺžnik bboxu a odpoveď „v ktorom okrese som" by pri kraji bola nesprávna,
-# nie chýbajúca. PBF je aj tak vyrezaný po hranicu regiónu (`plan/pbf.sh`),
-# takže „všetko, čo v ňom je" je presne to, čo sa má nakresliť.
+# Ten istý orez na región ako pri ostatných vrstvách (workers/lib/region-clip.sh).
+# „PBF je aj tak vyrezaný po hranicu regiónu" neplatilo: relácia štátnej hranice
+# príde z `plan/pbf.sh` celá, takže balík Bratislavského kraja hlásil bbox celej
+# republiky a na z12 mal 1325 dlaždíc od Bratislavy po Užhorod.
+#
+# Okres sa rezom nerozpadne: obec leží v okrese a okres v kraji, takže hranica
+# kraja nepretína ani jeden z nich.
 T_PM=$(date +%s)
 OUT="_site/tiles/${REGION_KEY}-boundaries.pmtiles"
+mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
 java -Xmx4g -jar planetiler.jar generate-custom \
   --schema=workers/boundaries/boundaries.yml \
+  "${CLIP[@]}" \
   --output="$OUT" \
   --maxzoom="$BZ_" --render_maxzoom="$BZ_" \
   --simplify_tolerance_at_max_zoom=0 \
