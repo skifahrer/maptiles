@@ -198,7 +198,7 @@ function styl(temaId) {
     "source-layer": "place",
     minzoom: OD.place,
     layout: {
-      "text-field": ["coalesce", ["get", "name"], ["get", "name_en"]],
+      "text-field": ["coalesce", ["get", "name:en"], ["get", "name"], ["get", "name_en"]],
       "text-font": BOLD,
       "text-size": ["match", ["get", "rank"], "major", 14, "mid", 12, 11],
       "text-max-width": 7,

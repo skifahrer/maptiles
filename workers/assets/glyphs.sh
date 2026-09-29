@@ -16,14 +16,17 @@ set -euo pipefail
 # 61,2 MB v ZIPe a fonty sú v každom regióne tie isté, takže to bola konštanta
 # v každom balíku (47 % `bratislavsky.zip`). Po orezaní ostane 1,7 MB.
 #
-# Mapa sa tiluje s `--languages=sk,en`, tak sa nechávajú:
+# Mená sú vo všetkých jazykoch aplikácie (`TILE_LANGUAGES`), tak sa nechávajú:
 #
-#     0-2047       latinka, Latin-1, Ext-A (č ď ľ ň š ť ž ĺ ŕ ô), Ext-B,
-#                  diakritika, gréčtina, cyrilika
+#     0-2559       latinka, Latin-1, Ext-A (č ď ľ ň š ť ž ĺ ŕ ô), Ext-B,
+#                  diakritika, gréčtina, cyrilika, arabčina, dévanágarí
 #     7424-9215    fonetika, Latin Extended Additional, Greek Extended,
 #                  interpunkcia, meny, ⅓ ½ №, × ÷ ≈, technické
 #     11264-11519  Latin Extended-C
 #     42752-43007  Latin Extended-D, modifikátory tónu
+#     64256-65279  arabské tvary, na ktoré MapLibre arabčinu skladá
+#
+# Čínštinu, japončinu a kórejčinu kreslí MapLibre systémovým písmom.
 #
 # Je to viac, než mapa Slovenska potrebuje, a je to zámer: rozdiel oproti samej
 # latinke je 0,6 MB, kým chýbajúci rozsah znamená prázdne štvorčeky bez
@@ -32,7 +35,7 @@ set -euo pipefail
 # Iné písmo je jedna premenná; `vsetko` orezanie vypne. (Prázdna hodnota ho
 # nevypne – `${VAR:-…}` ju nahradí predvoleným zoznamom.) Mapa sveta si rozsahy
 # meria z mien v podkladoch; pri kraji sú mená roztrúsené v PBF.
-GLYPHS_KEEP_RANGES="${GLYPHS_KEEP_RANGES:-0-2047,7424-9215,11264-11519,42752-43007}"
+GLYPHS_KEEP_RANGES="${GLYPHS_KEEP_RANGES:-0-2559,7424-9215,11264-11519,42752-43007,64256-65279}"
 
 mkdir -p _site/fonts
 if [ -n "$(ls -A _site/fonts 2>/dev/null)" ]; then
