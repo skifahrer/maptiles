@@ -69,6 +69,11 @@ def katalog_subor(base=KATALOG):
     return f"{kmen}-test" + (f".{pripona}" if koren else "")
 
 
+def zaklad_zapisu(path):
+    """Kam si beh odloží katalóg, aký ho našiel – `catalog.sh` ho zlieva."""
+    return f"{path}.base"
+
+
 def region_entry(man):
     """Položka regiónu z `manifest.json` – zoomy, bbox, zdroje výšok."""
     key = man.get("default_region")
@@ -319,6 +324,13 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
             data = json.load(f)
     except (OSError, ValueError):
         data = {}
+    # podľa toho `catalog.sh` pozná, čo zmenil tento beh a čo cudzí job
+    try:
+        with open(zaklad_zapisu(path), "w") as f:
+            json.dump(data, f, ensure_ascii=False, sort_keys=True)
+    except OSError as exc:
+        log(f"::warning::Katalóg pred zápisom sa nedal odložiť ({exc}) – "
+            f"commit ponesie celý súbor, nie len tento prírastok.")
     je_test = os.path.basename(path) == KATALOG_TEST
     data.setdefault("_comment",
                     ("Rýchle TESTOVACIE behy" if je_test else
