@@ -6,6 +6,24 @@ pipeline (priečinok = job, súbor = krok), `.github/workflows/` = CI,
 
 Podrobne: `workers/README.md`.
 
+## Pull requesty: merge až na zelenom
+
+**Nemerguj PR, kým kontroly nie sú zelené a pipeline naozaj neprebehla.**
+
+- `Kontrola · lint workflowov` musí byť zelená na HLAVIČKE PR, nie na
+  niektorom staršom commite vetvy.
+- Žiadny konflikt s `master`.
+- Kontrola musela naozaj zbehnúť: beh bez jobu neoveril nič, a zelená
+  z iného commitu nehovorí o tomto.
+
+Lint sa spúšťa len na zmenu v `.github/workflows/**`, `workers/**` a
+`poc/web/**`. Commit do `maps.json` ho nespustí, takže posledný výsledok na
+`master` môže byť starý aj o dni. Keď na tom záleží, pusti workflow ručne
+(`workflow_dispatch`), alebo lokálne: `workers/lint/*.py` a `workers/lint/*.mjs`.
+
+Červenú kontrolu treba opraviť, alebo pri PR napísať, prečo nie je jeho.
+Test ani lint sa kvôli zelenej nevypína.
+
 ## Komentáre: čo najmenej slov
 
 **Toto je tvrdé pravidlo. Komentár má mať pár slov, nie odsek.**
