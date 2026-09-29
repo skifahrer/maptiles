@@ -69,6 +69,11 @@ def katalog_subor(base=KATALOG):
     return f"{kmen}-test" + (f".{pripona}" if koren else "")
 
 
+def zaklad_zapisu(path):
+    """Kam si beh odloží katalóg, aký ho našiel – `catalog.sh` ho zlieva."""
+    return f"{path}.base"
+
+
 def region_entry(man):
     """Položka regiónu z `manifest.json` – zoomy, bbox, zdroje výšok."""
     key = man.get("default_region")
@@ -123,7 +128,7 @@ def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None,
                 sha="", modely=None):
     """Jeden balík v jednom formáte do `maps` položky katalógu.
 
-    Vrch položky ukazuje na ZIP kvôli starším čitateľom, `.aar` ho neprepisuje.
+    Vrch položky ukazuje na ZIP kvôli starším čitateľom; bez ZIPu na to, čo je.
     """
     zaznam = {
         "file": name,
@@ -142,7 +147,8 @@ def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None,
         zaznam["sha256"] = sha
     polozka = mapy.setdefault(kind or "mapa", {})
     polozka.setdefault("formats", {})[fmt] = zaznam
-    if fmt == "zip":
+    # položka bez vrchu je položka bez odkazu a appke rozbije celú krajinu
+    if fmt == "zip" or "zip" not in polozka["formats"]:
         polozka.update(zaznam)
     # meno a ikona balíka z číselníka; kľúč, ktorý v ňom nie je, sa nedopĺňa
     try:
@@ -318,6 +324,13 @@ def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
             data = json.load(f)
     except (OSError, ValueError):
         data = {}
+    # podľa toho `catalog.sh` pozná, čo zmenil tento beh a čo cudzí job
+    try:
+        with open(zaklad_zapisu(path), "w") as f:
+            json.dump(data, f, ensure_ascii=False, sort_keys=True)
+    except OSError as exc:
+        log(f"::warning::Katalóg pred zápisom sa nedal odložiť ({exc}) – "
+            f"commit ponesie celý súbor, nie len tento prírastok.")
     je_test = os.path.basename(path) == KATALOG_TEST
     data.setdefault("_comment",
                     ("Rýchle TESTOVACIE behy" if je_test else

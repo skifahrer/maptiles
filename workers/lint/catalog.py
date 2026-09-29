@@ -22,7 +22,7 @@ ZRUSENE = set(_CISELNIK.get("zrusene") or ())
 # meno balíka; sedí so `zaklad()` a `meno()` v deploy/publish-map.py
 MENO = re.compile(r"^[a-z0-9_]+(-[a-z0-9_]+)*(-test[0-9.]+km2)?"
                   r"(-vrstevnice-skaly|-tienovanie|-wikipedia|-navigacia"
-                  r"|-search)?\.zip$")
+                  r"|-search)?\.(zip|aar)$")
 CATALOG = "maps.json"
 # rýchly test má vlastný súbor – v maps.json vyzeral ako ďalší výsek,
 # ale zapisovať sa musí (inak sa o balíku bez tokenu nedá dozvedieť)
@@ -41,6 +41,8 @@ CATALOG_PY = "workers/deploy/catalog.py"
 # catalog.sh ten súbor commitne – na čerstvú vetvu, nie na SHA začiatku behu
 # (inak druhý zapisujúci job v behu vždy skončí konfliktom)
 CATALOG_SH = "workers/deploy/catalog.sh"
+# a pred commitom zlieva svoj prírastok s tým, čo je vo vetve
+CATALOG_MERGE = "workers/deploy/catalog-merge.py"
 # nahrávanie na Drive: katalóg stojí na tom, že id balíka prežije ďalší build
 FOLDER_PY = "workers/drive/folder.py"
 
@@ -345,8 +347,49 @@ if csh and "reset --mixed" not in csh:
                f"zapisujúci job v tom istom behu – `.aar` po `deploy` – by "
                f"niesol aj cudzí zápis, rebase by ho pridával druhýkrát "
                f"a katalóg by sa zakaždým ticho zahodil.")
+if csh and "catalog-merge.py" not in csh:
+    bad.append(f"{CATALOG_SH}: pred commitom sa katalóg nezlieva "
+               f"(`{CATALOG_MERGE}`). Samotný `reset --mixed` nestačí – "
+               f"pracovný strom drží CELÝ súbor tak, ako ho beh prečítal, "
+               f"takže commit ticho vráti späť, čo do katalógu zapísal iný "
+               f"job toho istého behu (behy 254 a 255, balík `wikipedia`).")
 
 # balík z inej pipeline musí prežiť build mapy – staticky sa to prečítať nedá,
+# staticky sa nedá prečítať, či zlievanie drží cudzí zápis – skúša sa naostro
+def _skuska_zlievania():
+    """Vráti zoznam chýb trojcestného zlievania katalógu."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_lint_merge", CATALOG_MERGE)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["_lint_merge"] = mod
+    spec.loader.exec_module(mod)
+
+    chyby = []
+    # beh 255: kým som balil `.aar`, iný job zapísal do vetvy `wikipedia`
+    zaklad = {"maps": {"mapa": {"formats": {"zip": 1}}}}
+    moje = {"maps": {"mapa": {"formats": {"zip": 1, "aar": 2}}}}
+    ich = {"maps": {"mapa": {"formats": {"zip": 1}},
+                    "wikipedia": {"formats": {"zip": 9}}}}
+    von = mod.zlej(zaklad, moje, ich)
+    if "wikipedia" not in von["maps"]:
+        chyby.append(f"{CATALOG_MERGE}: zlievanie zahodilo balík, ktorý do "
+                     f"vetvy zapísal iný job – presne to, čo v behoch 254 "
+                     f"a 255 zmazalo ZIP článkov 21 sekúnd po jeho zápise.")
+    if "aar" not in (von["maps"].get("mapa") or {}).get("formats", {}):
+        chyby.append(f"{CATALOG_MERGE}: zlievanie neprenieslo to, čo tento "
+                     f"beh zapísal – balík by na Drive ležal a katalóg by "
+                     f"o ňom mlčal.")
+    # a naopak: čo tento beh zmazal, mu vetva nesmie vrátiť
+    von = mod.zlej({"maps": {"wikipedia": {}}}, {"maps": {}},
+                   {"maps": {"wikipedia": {}}})
+    if "wikipedia" in von["maps"]:
+        chyby.append(f"{CATALOG_MERGE}: zlievanie vrátilo balík, ktorý beh "
+                     f"zmazal – odkazoval by na súbor, ktorý ten istý beh "
+                     f"na Drive zmazal.")
+    return chyby
+
+
 # tak sa katalóg skúša naostro: zápis mapy, doplnenie cudzieho balíka, zápis znova
 def _skuska_katalogu():
     """Vráti zoznam chýb – prázdny, keď sa katalóg správa, ako má."""
@@ -398,6 +441,12 @@ def _skuska_katalogu():
             mod.zapis_katalog(path, parts, regions, mapa_baliky, man,
                               spravuje=mapove + ["wikipedia"])
             po_vypnuti = maps_v(path)
+            # a späť, tentoraz len `.aar`: ZIP toho balíka ešte nie je
+            mod.zapis_katalog(path, parts, regions,
+                              [("wikipedia", "bratislavsky-wikipedia.aar",
+                                1, "id5", "aar", "sha5")], {},
+                              iba="wikipedia")
+            len_aar = maps_v(path)
     if "wikipedia" not in po_wiki:
         chyby.append(f"{CATALOG_PY}: `--only=wikipedia` balík do položky "
                      f"nedoplní – pipeline článkov by nahrala ZIP na Drive "
@@ -411,6 +460,11 @@ def _skuska_katalogu():
         chyby.append(f"{CATALOG_PY}: balík, o ktorom beh ROZHODUJE a "
                      f"nevyrobil ho, ostal v katalógu – odkazoval by na "
                      f"súbor, ktorý ten istý beh na Drive zmazal.")
+    sam_aar = len_aar.get("wikipedia") or {}
+    if not (sam_aar.get("file") and sam_aar.get("link")):
+        chyby.append(f"{CATALOG_PY}: balík len s `.aar` nechal položku bez "
+                     f"vrchu – appka ju nerozkóduje a stratí s ňou celú "
+                     f"krajinu, nielen ten balík.")
 
     # kedy mapa vznikla: `updated_ts` môže v module byť a do položky sa
     # nedostať, preto naostro
@@ -423,6 +477,10 @@ def _skuska_katalogu():
                               spravuje=mapove)
         with open(path) as f:
             uzol = json.load(f)["slovensko"]["regions"]["bratislavsky"]
+        if not os.path.exists(mod.zaklad_zapisu(path)):
+            chyby.append(f"{CATALOG_PY}: zápis neodložil katalóg, aký ho "
+                         f"našiel – `{CATALOG_SH}` nemá čo zliať a commit "
+                         f"vráti cudzí zápis z toho istého behu späť.")
     for pole in ("updated_at", "updated_ts"):
         if uzol.get(pole) in (None, ""):
             chyby.append(f"{CATALOG_PY}: zapísaná položka nemá `{pole}` – "

@@ -10,14 +10,16 @@
 # `maps.json` v koreni nebeží.
 #
 # Rodičom commitu je čerstvá vetva, nie SHA zo začiatku behu: katalóg zapisujú
-# v jednom behu dva joby za sebou a ten druhý má checkout spred prvého zápisu –
-# jeho commit by niesol aj cudzí zápis a rebase by padol zakaždým. Preto sa
-# pred commitom index prepne na čerstvý stav vetvy (`reset --mixed`); pracovný
-# strom sa nemení, takže commit nesie už len svoj prírastok a push je
-# fast-forward.
+# v jednom behu viaceré joby a ten neskorší má checkout spred cudzieho zápisu.
+# Samotný `reset --mixed` na to nestačí – pracovný strom drží CELÝ súbor tak,
+# ako ho beh prečítal, takže commit cudzí zápis potichu vráti späť. V behoch
+# 254 a 255 tak zmizol ZIP balíka `wikipedia` 21 sekúnd po tom, čo ho iný job
+# zapísal. Preto sa pred commitom zlieva: `catalog-merge.py` vezme vetvu a
+# pridá do nej len to, čo tento beh oproti svojmu východisku zmenil.
 #
-# Dva behy naraz: pri non-fast-forward sa to skúsi znova s `git pull --rebase`.
-# Konflikt beh nezhodí – mapa je nahratá a katalóg dopíše ďalší build.
+# Dva behy naraz: pri non-fast-forward sa zlievanie aj commit zopakujú nad
+# čerstvou vetvou. Konflikt beh nezhodí – mapa je nahratá a katalóg dopíše
+# ďalší build.
 #
 # Z prostredia: MAPS_JSON (ktorý súbor), BRANCH (kam pushnúť), RUN_URL.
 set -uo pipefail
@@ -33,29 +35,24 @@ fi
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-# rodičom je čerstvá vetva; `--mixed` nechá pracovný strom tak
-if git fetch --quiet --depth=1 origin "$BRANCH" 2>/dev/null \
-   && git reset --mixed --quiet FETCH_HEAD 2>/dev/null; then
-  echo "Rodič commitu: čerstvý $BRANCH ($(git rev-parse --short FETCH_HEAD))"
-else
-  echo "::warning::Vetvu $BRANCH sa nepodarilo načítať – commitujem na SHA, s ktorou beh začal. Keď medzitým do katalógu zapísal iný job, push si vypýta rebase."
+# čo zapísal tento beh, a z čoho vychádzal (odkladá `catalog.py`)
+MOJE="$(mktemp)"
+VETVA="$(mktemp)"
+ZAKLAD="$MAPS_JSON.base"
+cp "$MAPS_JSON" "$MOJE"
+trap 'rm -f "$MOJE" "$VETVA"' EXIT
+if [ ! -f "$ZAKLAD" ]; then
+  echo "::warning::$ZAKLAD nie je – commit ponesie celý súbor, takže cudzí zápis z toho istého behu sa môže stratiť."
 fi
 
-# nový súbor je tiež zmena: `git diff` o nesledovanom súbore mlčí a beh by
-# skončil zelený. Katalóg je raz nový vždy, tak sa pozná podľa `ls-files`.
-if git ls-files --error-unmatch -- "$MAPS_JSON" >/dev/null 2>&1; then
-  if git diff --quiet -- "$MAPS_JSON"; then
-    echo "$MAPS_JSON sa nezmenil (tá istá mapa s tými istými odkazmi) – bez commitu."
-    exit 0
-  fi
-else
-  echo "$MAPS_JSON v repozitári ešte nie je – zakladám ho."
-fi
-
-git add "$MAPS_JSON"
-git commit -q -m "Katalóg máp: $(git diff --cached --shortstat -- "$MAPS_JSON" | tr -s ' ')" \
-  -m "Zapísal build ${RUN_URL:-(bez odkazu)} po nahratí balíkov na Drive." \
-  || { echo "::warning::Commit sa nepodaril – katalóg dopíše ďalší build."; exit 0; }
+# vetva + môj prírastok; bez východiska alebo bez súboru vo vetve môj zápis
+zlej_s_vetvou() {
+  cp "$MOJE" "$MAPS_JSON"
+  [ -f "$ZAKLAD" ] || return 0
+  git show "FETCH_HEAD:$MAPS_JSON" >"$VETVA" 2>/dev/null || return 0
+  python3 workers/deploy/catalog-merge.py --base="$ZAKLAD" --mine="$MOJE" \
+    --theirs="$VETVA" --out="$MAPS_JSON" || cp "$MOJE" "$MAPS_JSON"
+}
 
 # odmietnutie pravidlom vetvy nie je pretekanie dvoch behov: pri GH013
 # neprejde ani ďalší build a katalóg prestane platiť úplne, ticho a so zeleným
@@ -66,6 +63,32 @@ trvalo_odmietnute() {
 }
 
 for i in $(seq 1 "$TRIES"); do
+  # rodičom je čerstvá vetva; `--mixed` nechá pracovný strom tak
+  if git fetch --quiet --depth=1 origin "$BRANCH" 2>/dev/null; then
+    zlej_s_vetvou
+    git reset --mixed --quiet FETCH_HEAD 2>/dev/null \
+      || echo "::warning::Index sa nepodarilo prepnúť na $BRANCH."
+    echo "Rodič commitu: čerstvý $BRANCH ($(git rev-parse --short FETCH_HEAD))"
+  else
+    echo "::warning::Vetvu $BRANCH sa nepodarilo načítať – commitujem na SHA, s ktorou beh začal. Keď medzitým do katalógu zapísal iný job, jeho zápis sa stratí."
+  fi
+
+  # nový súbor je tiež zmena: `git diff` o nesledovanom súbore mlčí a beh by
+  # skončil zelený. Katalóg je raz nový vždy, tak sa pozná podľa `ls-files`.
+  if git ls-files --error-unmatch -- "$MAPS_JSON" >/dev/null 2>&1; then
+    if git diff --quiet -- "$MAPS_JSON"; then
+      echo "$MAPS_JSON sa nezmenil (tá istá mapa s tými istými odkazmi) – bez commitu."
+      exit 0
+    fi
+  else
+    echo "$MAPS_JSON v repozitári ešte nie je – zakladám ho."
+  fi
+
+  git add "$MAPS_JSON"
+  git commit -q -m "Katalóg máp: $(git diff --cached --shortstat -- "$MAPS_JSON" | tr -s ' ')" \
+    -m "Zapísal build ${RUN_URL:-(bez odkazu)} po nahratí balíkov na Drive." \
+    || { echo "::warning::Commit sa nepodaril – katalóg dopíše ďalší build."; exit 0; }
+
   if push_vystup=$(git push origin "HEAD:$BRANCH" 2>&1); then
     printf '%s\n' "$push_vystup"
     echo "$MAPS_JSON je vo vetve $BRANCH ✓"
@@ -76,15 +99,10 @@ for i in $(seq 1 "$TRIES"); do
     echo "::error::$MAPS_JSON sa nedá zapísať do vetvy $BRANCH – push odmietlo pravidlo repozitára, nie pretek dvoch behov. Ďalší build ho preto NEDOPÍŠE: balíky na Drive sa budú prepisovať ďalej a katalóg ostane stáť na tom, čo je v ňom teraz. Daj bótovi cestu do $BRANCH (bypass v rulesete alebo push cez pull request) a pusti build znova."
     exit 1
   fi
-  if [ "$i" -eq "$TRIES" ]; then break
-  fi
+  if [ "$i" -eq "$TRIES" ]; then break; fi
   WAIT=$(( 2 ** i ))
-  echo "Push do $BRANCH neprešiel ($i. z $TRIES) – skúšam rebase a znova o ${WAIT} s."
+  echo "Push do $BRANCH neprešiel ($i. z $TRIES) – zlejem s čerstvou vetvou a skúsim znova o ${WAIT} s."
   sleep "$WAIT"
-  git pull --rebase --quiet origin "$BRANCH" || {
-    echo "::warning::Rebase katalógu neprešiel (konflikt v $MAPS_JSON). Mapa je nahratá na Drive, katalóg dopíše ďalší build."
-    exit 0
-  }
 done
 echo "::warning::$MAPS_JSON sa nepodarilo pushnúť do $BRANCH ani na $TRIES. pokus. Mapa je nahratá na Drive; katalóg dopíše ďalší build."
 exit 0

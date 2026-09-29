@@ -10,3 +10,5 @@ steps-out/
 /_site/
 /data/
 /planetiler.jar
+/maps.json.base
+/maps-test.json.base
