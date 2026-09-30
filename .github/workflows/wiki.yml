@@ -1,8 +1,10 @@
 name: Mapa · Build wiki
 
 # Ku každému objektu v regióne s tagom `wikipedia`/`wikidata` stiahne článok
-# (anglicky a v jazyku krajiny), zabalí ho ako `<región>-wikipedia.zip` na Drive
-# a odkaz zapíše do `maps.json`.
+# (anglicky a v jazyku krajiny) ako čistý text, zabalí ho ako
+# `<región>-wikipedia.zip` a `.aar` na Drive a odkaz zapíše do `maps.json`.
+# Aplikácia číta len `.aar` s `index.json` a `articles.ndjson`, preto sa
+# podoba ani `.aar` nedajú vypnúť.
 #
 # Vlastná pipeline, nie job v Build map: iná sieť (cudzí server, ktorý nemá
 # zhodiť hodinový build), iná životnosť (články si žijú vlastným tempom)
@@ -25,11 +27,6 @@ on:
         description: "Kľúč regiónu z prípravy buildu (na kontrolu cache)"
         required: false
         default: ""
-        type: string
-      wiki_format:
-        description: "Podoba článku"
-        required: false
-        default: text
         type: string
       wiki_langs:
         description: "Jazyky NAVYŠE, čiarkou"
@@ -58,11 +55,6 @@ on:
         type: boolean
       publish:
         description: "Nahrať na Drive a zapísať do maps.json"
-        required: false
-        default: true
-        type: boolean
-      apple_archive:
-        description: "Nahrať balík aj ako .aar"
         required: false
         default: true
         type: boolean
@@ -100,16 +92,6 @@ on:
           - banskobystricky
           - presovsky
           - kosicky
-      wiki_format:
-        description: "Podoba článku"
-        required: false
-        default: text
-        type: choice
-        options:
-          - text
-          - wikitext
-          - intro
-          - html
       wiki_langs:
         description: "Jazyky NAVYŠE, čiarkou (en a jazyk krajiny idú vždy)"
         required: false
@@ -132,12 +114,6 @@ on:
         type: boolean
       publish:
         description: "Nahrať na Drive a zapísať do maps.json"
-        required: false
-        default: true
-        type: boolean
-      # ten istý balík ešte raz ako `.aar`; robí to job na macOS (nástroj `aa`)
-      apple_archive:
-        description: "Nahrať balík aj ako .aar (Apple Archive, job na macOS)"
         required: false
         default: true
         type: boolean
@@ -179,7 +155,6 @@ jobs:
           REGION_KEY: ${{ inputs.region_key || inputs.region }}
           COUNTRY: ${{ inputs.country }}
           LANGS: ${{ inputs.wiki_langs }}
-          FMT: ${{ inputs.wiki_format }}
           RUN_ID: ${{ github.run_id }}
         run: workers/wiki/need.sh
 
@@ -223,7 +198,6 @@ jobs:
         env:
           REGION: ${{ steps.region.outputs.key }}
           LANGS: ${{ inputs.wiki_langs }}
-          FMT: ${{ inputs.wiki_format }}
           COUNTRY: ${{ inputs.country }}
           RUN_ID: ${{ github.run_id }}
         run: workers/wiki/key.sh >> "$GITHUB_OUTPUT"
@@ -247,7 +221,6 @@ jobs:
           # krajinu vie číselník regiónov; input ju len prebije
           WIKI_COUNTRY: ${{ inputs.country }}
           OPT_WIKI_LANGS: ${{ inputs.wiki_langs }}
-          OPT_WIKI_FORMAT: ${{ inputs.wiki_format }}
           OPT_WIKI_MAX: ${{ inputs.wiki_max }}
           REGION: ${{ inputs.region }}
         run: |
@@ -335,21 +308,18 @@ jobs:
             echo "| región | \`${{ inputs.region }}\` |"
             echo "| článkov | ${COUNT:-0} |"
             echo "| veľkosť | ${MB:-0} MB |"
-            echo "| podoba | \`${{ inputs.wiki_format }}\` |"
             echo
             echo "Jazyky sú angličtina a jazyk krajiny (číselník"
             echo "\`workers/data/wiki-languages.json\`) plus to, čo si objekty"
             echo "píšu samy v tagu. Text je z Wikipédie (CC BY-SA)."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ten istý balík ešte raz ako `.aar`; články sú z toho najvďačnejšie (text).
-  # Vlastný job na macOS (nástroj `aa`), ten istý skript s `ONLY=wikipedia`.
-  # Beží až po nahratí ZIPu – `--only` položku katalógu dopĺňa.
-  # Keď spadne, články tým netrpia.
+  # `.aar` je to, čo aplikácia otvorí; job na macOS (nástroj `aa`) beží až po
+  # nahratí ZIPu, `--only` položku katalógu dopĺňa
   apple-archive:
     name: Balík ako Apple Archive (.aar)
     needs: wiki
-    if: ${{ !cancelled() && needs.wiki.outputs.published == 'success' && inputs.apple_archive }}
+    if: ${{ !cancelled() && needs.wiki.outputs.published == 'success' }}
     runs-on: macos-latest
     permissions:
       contents: write

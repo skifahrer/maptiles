@@ -8,7 +8,7 @@
 # ich z PBF vyberie za sekundy.
 #
 # Z prostredia (viď wiki.yml):
-#   REGION_KEY WIKI_COUNTRY OPT_WIKI_LANGS OPT_WIKI_FORMAT OPT_WIKI_MAX
+#   REGION_KEY WIKI_COUNTRY OPT_WIKI_LANGS OPT_WIKI_MAX
 set -euo pipefail
 
 sudo apt-get update -qq
@@ -26,19 +26,7 @@ mkdir -p wiki-out wiki-cache steps-out
 # čo už vie číselník `workers/data/wiki-languages.json`.
 LANGS="${OPT_WIKI_LANGS:-}"
 COUNTRY="${WIKI_COUNTRY:-}"
-FMT="${OPT_WIKI_FORMAT:-text}"
 MAX="${OPT_WIKI_MAX:-5000}"
-# PREKLEP SA NESMIE PREJSŤ NA PREDVOLENÚ HODNOTU. Náhrada „nerozumiem, beriem
-# text" znamená, že si vypýtaš `wiki_format=htlm` a dostaneš zelený beh
-# s balíkom, v ktorom je niečo iné, než čakáš – a nemáš to na čom vidieť.
-# Radšej spadnúť tu, v druhej sekunde jobu, a povedať aj čo s tým.
-case "$FMT" in
-  text|wikitext|intro|html) ;;
-  *) echo "::error::wiki_format=$FMT nepoznám – zvoľ \`text\` (celý článok" \
-          "ako čistý text), \`wikitext\` (bez prevodu), \`intro\` (len úvod)" \
-          "alebo \`html\` (z REST API, ale po jednom článku)."
-     exit 1 ;;
-esac
 case "$MAX" in
   ''|*[!0-9]*)
      echo "::error::wiki_max=$MAX nie je celé číslo – napíš strop počtu" \
@@ -56,11 +44,10 @@ python3 workers/wiki/collect.py \
   --cache=wiki-cache \
   --country="$COUNTRY" \
   --langs="$LANGS" \
-  --format="$FMT" \
   --max="$MAX" \
   --stats=steps-out/wiki.tsv
 
-# KOĽKO ICH JE, ROZHODUJE O PUBLIKOVANÍ. Balík `-wikipedia.zip` skladá job
+# KOĽKO ICH JE, ROZHODUJE O PUBLIKOVANÍ. Balík `-wikipedia` skladá job
 # `deploy` z tohto priečinka; keď v regióne nie je ani jeden článok, nemá čo
 # baliť a starý balík sa zmaže (`publish-map.py`). Preto sa počet vypisuje na
 # výstup jobu a nie len do logu.
@@ -77,7 +64,7 @@ MB=$(du -sm wiki-out | cut -f1)
 echo "count=$COUNT" >> "$GITHUB_OUTPUT"
 echo "mb=$MB" >> "$GITHUB_OUTPUT"
 echo "enabled=$([ "$COUNT" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-echo "Články: $COUNT, $MB MB v wiki-out/ (krajina ${COUNTRY:-?}, jazyky navyše ${LANGS:-žiadne}, formát $FMT)"
+echo "Články: $COUNT, $MB MB v wiki-out/ (krajina ${COUNTRY:-?}, jazyky navyše ${LANGS:-žiadne})"
 # `ls … | head -5` je pasca: `head` po piatich riadkoch skončí a zavrie rúru,
 # `ls` dopisuje do zavretej rúry, dostane EPIPE – a `pipefail` hore z toho
 # spraví PÁD SKRIPTU na poslednom riadku, keď je práca dávno hotová. Článkov

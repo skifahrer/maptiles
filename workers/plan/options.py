@@ -126,7 +126,7 @@ MOVED = {
                      "`publish`",
     "wiki_langs": "je input workflowu „Build wiki“ (wiki.yml) – "
                   "angličtina a jazyk krajiny sa doplnia samy",
-    "wiki_format": "je input workflowu „Build wiki“ (wiki.yml)",
+    "wiki_format": "už nie je: články sú vždy čistý text, iný aplikácia nezobrazí",
     "wiki_max": "je input workflowu „Build wiki“ (wiki.yml)",
     "dem_source": "sa rozpadol na tri inputy vo formulári – `contour_source`, "
                   "`rock_source` a `shading_source`, každá vrstva má svoj "

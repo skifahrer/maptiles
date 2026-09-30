@@ -2011,7 +2011,7 @@ Každý balík je aj ako **`.aar` (Apple Archive)** – ten istý obsah, to ist�
 meno, iná prípona. iOS a macOS ho rozbalia systémovo (framework AppleArchive),
 bez tretej knižnice v aplikácii, a LZFSE je na Apple hardvéri rýchlejšie než
 deflate. Robí to vlastný job na `macos-latest`, lebo nástroj `aa` je súčasť
-macOS; vypína sa voľbou `apple_archive=false`. V `maps.json` má každý balík
+macOS; pri mape sa vypína voľbou `apple_archive=false`, pri článkoch nie. V `maps.json` má každý balík
 `formats.zip` aj `formats.aar`. + index.json
 ```
 
@@ -2373,34 +2373,35 @@ riadky `| align=center` (namerané: 102 zvyškov na ôsmich článkoch, s ním j
 Proti hotovému textu z `extracts` má takto prevedený článok 92–144 % dĺžky
 (medián ~106 %), takže o nič neprichádzame.
 
-| `wiki_format` | čo stiahne | koľko požiadaviek |
-|---|---|--:|
-| `text` (default) | celý článok ako čistý text | **jedna na 50 článkov** |
-| `wikitext` | celý článok bez prevodu | **jedna na 50 článkov** |
-| `intro` | len úvod článku | jedna na 20 článkov |
-| `html` | celý článok v HTML z REST API | jedna na článok |
+**Podoba je jediná: celý článok ako čistý text**, jedna požiadavka na 50
+článkov. Aplikácia text z `articles.ndjson` ukazuje tak, ako je, takže wikitext
+či HTML by v nej boli značky; voľba `wiki_format` preto nie je.
 
 Namerané: **153 článkov v 4 požiadavkách za 2,7 s** (18 ms na článok), kým po
 jednom to bolo 484 ms na článok – 27× viac. Kraj s tisíckou článkov je teda
 dvadsať požiadaviek a sekundy, nie tisíc požiadaviek a pár minút. Job to hovorí
-v pláne dopredu (pravidlo 4) a na konci porovná odhad s nameraným; pri `html`
-navyše rovno napíše, že dávka tam neexistuje. Voči Wikimedii sa chodí slušne:
+v pláne dopredu (pravidlo 4) a na konci porovná odhad s nameraným. Voči Wikimedii sa chodí slušne:
 sériovo (tak to žiada API:Etiquette), s `User-Agent`, ktorý hovorí kto sme,
 s `maxlag=5`, a pri 429/503 sa čaká `Retry-After`.
 
-**Neznámy `wiki_format` alebo nečíselný `wiki_max` job odmietne** s návodom, čo
+**Nečíselný `wiki_max` job odmietne** s návodom, čo
 zvoliť. Náhrada za predvolenú hodnotu by znamenala zelený beh s iným obsahom
 balíka, než si vypýtal – pravidlo 8.
 
 **Na Pages to NEIDE.** Desiatky MB textu by zjedli rozpočet stránky
 (`size_limit_mb`) a v mape ich nikto nekreslí, takže články idú vlastným
 artefaktom do jobu `deploy` a odtiaľ na Drive ako **štvrtý balík**
-`<kraj>[-<výsek>]-wikipedia.zip` (a do `maps.json` ako `wikipedia`). V Build
+`<kraj>[-<výsek>]-wikipedia.zip` a vždy aj `.aar` (a do `maps.json` ako
+`wikipedia`). Aplikácia otvorí len `.aar`: rozbalí ho do
+`Maps/<región>/wikipedia/` a číta `index.json` (`osm`: `<typ>/<id>` → `keys`
+podľa jazyka, `name`, `lat`, `lon`, `qid`; `articles`: `key`, `lang`, `title`,
+`url`, `chars`, `offset`, `len`) a z `articles.ndjson` riadok na `offset`/`len`
+s poľom `text`. Preto sa `.aar` pri článkoch nedá vypnúť. V Build
 map sa vypína **voľbou `wikipedia=false`**, jazyky (`wiki_langs`) a strop
 počtu článkov (`wiki_max`) sú inputy workflowu Build wiki.
 
 **Cache je na Drive a neplatí ju kalendár, ale `lastrevid`.** Obnovuje sa cez
-predponu (`wiki-v2-<región>-<jazyky>-<podoba>-`), takže sa berie najnovší
+predponu (`wiki-v2-<región>-<jazyky>-text-`), takže sa berie najnovší
 záznam toho istého regiónu; plný kľúč má na konci číslo behu, aby sa dal
 doplniť (existujúci kľúč sa neprepisuje). Keď je v cache z čoho recyklovať,
 `collect.py` si najprv dá **jednu dávkovú otázku `prop=info` na 50 článkov**
@@ -2412,8 +2413,7 @@ a stiahne len tie, ktorým sa medzitým zmenil `lastrevid`:
 | `prop=revisions` (s obsahom) | 197,4 kB |
 
 Čo sa tým **neušetrí**: počet požiadaviek – dávka je dávka. Ušetria sa bajty
-(desatina), prevod wikitextu, a pri `wiki_format=html`, kde dávka neexistuje,
-celé minúty. Koľko sa naozaj recyklovalo, job vypíše (`z cache 812 z 830
+(desatina) a prevod wikitextu. Koľko sa naozaj recyklovalo, job vypíše (`z cache 812 z 830
 článkov (98 %)`) – inak sa nedá odlíšiť „cache funguje" od „cache je tam, ale
 kľúč nesedí", a to druhé je zelené a tiché, len o desiatky sekúnd dlhšie.
 

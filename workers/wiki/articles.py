@@ -24,15 +24,12 @@ import urllib.request
 UA = ("FricoMaps/1.0 (https://github.com/skifahrer/maptiles; "
       "mapy z OSM) python-urllib")
 
-# Stropy dávok v API. `titles=` znesie 50 mien, `exintro` (úvod) len 20.
+# stropy dávok v API
 CONTENT_BATCH = 50
-INTRO_BATCH = 20
 WIKIDATA_BATCH = 50
 
-# Namerané na sk.wikipedia.org (rozpis v `collect.py`): dávková podoba ~20 ms
-# na článok, `html` z REST API ~500 ms, lebo dávka pri ňom neexistuje.
+# namerané na sk.wikipedia.org
 MS_PER_ARTICLE_BATCHED = 20
-MS_PER_ARTICLE_SINGLE = 500
 
 # Pauza medzi požiadavkami a počet pokusov. Nie je to limit, je to slušnosť –
 # Wikipédia je zadarmo a nie je naša.
@@ -194,18 +191,14 @@ def na_text(wikitext):
     prevedený článok 92–144 % dĺžky (medián ~106 %) – teda o nič, čo by
     v článku bolo, neprichádzame.
     """
-    # Import je tu a nie na začiatku súboru zámerne: `wikitext`, `intro` ani
-    # `html` túto knižnicu nepotrebujú, tak nech sa beh o ňu opiera len keď
-    # si vypýtal `text`. A keď chýba, nech je to hláška s návodom, nie
-    # `ModuleNotFoundError` v tretej minúte sťahovania.
+    # hláška s návodom, nie `ModuleNotFoundError` v tretej minúte sťahovania
     try:
         import mwparserfromhell
     except ImportError:
         raise SystemExit(
             "::error::Chýba `mwparserfromhell` – prevádza wikitext na čistý "
-            "text pri `wiki_format=text`. Doinštaluj ho (`pip install "
-            "mwparserfromhell`, robí to `workers/wiki/build.sh`), alebo zvoľ "
-            "`wiki_format=wikitext` (bez prevodu) či `wiki_format=intro`.")
+            "text. Doinštaluj ho (`pip install mwparserfromhell`, robí to "
+            "`workers/wiki/build.sh`).")
     prev = None
     while prev != wikitext:            # vnorené tabuľky, zvnútra von
         prev, wikitext = wikitext, TABULKA.sub("", wikitext)
@@ -292,27 +285,12 @@ def sviezost(api, lang, nazvy):
     return out
 
 
-def stiahni_texty(api, lang, nazvy, fmt, cache=None):
-    """Články jedného jazyka. Vracia `({názov z OSM: záznam}, chybné, z cache)`.
-
-    Štyri podoby, dve ceny. Dávkové (desiatky požiadaviek na kraj):
-      `text`      celý článok ako čistý text – wikitext po 50 a prevod tu
-      `wikitext`  celý článok ako wikitext, po 50 a bez prevodu
-      `intro`     len úvod, po 20 (jediná dávková podoba `prop=extracts`)
-    Po jednom článku (tisíce požiadaviek na kraj):
-      `html`      celý článok v HTML z REST API – batch tam neexistuje
-
-    Keď je zapnutá cache, predradí sa jej dávková otázka na `lastrevid`
-    a stiahne sa len to, čo sa medzitým zmenilo.
-    """
+def stiahni_texty(api, lang, nazvy, cache=None):
+    """Články jedného jazyka ako čistý text. Vracia `({názov z OSM: záznam}, chybné, z cache)`."""
     nazvy = sorted(set(nazvy))
     hotove, recyklovane, info = {}, 0, {}
-    # Otázka na sviežosť má zmysel, len keď je z čoho recyklovať – na prázdnej
-    # cache je to čistá režija, lebo `prop=revisions` vracia `revid` samo.
-    # `html` je výnimka: REST žiadne `revid` nedá, takže bez tejto otázky by
-    # sa jeho články nemali čím porovnať a cache by pri ňom NIKDY nesadla –
-    # a je to práve ten formát, kde je najdrahšia (jedna požiadavka na článok).
-    if cache is not None and (cache or fmt == "html"):
+    # na prázdnej cache je otázka na sviežosť čistá režija
+    if cache:
         info = sviezost(api, lang, nazvy)
         zostava = []
         for nazov in nazvy:
@@ -332,25 +310,18 @@ def stiahni_texty(api, lang, nazvy, fmt, cache=None):
         if not nazvy:
             return hotove, [], recyklovane
 
-    if fmt == "html":
-        nove, chybne = _po_jednom_html(api, lang, nazvy, info)
-    else:
-        nove, chybne = _po_davkach(api, lang, nazvy, fmt)
+    nove, chybne = _po_davkach(api, lang, nazvy)
     hotove.update(nove)
     return hotove, chybne, recyklovane
 
 
-def _po_davkach(api, lang, nazvy, fmt):
-    """`text`, `wikitext` a `intro` – po 50, resp. po 20 na požiadavku."""
-    davka_max = INTRO_BATCH if fmt == "intro" else CONTENT_BATCH
+def _po_davkach(api, lang, nazvy):
+    """Wikitext po 50 na požiadavku, prevedený na čistý text."""
+    davka_max = CONTENT_BATCH
     hotove, chybne = {}, []
     for i in range(0, len(nazvy), davka_max):
         davka = nazvy[i:i + davka_max]
-        if fmt == "intro":
-            dotaz = (f"&prop=extracts|info&explaintext=1&exintro=1"
-                     f"&exsectionformat=plain&exlimit={INTRO_BATCH}")
-        else:
-            dotaz = "&prop=revisions|info&rvprop=content|ids&rvslots=main"
+        dotaz = "&prop=revisions|info&rvprop=content|ids&rvslots=main"
         url = (f"https://{lang}.wikipedia.org/w/api.php?action=query{dotaz}"
                f"&redirects=1&inprop=url&maxlag={MAXLAG}"
                f"&format=json&formatversion=2&titles="
@@ -369,7 +340,7 @@ def _po_davkach(api, lang, nazvy, fmt):
         podla_nazvu = {p.get("title"): p for p in query.get("pages") or []}
         for nazov in davka:
             page = podla_nazvu.get(prezvane.get(nazov, nazov))
-            zaznam = _zaznam(lang, nazov, page, fmt)
+            zaznam = _zaznam(lang, nazov, page)
             if zaznam:
                 hotove[nazov] = zaznam
             else:
@@ -379,18 +350,15 @@ def _po_davkach(api, lang, nazvy, fmt):
     return hotove, chybne
 
 
-def _zaznam(lang, nazov, page, fmt):
+def _zaznam(lang, nazov, page):
     """Z jednej stránky odpovede spraví záznam, alebo `None` keď z nej nič nie je."""
     if not page or page.get("missing") is True or page.get("invalid"):
         return None
-    if fmt == "intro":
-        text = (page.get("extract") or "").strip()
-    else:
-        try:
-            wt = page["revisions"][0]["slots"]["main"]["content"]
-        except (KeyError, IndexError):
-            return None
-        text = wt.strip() if fmt == "wikitext" else na_text(wt)
+    try:
+        wt = page["revisions"][0]["slots"]["main"]["content"]
+    except (KeyError, IndexError):
+        return None
+    text = na_text(wt)
     if not text:
         return None
     titul = page.get("title") or nazov
@@ -402,32 +370,3 @@ def _zaznam(lang, nazov, page, fmt):
                    + urllib.parse.quote(titul.replace(" ", "_")),
             "text": text}
 
-
-def _po_jednom_html(api, lang, nazvy, info):
-    """`html` z REST API. Dávka tu NIE JE – REST vydá jednu stránku na volanie.
-
-    `info` je výsledok `sviezost()`, keď bola: REST žiadne `revid` nevracia,
-    takže bez neho by sa článok nemal čím porovnať a cache by pri `html`
-    nikdy nesadla.
-    """
-    hotove, chybne = {}, []
-    for n, nazov in enumerate(nazvy, 1):
-        url = (f"https://{lang}.wikipedia.org/api/rest_v1/page/html/"
-               + urllib.parse.quote(nazov.replace(" ", "_"), safe=""))
-        telo = api.get(url)
-        # Postup sa vypíše VŽDY, aj keď článok nevyšel – inak posledný riadok
-        # chýba práve vtedy, keď zlyhal posledný článok, a z logu to vyzerá,
-        # že sa sťahovanie zaseklo.
-        if n % 25 == 0 or n == len(nazvy):
-            log(f"  {lang}: {n}/{len(nazvy)} článkov (HTML, po jednom)")
-        if not telo:
-            chybne.append(nazov)
-            continue
-        titul, revid, plna_url = info.get(nazov, (nazov, None, ""))
-        hotove[nazov] = {
-            "key": f"{lang}:{titul}", "lang": lang, "title": titul,
-            "pageid": None, "revid": revid,
-            "url": plna_url or f"https://{lang}.wikipedia.org/wiki/"
-                   + urllib.parse.quote(titul.replace(" ", "_")),
-            "text": telo.decode("utf-8", "replace")}
-    return hotove, chybne

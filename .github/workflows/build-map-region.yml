@@ -288,7 +288,6 @@ jobs:
       rebuild: ${{ needs.plan.outputs.opt_wiki_rebuild == 'true' }}
       skip_cached: true
       publish: ${{ needs.plan.outputs.opt_publish == 'true' }}
-      apple_archive: ${{ needs.plan.outputs.opt_apple_archive == 'true' }}
       custom_pbf_url: ${{ needs.plan.outputs.opt_custom_pbf_url }}
       custom_name: ${{ needs.plan.outputs.opt_custom_name }}
 
