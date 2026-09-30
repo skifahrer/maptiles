@@ -1,12 +1,11 @@
-# predfilter pbf pre `buildings.yml` (`osmium tags-filter --expressions`)
-#
-# širší než schéma – opačne to stráži `workers/lint/buildings.py`
+# pbf prefilter for `buildings.yml` (`osmium tags-filter --expressions`)
+# wider than the schema – `workers/lint/buildings.py` guards the other way
 
-# budovy aj ako multipolygóny – členovia relácie tag `building` nemajú
+# buildings as multipolygons too – relation members lack the `building` tag
 w/building
 r/building
 
-# sídla a ich mená
+# places and their names
 n/place
 w/place
 r/place

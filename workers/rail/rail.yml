@@ -487,7 +487,7 @@ examples:
           colour: "#E30613"
           wikipedia: sk:Električková doprava v Bratislave
 
-  - name: Stanica je bod s menom od z9
+  - name: A station is a named point from z9
     input:
       source: osm
       geometry: point
@@ -750,7 +750,7 @@ examples:
           class: chair_lift
           state: abandoned
 
-  - name: Stanica lanovky je bod s menom
+  - name: An aerialway station is a named point
     input:
       source: osm
       geometry: point

@@ -1,27 +1,16 @@
-# Predfilter PBF pre `transport.yml` (`osmium tags-filter --expressions`).
-#
-# Jeden priechod: `tags-filter` vie len ALEBO, a dopravná sieť je „cesta ALEBO
-# trajekt ALEBO lanovka". Železnice nesie balík `zeleznice`.
-#
-# Obmedzenia (`maxheight`, `maxspeed`, …) sa sem nepíšu: `tags-filter` berie
-# objekt celý aj so všetkými tagmi, takže `w/highway` prinesie aj výšku
-# podjazdu toho istého úseku.
-#
-# Zoznam je zámerne širší než schéma – filter je hrubé sito, presné rozhodnutie
-# robí schéma. Opačne to neplatí: trieda v schéme a nie tu znamená PBF bez toho
-# tagu a tichú stratu v dlaždiciach. Stráži to `workers/lint/transport.py`.
-#
-# `w/` = len cesty; zastávka ani vchod do metra nie sú líniová sieť.
+# PBF prefilter for `transport.yml` (`osmium tags-filter --expressions`): road OR ferry OR aerialway.
+# Restrictions come along: `tags-filter` keeps whole objects. Railways are the `railways` package.
+# Wider than the schema on purpose; `workers/lint/transport.py` guards the other way.
 
-# --- cesty: od diaľnice po schody ---
+# roads, from motorways to steps
 w/highway
 
-# --- trajekty a prievozy (na Dunaji jediné spojenie cez rieku) ---
+# ferries (on the Danube the only way across)
 w/route=ferry
 
-# --- lanovky a vleky ---
+# aerialways and lifts
 w/aerialway
 
-# --- adresy: body aj budovy s číslom domu ---
+# addresses: points and buildings with a house number
 nwr/addr:housenumber
 nwr/addr:conscriptionnumber

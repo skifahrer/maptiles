@@ -1,8 +1,8 @@
-# planetiler custom schema – sídla: každá budova s výmerou a menom, a mená sídiel
-schema_name: FricoMaps sídla
+# planetiler custom schema – settlements: every building with area and name, and place names
+schema_name: FricoMaps settlements
 schema_description: >-
-  Všetky budovy z OSM s výmerou (m²), menom, druhom, podlažiami a adresou,
-  a pomenované sídla od mesta po samotu
+  Every OSM building with area (m²), name, kind, levels and address,
+  and named places from city to isolated dwelling
 attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 
 sources:
@@ -10,7 +10,7 @@ sources:
     type: osm
     local_path: data/buildings-area.osm.pbf
 
-# `area_m2` dopíše `areas.py`
+# `area_m2` comes from `areas.py`
 tag_mappings:
   area_m2: integer
   building:levels: integer
@@ -77,7 +77,7 @@ layers:
           building: ["no"]
         attributes: *building_attrs
 
-  # bod na budove, aby sa meno nekreslilo na každom kúsku dlaždice
+  # a point on the building, so the name isn't drawn on every tile piece
   - id: building_name
     features:
       - source: osm
@@ -120,7 +120,7 @@ layers:
         attributes: *settlement_attrs
 
 examples:
-  - name: Budova nesie výmeru, meno a adresu
+  - name: A building carries area, name and address
     input:
       source: osm
       geometry: polygon
@@ -150,7 +150,7 @@ examples:
           levels: 2
           housenumber: "12"
 
-  - name: Budova bez mena je len plocha
+  - name: A building without a name is just an area
     input:
       source: osm
       geometry: polygon
@@ -165,7 +165,7 @@ examples:
           class: "yes"
           area: 96
 
-  - name: building=no budova nie je
+  - name: building=no isn't a building
     input:
       source: osm
       geometry: polygon
@@ -173,7 +173,7 @@ examples:
         building: "no"
     output: []
 
-  - name: Mesto je od z6
+  - name: A town is from z6
     input:
       source: osm
       geometry: point
@@ -190,7 +190,7 @@ examples:
           name: Poprad
           population: 50000
 
-  - name: Osada je od z13
+  - name: A hamlet is from z13
     input:
       source: osm
       geometry: point
@@ -205,7 +205,7 @@ examples:
           class: hamlet
           name: Lazy
 
-  - name: Obytná zóna budova nie je
+  - name: A residential zone isn't a building
     input:
       source: osm
       geometry: polygon

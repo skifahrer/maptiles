@@ -1,24 +1,9 @@
-# Planetiler custom schema – bodové krajinné prvky z OSM, vlastný archív.
-#
-# Odštiepené z `features.yml` (línie a plochy zostali tam) kvôli balíku na
-# stiahnutie: appka chce „body z OSM" a „línie z OSM" ako dva rôzne súbory
-# a v jednom `.pmtiles` sa to nedalo rozdeliť inak než filtrovaním na jej strane.
-#
-# Rovnaký vstup aj predfilter ako `features.yml` – `features/build.sh` volá
-# Planetiler druhýkrát nad tým istým súborom. Rozdeliť predfilter by znamenalo
-# čítať PBF tretíkrát pre to, čo prvý priechod už vybral.
-#
-# Na mape sa rozdelenie neprejaví: štýl kreslí body zo zdroja `points` presne
-# ako predtým.
-#
-# `geometry: centroid` schválne – to isté sa v OSM mapuje raz uzlom (prameň)
-# a raz plochou (halda), a bod v strede je pre popisok správna odpoveď na oboje.
-#
-# Zvyšok rozpisu je v hlavičke `features.yml` a platí pre oba súbory.
-schema_name: FricoMaps body v krajine
+# Planetiler custom schema – landscape points from OSM, own archive for its own package.
+# Same input and prefilter as `features.yml`; `centroid` since a spring is a node, a heap an area.
+schema_name: FricoMaps landscape points
 schema_description: >-
-  Pramene, jaskyne, vodopády, rozhľadne, útulne, pamiatky, banské dedičstvo
-  a geodetické body – bodové prvky OSM, ktoré schéma OpenMapTiles neprenáša
+  Springs, caves, waterfalls, lookout towers, huts, monuments, mining heritage
+  and survey points – OSM point features the OpenMapTiles schema doesn't carry
 attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 
 sources:
@@ -26,18 +11,14 @@ sources:
     type: osm
     local_path: data/features.osm.pbf
 
-# Nadmorská výška má byť v dlaždici číslo, nie reťazec – štýl podľa nej
-# skladá popisok. Hodnota, ktorá sa nerozparsuje, jednoducho nebude; to je
-# v poriadku (rovnaké pravidlo ako pri `features.yml`).
+# elevation must be a number in the tile; one that doesn't parse drops out
 tag_mappings:
   ele: double
 
 layers:
   - id: feature_point
     features:
-      # --- voda v teréne ---
-      # Prameň prejde do OpenMapTiles LEN ako plocha (`osm_water_polygon`),
-      # takže studnička mapovaná uzlom – teda prakticky každá – v mape nie je.
+      # water in the terrain: OpenMapTiles takes a spring only as an area, so node springs are missing
       - source: osm
         geometry: centroid
         min_zoom: 12
@@ -85,10 +66,7 @@ layers:
           - key: class
             value: sinkhole
 
-      # --- veže a stožiare ---
-      # Rozhľadňa sa do OpenMapTiles dostane len vtedy, keď má NAVYŠE
-      # `tourism=viewpoint` alebo `attraction`. Samotné `man_made=tower`
-      # schéma nepozná, takže väčšina rozhľadní v mape chýba.
+      # towers and masts: OpenMapTiles knows `man_made=tower` only with `tourism=viewpoint`
       - source: osm
         geometry: centroid
         min_zoom: 11
@@ -104,7 +82,7 @@ layers:
             type: long
           - key: osm_type
             value: '${ feature.osm_type }'
-          # `observation` = rozhľadňa; štýl ju kreslí inak než vysielač
+          # `observation` = lookout tower; the style draws it unlike a transmitter
           - key: subclass
             value:
               tag_value: "tower:type"
@@ -118,9 +96,7 @@ layers:
           - key: class
             type: match_value
 
-      # --- pamiatky, ktoré OpenMapTiles vynecháva ---
-      # Zo všetkých `historic=*` si schéma berie len `monument`, `castle`
-      # a `ruins`. Kríž pri ceste, pomník ani nálezisko medzi ne nepatria.
+      # monuments OpenMapTiles leaves out: it takes only `monument`, `castle` and `ruins`
       - source: osm
         geometry: centroid
         min_zoom: 12
@@ -149,7 +125,7 @@ layers:
           - key: class
             type: match_value
 
-      # --- banské dedičstvo ---
+      # mining heritage
       - source: osm
         geometry: centroid
         min_zoom: 12
@@ -166,10 +142,7 @@ layers:
           - key: osm_type
             value: '${ feature.osm_type }'
 
-      # --- útulňa ---
-      # `tourism=alpine_hut` a `chalet` v OpenMapTiles sú, `wilderness_hut`
-      # nie – a v Nízkych Tatrách je to práve tá búda, kvôli ktorej sa plánuje
-      # trasa.
+      # hut: `wilderness_hut` isn't in OpenMapTiles, yet it's the hut a route is planned around
       - source: osm
         geometry: centroid
         min_zoom: 11
@@ -181,7 +154,7 @@ layers:
           - key: class
             value: wilderness_hut
 
-      # --- horský priechod ---
+      # mountain pass
       - source: osm
         geometry: centroid
         min_zoom: 11
@@ -193,8 +166,7 @@ layers:
           - key: class
             value: mountain_pass
 
-      # --- núdzový bod ---
-      # Číslo, ktoré sa hlási horskej službe. Bez neho je to len bod v lese.
+      # emergency point: the number reported to mountain rescue
       - source: osm
         geometry: centroid
         min_zoom: 14
@@ -206,7 +178,7 @@ layers:
           - key: class
             value: emergency_access_point
 
-      # --- geodetický bod ---
+      # survey point
       - source: osm
         geometry: centroid
         min_zoom: 15

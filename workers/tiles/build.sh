@@ -1,65 +1,39 @@
 #!/usr/bin/env bash
-# PBF → `{región}.pmtiles` Planetilerom, s rozpočtom na veľkosť.
-#
-# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
-#
-# Rozpočet je na celú stránku (~1 GB na Pages), do ktorej sa musia zmestiť aj
-# vrstevnice, terén, fonty a sprity – tie sa ale počítajú v iných jobch
-# a súbežne, takže tu ešte nikto nevie, aké budú. Dlaždice preto dostanú pevný
-# podiel (`BUDGET_*_PCT`) a `deploy` na konci overí, že súčet sedí.
-#
-# Keď sa výsledok nezmestí a `auto_shrink` je zapnutý, zoom sa zníži a beží sa
-# znova – preto slučka a nie jeden priechod.
+# PBF → `{region}.pmtiles` with Planetiler, within a size budget; a fixed share of the page,
+# `deploy` checks the total. With `auto_shrink` the zoom drops and it runs again.
 
 set -euo pipefail
 T_TILES=$(date +%s)
 mkdir -p _site/tiles
 OUT="_site/tiles/${REGION_KEY}.pmtiles"
 
-# Planetiler: PlanetilerConfig.MAX_MAXZOOM = 16 → vyššie hodnoty
-# zhodia build s "Max zoom must be <= 16". Radšej orežeme s hláškou.
+# above 16 Planetiler fails with "Max zoom must be <= 16"
 MAXZOOM="$OPT_MAXZOOM"
 case "$MAXZOOM" in ''|*[!0-9]*) MAXZOOM=16 ;; esac
 if [ "$MAXZOOM" -gt 16 ]; then
-  echo "::warning::Planetiler vie vygenerovať dlaždice najviac po zoom 16 (zadané: $MAXZOOM). Používam 16 – priblíženie až na z20 zabezpečí overzoom v MapLibre."
+  echo "::warning::Planetiler makes tiles up to zoom 16 at most (given: $MAXZOOM). Using 16 – MapLibre overzoom takes it to z20."
   MAXZOOM=16
 fi
 if [ "$MAXZOOM" -lt 8 ]; then MAXZOOM=8; fi
 
-# Rozpočet je na CELÚ stránku, nielen na tieto dlaždice: Pages
-# zvládne ~1 GB a do toho sa musia zmestiť aj vrstevnice, terén,
-# fonty a sprity. Tie sa ale počítajú v INÝCH JOBOCH a súbežne
-# s týmto, takže tu ešte nikto nevie, aké budú veľké. Namiesto
-# „čo zvýšilo" preto dostanú dlaždice pevný podiel a job `deploy`
-# na konci overí, že súčet naozaj sedí.
+# the other layers are built in parallel jobs, so tiles get what the shares leave
 LIMIT_MB="$SIZE_LIMIT_MB"
 case "$LIMIT_MB" in ''|*[!0-9]*) LIMIT_MB=900 ;; esac
 OTHERS_MB=$(( LIMIT_MB * (BUDGET_CONTOURS_PCT + BUDGET_TERRAIN_PCT + BUDGET_TRAILS_PCT + BUDGET_FEATURES_PCT + BUDGET_TRANSPORT_PCT + BUDGET_BOUNDARIES_PCT + BUDGET_WATER_PCT + ${BUDGET_RAIL_PCT:-0} + ${BUDGET_BUILDINGS_PCT:-0}) / 100 + BUDGET_ASSETS_MB ))
 BUDGET_MB=$(( LIMIT_MB - OTHERS_MB ))
-echo "Rozpočet stránky ${LIMIT_MB} MB − vrstevnice ${BUDGET_CONTOURS_PCT} % − terén ${BUDGET_TERRAIN_PCT} % − trasy ${BUDGET_TRAILS_PCT} % − krajinné prvky ${BUDGET_FEATURES_PCT} % − dopravná sieť ${BUDGET_TRANSPORT_PCT} % − hranice ${BUDGET_BOUNDARIES_PCT} % − vodstvo ${BUDGET_WATER_PCT} % − železnice ${BUDGET_RAIL_PCT:-0} % − sídla ${BUDGET_BUILDINGS_PCT:-0} % − ikonky a fonty ${BUDGET_ASSETS_MB} MB = ${BUDGET_MB} MB na dlaždice"
+echo "Page budget ${LIMIT_MB} MB − contours ${BUDGET_CONTOURS_PCT} % − terrain ${BUDGET_TERRAIN_PCT} % − trails ${BUDGET_TRAILS_PCT} % − landscape features ${BUDGET_FEATURES_PCT} % − transport ${BUDGET_TRANSPORT_PCT} % − boundaries ${BUDGET_BOUNDARIES_PCT} % − water ${BUDGET_WATER_PCT} % − railways ${BUDGET_RAIL_PCT:-0} % − settlements ${BUDGET_BUILDINGS_PCT:-0} % − icons and fonts ${BUDGET_ASSETS_MB} MB = ${BUDGET_MB} MB for tiles"
 
 if [ "$BUDGET_MB" -lt 50 ]; then
-  echo "::error::Na dlaždice zostáva len ${BUDGET_MB} MB. Zdvihni size_limit_mb alebo uber podiel vrstevniciam a terénu (BUDGET_*_PCT v env)."
+  echo "::error::Only ${BUDGET_MB} MB are left for tiles. Raise size_limit_mb or cut the contour and terrain shares (BUDGET_*_PCT in env)."
   exit 1
 fi
 LIMIT=$(( BUDGET_MB * 1024 * 1024 ))
 
-# ZDROJE PLANETILERU SA SŤAHUJÚ VLASTNÝM KROKOM A S OPAKOVANÍM.
-#
-# Sú tri (lake_centerlines, water_polygons, natural_earth), dokopy ~515 MB,
-# a idú z CUDZÍCH serverov. Kým sedeli v cache, nesťahoval ich nikto; prvý beh
-# po presťahovaní cache na Drive ju mal prázdnu a spadol desať sekúnd po štarte
-# na `Error getting size of …water-polygons-split-3857.zip` (TimeoutException,
-# beh 31367295712) – teda ešte pred akoukoľvek prácou, a zhodilo to celý job.
-#
-# Planetiler má vlastné opakovanie (`http_retries`), ale to nepomôže, keď sa
-# server nedovolá už pri zisťovaní veľkosti. Preto sa sťahuje zvlášť
-# (`--only-download`, teda bez tilovania), s dlhším limitom a v slučke: cudzí
-# server, ktorý má výpadok na pár desiatok sekúnd, nemá právo zhodiť
-# štyridsaťminútový build. Samotné tilovanie potom už len nájde súbory na disku.
+# Planetiler's ~515 MB of foreign sources in their own retried step: `http_retries`
+# doesn't cover a server unreachable at the size check
 DL_TRIES=3
 for i in $(seq 1 "$DL_TRIES"); do
-  echo "::group::Zdroje Planetileru (pokus $i z $DL_TRIES)"
+  echo "::group::Planetiler sources (attempt $i of $DL_TRIES)"
   if java -Xmx2g -jar planetiler.jar \
       --osm-path=data/region.osm.pbf \
       --download --only-download --download-dir=data/sources \
@@ -70,23 +44,20 @@ for i in $(seq 1 "$DL_TRIES"); do
   fi
   echo "::endgroup::"
   if [ "$i" -lt "$DL_TRIES" ]; then
-    echo "::warning::Zdroje Planetileru sa nestiahli (pokus $i z $DL_TRIES) – skúšam znova o $(( i * 30 )) s."
+    echo "::warning::Planetiler sources didn't download (attempt $i of $DL_TRIES) – retrying in $(( i * 30 )) s."
     sleep $(( i * 30 ))
   fi
 done
 if [ -z "${DL_OK:-}" ]; then
-  echo "::error::Zdrojové dáta Planetileru (water polygons, Natural Earth, lake centerlines) sa nepodarilo stiahnuť ani na $DL_TRIES pokusov. Najčastejšie je nedostupný https://osmdata.openstreetmap.de – skús beh o chvíľu zopakovať. Keď to potrvá, podaj Planetileru zrkadlo cez --water_polygons_url."
+  echo "::error::Planetiler source data (water polygons, Natural Earth, lake centerlines) couldn't be downloaded in $DL_TRIES attempts. Usually https://osmdata.openstreetmap.de is down – try the run again shortly. If it persists, give Planetiler a mirror via --water_polygons_url."
   exit 1
 fi
 du -sh data/sources 2>/dev/null || true
 
-# OREZ NA REGIÓN. Bez neho Planetiler vyrába dlaždice na celom obdĺžniku bboxu
-# a kreslí do nich vodstvo aj Natural Earth – teda mapu ďaleko za regiónom, kde
-# už z nášho PBF nie je nič. Argumenty skladá `workers/lib/region-clip.sh`,
-# lebo to isté potrebujú joby `trails` a `features` (pravidlo 1).
+# without the cut Planetiler draws water and Natural Earth far beyond the region
 mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
 
-# mená vo všetkých jazykoch aplikácie; ktorý ukázať, vyberá aplikácia podľa telefónu
+# names in every app language; the app picks by the phone's
 TILE_LANGUAGES="${TILE_LANGUAGES:-sk,cs,en,de,fr,pl,hu,it,es,pt,nl,da,sv,no,nb,fi,is,et,lv,lt,ro,bg,hr,sl,sr,sr-Latn,cnr,bs,mk,sq,el,ga,mt,cy,eu,ca,gl,lb,be,ru,uk,tr,zh,zh-Hans,zh-Hant,ko,ja,hi,ar}"
 
 Z=$MAXZOOM
@@ -111,19 +82,16 @@ while : ; do
 
   BYTES=$(stat -c%s "$OUT")
   MB=$(( BYTES / 1048576 ))
-  echo "maxzoom $Z → ${MB} MB (na dlaždice je ${BUDGET_MB} MB)"
+  echo "maxzoom $Z → ${MB} MB (${BUDGET_MB} MB for tiles)"
 
   if [ "$BYTES" -le "$LIMIT" ]; then break; fi
 
   if [ "$OPT_AUTO_SHRINK" != 'true' ] || [ "$Z" -le 12 ]; then
-    echo "::error::Dlaždice majú ${MB} MB, ale majú sa zmestiť do ${BUDGET_MB} MB (rozpočet stránky ${LIMIT_MB} MB mínus podiel vrstevníc, terénu a ikoniek). Možnosti: zníž maxzoom, vyber menší región, použi crop_bbox alebo uber vrstevniciam cez BUDGET_CONTOURS_PCT."
+    echo "::error::Tiles take ${MB} MB but must fit ${BUDGET_MB} MB (page budget ${LIMIT_MB} MB minus the contour, terrain and icon shares). Options: lower maxzoom, pick a smaller region, use crop_bbox or cut contours via BUDGET_CONTOURS_PCT."
     exit 1
   fi
 
-  # O koľko zoomov ísť dolu: každý nižší zoom zmenší dlaždice zhruba
-  # 3,5×. Skákať po jednom by pri celom Slovensku znamenalo aj tri
-  # hodinové behy Planetileru za sebou; naraz ale ideme najviac o dva,
-  # nech sa detail nezahodí zbytočne.
+  # a zoom less is ~3.5× smaller; up to two at once, not three hour-long runs
   DROP=1
   EST=$MB
   while [ "$DROP" -lt 2 ] && [ $(( EST * 10 / 35 )) -gt "$BUDGET_MB" ]; do
@@ -132,13 +100,13 @@ while : ; do
   done
   NEXT=$(( Z - DROP ))
   if [ "$NEXT" -lt 12 ]; then NEXT=12; fi
-  echo "::warning::${MB} MB je nad rozpočtom ${BUDGET_MB} MB – skúšam maxzoom ${NEXT}."
+  echo "::warning::${MB} MB is over the ${BUDGET_MB} MB budget – trying maxzoom ${NEXT}."
   Z=$NEXT
 done
 
 echo "maxzoom=$Z" >> "$GITHUB_OUTPUT"
 echo "size_mb=$(( $(stat -c%s "$OUT") / 1048576 ))" >> "$GITHUB_OUTPUT"
 ls -lh _site/tiles/
-printf '%s\t%s\t%s\t%s\n' "70" "Mapové dlaždice (Planetiler)" "$(( $(date +%s) - T_TILES ))" \
+printf '%s\t%s\t%s\t%s\n' "70" "Map tiles (Planetiler)" "$(( $(date +%s) - T_TILES ))" \
   "maxzoom $Z, $(( $(stat -c%s "$OUT") / 1048576 )) MB" \
   >> steps-out/tiles.tsv

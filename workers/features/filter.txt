@@ -1,47 +1,39 @@
-# Predfilter PBF pre `features.yml` aj `points.yml` (`osmium tags-filter`).
-#
-# Bez neho by Planetiler prečítal celé Slovensko (380 MB) druhýkrát aj
-# s indexom polôh uzlov; po filtri ostane zlomok a job beží minúty.
-#
-# Zoznam je zámerne širší než schémy – presné rozhodnutie robia ony. Opačne to
-# neplatí a stráži to `workers/lint/features.py`.
-#
-# `nwr/` = uzly, cesty aj relácie (multipolygóny; osmium k nim dotiahne členov).
+# PBF prefilter for `features.yml` and `points.yml` (`osmium tags-filter`).
+# Wider than the schemas on purpose; `workers/lint/features.py` guards the other way.
+# `nwr/` = nodes, ways and relations (osmium pulls in multipolygon members).
 
-# --- násypy a zárezy (to, čo v mape chýbalo) ---
+# embankments and cuttings
 nwr/man_made=embankment,cutline,pipeline,spoil_heap,tower,mast,water_tower,chimney,adit,mineshaft,survey_point
 nwr/embankment
 nwr/cutting
 
-# --- prekážky ako línie (bodové brány si berie POI vrstva OpenMapTiles) ---
+# barriers as lines (point gates are in the OpenMapTiles POI layer)
 nwr/barrier=wall,city_wall,retaining_wall,fence,guard_rail,handrail,hedge
 
-# --- elektrické vedenie ---
+# power lines
 nwr/power=line,minor_line
 
-# --- terénne hrany a vegetácia ---
+# terrain edges and vegetation
 nwr/natural=tree_row,gully,earth_bank,shingle,spring,cave_entrance,sinkhole
 
-# --- vodné stavby a vodopády ---
+# water structures and waterfalls
 nwr/waterway=dam,weir,lock_gate,waterfall
 
-# --- plochy, ktoré schéma nemá ---
+# areas the schema lacks
 nwr/amenity=parking
 nwr/landuse=landfill,farmyard,greenhouse_horticulture,brownfield
 
-# --- pamiatky a banské dedičstvo mimo `historic` trojice OpenMapTiles ---
+# monuments and mining heritage beyond the OpenMapTiles `historic` three
 nwr/historic=archaeological_site,battlefield,fort,manor,tomb,wayside_cross,wayside_shrine,memorial,boundary_stone,milestone,charcoal_pile,mine,mine_shaft,mineshaft,adit
 
-# --- útulne a horské priechody ---
+# huts and mountain passes
 nwr/tourism=wilderness_hut
 nwr/mountain_pass
 
-# --- núdzové body horskej služby a plánované cesty ---
-# `proposed` je cesta, ktorá zatiaľ neexistuje – OpenMapTiles pre ňu nemá
-# triedu (na rozdiel od `construction`), takže si ju berieme sami.
+# mountain rescue points and proposed roads (OpenMapTiles has no `proposed` class)
 nwr/highway=emergency_access_point,proposed
 
-# lanovky mimo prevádzky (v prevádzke ich má OpenMapTiles)
+# aerialways out of service (OpenMapTiles has those in service)
 w/aerialway=construction,proposed,disused,abandoned
 w/construction:aerialway
 w/proposed:aerialway
@@ -49,5 +41,5 @@ w/disused:aerialway
 w/abandoned:aerialway
 w/razed:aerialway
 
-# --- zjazdovky, bežky, skialp ---
+# ski pistes, cross-country, ski touring
 nwr/piste:type

@@ -1,45 +1,12 @@
-# Planetiler custom schema – celá dopravná sieť z OSM v jednom `.pmtiles`.
-#
-# Vrstva `transportation` v základnej mape je stavaná na kreslenie: geometria
-# zjednodušená podľa zoomu, atribúty pre štýl a všetko v jednom archíve so
-# zvyškom mapy. Kto chce len siete, po ktorých sa dá cestovať, musel by si
-# stiahnuť stovky MB. Tu je jeden archív so všetkým, po čom sa dá ísť: cesty,
-# trajekty a lanovky – s menom, číslom, povrchom, prístupom a smerovosťou.
-# Železnice tu nie sú, nesie ich balík `zeleznice`.
-#
-# Obmedzenia na ceste (výška, šírka, hmotnosť, rýchlosť) sú tu, nie vedľa:
-# sú to atribúty tých istých ciest a v samostatnom archíve sa museli spájať
-# cez `osm_id`.
-#
-# Hodnoty obmedzení sú reťazce zámerne. `double` v `tag_mappings` ide cez
-# `Parse.parseDoubleOrNull`, ktorý vezme číslo zo začiatku a zvyšok zahodí:
-# z „12'6\"" je 12 m, z „50 mph" je 50. Nula chýb v builde, len zle nakreslená
-# mapa. Do dlaždice ide to, čo je v OSM; číslo si parsuje smerovanie samo.
-# `lanes` a `layer` sú `integer` – celé čísla bez jednotky.
-#
-# Nie je to navigačný graf: dlaždica je kreslený obraz s orezanou geometriou,
-# bez odbočovacích zákazov a topológie. Na to je Valhallin graf.
-#
-# Zoomy sú tu hlavné rozhodnutie – chodníkov a poľných ciest je rádovo viac
-# než ciest I. triedy:
-#
-#     diaľnice, cesty I. triedy                     od z6
-#     cesty II. a III. triedy                        od z9
-#     ostatné cesty pre autá, trajekty, lanovky      od z11
-#     poľné a lesné cesty (`track`)                  od z12
-#     chodníky, pešie cesty, schody, výťahy, rebríky od z13
-#     `service` (príjazdy, uličky parkovísk)         od z14
-#
-# Čo má vyšší `min_zoom`, než je maxzoom dlaždíc, Planetiler zahodí a nepovie
-# nič – stráži to `workers/transport/build.sh`.
-#
-# Predfilter (`filter.txt`) musí pustiť každú triedu, ktorá je tu; stráži to
-# `workers/lint/transport.py`. Na obmedzenia to neplatí: `osmium tags-filter`
-# berie objekt celý aj s ostatnými tagmi.
-schema_name: FricoMaps dopravná sieť
+# Planetiler custom schema – the whole OSM transport network in one `.pmtiles`.
+# Roads, ferries and aerialways with name, number, surface, access and restrictions;
+# railways are the `railways` package. Restriction values stay strings with their unit
+# (`double` would read "12'6\"" as 12 m). Not a routing graph – that is the routing package.
+# Zooms: motorway/trunk z6, secondary z9, other roads z11, track z12, paths z13, service z14.
+schema_name: FricoMaps transport network
 schema_description: >-
-  Všetko, po čom sa dá cestovať – cesty od diaľnice po schody, trajekty
-  a lanovky, s menom, číslom, povrchom a prístupom
+  Everything one can travel on – roads from motorways to steps, ferries
+  and aerialways, with name, number, surface and access
 attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 
 sources:
@@ -47,56 +14,47 @@ sources:
     type: osm
     local_path: data/transport.osm.pbf
 
-# `layer` a `lanes` sú celé čísla; rozmery a rýchlosť ostávajú reťazcom, lebo
-# nesú jednotku (rozpis v hlavičke)
+# `layer` and `lanes` are integers; sizes and speed keep their unit as strings
 tag_mappings:
   layer: integer
   lanes: integer
 
 definitions:
-  # atribúty sú pre všetky bloky rovnaké a píšu sa raz
+  # attributes written once for every block
   - &transport_attrs
-    # oboje sa berie z toho, čím sa blok trafil (`match_value`, `match_key`),
-    # nie vypisuje pri každom bloku – druhá kópia zoznamu tried by sa rozišla:
-    #   class  hodnota tagu z OSM (`motorway`, `track`, `ferry`)
-    #   druh   kľúč tagu, teda rodina (`highway`, `route`, `aerialway`)
+    # from what the block matched: `class` the tag value, `family` the tag key
     - key: class
       type: match_value
-    - key: druh
+    - key: family
       type: match_key
-    # `ref` je číslo cesty (D1, I/18), `network` typ číslovania – bez nich sa
-    # cesta nedá pomenovať tak, ako je na tabuli
+    # `ref` is the road number (D1, I/18), `network` its numbering
     - key: name
     - key: ref
     - key: network
-    # či sa po tom dá ísť, a ako
+    # whether and how one may go
     - key: access
     - key: foot
     - key: bicycle
     - key: horse
     - key: motor_vehicle
     - key: oneway
-    # povrch: pri pešej a poľnej ceste hlavná informácia o tom, či sa tadiaľ
-    # dá ísť za dažďa
+    # surface: on paths and tracks, whether it's passable in rain
     - key: surface
     - key: tracktype
-    # druh `service` cesty – inak sa nedá odlíšiť príjazd k domu od uličky
-    # na parkovisku
+    # the kind of `service` road – a driveway vs a car park aisle
     - key: service
-    # kde to je voči ostatnému; `layer` hovorí poradie na mimoúrovňovej križovatke
+    # `layer` gives the order at a grade-separated junction
     - key: bridge
     - key: tunnel
     - key: layer
-    # či sa tam vozidlo zmestí – reťazce s jednotkou tak, ako sú v OSM.
-    # `maxheight:physical` je nameraná výška podjazdu, keď tabuľa chýba.
+    # whether a vehicle fits – strings with units as in OSM; `maxheight:physical` is measured
     - key: maxheight
     - key: maxheight_physical
       value:
         tag_value: "maxheight:physical"
     - key: maxwidth
     - key: maxweight
-    # rýchlosť, pruhy, šírka a stúpanie sú takmer na každej ceste; v archíve
-    # sú od začiatku, lebo ho číta aj ten, kto nekreslí
+    # speed, lanes, width and incline are on nearly every road
     - key: maxspeed
     - key: width
     - key: lanes
@@ -110,7 +68,7 @@ definitions:
 layers:
   - id: transport
     features:
-      # 1. diaľnice a cesty I. triedy: od z6 – kostra siete
+      # 1. motorways and trunk roads: from z6 – the network's skeleton
       - source: osm
         geometry: line
         min_zoom: 6
@@ -127,8 +85,7 @@ layers:
           highway: [secondary, tertiary, secondary_link, tertiary_link]
         attributes: *transport_attrs
 
-      # 3. ostatné cesty pre autá: od z11. `busway` a `bus_guideway` sú
-      # cesty, po ktorých ide verejná doprava.
+      # 3. other roads for cars: from z11; `busway` and `bus_guideway` carry public transport
       - source: osm
         geometry: line
         min_zoom: 11
@@ -137,8 +94,7 @@ layers:
                     road, busway, bus_guideway, escape, raceway]
         attributes: *transport_attrs
 
-      # 4. poľné a lesné cesty: od z12 – najhustejšia trieda na vidieku, ale
-      # zároveň to, po čom sa v teréne naozaj chodí
+      # 4. tracks: from z12 – dense in the countryside, and what one really walks
       - source: osm
         geometry: line
         min_zoom: 12
@@ -146,8 +102,7 @@ layers:
           highway: [track]
         attributes: *transport_attrs
 
-      # 5. chodníky, pešie cesty, cyklotrasy, schody: od z13. Bez `elevator`
-      # a `ladder` sa pešia sieť preruší na poschodí a na rebríku.
+      # 5. paths, footways, cycleways, steps: from z13; `elevator` and `ladder` keep it connected
       - source: osm
         geometry: line
         min_zoom: 13
@@ -156,8 +111,7 @@ layers:
                     via_ferrata, elevator, ladder]
         attributes: *transport_attrs
 
-      # 6. `service`: od z14 – v obci je ich viac než všetkých ostatných ciest
-      # dokopy a na nižšom zoome by z nich bola len šeď
+      # 6. `service`: from z14 – more of them than all other roads in a village
       - source: osm
         geometry: line
         min_zoom: 14
@@ -165,8 +119,7 @@ layers:
           highway: [service]
         attributes: *transport_attrs
 
-      # 7. trajekty: od z11 – na niektorých miestach jediný spôsob, ako sa
-      # dostať cez rieku
+      # 7. ferries: from z11 – sometimes the only way across a river
       - source: osm
         geometry: line
         min_zoom: 11
@@ -174,7 +127,7 @@ layers:
           route: [ferry]
         attributes: *transport_attrs
 
-      # 8. lanovky a vleky: od z11 – v horách doprava ako každá iná
+      # 8. aerialways and lifts: from z11 – transport like any other in the mountains
       - source: osm
         geometry: line
         min_zoom: 11
@@ -184,15 +137,13 @@ layers:
                       goods]
         attributes: *transport_attrs
 
-    # cesta je v OSM rozsekaná na križovatkách; zlepenie nie je len úspora
-    # miesta – štítok sa kreslí podľa dĺžky čiary, takže na dvadsiatich
-    # krátkych úsekoch by bolo dvadsať štítkov
+    # roads split at junctions merge, or twenty short segments get twenty shields
     tile_post_process:
       merge_line_strings:
         min_length: 0
 
-  # adresy: ulica s číslom domu, aby sa dali hľadať offline
-  - id: adresy
+  # addresses: street and house number, to search offline
+  - id: addresses
     features:
       - source: osm
         geometry: point
@@ -205,7 +156,7 @@ layers:
           - key: addr:conscriptionnumber
           - key: addr:streetnumber
           - key: addr:street
-          # obec bez ulíc má miesto `addr:place`
+          # a village without streets uses `addr:place`
           - key: addr:place
           - key: addr:city
           - key: addr:postcode
@@ -215,7 +166,7 @@ layers:
           - key: osm_type
             value: '${ feature.osm_type }'
 
-      # to isté miesto ako `housenumber` v základnej mape
+      # the same place as `housenumber` in the base map
       - source: osm
         geometry: polygon_centroid_if_convex
         min_zoom: 14
@@ -224,7 +175,7 @@ layers:
 
 # testy: `java -jar planetiler.jar verify workers/transport/transport.yml`
 examples:
-  - name: Diaľnica je v sieti od z6 aj s číslom
+  - name: A motorway is in the network from z6 with its number
     input:
       source: osm
       geometry: line
@@ -239,12 +190,12 @@ examples:
         min_zoom: 6
         tags:
           class: motorway
-          druh: highway
+          family: highway
           ref: D1
           oneway: "yes"
           surface: asphalt
 
-  - name: Chodník je v sieti tiež – od z13
+  - name: A footway is in the network too – from z13
     input:
       source: osm
       geometry: line
@@ -257,10 +208,10 @@ examples:
         min_zoom: 13
         tags:
           class: footway
-          druh: highway
+          family: highway
           surface: gravel
 
-  - name: Vedená autobusová dráha je cesta verejnej dopravy
+  - name: A bus guideway is a public transport road
     input:
       source: osm
       geometry: line
@@ -272,9 +223,9 @@ examples:
         min_zoom: 11
         tags:
           class: bus_guideway
-          druh: highway
+          family: highway
 
-  - name: Výťah je úsek pešej siete – bez neho sa cesta cez poschodie preruší
+  - name: A lift is part of the walking network – without it a floor breaks the route
     input:
       source: osm
       geometry: line
@@ -286,9 +237,9 @@ examples:
         min_zoom: 13
         tags:
           class: elevator
-          druh: highway
+          family: highway
 
-  - name: Rebrík na horskom chodníku je tiež pešia sieť
+  - name: A ladder on a mountain path is walking network too
     input:
       source: osm
       geometry: line
@@ -300,9 +251,9 @@ examples:
         min_zoom: 13
         tags:
           class: ladder
-          druh: highway
+          family: highway
 
-  - name: Poľná cesta má vlastný zoom (z12) a nesie `tracktype`
+  - name: A track has its own zoom (z12) and carries `tracktype`
     input:
       source: osm
       geometry: line
@@ -315,10 +266,10 @@ examples:
         min_zoom: 12
         tags:
           class: track
-          druh: highway
+          family: highway
           tracktype: grade3
 
-  - name: Trať v cestách NIE JE – nesie ju balík `zeleznice`
+  - name: A railway is NOT in roads – the `railways` package carries it
     input:
       source: osm
       geometry: line
@@ -327,7 +278,7 @@ examples:
         name: Košice – Žilina
     output: []
 
-  - name: Električka v cestách tiež nie je
+  - name: A tram isn't in roads either
     input:
       source: osm
       geometry: line
@@ -335,7 +286,7 @@ examples:
         railway: tram
     output: []
 
-  - name: Trajekt je spojenie ako každé iné
+  - name: A ferry is a link like any other
     input:
       source: osm
       geometry: line
@@ -348,10 +299,10 @@ examples:
         min_zoom: 11
         tags:
           class: ferry
-          druh: route
+          family: route
           name: Prievoz Vojka – Kyselica
 
-  - name: Lanovka je doprava, nie atrakcia
+  - name: An aerialway is transport, not an attraction
     input:
       source: osm
       geometry: line
@@ -364,10 +315,10 @@ examples:
         min_zoom: 11
         tags:
           class: gondola
-          druh: aerialway
+          family: aerialway
           name: Skalnaté pleso
 
-  - name: Príjazd k domu je `service` – v sieti je, ale až od z14
+  - name: A driveway is `service` – in the network, but only from z14
     input:
       source: osm
       geometry: line
@@ -380,10 +331,10 @@ examples:
         min_zoom: 14
         tags:
           class: service
-          druh: highway
+          family: highway
           service: driveway
 
-  - name: Podjazd pod mostom – výška je na ceste POD ním, ktorá `bridge` nemá
+  - name: An underpass – the height is on the road BELOW, which has no `bridge`
     input:
       source: osm
       geometry: line
@@ -397,13 +348,13 @@ examples:
         min_zoom: 9
         tags:
           class: secondary
-          druh: highway
+          family: highway
           ref: II/584
           maxheight: "3.8"
           bridge: null
           tunnel: null
 
-  - name: Jednotka v hodnote sa NEPREPOČÍTAVA, ide do dlaždice ako je
+  - name: A unit in the value is NOT converted, it goes into the tile as is
     input:
       source: osm
       geometry: line
@@ -419,7 +370,7 @@ examples:
           maxheight: "3.8 m"
           maxweight: "7.5"
 
-  - name: Rýchlosť a pruhy sú na tej istej ceste ako jej meno
+  - name: Speed and lanes are on the same road as its name
     input:
       source: osm
       geometry: line
@@ -434,12 +385,12 @@ examples:
         min_zoom: 6
         tags:
           class: primary
-          druh: highway
+          family: highway
           name: Levočská
           maxspeed: "90"
           lanes: 2
 
-  - name: Adresný bod nesie ulicu aj číslo
+  - name: An address point carries street and number
     input:
       source: osm
       geometry: point
@@ -450,7 +401,7 @@ examples:
         addr:streetnumber: "5"
         addr:city: Poprad
     output:
-      - layer: adresy
+      - layer: addresses
         geometry: point
         min_zoom: 14
         tags:
@@ -460,7 +411,7 @@ examples:
           addr:streetnumber: "5"
           addr:city: Poprad
 
-  - name: Budova s adresou je bod adresy
+  - name: A building with an address is an address point
     input:
       source: osm
       geometry: polygon
@@ -469,14 +420,14 @@ examples:
         addr:place: Ždiar
         addr:conscriptionnumber: "112"
     output:
-      - layer: adresy
+      - layer: addresses
         geometry: point
         min_zoom: 14
         tags:
           addr:place: Ždiar
           addr:conscriptionnumber: "112"
 
-  - name: Budova bez adresy v adresách nie je
+  - name: A building without an address isn't in addresses
     input:
       source: osm
       geometry: polygon
@@ -484,7 +435,7 @@ examples:
         building: house
     output: []
 
-  - name: Rieka nie je doprava
+  - name: A river isn't transport
     input:
       source: osm
       geometry: line
