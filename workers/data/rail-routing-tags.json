@@ -1,40 +1,117 @@
 {
   "_comment": [
-    "Slovník značiek pre smerovanie po koľajach – archív `<kraj>-rail-routing.pmtiles`.",
-    "Ten istý formát ako `routing-tags.json`, iný slovník a teda iné `id`:",
-    "koľajová sieť sa s cestnou v telefóne nespája."
+    "Routing tag dictionary for tracks – archive `<region>-rail-routing.pmtiles`.",
+    "The format of `routing-tags.json`, another dictionary and so another `id`:",
+    "the rail network never joins the road one on the phone."
   ],
-
-  "verzia": 1,
-
-  "siet": {
-    "railway": ["rail", "light_rail", "subway", "tram", "narrow_gauge",
-                "monorail", "funicular", "preserved"]
+  "version": 1,
+  "network": {
+    "railway": [
+      "rail",
+      "light_rail",
+      "subway",
+      "tram",
+      "narrow_gauge",
+      "monorail",
+      "funicular",
+      "preserved"
+    ]
   },
-
-  "kluce": {
-    "railway": {"z_siete": true, "co": "druh trate"},
-    "name": {"volny": true, "co": "meno trate do pokynu"},
-    "ref": {"volny": true, "co": "číslo trate"},
-    "usage": {"hodnoty": ["main", "branch", "industrial", "military", "tourism",
-                          "scientific", "test"],
-              "co": "význam trate"},
-    "service": {"hodnoty": ["yard", "siding", "spur", "crossover"],
-                "co": "vedľajšia koľaj – drahšia, nie zakázaná"},
-    "maxspeed": {"volny": true, "co": "traťová rýchlosť"},
-    "gauge": {"volny": true, "co": "rozchod v mm"},
-    "electrified": {"hodnoty": ["contact_line", "rail", "yes", "no",
-                                "4th_rail", "ground-level_power_supply"],
-                    "co": "trakcia"},
-    "oneway": {"hodnoty": ["yes", "no", "-1"], "co": "jednosmerná koľaj"},
-    "railway:preferred_direction": {"hodnoty": ["forward", "backward", "both"],
-                                    "co": "prednostný smer jazdy"},
-    "access": {"pristup": true, "co": "prístup"},
-    "bridge": {"hodnoty": ["yes", "viaduct"], "co": "most"},
-    "tunnel": {"hodnoty": ["yes", "building_passage"], "co": "tunel"}
+  "keys": {
+    "railway": {
+      "from_network": true,
+      "what": "line kind"
+    },
+    "name": {
+      "free": true,
+      "what": "line name for the instruction"
+    },
+    "ref": {
+      "free": true,
+      "what": "line number"
+    },
+    "usage": {
+      "values": [
+        "main",
+        "branch",
+        "industrial",
+        "military",
+        "tourism",
+        "scientific",
+        "test"
+      ],
+      "what": "line significance"
+    },
+    "service": {
+      "values": [
+        "yard",
+        "siding",
+        "spur",
+        "crossover"
+      ],
+      "what": "secondary track – dearer, not banned"
+    },
+    "maxspeed": {
+      "free": true,
+      "what": "line speed"
+    },
+    "gauge": {
+      "free": true,
+      "what": "gauge in mm"
+    },
+    "electrified": {
+      "values": [
+        "contact_line",
+        "rail",
+        "yes",
+        "no",
+        "4th_rail",
+        "ground-level_power_supply"
+      ],
+      "what": "traction"
+    },
+    "oneway": {
+      "values": [
+        "yes",
+        "no",
+        "-1"
+      ],
+      "what": "one-way track"
+    },
+    "railway:preferred_direction": {
+      "values": [
+        "forward",
+        "backward",
+        "both"
+      ],
+      "what": "preferred direction"
+    },
+    "access": {
+      "access": true,
+      "what": "access"
+    },
+    "bridge": {
+      "values": [
+        "yes",
+        "viaduct"
+      ],
+      "what": "bridge"
+    },
+    "tunnel": {
+      "values": [
+        "yes",
+        "building_passage"
+      ],
+      "what": "tunnel"
+    }
   },
-
-  "_pristup": {
-    "hodnoty": ["yes", "no", "private", "permissive", "unknown"]
+  "_access": {
+    "values": [
+      "yes",
+      "no",
+      "private",
+      "permissive",
+      "unknown"
+    ]
   }
 }

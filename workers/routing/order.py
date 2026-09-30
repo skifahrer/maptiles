@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Poradie uzlov pre CCH – jediná drahá časť, ktorá nepatrí do telefónu."""
+"""Node order for CCH – the one expensive part that doesn't belong on a phone."""
 import argparse
 import hashlib
 import json
@@ -10,108 +10,107 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# pod touto veľkosťou už delenie nič nezískava a réžia prevyšuje úžitok
-DNO = 32
-# ani jedna polovica nesmie byť menšia; užší rez by dal prázdne delenie
-VYVAZENIE = 0.25
-# smery, v ktorých sa hľadá rez – rovnaké ako pri Inertial Flow
-SMERY = [(1.0, 0.0), (0.0, 1.0), (0.7071, 0.7071), (0.7071, -0.7071)]
+# below this size splitting gains nothing
+FLOOR = 32
+# neither half may be smaller; a narrower cut makes an empty split
+BALANCE = 0.25
+# cut directions, as in Inertial Flow
+DIRECTIONS = [(1.0, 0.0), (0.0, 1.0), (0.7071, 0.7071), (0.7071, -0.7071)]
 
 
-def poradie(uzly, susedia):
-    """Uzly v poradí eliminácie: obe polovice, potom oddeľovač."""
-    von = []
-    _rozdel(sorted(uzly), susedia, von)
-    return von
+def order(nodes, neighbours):
+    """Nodes in elimination order: both halves, then the separator."""
+    out = []
+    _split(sorted(nodes), neighbours, out)
+    return out
 
 
-def _rozdel(skupina, susedia, von):
-    if len(skupina) <= DNO:
-        von.extend(skupina)
+def _split(group, neighbours, out):
+    if len(group) <= FLOOR:
+        out.extend(group)
         return
-    a, b, oddelovac = _rez(skupina, susedia)
+    a, b, separator = _cut(group, neighbours)
     if not a or not b:
-        von.extend(skupina)
+        out.extend(group)
         return
-    _rozdel(a, susedia, von)
-    _rozdel(b, susedia, von)
-    # oddeľovač ide na koniec – to je celý zmysel nested dissection
-    von.extend(oddelovac)
+    _split(a, neighbours, out)
+    _split(b, neighbours, out)
+    # the separator goes last – the whole point of nested dissection
+    out.extend(separator)
 
 
-def _rez(skupina, susedia):
-    """Zo štyroch smerov ten, ktorý pretne najmenej hrán."""
-    v_skupine = set(skupina)
-    najlepsie = None
-    for dx, dy in SMERY:
-        zoradene = sorted(skupina, key=lambda u: (dx * susedia.xy[u][1]
-                                                  + dy * susedia.xy[u][0], u))
-        stred = len(zoradene) // 2
-        prve = set(zoradene[:stred])
-        rezy = sum(1 for u in prve for v in susedia[u]
-                   if v in v_skupine and v not in prve)
-        if najlepsie is None or rezy < najlepsie[0]:
-            najlepsie = (rezy, zoradene, prve)
-    _rezy, zoradene, prve = najlepsie
-    if min(len(prve), len(zoradene) - len(prve)) < VYVAZENIE * len(zoradene):
+def _cut(group, neighbours):
+    """Of four directions, the one cutting the fewest edges."""
+    in_group = set(group)
+    best = None
+    for dx, dy in DIRECTIONS:
+        ordered = sorted(group, key=lambda u: (dx * neighbours.xy[u][1]
+                                               + dy * neighbours.xy[u][0], u))
+        middle = len(ordered) // 2
+        first = set(ordered[:middle])
+        cuts = sum(1 for u in first for v in neighbours[u]
+                   if v in in_group and v not in first)
+        if best is None or cuts < best[0]:
+            best = (cuts, ordered, first)
+    _cuts, ordered, first = best
+    if min(len(first), len(ordered) - len(first)) < BALANCE * len(ordered):
         return [], [], []
 
-    hranicne = [(u, v) for u in prve for v in susedia[u]
-                if v in v_skupine and v not in prve]
-    oddelovac = _pokry(hranicne)
-    a = [u for u in zoradene if u in prve and u not in oddelovac]
-    b = [u for u in zoradene if u not in prve and u not in oddelovac]
-    return a, b, sorted(oddelovac)
+    crossing = [(u, v) for u in first for v in neighbours[u]
+                if v in in_group and v not in first]
+    separator = _cover(crossing)
+    a = [u for u in ordered if u in first and u not in separator]
+    b = [u for u in ordered if u not in first and u not in separator]
+    return a, b, sorted(separator)
 
 
-def _pokry(hrany):
-    """Vrcholový oddeľovač z prerezaných hrán – hladivo, po najhustejšom uzle."""
-    stupen = {}
-    for u, v in hrany:
-        stupen[u] = stupen.get(u, 0) + 1
-        stupen[v] = stupen.get(v, 0) + 1
-    zvysok, von = list(hrany), set()
-    while zvysok:
-        u = max({x for h in zvysok for x in h}, key=lambda x: (stupen[x], -x))
-        von.add(u)
-        zvysok = [h for h in zvysok if u not in h]
-    return von
+def _cover(edges):
+    """A vertex separator from the cut edges – greedy, densest node first."""
+    degree = {}
+    for u, v in edges:
+        degree[u] = degree.get(u, 0) + 1
+        degree[v] = degree.get(v, 0) + 1
+    left, out = list(edges), set()
+    while left:
+        u = max({x for h in left for x in h}, key=lambda x: (degree[x], -x))
+        out.add(u)
+        left = [h for h in left if u not in h]
+    return out
 
 
-class Susedia:
-    """Susedia a súradnice pohromade – rez sa pýta oboje naraz."""
+class Neighbours:
+    """Neighbours and coordinates together – a cut asks for both."""
 
-    def __init__(self, siet):
-        # dĺžkový stupeň je na našej šírke o tretinu kratší; bez prepočtu by
-        # rez „na 45°" nebol na 45°
-        stred = (sum(lat for lat, _lon in siet.uzly.values())
-                 / max(1, len(siet.uzly)) / 1e7)
-        k = math.cos(math.radians(stred))
-        self.xy = {u: (lat, lon * k) for u, (lat, lon) in siet.uzly.items()}
-        self._s = siet.susedia()
+    def __init__(self, network):
+        # a longitude degree is a third shorter here; "45°" must be 45°
+        middle = (sum(lat for lat, _lon in network.nodes.values())
+                  / max(1, len(network.nodes)) / 1e7)
+        k = math.cos(math.radians(middle))
+        self.xy = {u: (lat, lon * k) for u, (lat, lon) in network.nodes.items()}
+        self._s = network.neighbours()
 
     def __getitem__(self, u):
         return self._s[u]
 
 
-def _komponenty(uzly, susedia):
-    """Nesúvislé kusy siete sa delia zvlášť; rez cez dva ostrovy nie je rez."""
-    videne, von = set(), []
-    for start in sorted(uzly):
-        if start in videne:
+def _components(nodes, neighbours):
+    """Disconnected pieces split apart; a cut across two islands isn't a cut."""
+    seen, out = set(), []
+    for start in sorted(nodes):
+        if start in seen:
             continue
-        kus, front = [], [start]
-        videne.add(start)
+        piece, front = [], [start]
+        seen.add(start)
         while front:
             u = front.pop()
-            kus.append(u)
-            for v in susedia[u]:
-                if v not in videne:
-                    videne.add(v)
+            piece.append(u)
+            for v in neighbours[u]:
+                if v not in seen:
+                    seen.add(v)
                     front.append(v)
-        von.append(sorted(kus))
-    von.sort(key=len, reverse=True)
-    return von
+        out.append(sorted(piece))
+    out.sort(key=len, reverse=True)
+    return out
 
 
 def _id(rank):
@@ -122,41 +121,41 @@ def _id(rank):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pbf", required=True,
-                    help="PBF CELÉHO stavaného územia – poradie počítané po "
-                         "krajoch sa spojiť nedá")
+                    help="PBF of the WHOLE area built – orders computed per "
+                         "region can't be joined")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--nazov", default="",
-                    help="čo je to za územie – ide do súboru s poradím")
+    ap.add_argument("--name", default="",
+                    help="what area this is – goes into the order file")
     args = ap.parse_args()
 
-    import network                                                # noqa: PLC0415
+    import network as network_mod                                 # noqa: PLC0415
 
     t0 = time.time()
-    siet = network.nacitaj(args.pbf)
-    if not siet.uzly:
-        print("::error::V PBF nie je ani jedna cesta, takže nie je čo "
-              "usporiadať.", file=sys.stderr)
+    network = network_mod.load(args.pbf)
+    if not network.nodes:
+        print("::error::The PBF has no road, so there is nothing to "
+              "order.", file=sys.stderr)
         return 1
-    susedia = Susedia(siet)
+    neighbours = Neighbours(network)
 
-    von = []
-    for kus in _komponenty(siet.uzly, susedia):
-        von.extend(poradie(kus, susedia))
-    rank = {u: i for i, u in enumerate(von)}
+    out = []
+    for piece in _components(network.nodes, neighbours):
+        out.extend(order(piece, neighbours))
+    rank = {u: i for i, u in enumerate(out)}
 
-    telo = {"id": f"{_id(rank):08x}", "nazov": args.nazov, "uzlov": len(rank),
-            "hran": len(siet.hrany),
+    body = {"id": f"{_id(rank):08x}", "name": args.name, "nodes": len(rank),
+            "edges": len(network.edges),
             "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "rank": rank}
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
-        json.dump(telo, f, ensure_ascii=False)
-    print(f"Poradie {telo['id']}: {len(rank)} uzlov za "
+        json.dump(body, f, ensure_ascii=False)
+    print(f"Order {body['id']}: {len(rank)} nodes in "
           f"{time.time() - t0:.0f} s → {args.out} "
           f"({os.path.getsize(args.out) / 1048576:.1f} MB)")
-    print("::notice::Toto poradie patrí do KAŽDÉHO archívu tohto behu. Kraj "
-          "postavený proti inému poradiu sa s ostatnými spojiť nesmie – "
-          "nesúlad vyzerá ako pokazená trasa, nie ako iný súbor.")
+    print("::notice::This order belongs in EVERY archive of this run. A region "
+          "built against another order must never join the others – the "
+          "mismatch looks like a broken route, not another file.")
     return 0
 
 

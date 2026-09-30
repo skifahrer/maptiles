@@ -1,70 +1,70 @@
 name: Map · region routing network
 
-# SMEROVACIA SIEŤ JEDNÉHO KRAJA – `<kraj>-routing.pmtiles`. Ide v základnej
-# mape (časť `navigacia`) aj v balíku `cesty`; vlastný balík nemá.
+# ONE REGION'S ROUTING NETWORK – `<region>-routing.pmtiles`. It rides in the base
+# map (part `routing`) and in the `roads` package; it has no package of its own.
 #
-# Do telefónu ide TAG, nie cena: profil používateľa (vypnuté typy ciest,
-# rozmery vozidla, známky) sa do predpočítaného grafu zapiecť nedá. Rozpis
-# formátu je v `docs/routing-tiles.md`, dôvod v `docs/navigation.md` §10.
+# TAGS go to the phone, not costs: a user's profile (road types turned off,
+# vehicle size, vignettes) can't be baked into a precomputed graph. The format
+# is in `docs/routing-tiles.md`, the reason in `docs/navigation.md` §10.
 #
-# Nahradilo to graf Valhally, ktorý vážil 176 – 192 MB na kraj a na hranici
-# kraja končil. `workers/routing/graph.sh` a celoštátny `navigation.yml`
-# ostávajú ako referenčná stavba, proti ktorej sa nový motor krížom kontroluje.
+# It replaced Valhalla's graph, which weighed 176 – 192 MB per region and ended
+# at the region border. `workers/routing/graph.sh` and the national `navigation.yml`
+# stay as the reference build the new engine is cross-checked against.
 #
-# Samostatný súbor preto, že `build-map-region.yml` je pri strope 128 KiB.
+# A file of its own because `build-map-region.yml` is near the 128 KiB cap.
 
 on:
   workflow_call:
     inputs:
       region_key:
-        description: "Kľúč regiónu – z neho je meno `{region}-routing.pmtiles`"
+        description: "Region key – it names `{region}-routing.pmtiles`"
         required: true
         type: string
       region_name:
-        description: "Meno regiónu do metadát archívu"
+        description: "Region name for the archive metadata"
         required: false
         default: ""
         type: string
       routing_country:
-        description: "ISO kód krajiny kraja (`iso` v regions.json) – bez neho nemá diaľničná známka na čom stáť"
+        description: "The region's ISO country code (`iso` in regions.json) – the vignette stands on it"
         required: false
         default: ""
         type: string
-      # rovnaké pre všetky kraje krajiny – archívy s rôznym poradím sa
-      # v telefóne spojiť nesmú
+      # the same for every region of a country – archives with different orders
+      # must not be joined on the phone
       routing_area:
-        description: "Územie, nad ktorým je poradie uzlov (`routing_area` v regions.json)"
+        description: "The area the node order is over (`routing_area` in regions.json)"
         required: false
         default: ""
         type: string
-      # výšky a profily hrán; bez bboxu ide archív bez oboch
+      # heights and edge profiles; without a bbox the archive goes without both
       dem_bbox:
-        description: "Bbox W,S,E,N výškového modelu (`dem_bbox` z prípravy)"
+        description: "Elevation model bbox W,S,E,N (`dem_bbox` from the plan)"
         required: false
         default: ""
         type: string
       routing_dem_source:
-        description: "Výškový model pre profily hrán; pri chýbajúcom sklade sa spadne na `sonny`"
+        description: "Elevation model for edge profiles; falls back to `sonny` when the store lacks it"
         required: false
         default: "dmr5"
         type: string
       size_limit_mb:
-        description: "Rozpočet celej stránky v MB"
+        description: "The whole page budget in MB"
         required: false
         default: "900"
         type: string
       budget_pct:
-        description: "Podiel smerovacej siete na rozpočte stránky v percentách"
+        description: "The routing network's share of the page budget in percent"
         required: false
         default: "3"
         type: string
       order_max_age_days:
-        description: "Po koľkých dňoch sa poradie uzlov z cache prepočíta (0 = vždy)"
+        description: "After how many days a cached node order is recomputed (0 = always)"
         required: false
         default: "30"
         type: string
-    # `workflow_call` nededí secrets sám. Bez nich sa cache na Drive nemá ako
-    # otvoriť a archív by šiel bez poradia uzlov aj bez výšok.
+    # `workflow_call` doesn't inherit secrets; without them the Drive cache can't
+    # open and the archive would go without node order and heights.
     secrets:
       GDRIVE_CREDENTIALS:
         required: false
@@ -74,13 +74,13 @@ on:
         required: false
     outputs:
       enabled:
-        description: "Vznikol archív? (vo výreze nemusí byť ani jedna cesta)"
+        description: "Was an archive made? (a cutout may hold no road)"
         value: ${{ jobs.routing.outputs.enabled }}
       size_mb:
-        description: "Veľkosť archívu v MB"
+        description: "Archive size in MB"
         value: ${{ jobs.routing.outputs.size_mb }}
 
-# prihlásenie na Drive pre celý workflow: cache s poradím uzlov
+# Drive sign-in for the whole workflow: the node-order cache
 env:
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
@@ -90,7 +90,7 @@ env:
 
 jobs:
   routing:
-    name: Smerovacia sieť z PBF kraja
+    name: Routing network from the region PBF
     runs-on: ubuntu-latest
     outputs:
       enabled: ${{ steps.routing.outputs.enabled }}
@@ -98,25 +98,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Priprav priečinok na meranie
+      - name: Prepare the timing folder
         run: mkdir -p steps-out
 
-      # to isté PBF, z akého je mapa – druhý extrakt by bola druhá pravda
-      # o tom, za aké územie navigácia je (stráži `workers/lint/navigation.py`)
-      - name: Stiahni PBF z prípravy
+      # the map's own PBF – a second extract would be a second truth about the
+      # area routing covers (guarded by `workers/lint/navigation.py`)
+      - name: Download the PBF from the plan
         uses: actions/download-artifact@v8
         with:
           name: pbf
           path: data
 
-      # Poradie uzlov pre CCH sa počíta nad CELÝM územím, nie nad krajom –
-      # kraje s rôznym poradím sa v telefóne spojiť nesmú. Berie sa z cache
-      # (kľúč je predpona, teda najnovšie uložené poradie toho územia); keď tam
-      # nie je alebo je staršie než `order_max_age_days`, dopočíta sa TU a
-      # uloží, takže prvý kraj štafety ho vyrobí a ostatné ho vezmú.
-      # `continue-on-error`: archív bez poradia je platný archív, len si ho
-      # telefón doráta sám – a `build.sh` to povie.
-      - name: Vezmi poradie uzlov z cache
+      # The CCH node order is computed over the WHOLE area, not the region –
+      # regions with different orders must not be joined on the phone. It comes
+      # from the cache (the key is a prefix, so the area's newest order); when
+      # missing or older than `order_max_age_days` it's computed HERE and saved,
+      # so the relay's first region makes it and the rest take it.
+      # `continue-on-error`: an archive without an order is still valid, the
+      # phone just computes it itself – and `build.sh` says so.
+      - name: Take the node order from the cache
         if: ${{ inputs.routing_area != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-restore
@@ -125,9 +125,9 @@ jobs:
           key: routing-order-v1-${{ inputs.routing_area }}
           restore-keys: routing-order-v1-${{ inputs.routing_area }}-
 
-      # rozpis vo `workers/routing/order.sh` – ten istý skript, akým poradie
-      # ručne prepočíta „Navigácia · poradie uzlov"
-      - name: Poradie uzlov – z cache, alebo dopočítať
+      # described in `workers/routing/order.sh` – the same script
+      # “Routing · node order” recomputes it with by hand
+      - name: Node order – from the cache, or computed
         id: order
         if: ${{ inputs.routing_area != '' }}
         continue-on-error: true
@@ -136,9 +136,9 @@ jobs:
           ORDER_MAX_AGE_DAYS: ${{ inputs.order_max_age_days }}
         run: workers/routing/order.sh
 
-      # kľúč nesie `run_id`, lebo existujúci sa neprepisuje; hľadá sa cez
-      # `restore-keys` (predpona, najnovší záznam vyhrá)
-      - name: Ulož dopočítané poradie do cache na Drive
+      # the key carries `run_id` since an existing one isn't overwritten; it's
+      # found through `restore-keys` (a prefix, the newest entry wins)
+      - name: Save the computed order to the Drive cache
         if: ${{ steps.order.outputs.computed == 'true' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
@@ -146,8 +146,8 @@ jobs:
           path: data/routing-order.json
           key: routing-order-v1-${{ inputs.routing_area }}-${{ github.run_id }}
 
-      # rozpis je vo `workers/routing/build.sh`
-      - name: Smerovacia sieť z OSM → PMTiles
+      # described in `workers/routing/build.sh`
+      - name: Routing network from OSM → PMTiles
         id: routing
         env:
           REGION_KEY: ${{ inputs.region_key }}
@@ -159,24 +159,23 @@ jobs:
           BUDGET_ROUTING_PCT: ${{ inputs.budget_pct }}
         run: workers/routing/build.sh
 
-      # `site-…` zámerne: archív je jednotky MB, takže ide do `_site` ako každá
-      # iná vrstva a `deploy` ho z manifestu dá do mapy aj do `cesty`. Graf
-      # Valhally mal vlastný artefakt práve preto, že to jednotky MB neboli.
-      - name: Odlož časť stránky
+      # `site-…` on purpose: the archive is a few MB, so it goes into `_site` like
+      # any layer and `deploy` puts it into the map and `roads` from the manifest
+      - name: Upload the site part
         if: ${{ always() && hashFiles('_site/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
-          name: site-navigacia
+          name: site-routing
           path: _site
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
 
-      - name: Odlož meranie krokov
+      - name: Upload the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:
-          name: steps-navigacia
+          name: steps-region-routing
           path: steps-out
           retention-days: 1
           if-no-files-found: ignore

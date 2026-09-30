@@ -1,27 +1,27 @@
 name: Routing · node order
 
-# PORADIE UZLOV PRE CCH nad celým stavaným územím – jediná drahá časť, ktorá
-# do telefónu nepatrí (rozpis v `docs/navigation.md` §11).
+# CCH NODE ORDER over the whole built area – the one costly part that doesn't
+# belong on the phone (described in `docs/navigation.md` §11).
 #
-# RUČNÉ PREPOČÍTANIE. Build kraja (`navigation-region.yml`) si poradie berie
-# z cache na Drive a keď tam nie je alebo je staršie než 30 dní, dopočíta ho
-# sám tým istým skriptom (`workers/routing/order.sh`). Tento workflow je na
-# to, keď má byť nové skôr – keď to `tiles.py` v builde kraja vypýta
-# (::warning:: „sieť sa od jeho výpočtu zmenila").
+# A MANUAL RECOMPUTE. A region build (`navigation-region.yml`) takes the order
+# from the Drive cache and when it's missing or older than 30 days computes it
+# itself with the same script (`workers/routing/order.sh`). This workflow is for
+# when a new one is wanted sooner – when `tiles.py` asks for it in a region build
+# (::warning:: “the network changed since it was computed”).
 #
-# Nezávisí od profilu ani od cien, len od TVARU siete; uzol, ktorý pribudol
-# po jeho výpočte, dostane rank na konci podľa OSM id (`tiles.py`), takže
-# mierne zastarané poradie je stále platné poradie. Nové poradie má nové id
-# a kraje so starým sa s ním v telefóne spojiť nesmú – po prepočítaní treba
-# prestavať všetky („Mapa · Regenerate state", voľba `cesty`).
+# It depends on no profile or cost, only on the network's SHAPE; a node added
+# after it was computed gets a rank at the end by OSM id (`tiles.py`), so a
+# slightly stale order is still a valid order. A new order has a new id and
+# regions with the old one must not be joined with it on the phone – after a
+# recompute rebuild them all (“Map · Regenerate state”, option `roads`).
 
 on:
   workflow_dispatch:
     inputs:
-      # zoznam je vo `workers/data/routing-areas.json`; `choice` GitHub zo
-      # súboru prečítať nevie, tak sa píše aj sem a lint to porovná
+      # the list is in `workers/data/routing-areas.json`; GitHub's `choice` can't
+      # read a file, so it's written here too and the lint compares them
       area:
-        description: "Územie, nad ktorým sa poradie počíta"
+        description: "The area the order is computed over"
         required: false
         default: "slovensko"
         type: choice
@@ -29,7 +29,7 @@ on:
           - "slovensko"
           - "slovensko_susedia"
 
-# Drive: sem ide hotové poradie (cache). Prihlásenie pre celý workflow.
+# Drive: the finished order goes here (cache). Sign-in for the whole workflow.
 env:
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
@@ -38,52 +38,52 @@ env:
   OSMFR_BASE: https://download.openstreetmap.fr/extracts
 
 jobs:
-  poradie:
-    name: Poradie uzlov
+  order:
+    name: Node order
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Priprav priečinok na meranie
+      - name: Prepare the timing folder
         run: mkdir -p steps-out
 
-      # ten istý skript, akým si poradie dopočíta build kraja; `FORCE`, lebo
-      # tento workflow sa spúšťa práve preto, že čerstvé nestačí
-      - name: Poradie uzlov z PBF územia
+      # the same script a region build computes the order with; `FORCE`, since
+      # this workflow runs precisely because a fresh one isn't enough
+      - name: Node order from the area PBF
         id: order
         env:
           AREA: ${{ inputs.area }}
           FORCE: "true"
         run: workers/routing/order.sh
 
-      # kľúč nesie `run_id`, lebo existujúci sa neprepisuje; build kraja ho
-      # hľadá cez `restore-keys` (predpona, najnovší záznam vyhrá)
-      - name: Ulož poradie do cache na Drive
+      # the key carries `run_id` since an existing one isn't overwritten; a region
+      # build finds it through `restore-keys` (a prefix, the newest entry wins)
+      - name: Save the order to the Drive cache
         uses: ./.github/actions/cache-save
         with:
           path: data/routing-order.json
           key: routing-order-v1-${{ inputs.area }}-${{ github.run_id }}
 
-      - name: Zhrnutie
+      - name: Summary
         env:
           AREA: ${{ inputs.area }}
           ORDER_ID: ${{ steps.order.outputs.id }}
-          UZLOV: ${{ steps.order.outputs.uzlov }}
+          NODES: ${{ steps.order.outputs.nodes }}
         run: |
           set -euo pipefail
           {
-            echo "## Poradie uzlov · $AREA"
+            echo "## Node order · $AREA"
             echo
-            echo "* id poradia: \`$ORDER_ID\`"
-            echo "* uzlov: $UZLOV"
+            echo "* order id: \`$ORDER_ID\`"
+            echo "* nodes: $NODES"
             echo
-            echo "Kraje postavené OD TERAZ ho dostanú do archívu; tie staršie"
-            echo "nesú predošlé id a s novými sa v telefóne spojiť nesmú, takže"
-            echo "ich treba prestavať (\`Mapa · Regenerate state\`, voľba"
-            echo "\`cesty\`)."
+            echo "Regions built FROM NOW ON get it in their archive; older ones"
+            echo "carry the previous id and must not be joined with new ones on"
+            echo "the phone, so rebuild them (\`Map · Regenerate state\`, option"
+            echo "\`roads\`)."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Odlož meranie krokov
+      - name: Upload the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:

@@ -1,42 +1,42 @@
 name: Map · Build routing
 
-# NAVIGAČNÝ GRAF (Valhalla) – to, po čom sa dá viesť trasa. Z dlaždice sa
-# routovať nedá: je to kreslený obraz s orezanou geometriou a bez odbočovacích
-# zákazov. Celé zadanie je v `docs/navigation.md`.
+# ROUTING GRAPH (Valhalla) – what a route can be led along. A map tile can't
+# route: it's a drawing with clipped geometry and no turn restrictions. The
+# whole brief is in `docs/navigation.md`.
 #
-# Vlastná pipeline: iné dáta (celé štátne extrakty – rezaný PBF by mal na
-# hranici slepé ulice), iná životnosť a iný výstup (na Pages nejde nič).
-# Balík aj `maps.json` robí ďalej `workers/deploy/publish-map.py`.
+# A pipeline of its own: other data (whole national extracts – a cut PBF would
+# have dead ends at the border), another lifetime and output (nothing goes to
+# Pages). The package and `maps.json` still come from `workers/deploy/publish-map.py`.
 #
-# `multimodal` (autobus, vlak) v grafe zatiaľ nie je: stojí na GTFS, ktoré
-# v OSM nie sú. `graf.json` to o sebe hovorí.
+# `multimodal` (bus, train) isn't in the graph yet: it stands on GTFS, which
+# OSM lacks. `graph.json` says so about itself.
 
 on:
   workflow_dispatch:
     inputs:
-      # zoznam je vo `workers/data/routing-areas.json`; `choice` GitHub zo
-      # súboru prečítať nevie, tak sa píše aj sem a lint to porovná
+      # the list is in `workers/data/routing-areas.json`; GitHub's `choice` can't
+      # read a file, so it's written here too and the lint compares them
       area:
-        description: "Rozsah grafu (susedia = drahý beh, ale trasa prejde hranicu)"
+        description: "Graph scope (neighbours = a costly run, but a route crosses the border)"
         required: false
         default: "slovensko"
         type: choice
         options:
           - "slovensko"
           - "slovensko_susedia"
-      # graf a knižnica v telefóne si musia sedieť; použité ide do `graf.json`
+      # the graph and the phone's library must match; the one used goes into `graph.json`
       valhalla_image:
-        description: "Docker obraz Valhally (radšej s tagom než latest)"
+        description: "Valhalla Docker image (a tag rather than latest)"
         required: false
         default: "ghcr.io/valhalla/valhalla-scripted:latest"
         type: string
       publish:
-        description: "Nahrať balík na Drive a zapísať do maps.json"
+        description: "Upload the package to Drive and write it into maps.json"
         required: false
         default: true
         type: boolean
 
-# Drive: sem ide hotový balík. Prihlásenie pre celý workflow, nie po kroku.
+# Drive: the finished package goes here. Sign-in for the whole workflow, not per step.
 env:
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
@@ -45,44 +45,44 @@ env:
   OSMFR_BASE: https://download.openstreetmap.fr/extracts
 
 jobs:
-  graf:
-    name: Navigačný graf
+  graph:
+    name: Routing graph
     runs-on: ubuntu-latest
     permissions:
-      # `write`: `maps.json` je jediné miesto, kde beh zapisuje do repozitára
+      # `write`: `maps.json` is the only place the run writes into the repository
       contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Priprav priečinok na meranie
+      - name: Prepare the timing folder
         run: mkdir -p steps-out
 
-      # `osmium merge` treba len pri viacerých extraktoch, ale inštalácia je
-      # sekundy a podmienený krok by bol ďalšia vec, čo sa môže rozísť
-      - name: Nainštaluj osmium-tool
+      # `osmium merge` is needed only for several extracts, but installing takes
+      # seconds and a conditional step would be one more thing to drift
+      - name: Install osmium-tool
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq osmium-tool
 
-      # rozpis je vo `workers/routing/pbf.sh`
-      - name: PBF pre graf
+      # described in `workers/routing/pbf.sh`
+      - name: PBF for the graph
         id: pbf
         env:
           AREA: ${{ inputs.area }}
         run: workers/routing/pbf.sh
 
-      # rozpis je vo `workers/routing/graph.sh`; Docker je na runneri
-      - name: Graf Valhally z PBF
+      # described in `workers/routing/graph.sh`; Docker is on the runner
+      - name: Valhalla graph from the PBF
         id: graph
         env:
           AREA: ${{ inputs.area }}
           VALHALLA_IMAGE: ${{ inputs.valhalla_image }}
         run: workers/routing/graph.sh
 
-      # kľúč regiónu je v `routing-areas.json` vedľa rozsahu – neodvodzuje sa
-      # z mena rozsahu (meno je sľub o rozsahu)
-      - name: Kľúč regiónu a vrstvy do katalógu
-        id: kat
+      # the region key sits next to the scope in `routing-areas.json` – it isn't
+      # derived from the scope name (the name is a promise about the scope)
+      - name: Region key and layers for the catalog
+        id: cat
         env:
           AREA: ${{ inputs.area }}
         run: |
@@ -93,26 +93,26 @@ jobs:
                                  encoding="utf-8"))["areas"]
           a = areas[os.environ["AREA"]]
           print(f"region_key={a['region_key']}")
-          # `MAP_LAYERS` je pre pipeline, ktorá nerobí mapu kraja: bez neho by
-          # `publish-map.py` napísal „bez_vrstevnic, bez_skal, bez_tienovania"
-          print("map_layers=graf," + ",".join(a["countries"]).lower())
+          # `MAP_LAYERS` for a pipeline that makes no region map: without it
+          # `publish-map.py` would write “no_contours, no_rocks, no_shading”
+          print("map_layers=graph," + ",".join(a["countries"]).lower())
           PY
 
-      - name: Nahraj balík na Drive a zapíš do maps.json
+      - name: Upload the package to Drive and write maps.json
         id: publish
         if: ${{ inputs.publish }}
         env:
           AREA_KEY: whole
           TEST_KM2: "0"
-          REGION_KEY: ${{ steps.kat.outputs.region_key }}
-          MAP_LAYERS: ${{ steps.kat.outputs.map_layers }}
+          REGION_KEY: ${{ steps.cat.outputs.region_key }}
+          MAP_LAYERS: ${{ steps.cat.outputs.map_layers }}
         run: |
           set -euo pipefail
           python3 workers/deploy/publish-map.py --site=_site --maps=maps.json \
             --summary="$GITHUB_STEP_SUMMARY"
 
-      # ten istý skript, akým katalóg commituje Build map – vrátane rebasu
-      - name: Commitni maps.json
+      # the same script Build map commits the catalog with – rebase included
+      - name: Commit maps.json
         if: ${{ inputs.publish && steps.publish.outcome == 'success' }}
         env:
           MAPS_JSON: ${{ steps.publish.outputs.maps_file || 'maps.json' }}
@@ -120,7 +120,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: workers/deploy/catalog.sh
 
-      - name: Odlož meranie krokov
+      - name: Upload the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:

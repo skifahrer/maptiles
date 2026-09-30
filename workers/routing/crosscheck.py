@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Náhodné dvojice križovatiek a Valhallina odpoveď na ne – vonkajší názor pre appku."""
+"""Random junction pairs and Valhalla's answers to them – an outside opinion for the app."""
 import argparse
 import json
 import math
@@ -12,13 +12,13 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# cesty, po ktorých smie auto aj chodec – dvojica má mať odpoveď pre oboch
-SPOLOCNE = {"primary", "secondary", "tertiary", "unclassified", "residential",
-            "primary_link", "secondary_link", "tertiary_link", "living_street"}
-PROFILY = {"auto": "auto", "chodec": "pedestrian"}
+# roads open to cars and walkers alike – a pair should have an answer for both
+SHARED = {"primary", "secondary", "tertiary", "unclassified", "residential",
+          "primary_link", "secondary_link", "tertiary_link", "living_street"}
+PROFILES = {"car": "auto", "foot": "pedestrian"}
 
 
-def vzdusna_m(a, b):
+def air_m(a, b):
     la1, lo1 = math.radians(a[0] / 1e7), math.radians(a[1] / 1e7)
     la2, lo2 = math.radians(b[0] / 1e7), math.radians(b[1] / 1e7)
     h = (math.sin((la2 - la1) / 2) ** 2
@@ -26,34 +26,34 @@ def vzdusna_m(a, b):
     return 2 * 6371000.0 * math.asin(math.sqrt(h))
 
 
-def krizovatky(siet):
-    von = set()
-    for h in siet.hrany:
-        if dict(h["tagy"]).get("highway") in SPOLOCNE:
-            von.add(h["od"])
-            von.add(h["do"])
-    return sorted(von)
+def junctions(network):
+    out = set()
+    for h in network.edges:
+        if dict(h["tags"]).get("highway") in SHARED:
+            out.add(h["from"])
+            out.add(h["to"])
+    return sorted(out)
 
 
-def dvojice(siet, n, seed, min_m, max_m):
-    uzly = krizovatky(siet)
+def pairs(network, n, seed, min_m, max_m):
+    nodes = junctions(network)
     rnd = random.Random(seed)
-    von, pokusy = [], 0
-    while len(von) < n and pokusy < n * 200:
-        pokusy += 1
-        a, b = rnd.choice(uzly), rnd.choice(uzly)
-        d = vzdusna_m(siet.uzly[a], siet.uzly[b])
+    out, tries = [], 0
+    while len(out) < n and tries < n * 200:
+        tries += 1
+        a, b = rnd.choice(nodes), rnd.choice(nodes)
+        d = air_m(network.nodes[a], network.nodes[b])
         if a != b and min_m <= d <= max_m:
-            von.append((a, b, d))
-    return von
+            out.append((a, b, d))
+    return out
 
 
-def trasa(server, od, do, costing):
-    telo = {"locations": [{"lat": od[0] / 1e7, "lon": od[1] / 1e7},
-                          {"lat": do[0] / 1e7, "lon": do[1] / 1e7}],
+def route(server, a, b, costing):
+    body = {"locations": [{"lat": a[0] / 1e7, "lon": a[1] / 1e7},
+                          {"lat": b[0] / 1e7, "lon": b[1] / 1e7}],
             "costing": costing, "units": "kilometers",
             "directions_type": "none"}
-    req = urllib.request.Request(f"{server}/route", data=json.dumps(telo).encode(),
+    req = urllib.request.Request(f"{server}/route", data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
@@ -61,28 +61,28 @@ def trasa(server, od, do, costing):
         return {"m": round(s["length"] * 1000), "s": round(s["time"])}
     except urllib.error.HTTPError as e:
         try:
-            chyba = json.load(e)
+            err = json.load(e)
         except Exception:                                         # noqa: BLE001
-            chyba = {}
-        return {"chyba": chyba.get("error_code", e.code),
-                "sprava": chyba.get("error", str(e))}
+            err = {}
+        return {"error": err.get("error_code", e.code),
+                "message": err.get("error", str(e))}
 
 
-def pockaj(server, sekund=120):
-    do = time.time() + sekund
-    while time.time() < do:
+def wait(server, seconds=120):
+    until = time.time() + seconds
+    while time.time() < until:
         try:
             with urllib.request.urlopen(f"{server}/status", timeout=5) as r:
                 if r.status == 200:
                     return
         except Exception:                                         # noqa: BLE001
             time.sleep(2)
-    raise SystemExit(f"Valhalla na {server} neodpovedá")
+    raise SystemExit(f"Valhalla at {server} doesn't answer")
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pbf", required=True, help="to isté PBF, z akého je archív")
+    ap.add_argument("--pbf", required=True, help="the same PBF the archive is from")
     ap.add_argument("--out", required=True)
     ap.add_argument("--region-key", required=True)
     ap.add_argument("--valhalla", default="http://localhost:8002")
@@ -93,33 +93,33 @@ def main():
     ap.add_argument("--max-km", type=float, default=40.0)
     args = ap.parse_args()
 
-    import network                                                # noqa: PLC0415
-    siet = network.nacitaj(args.pbf)
-    pary = dvojice(siet, args.n, args.seed, args.min_km * 1000, args.max_km * 1000)
-    print(f"Sieť: {len(siet.uzly)} križovatiek, {len(pary)} dvojíc "
+    import network as network_mod                                 # noqa: PLC0415
+    network = network_mod.load(args.pbf)
+    chosen = pairs(network, args.n, args.seed, args.min_km * 1000, args.max_km * 1000)
+    print(f"Network: {len(network.nodes)} junctions, {len(chosen)} pairs "
           f"{args.min_km}–{args.max_km} km")
-    pockaj(args.valhalla)
+    wait(args.valhalla)
 
-    von, bez = [], {k: 0 for k in PROFILY}
-    for i, (a, b, d) in enumerate(pary, 1):
-        z = {"od": a, "do": b,
-             "od_lat": siet.uzly[a][0] / 1e7, "od_lon": siet.uzly[a][1] / 1e7,
-             "do_lat": siet.uzly[b][0] / 1e7, "do_lon": siet.uzly[b][1] / 1e7,
-             "vzdusna_m": round(d)}
-        for kluc, costing in PROFILY.items():
-            z[kluc] = trasa(args.valhalla, siet.uzly[a], siet.uzly[b], costing)
-            if "chyba" in z[kluc]:
-                bez[kluc] += 1
-        von.append(z)
+    out, no_route = [], {k: 0 for k in PROFILES}
+    for i, (a, b, d) in enumerate(chosen, 1):
+        z = {"from": a, "to": b,
+             "from_lat": network.nodes[a][0] / 1e7, "from_lon": network.nodes[a][1] / 1e7,
+             "to_lat": network.nodes[b][0] / 1e7, "to_lon": network.nodes[b][1] / 1e7,
+             "air_m": round(d)}
+        for key, costing in PROFILES.items():
+            z[key] = route(args.valhalla, network.nodes[a], network.nodes[b], costing)
+            if "error" in z[key]:
+                no_route[key] += 1
+        out.append(z)
         if i % 25 == 0:
-            print(f"  {i}/{len(pary)}")
+            print(f"  {i}/{len(chosen)}")
 
     with open(args.out, "w", encoding="utf-8") as f:
-        json.dump({"kraj": args.region_key, "valhalla": args.valhalla_version,
-                   "seed": args.seed, "dvojic": len(von), "bez_trasy": bez,
-                   "dvojice": von}, f, ensure_ascii=False, indent=1)
-    print(f"{args.out}: {len(von)} dvojíc, bez trasy auto {bez['auto']}, "
-          f"chodec {bez['chodec']}")
+        json.dump({"region": args.region_key, "valhalla": args.valhalla_version,
+                   "seed": args.seed, "count": len(out), "no_route": no_route,
+                   "pairs": out}, f, ensure_ascii=False, indent=1)
+    print(f"{args.out}: {len(out)} pairs, no route by car {no_route['car']}, "
+          f"on foot {no_route['foot']}")
 
 
 if __name__ == "__main__":

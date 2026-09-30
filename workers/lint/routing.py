@@ -1,18 +1,9 @@
 #!/usr/bin/env python3
-"""Profil navigácie musí prejsť do motora celý – alebo o sebe povedať, že nie.
+"""A navigation profile must reach the engine whole – or say that it doesn't.
 
-Costing motora je slovník a neznámy kľúč sa v ňom ticho ignoruje: Valhalla aj
-GraphHopper vrátia platnú trasu aj na `top_speeed`. Stráži sa:
-
-  1. voľba, ktorú režim ponúka, musí v číselníku existovať;
-  2. každá voľba má pre každý motor mapovanie alebo `unsupported` s dôvodom –
-     mlčanie je zakázané;
-  3. mapovanie a `unsupported` sa vylučujú;
-  4. kľúč costingu Valhally musí byť zo zoznamu jej skutočných volieb;
-  5. výraz vlastného modelu GraphHoppera smie stáť len na zakódovaných hodnotách;
-  6. `vignettes.json`: krajina bez známky nesmie mať `required_on` a naopak,
-     každá trieda musí byť preložiteľná v `GH_ROAD_CLASS`;
-  7. profil sa musí dať zložiť pre každý režim a motor bez pádu.
+An engine's costing silently ignores unknown keys, so every option has a mapping
+or an `unsupported` reason, Valhalla keys are real ones, GraphHopper expressions
+stand on encoded values, vignettes translate, and every profile compiles.
 """
 import datetime
 import importlib.util
@@ -33,10 +24,8 @@ def load(name, filename, folder):
     return mod
 
 
-# skutočné voľby Valhally, vyzobrané zo zdrojáku (master, august 2026):
+# Valhalla's real options (master, August 2026), refreshed by the grep, not by hand:
 #   grep -ohE '"/[A-Za-z_/]+"' src/sif/*cost.cc | sort -u
-# Je to kópia cudzieho zoznamu – pri posune Valhally sa obnoví tým grepom,
-# nie doplní ručne o to jedno meno, ktoré práve chýba.
 VALHALLA_OPTIONS = {
     "alley_factor", "alley_penalty", "avoid_bad_surfaces", "bicycle_type",
     "bss_rent_cost", "bss_rent_penalty", "bss_return_cost", "bss_return_penalty",
@@ -61,7 +50,7 @@ VALHALLA_OPTIONS = {
     "walkway_factor", "weight", "width",
 }
 
-# zakódované hodnoty GraphHoppera; zdroj: docs/core/profiles.md, custom-models.md
+# GraphHopper's encoded values; source: docs/core/profiles.md, custom-models.md
 GH_ENCODED = {
     "road_class", "road_class_link", "road_environment", "road_access",
     "surface", "smoothness", "track_type", "toll", "hazmat", "country",
@@ -72,13 +61,12 @@ GH_ENCODED = {
 }
 
 
-# zástupné znaky sa dopĺňajú až v profile.py, takže sa kontroluje šablóna bez
-# nich a k tomu hotový výraz z nej (bod 7) – tam sa preklep prejaví
+# placeholders are filled in profile.py; the template and the result are both checked
 PLACEHOLDER = re.compile(r"\{[a-z_0-9]+\}")
 
 
 def expr_names(expr):
-    """Mená, na ktorých výraz stojí – bez operátorov, čísel a zástupných znakov."""
+    """Names an expression stands on – without operators, numbers and placeholders."""
     return set(re.findall(r"[a-z][a-z_0-9]*", PLACEHOLDER.sub(" ", expr)))
 
 
@@ -92,7 +80,7 @@ class Lint:
 
 
 def statements(rule):
-    """Všetky `if` výrazy z mapovania pre GraphHopper."""
+    """Every `if` expression of a GraphHopper mapping."""
     out = []
     for slot in ("priority", "speed", "priority_template"):
         for stmt in rule.get(slot, []) or []:
@@ -110,44 +98,43 @@ def main():
 
     engines = sorted(p.engines)
 
-    # 1. režimy
+    # 1. modes
     for mode, spec in p.modes.items():
         for key in spec["options"]:
             if key not in p.options:
-                lint.err(rel_prof, f"režim `{mode}` ponúka voľbu `{key}`, ktorú "
-                                   f"`options` nemá. Doplň ju tam, alebo ju "
-                                   f"z režimu vyhoď – takto ju `profile.py` "
-                                   f"odmietne až za behu.")
+                lint.err(rel_prof, f"mode `{mode}` offers option `{key}`, which "
+                                   f"`options` lacks. Add it there, or drop it "
+                                   f"from the mode – otherwise `profile.py` "
+                                   f"refuses it only at run time.")
         for engine in engines:
             if engine not in spec.get("costing", {}):
-                lint.err(rel_prof, f"režim `{mode}` nemá costing pre motor "
-                                   f"`{engine}`. Napíš meno costingu, alebo "
-                                   f"`null` – ale napíš to.")
+                lint.err(rel_prof, f"mode `{mode}` has no costing for engine "
+                                   f"`{engine}`. Write the costing name, or "
+                                   f"`null` – but write it.")
 
-    # 2., 3., 4., 5. voľby
+    # 2.–5. options
     for key, spec in p.options.items():
         for engine in engines:
             rule = spec.get(engine)
             if not rule:
                 lint.err(rel_prof,
-                         f"voľba `{key}` nemá pre motor `{engine}` ani "
-                         f"mapovanie, ani `unsupported`. Mlčanie znamená, že "
-                         f"sa voľba TICHO zahodí – napíš aspoň dôvod, prečo to "
-                         f"ten motor nevie.")
+                         f"option `{key}` has neither a mapping nor `unsupported` "
+                         f"for engine `{engine}`. Silence means the option is "
+                         f"dropped QUIETLY – at least give the reason the engine "
+                         f"can't.")
                 continue
             has_map = any(k in rule for k in
                           ("set", "soft", "set_value", "priority", "speed",
                            "priority_template"))
             if "unsupported" in rule and has_map:
                 lint.err(rel_prof,
-                         f"voľba `{key}` má pre `{engine}` naraz mapovanie aj "
-                         f"`unsupported`. To sú dve odpovede na jednu otázku "
-                         f"a `profile.py` si vyberie jednu podľa poradia "
-                         f"`if`-ov – teda náhodou.")
+                         f"option `{key}` has both a mapping and `unsupported` "
+                         f"for `{engine}`. Two answers to one question, and "
+                         f"`profile.py` picks by `if` order – by chance.")
             if "unsupported" in rule and not rule["unsupported"]:
-                lint.err(rel_prof, f"voľba `{key}` je pre `{engine}` "
-                                   f"`unsupported` bez dôvodu. Dôvod je to "
-                                   f"jediné, čo z tej diery spraví hlásenie.")
+                lint.err(rel_prof, f"option `{key}` is `unsupported` for "
+                                   f"`{engine}` without a reason. The reason is "
+                                   f"what turns that hole into a report.")
             if engine == "valhalla":
                 keys = list(rule.get("set", {})) + list(rule.get("soft", {}))
                 if "set_value" in rule:
@@ -155,49 +142,49 @@ def main():
                 for k in keys:
                     if k not in VALHALLA_OPTIONS:
                         lint.err(rel_prof,
-                                 f"voľba `{key}` nasadzuje Valhalle "
-                                 f"`{k}`, čo nie je jej voľba. Valhalla neznámy "
-                                 f"kľúč TICHO ignoruje – trasa vyjde a nikto "
-                                 f"nepovie, že sa voľba nepoužila. Preklep? "
-                                 f"Zoznam je vo `workers/lint/routing.py`.")
+                                 f"option `{key}` sets Valhalla's `{k}`, which "
+                                 f"isn't one of its options. Valhalla ignores an "
+                                 f"unknown key QUIETLY – the route comes out and "
+                                 f"nobody says the option went unused. A typo? "
+                                 f"The list is in `workers/lint/routing.py`.")
             if engine == "graphhopper":
                 for expr in statements(rule):
                     for name in expr_names(expr) - GH_ENCODED:
                         lint.err(rel_prof,
-                                 f"voľba `{key}` stavia výraz `{expr}` na "
-                                 f"`{name}`, čo nie je zakódovaná hodnota "
-                                 f"GraphHoppera. Neznáme meno vo vlastnom "
-                                 f"modeli je chyba požiadavky, nie trasa.")
+                                 f"option `{key}` builds expression `{expr}` on "
+                                 f"`{name}`, which isn't a GraphHopper encoded "
+                                 f"value. An unknown name in a custom model is a "
+                                 f"request error, not a route.")
 
-    # 6. známky
-    stavy = set(p.vig.get("_stavy", {}))
+    # 6. vignettes
+    states = set(p.vig.get("_states", {}))
     for code, c in p.countries.items():
         if not re.fullmatch(r"[A-Z]{2}", code):
-            lint.err(rel_vig, f"kľúč krajiny `{code}` nie je dvojpísmenový kód.")
+            lint.err(rel_vig, f"country key `{code}` isn't a two-letter code.")
         if not re.fullmatch(r"[A-Z]{3}", c.get("alpha3", "")):
-            lint.err(rel_vig, f"krajina `{code}` nemá trojpísmenový `alpha3`. "
-                              f"GraphHopper porovnáva `country == SVK`, takže "
-                              f"bez neho z pravidla nevypadne nič.")
-        if c.get("stav") not in stavy:
-            lint.err(rel_vig, f"krajina `{code}` má `stav: {c.get('stav')}`, "
-                              f"ktorý `_stavy` nepozná ({', '.join(sorted(stavy))}).")
+            lint.err(rel_vig, f"country `{code}` has no three-letter `alpha3`. "
+                              f"GraphHopper compares `country == SVK`, so "
+                              f"without it the rule yields nothing.")
+        if c.get("state") not in states:
+            lint.err(rel_vig, f"country `{code}` has `state: {c.get('state')}`, "
+                              f"which `_states` doesn't know ({', '.join(sorted(states))}).")
         classes = c.get("required_on", [])
-        if c.get("ma_znamku") and not classes:
-            lint.err(rel_vig, f"krajina `{code}` známku má, ale `required_on` je "
-                              f"prázdne – z pravidla by nevypadlo nič a trasa by "
-                              f"tam bez známky pokojne šla po diaľnici.")
-        if not c.get("ma_znamku") and classes:
-            lint.err(rel_vig, f"krajina `{code}` známku nemá, ale `required_on` "
-                              f"nie je prázdne. To sú dve odpovede naraz.")
+        if c.get("sells_vignette") and not classes:
+            lint.err(rel_vig, f"country `{code}` sells a vignette, but `required_on` "
+                              f"is empty – the rule yields nothing and a route "
+                              f"without one would happily take the motorway.")
+        if not c.get("sells_vignette") and classes:
+            lint.err(rel_vig, f"country `{code}` sells no vignette, but `required_on` "
+                              f"isn't empty. Two answers at once.")
         for k in classes:
             if k not in prof.GH_ROAD_CLASS:
                 lint.err(rel_vig,
-                         f"krajina `{code}` chce známku na `{k}`, ale "
-                         f"`GH_ROAD_CLASS` vo `workers/routing/profile.py` to "
-                         f"nevie preložiť – `_gh_vignettes` takú triedu "
-                         f"PRESKOČÍ a pravidlo o známke ticho zredne.")
+                         f"country `{code}` wants a vignette on `{k}`, but "
+                         f"`GH_ROAD_CLASS` in `workers/routing/profile.py` can't "
+                         f"translate it – `_gh_vignettes` SKIPS such a class and "
+                         f"the vignette rule quietly thins.")
 
-    # 7. profil sa musí dať zložiť
+    # 7. every profile compiles
     date = datetime.date(2026, 1, 1)
     for mode, spec in p.modes.items():
         values = {}
@@ -217,27 +204,27 @@ def main():
             try:
                 out = p.compile(mode, dict(values), {}, date, engine)
             except Exception as e:                       # noqa: BLE001
-                lint.err(rel_prof, f"profil `{mode}` sa pre `{engine}` nezložil: "
+                lint.err(rel_prof, f"profile `{mode}` didn't compile for `{engine}`: "
                                    f"{type(e).__name__}: {e}")
                 continue
             for stmt in statements(out.get("custom_model", {})):
                 for name in expr_names(stmt) - GH_ENCODED:
                     lint.err(rel_prof,
-                             f"`{mode}`/`{engine}`: hotový výraz `{stmt}` stojí "
-                             f"na `{name}`, čo GraphHopper nepozná. Doplnenie "
-                             f"šablóny vyrobilo neplatný model – trasa sa "
-                             f"nespočíta a vyzerá to ako chyba servera.")
-            for item in out["_nepokryte"]:
-                if not item.get("dovod"):
-                    lint.err(rel_prof, f"`{mode}`/`{engine}`: nepokrytá voľba "
-                                       f"`{item['option']}` bez dôvodu.")
+                             f"`{mode}`/`{engine}`: the finished expression `{stmt}` "
+                             f"stands on `{name}`, which GraphHopper doesn't know. "
+                             f"Filling the template made an invalid model – no "
+                             f"route computes and it looks like a server error.")
+            for item in out["_unsupported"]:
+                if not item.get("why"):
+                    lint.err(rel_prof, f"`{mode}`/`{engine}`: unsupported option "
+                                       f"`{item['option']}` without a reason.")
 
     if lint.bad:
-        print(f"\n{lint.bad} problém(ov) v profile navigácie.")
+        print(f"\n{lint.bad} problem(s) in the navigation profile.")
         return 1
-    print("Profil navigácie je celý: každá voľba má pre každý motor odpoveď, "
-          "kľúče Valhally sú jej vlastné, výrazy GraphHoppera stoja na "
-          "zakódovaných hodnotách a známky sa dajú preložiť.")
+    print("The navigation profile is whole: every option has an answer for every "
+          "engine, Valhalla keys are its own, GraphHopper expressions stand on "
+          "encoded values and vignettes translate.")
     return 0
 
 
