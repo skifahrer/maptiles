@@ -1,31 +1,11 @@
 #!/usr/bin/env python3
-"""Čo sa dá pregenerovať v celej krajine – a čím sa to nad krajom spustí.
+"""What can be regenerated across a country – and which workflow does it over a region.
 
-„Regenerate state" je tá istá štafeta ako „Build map state", len nad krajom
-spúšťa jeden balík. Ktoré balíky sú, drží `workers/data/packages.json`; tento
-súbor k nim dopĺňa poradie vo formulári, vetu do súhrnu a workflow.
+Packages come from `workers/data/packages.json`; this adds form order, a summary
+line and the workflow. `workers/lint/regenerate.py` guards the form's `choice`.
 
-Číselník, a nie `case` v skripte: tú istú otázku si kladú tri miesta (formulár,
-štafeta, súhrn). Keby si odpovedalo každé samo, pribudnutá voľba by vo
-formulári bola a štafeta by na nej spadla – alebo by spustila niečo iné a beh
-by bol zelený. Zoznam v `choice` sa generovať nedá, ale dá sa strážiť
-(`workers/lint/regenerate.py`).
-
-Všetko ide cez „Pregeneruj vrstvu kraja", ktorý postaví len tú vec a prepíše
-len jej balík. Ceny sú rôzne: z PBF (`body`, `cesty`, `hranice`, `vodstvo`)
-sú to minúty, z výškového modelu (`vrstevnice`, `skaly`, `tienovanie`)
-desiatky minút až hodiny – a robí to `dem-layers.yml`, ten istý workflow,
-aký volá build mapy. `cesty` nesú aj smerovaciu sieť, tak sa stavia s nimi.
-
-Základná mapa a články tu nie sú: mapa je celý build (a značené trasy
-cestujú v nej), články majú vlastnú pipeline.
-
-Vrstevnice a skaly sú jeden balík, takže sa pri oboch voľbách počítajú obe –
-len tá druhá z cache. Polovica nová a polovica chýbajúca by bola balík, ktorý
-sľubuje vrstvu, ktorú nenesie.
-
-    python3 workers/state/jobs.py --zoznam | --workflow=body | --meno=body
-    python3 workers/state/jobs.py --popis=body | --polia=body
+    python3 workers/state/jobs.py --list | --workflow=points | --name=points
+    python3 workers/state/jobs.py --describe=points | --fields=points
 """
 import argparse
 import importlib.util
@@ -36,32 +16,24 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _WORKERS = os.path.dirname(_HERE)
 
 
-def _load(name, cesta):
-    """workers/*.py sa kvôli pomlčke v mene nedajú `import`-núť normálne."""
-    spec = importlib.util.spec_from_file_location(name, cesta)
+def _load(name, path):
+    """workers/*.py can't be imported normally because of the dash in their names."""
+    spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod
     spec.loader.exec_module(mod)
     return mod
 
 
-_baliky = _load("deploy_baliky", os.path.join(_WORKERS, "deploy", "baliky.py"))
+_packages = _load("deploy_packages", os.path.join(_WORKERS, "deploy", "packages.py"))
 
-# ---------- kam sa to nad krajom posiela ----------
-# `podava` sú polia, ktoré cieľový workflow prevezme z FORMULÁRA DÁVKY:
-# `input: (premenná prostredia, predvolená hodnota)`. Podávajú sa CELÉ
-# a zakaždým – články štafety sú samostatné behy a beh, ktorý by ich nedostal,
-# by pregeneroval s predvolenými hodnotami a bol by pri tom zelený. To isté
-# pravidlo (a ten istý dôvod) ako v `workers/state/relay.sh`.
-CIELE = {
+# `passes`: inputs the target takes from the BATCH FORM, `input: (env var, default)`;
+# passed whole every time, or a leg would regenerate with defaults and stay green
+TARGETS = {
     "regenerate-region.yml": {
-        "meno": "Mapa · Pregeneruj vrstvu kraja",
-        "podava": {
-            # Zdroje výšok a prah sklonu majú význam len pre vrstvy
-            # z výškového modelu; pri vrstvách z PBF ich ten
-            # workflow prijme a nepoužije. Podávajú sa aj tak VŽDY a všetky:
-            # zoznam podľa `co` by bol štvrté miesto, kde sa rozhoduje, čo tá
-            # voľba znamená – a to je presne to, čo sa raz rozíde.
+        "name": "Map · Regenerate region layer",
+        "passes": {
+            # height sources and slope matter only for DEM layers; passed always anyway
             "contour_source": ("CONTOUR_SOURCE", "dmr5"),
             "rock_source": ("ROCK_SOURCE", "dmr5"),
             "shading_source": ("SHADING_SOURCE", "dmr5"),
@@ -72,139 +44,110 @@ CIELE = {
     },
 }
 
-# ---------- čo sa dá pregenerovať ----------
-# PORADIE JE PORADIE FORMULÁRA a ide od najlacnejšieho k najdrahšiemu: body
-# a línie sú minúty, vrstevnice a tieňovanie hodiny. Kto formulár otvorí,
-# má hore to, čo si pustí najčastejšie.
-#
-# `balik` je meno balíka na Drive, ktorý sa tým prepíše (`` = základná mapa) –
-# je to to isté meno, aké pozná `workers/deploy/publish-map.py`, a práve preto
-# sa tu píše: podľa neho sa dá v súhrne aj v katalógu povedať, čo sa zmenilo.
-# ODVODENÉ Z ČÍSELNÍKA BALÍKOV, nie napísané druhýkrát. Ktoré balíky sú, drží
-# `workers/data/packages.json` (kľúč `regeneruj` hovorí, čo sa dá postaviť bez
-# celého buildu mapy) – tento súbor k tomu dopĺňa len to, čo je vec DÁVKY:
-# poradie vo formulári, vetu do súhrnu a to, ktorý workflow sa nad krajom
-# spustí.
-#
-# Kým bol zoznam napísaný aj tu, znamenal nový balík dve úpravy a zabudnutá
-# druhá bola tichá jedným smerom (voľba vo formulári, ktorú packer nepozná,
-# spadne až v behu) a hlučná druhým. Teraz je tu jediná vec, ktorú číselník
-# nevie: ako drahé to je a čo o tom povedať človeku.
-#
-# PORADIE JE PORADIE FORMULÁRA a ide od najlacnejšieho k najdrahšiemu: body
-# a cesty sú minúty, vrstevnice a tieňovanie hodiny. Kto formulár otvorí, má
-# hore to, čo si pustí najčastejšie.
-CENA = {
-    # kľúč: (meno, čo to je, veta o cene)
-    "body": ("Body záujmu",
-             "pramene, jaskyne, rozhľadne, pamiatky a ďalšie bodové prvky"),
-    "cesty": ("Cesty a chodníky",
-              "celá dopravná sieť z OSM aj s obmedzeniami na ceste (výška "
-              "podjazdu, hmotnosť, rýchlosť) a smerovacia sieť, z ktorej "
-              "telefón počíta trasu"),
-    "hranice": ("Hranice a názvy území",
-                "hranice štátu, kraja, okresu a obce aj s ich menami"),
-    "vodstvo": ("Vodstvo",
-                "rieky, potoky, jazerá, priehrady a more aj s ich menami"),
-    "zeleznice": ("Železnice a lanovky",
-                  "všetky trate a lanovky aj plánované a zrušené, stanice "
-                  "s menami, značky na trati a koľajová sieť na navigáciu"),
-    "sidla": ("Sídla",
-              "všetky budovy s výmerou, menom, druhom a adresou a mená sídiel"),
-    "vrstevnice": ("Vrstevnice",
-                   "izolínie z výškového modelu (skaly v balíku prídu "
-                   "z cache)"),
-    "skaly": ("Skaly",
-              "skalné plochy zo sklonu modelu (vrstevnice v balíku prídu "
-              "z cache)"),
-    "tienovanie": ("Tieňovanie a 3D terén",
-                   "výškové dlaždice pre tieňovanie a 3D"),
+# form order, cheapest first: OSM layers take minutes, DEM layers hours
+COST = {
+    # key: (name, what it is)
+    "points": ("Points of interest",
+               "springs, caves, lookouts, monuments and other point features"),
+    "roads": ("Roads & paths",
+              "the whole OSM road network with road limits (clearance, weight, "
+              "speed) and the routing network the phone routes on"),
+    "boundaries": ("Boundaries and area names",
+                   "state, region, district and municipality boundaries with their names"),
+    "water": ("Water bodies",
+              "rivers, streams, lakes, reservoirs and the sea with their names"),
+    "railways": ("Railways & cable cars",
+                 "every railway and cable car, planned and abandoned too, named "
+                 "stations, line signs and the track network for navigation"),
+    "settlements": ("Settlements",
+                    "every building with floor area, name, kind and address, and place names"),
+    "contours": ("Contours",
+                 "contour lines from the height model (rocks in the package come "
+                 "from cache)"),
+    "rocks": ("Rocks",
+              "rock areas from the model's slope (contours in the package come "
+              "from cache)"),
+    "terrain": ("Hillshading and 3D terrain",
+                "height tiles for hillshading and 3D"),
 }
 
-# `skaly` nie je vlastný balík – je to druhá polovica `vrstevnice-skaly`
-# a v číselníku preto vlastný `regeneruj` nemá. Vo formulári vlastnú voľbu MÁ:
-# obe vrstvy sa počítajú z toho istého DEM a pregenerovať sa dá každá zvlášť
-# (tá druhá príde z cache za sekundy), len balík sa prepisuje CELÝ.
-ALIAS = {"skaly": "vrstevnice-skaly"}
+# rocks are the other half of `contours-rocks`: their own choice, not their own package
+ALIAS = {"rocks": "contours-rocks"}
 
 
-def _postav():
-    """`{kľúč: {meno, popis, balík, workflow, inputs}}` z číselníka a `CENA`."""
-    z_ciselnika = _baliky.regenerovatelne()
+def _build():
+    """`{key: {name, description, package, workflow, inputs}}` from the registry and `COST`."""
+    registry = _packages.regenerable()
     out = {}
-    for kluc, (meno, co) in CENA.items():
-        b = z_ciselnika.get(kluc)
-        balik = b["kluc"] if b else ALIAS.get(kluc)
-        if not balik:
+    for key, (name, what) in COST.items():
+        p = registry.get(key)
+        package = p["key"] if p else ALIAS.get(key)
+        if not package:
             raise SystemExit(
-                f"::error::`{kluc}` je v CENA, ale v číselníku balíkov "
-                f"({_baliky.CISELNIK}) preň nie je `regeneruj` ani alias – "
-                f"formulár by ponúkal voľbu, ktorú packer nepozná a beh by "
-                f"spadol na `--only`.")
-        out[kluc] = {
-            "meno": meno,
-            "popis": f"{co} – balík `-{balik}.zip`",
-            "balik": balik,
+                f"::error::`{key}` is in COST, but the package registry "
+                f"({_packages.REGISTRY}) has no `regenerate` or alias for it – "
+                f"the form would offer a choice the packer doesn't know and the run "
+                f"would fail on `--only`.")
+        out[key] = {
+            "name": name,
+            "description": f"{what} – package `-{package}.zip`",
+            "package": package,
             "workflow": "regenerate-region.yml",
-            "inputs": {"co": kluc},
+            "inputs": {"what": key},
         }
     return out
 
 
-JOBS = _postav()
+JOBS = _build()
 
 
-def job(kluc):
-    """Položka číselníka, alebo tvrdý pád s tým, čo sa dá zadať."""
-    if kluc not in JOBS:
-        print(f"::error::Pregenerovať sa dá {', '.join(JOBS)} – „{kluc}“ "
-              f"nepoznám. Zoznam drží {os.path.relpath(__file__)}.",
+def job(key):
+    """A registry entry, or a hard stop naming what can be given."""
+    if key not in JOBS:
+        print(f"::error::What can be regenerated: {', '.join(JOBS)} – “{key}” "
+              f"is unknown. The list is in {os.path.relpath(__file__)}.",
               file=sys.stderr)
         sys.exit(1)
-    return JOBS[kluc]
+    return JOBS[key]
 
 
-def polia(kluc, env=None):
-    """`-f` polia pre beh nad jedným krajom: {input: hodnota}.
-
-    `region` tu NIE JE – ten dopĺňa štafeta, lebo sa mení s každým článkom.
-    """
+def fields(key, env=None):
+    """`-f` fields of a run over one region: {input: value}; the relay adds `region`."""
     env = os.environ if env is None else env
-    j = job(kluc)
+    j = job(key)
     out = dict(j["inputs"])
-    for meno, (premenna, predvolene) in CIELE[j["workflow"]]["podava"].items():
-        out[meno] = env.get(premenna) or predvolene
+    for name, (var, default) in TARGETS[j["workflow"]]["passes"].items():
+        out[name] = env.get(var) or default
     return out
 
 
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--zoznam", action="store_true",
-                    help="kľúče, ktoré sa dajú pregenerovať")
-    ap.add_argument("--workflow", default="", help="workflow nad jedným krajom")
-    ap.add_argument("--meno", default="", help="meno toho workflowu")
-    ap.add_argument("--popis", default="", help="čo tá voľba pregeneruje")
-    ap.add_argument("--polia", default="",
-                    help="`-f` polia behu nad krajom, po riadkoch `kľúč=hodnota`")
+    ap.add_argument("--list", action="store_true",
+                    help="keys that can be regenerated")
+    ap.add_argument("--workflow", default="", help="workflow over one region")
+    ap.add_argument("--name", default="", help="that workflow's name")
+    ap.add_argument("--describe", default="", help="what the choice regenerates")
+    ap.add_argument("--fields", default="",
+                    help="`-f` fields of the run over a region, `key=value` per line")
     args = ap.parse_args()
 
-    if args.zoznam:
+    if args.list:
         print("\n".join(JOBS))
     elif args.workflow:
         print(job(args.workflow)["workflow"])
-    elif args.meno:
-        print(CIELE[job(args.meno)["workflow"]]["meno"])
-    elif args.popis:
-        j = job(args.popis)
-        print(f"{j['meno']} – {j['popis']}")
-    elif args.polia:
-        # Po riadkoch, `kľúč=hodnota`: hodnota môže mať medzery (`options`),
-        # takže ju číta `while IFS= read -r` a nie rozpad na slová.
-        for k, v in polia(args.polia).items():
+    elif args.name:
+        print(TARGETS[job(args.name)["workflow"]]["name"])
+    elif args.describe:
+        j = job(args.describe)
+        print(f"{j['name']} – {j['description']}")
+    elif args.fields:
+        # one per line: a value may hold spaces (`options`)
+        for k, v in fields(args.fields).items():
             print(f"{k}={v}")
     else:
-        ap.error("zadaj --zoznam, --workflow=, --meno=, --popis= alebo --polia=")
+        ap.error("give --list, --workflow=, --name=, --describe= or --fields=")
 
 
 if __name__ == "__main__":

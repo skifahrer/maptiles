@@ -1,39 +1,18 @@
 #!/usr/bin/env python3
 """
-Ktorej malej dlaždici v sklade sa NEDÁ veriť – a musí sa teda prečítať znova.
+Which small tile in a store CAN'T be trusted – and so must be read again.
 
-PREČO TO EXISTUJE. Kontrola (`workers/dem/check.sh`) sa pýtala „je to meno
-v sklade?", kým sťahovanie (`workers/dem/fetch.sh` → `coverage.py`) meria, čo
-v tých súboroch naozaj je. To sú dve odpovede na jednu otázku – a raz sa
-rozišli: v behu 31781263921 mal `dem-dmr5` dlaždicu `N48E016.tif` s nulovou
-veľkosťou (prázdna dlaždica ešte od kontroly „v1", ktorej dnes už neveríme).
-Kontrola povedala „2 z 2 → doplniť: false", doplnenie sa nespustilo, a job
-s tieňovaním o minútu neskôr zistil pokrytie 75,8 %, prešiel na Sonnyho
-a spadol, lebo ten sklad je prázdny. Ostrý build Bratislavského kraja tak
-zomrel na niečom, čo sa dalo vedieť na začiatku.
+`check.sh` asked "is the name in the store?" while downloading measures what is
+in the files; in run 31781263921 an unsigned empty `N48E016.tif` passed the check
+and the build died later. No third truth: it asks `coverage.empty_stamp`, and
+opens only suspiciously small files (`tiles.EMPTY_MAX_BYTES`, sizes from the
+store listing). Needs `gdalinfo` – installed by the caller only when needed.
 
-AKO TO ROBÍ, ABY TO NEBOLA TRETIA PRAVDA. Neposudzuje nič sám – pýta sa
-`coverage.empty_stamp`, teda TEJ ISTEJ funkcie, ktorou sa neskôr riadi
-sťahovanie. Rozdiel je len v tom, ČO SA OTVORÍ: skutočná 1° dlaždica má
-v 5 m mriežke stovky MB a sťahovať ju kvôli kontrole by bola hlúposť, kým
-prázdna dlaždica je `EMPTY_PX`×`EMPTY_PX` pixelov, teda pár kilobajtov.
-Preto sa otvárajú LEN podozrivo malé súbory (`tiles.EMPTY_MAX_BYTES`) –
-veľkosť je vo výpise skladu, takže sa na to netreba nikoho pýtať.
-
-Prázdna dlaždica je platná odpoveď („pozerali sme sa tam a terén tam nie
-je") a znova sa nečíta – ale len dovtedy, kým nesie podpis kontroly, ktorá
-dnes platí. Bez podpisu, alebo so starým, je to odpoveď z pravidiel, ktorým
-už neveríme (rozpis pri `EMPTY_CHECK` vo `workers/dem/tiles.py`).
-
-Chce `gdalinfo` – volajúci ho doinštaluje, až keď je čo otvárať (býva to
-nula súborov).
-
-Použitie (na stdin ide `meno:veľkosť`, teda výstup `store.py --index`):
+Usage (stdin gets `name:size`, the output of `store.py --index`):
     python3 workers/drive/store.py --index --store=dem-dmr5 \\
       | python3 workers/dem/trust.py --store=dem-dmr5 --names="N48E016.tif …"
 
-Na stdout idú mená, ktorým sa veriť nedá (jedno na riadok); vysvetlenie ide
-na stderr, aby sa dalo výstup rovno použiť v skripte.
+Stdout gets the untrustworthy names (one a line); explanations go to stderr.
 """
 import argparse
 import importlib.util
@@ -47,7 +26,7 @@ _WORKERS = os.path.dirname(_HERE)
 
 
 def load(name, filename, where=_HERE):
-    """Modul s pomlčkou v mene sa nedá importovať – načíta sa cestou."""
+    """A module with a dash in its name can't be imported – loaded by path."""
     spec = importlib.util.spec_from_file_location(
         name, os.path.join(where, filename))
     mod = importlib.util.module_from_spec(spec)
@@ -59,83 +38,76 @@ tiles = load("dem_tiles", "tiles.py")
 coverage = load("dem_coverage", "coverage.py")
 
 
-def podozrive(index_riadky, chce):
-    """Mená z `chce`, ktoré sú v sklade, ale sú podozrivo malé.
-
-    `index_riadky` je výstup `store.py --index` (`meno:veľkosť`). Veľkosť je
-    tam preto, aby sa z nej dal počítať otlačok cache – tu sa tá istá hodnota
-    použije druhýkrát a nemusí sa na ňu nikoho pýtať.
-    """
+def suspects(index_lines, wanted):
+    """Names from `wanted` in the store but suspiciously small (`name:size` lines)."""
     out = []
-    for riadok in index_riadky:
-        meno, _, velkost = riadok.strip().rpartition(":")
-        if not meno or meno not in chce:
+    for line in index_lines:
+        name, _, size = line.strip().rpartition(":")
+        if not name or name not in wanted:
             continue
         try:
-            if int(velkost) <= tiles.EMPTY_MAX_BYTES:
-                out.append(meno)
+            if int(size) <= tiles.EMPTY_MAX_BYTES:
+                out.append(name)
         except ValueError:
             continue
     return out
 
 
-def stiahni(store, mena, kam):
-    """Stiahne podozrivé dlaždice do `kam`. Vracia tie, ktoré sa podarili."""
+def download(store, names, where):
+    """Download the suspect tiles into `where`. Returns those that came."""
     subprocess.run(
         [sys.executable, os.path.join(_WORKERS, "drive", "store.py"), "--get",
-         "--store", store, "--dir", kam, "--missing-ok",
-         "--name", " ".join(mena)],
+         "--store", store, "--dir", where, "--missing-ok",
+         "--name", " ".join(names)],
         check=False, stdout=sys.stderr, stderr=sys.stderr)
-    return [m for m in mena if os.path.exists(os.path.join(kam, m))]
+    return [m for m in names if os.path.exists(os.path.join(where, m))]
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--store", required=True, help="sklad, z ktorého sťahovať")
+    ap.add_argument("--store", required=True, help="the store to download from")
     ap.add_argument("--names", default="",
-                    help="mená dlaždíc, o ktoré ide (oddelené medzerou)")
+                    help="the tile names in question (space separated)")
     ap.add_argument("--only-suspect", action="store_true",
-                    help="len vypíš, ktoré sú podozrivo malé (bez GDALu "
-                         "a bez sťahovania) – podľa toho sa volajúci "
-                         "rozhodne, či sa oplatí GDAL vôbec inštalovať")
+                    help="only print the suspiciously small ones (no GDAL, no "
+                         "download) – so the caller decides whether GDAL is "
+                         "worth installing")
     args = ap.parse_args()
 
-    chce = set(args.names.split())
-    if not chce:
+    wanted = set(args.names.split())
+    if not wanted:
         return 0
-    male = podozrive(sys.stdin.readlines(), chce)
-    if not male:
+    small = suspects(sys.stdin.readlines(), wanted)
+    if not small:
         return 0
     if args.only_suspect:
-        for meno in male:
-            print(meno)
+        for name in small:
+            print(name)
         return 0
 
-    print(f"Podozrivo malé dlaždice v sklade {args.store} "
-          f"(≤ {tiles.EMPTY_MAX_BYTES // 1024} kB, čiže nie výškový model, "
-          f"ale záznam „pozerali sme sa tam“): {' '.join(male)}",
+    print(f"Suspiciously small tiles in store {args.store} "
+          f"(≤ {tiles.EMPTY_MAX_BYTES // 1024} kB, not an elevation model but "
+          f"a \"we looked there\" record): {' '.join(small)}",
           file=sys.stderr)
 
     with tempfile.TemporaryDirectory() as tmp:
-        for meno in stiahni(args.store, male, tmp):
-            info = coverage.tile_info(os.path.join(tmp, meno))
+        for name in download(args.store, small, tmp):
+            info = coverage.tile_info(os.path.join(tmp, name))
             stamp = coverage.empty_stamp(info) if info else None
             if stamp is None:
-                # Malá, ale nie je to prázdna dlaždica podľa mriežky – teda
-                # niečo, čo `coverage.py` posúdi až podľa rozsahu. Sem to
-                # nepatrí; nech o tom rozhodne on, nie odhad z veľkosti.
-                print(f"  ? {meno}: malá, ale nie je to prázdna dlaždica – "
-                      f"nechávam ju na coverage.py", file=sys.stderr)
+                # small but no empty tile by its grid – `coverage.py` judges it by extent
+                print(f"  ? {name}: small, but not an empty tile – "
+                      f"leaving it to coverage.py", file=sys.stderr)
                 continue
             if stamp == tiles.EMPTY_CHECK:
-                print(f"  ✓ {meno}: prázdna dlaždica s dnešným podpisom "
-                      f"„{stamp}“ – ten stupeň sa už čítať nemusí",
+                print(f"  ✓ {name}: an empty tile with today's stamp "
+                      f"\"{stamp}\" – that degree needn't be read again",
                       file=sys.stderr)
                 continue
-            print(f"  ✗ {meno}: prázdna dlaždica z kontroly "
-                  f"„{stamp or 'v1 (nepodpísaná)'}“, dnes platí "
-                  f"„{tiles.EMPTY_CHECK}“ – doplní sa", file=sys.stderr)
-            print(meno)
+            print(f"  ✗ {name}: an empty tile from check "
+                  f"\"{stamp or 'v1 (unsigned)'}\", today it is "
+                  f"\"{tiles.EMPTY_CHECK}\" – it will be refilled", file=sys.stderr)
+            print(name)
     return 0
 
 

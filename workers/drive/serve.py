@@ -1,22 +1,11 @@
 #!/usr/bin/env python3
-"""Google Drive ako slušný HTTP server pre GDAL.
+"""Google Drive as a decent HTTP server for GDAL.
 
-DMR 5.0 leží na Drive ako holý BigTIFF a Range requesty naň fungujú, ale GDAL
-cez `/vsicurl/` čítať nevie: Drive na HEAD vracia `content-length: 0`, takže
-si GDAL veľkosť domyslí zle a všetko padá na „after end of file". Tento server
-opraví tú jednu hlavičku (veľkosť zistí z `Content-Range` jednobajtového GETu)
-a ďalej už len prepája Range requesty.
-
-Dve cesty k tým istým dátam: prihlásený vlastník cez Drive API (vyšší limit)
-alebo verejný odkaz, ktorý má denný strop zdieľaný všetkými.
-
-O rýchlosti rozhodujú dve veci:
-  1. spojenia sa recyklujú – bez toho je to latencia × počet spojení
-     (2 209 dlaždíc 103 s pri 109 MB, čiže ~1 MB/s zo 75 MB/s pásma);
-  2. viacnásobný Range (`GDAL_HTTP_MULTIRANGE`) sa musí vedieť – server,
-     ktorý pošle len prvý úsek, podstrčí GDALu ticho zlé dáta.
-
-Celý súbor sa nesťahuje: má 145 GiB a runner má voľných ~60 GB.
+DMR 5.0 lies on Drive as a bare BigTIFF and Range requests work, but GDAL can't
+read it through `/vsicurl/`: Drive answers HEAD with `content-length: 0`. This
+server fixes that one header (the size from a one-byte GET's `Content-Range`)
+and passes Range requests through, reusing connections and serving multi-range
+requests properly. Signed in through the Drive API, or the public link.
 
     python3 workers/drive/serve.py --file=dmr5.tif=<id> --port=8787
 """
@@ -37,14 +26,11 @@ import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 
 UA = "Mozilla/5.0 (compatible; fricomaps-dem/1.0)"
-# verejná cesta: `confirm=t` už obišlo stránku „can't scan this file"
+# the public way: `confirm=t` skips the "can't scan this file" page
 PUBLIC_HOST = "drive.usercontent.google.com"
-# Prihlásená cesta: riadne Drive API. Range na `alt=media` funguje rovnako.
+# the signed-in way: the Drive API; Range on `alt=media` works the same
 API_HOST = "www.googleapis.com"
-# koľko úsekov viacnásobného Range sa ťahá naraz – na celý proces, nie na
-# požiadavku: pri `--jobs 6` bolo z „12 vlákien" 72. 24 je namerané (48
-# výrezov po 400 kB: 1 vlákno 1143 ms/req, 8 vlákien 147, 24 vlákien 68);
-# nad ~32 začne Drive odpovedať 403 a čakanie zožerie viac, než sa získa.
+# multi-range parts fetched at once per process (measured best at 24; over ~32 Drive 403s)
 FETCH_WORKERS = 24
 
 _FETCH = None
@@ -52,11 +38,7 @@ _FETCH_LOCK = threading.Lock()
 
 
 def fetch_pool():
-    """Jeden zdieľaný bazén vlákien na sťahovanie úsekov.
-
-    Zdieľaný, aby `FETCH_WORKERS` naozaj ohraničoval, a jeden, aby sa vlákna
-    nevyrábali pri každej z desaťtisícov požiadaviek.
-    """
+    """One shared thread pool fetching parts, so `FETCH_WORKERS` really bounds it."""
     global _FETCH
     with _FETCH_LOCK:
         if _FETCH is None:
@@ -66,41 +48,37 @@ def fetch_pool():
 
 
 def quota_hint(authed):
-    """Čo robí Drive, keď nechce dať dáta – a čo s tým.
-
-    Na verejnej ceste vráti HTTP 200 a HTML stránku, nie chybový kód. Kým sa
-    to bralo ako úspech, job visel 2 h 16 min na `gdalinfo`. Prihlásená cesta
-    pošle 403 a JSON s dôvodom.
-    """
+    """What Drive does when it won't give data – and what to do about it."""
+    # the public way answers 200 with an HTML page; taken as success, a job hung 2 h 16 min
     if authed:
-        return ("prekročený limit sťahovania z Google Drive aj pre prihlásený "
-                "účet. Over, či ten súbor prihlásený účet naozaj VLASTNÍ "
-                "(`python3 workers/drive/dmr5.py --auth-check`) – na cudzí "
-                "zdieľaný súbor platí ten istý denný strop ako na verejný "
-                "odkaz. Ak vlastní, počkaj pár hodín; beh medzitým prejde na "
-                "hrubší model (sonny), keď je zapnutý ugkk_fallback.")
-    return ("prekročený limit sťahovania z Google Drive (verejný odkaz má "
-            "denný strop na súbor a ten zdieľajú všetci, kto naň siahnu). "
-            "Prihlás beh ako vlastníka dát – secret GDRIVE_CREDENTIALS, "
-            "rozpis vo `workers/drive/auth.py --login` – vlastník má strop "
-            "oveľa vyšší. Inak počkaj pár hodín, alebo nahraj kópiu modelu do "
-            "iného priečinka a prepíš FOLDER_ID vo workers/drive/dmr5.py. Beh "
-            "medzitým prejde na hrubší model (sonny), keď je zapnutý "
-            "ugkk_fallback.")
+        return ("the Google Drive download limit is exceeded even for the "
+                "signed-in account. Check the account really OWNS the file "
+                "(`python3 workers/drive/dmr5.py --auth-check`) – someone "
+                "else's shared file has the public link's daily cap. If it "
+                "owns it, wait a few hours; meanwhile the run falls back to a "
+                "coarser model (sonny) when ugkk_fallback is on.")
+    return ("the Google Drive download limit is exceeded (a public link has a "
+            "daily per-file cap shared by everyone reaching it). Sign the run "
+            "in as the data owner – secret GDRIVE_CREDENTIALS, steps in "
+            "`workers/drive/auth.py --login` – the owner's cap is much higher. "
+            "Otherwise wait a few hours, or upload a copy of the model to "
+            "another folder and rewrite FOLDER_ID in workers/drive/dmr5.py. "
+            "Meanwhile the run falls back to a coarser model (sonny) when "
+            "ugkk_fallback is on.")
 
 
 def drive_refusal(body, authed=False):
-    """Vráti popis odmietnutia, keď je telo HTML stránka namiesto dát."""
+    """A refusal description when the body is an HTML page instead of data."""
     head = body[:2048].lower()
     if b"<html" not in head and b"<!doctype" not in head:
         return None
     if b"quota" in head or b"too many" in head or b"limit" in head:
         return quota_hint(authed)
-    return f"Drive vrátil HTML stránku ({len(body)} B), nie dáta"
+    return f"Drive returned an HTML page ({len(body)} B), not data"
 
 
 def api_error(body):
-    """`reason` z chybovej JSON odpovede Drive API, alebo None."""
+    """`reason` from a Drive API JSON error answer, or None."""
     if not body[:64].lstrip().startswith(b"{"):
         return None
     try:
@@ -112,44 +90,38 @@ def api_error(body):
         for e in err.get("errors") or []:
             if e.get("reason"):
                 return e["reason"]
-        return str(err.get("status") or err.get("message") or "chyba bez dôvodu")
+        return str(err.get("status") or err.get("message") or "an error without a reason")
     if isinstance(err, str):
         return err
     return None
 
 
 def hard_reason(reason, authed):
-    """Popis pre dôvody, pri ktorých je opakovanie strata času.
-
-    Limit ani chýbajúce právo sa o dvadsať sekúnd neposunú – prvý taký nález
-    zastaví celý `Pool`. `rateLimitExceeded` a 5xx sú prechodné a opakujú sa.
-    """
+    """A description for reasons where retrying wastes time; the first stops the `Pool`."""
     if reason in ("downloadQuotaExceeded", "quotaExceeded", "dailyLimitExceeded",
                   "userRateLimitExceededUnreg"):
         return quota_hint(authed)
     if reason == "notFound":
-        return ("Drive ten súbor nevidí (notFound). Prihlásený beh to hlási "
-                "vtedy, keď na súbor nevidí použitý účet – over "
-                "`python3 workers/drive/dmr5.py --auth-check`. Inak sa súbor "
-                "z priečinka `FOLDER_ID` (workers/drive/dmr5.py) presunul "
-                "alebo prestalo platiť zdieľanie.")
+        return ("Drive doesn't see the file (notFound). A signed-in run says "
+                "so when the account doesn't see it – check "
+                "`python3 workers/drive/dmr5.py --auth-check`. Otherwise the "
+                "file moved out of folder `FOLDER_ID` (workers/drive/dmr5.py) "
+                "or its sharing stopped.")
     if reason in ("forbidden", "insufficientFilePermissions", "cannotDownloadFile",
                   "insufficientPermissions", "appNotAuthorizedToFile",
                   "fileNotDownloadable", "cannotDownloadAbusiveFile"):
-        return (f"Drive odmietol prístup k súboru ({reason}). Prihlás sa účtom, "
-                "ktorý dáta vlastní (`python3 workers/drive/auth.py --login`), "
-                "alebo súbor nasdieľaj pre kohokoľvek s odkazom.")
+        return (f"Drive refused access to the file ({reason}). Sign in with the "
+                "account owning the data (`python3 workers/drive/auth.py "
+                "--login`), or share the file with anyone with the link.")
     return None
 
-
-# spojenia
 
 _CTX = None
 _CTX_LOCK = threading.Lock()
 
 
 def _ssl_ctx():
-    """Jeden overovací kontext pre celý proces (aj s vlastným CA z prostredia)."""
+    """One verifying context for the process (with an own CA from the environment)."""
     global _CTX
     with _CTX_LOCK:
         if _CTX is None:
@@ -162,11 +134,7 @@ def _ssl_ctx():
 
 
 def connect(host, timeout=180):
-    """HTTPS spojenie na `host`, aj cez firemné proxy (CONNECT tunel).
-
-    `http.client` namiesto `requests`: runner nemá nič doinštalované. Používa
-    to aj `drive/auth.py` – proxy a CA sa nemajú riešiť na dvoch miestach.
-    """
+    """An HTTPS connection to `host`, through a proxy too (a CONNECT tunnel)."""
     proxy = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY")
     if proxy:
         p = urllib.parse.urlsplit(proxy)
@@ -179,31 +147,21 @@ def connect(host, timeout=180):
 
 
 class Pool:
-    """Znovupoužiteľné HTTPS spojenia na Drive, po hostoch.
-
-    Ciest k dátam je viac (kanonická adresa a adresa z presmerovania)
-    a spojenie na jeden host sa nesmie použiť na druhý.
-    """
+    """Reusable HTTPS connections to Drive, per host (canonical and redirect)."""
 
     def __init__(self, creds=None, size=32):
         self.creds = creds
         self.size = size
-        self.free = {}                  # host → LifoQueue voľných spojení
+        self.free = {}                  # host → LifoQueue of free connections
         self.lock = threading.Lock()
-        # neprázdne = Drive dáta odmietol a nemá zmysel pýtať sa ďalej
+        # non-empty = Drive refused the data, asking on is pointless
         self.refused = None
-        # dokedy sa nikto nemá pýtať: limit Drive je okno, a kým doň tlačia
-        # ostatné vlákna, neuplynie
+        # until when nobody asks: Drive's limit is a window other threads keep open
         self.cooldown = 0.0
-        # file id → (host, cesta) z presmerovania: podpísaná adresa platí
-        # krátko, ale vypýtať ju znova znamená request na každý blok
+        # file id → (host, path) from a redirect, instead of a request per block
         self.redirect = {}
-        # súbory, pri ktorých Drive žiada potvrdenie o antivíruse. API to má
-        # v `acknowledgeAbuse`, ktoré smie poslať len vlastník – preto sa
-        # nepridáva dopredu, len keď si o to Drive povie.
+        # files Drive wants an antivirus acknowledgement for (only when it asks)
         self.ack = set()
-
-    # spojenia
 
     def _pipe(self, host):
         with self.lock:
@@ -225,10 +183,8 @@ class Pool:
         else:
             conn.close()
 
-    # kam sa ide po dáta
-
     def target(self, file_id):
-        """Kanonická adresa súboru: s prihlásením API, bez neho verejný odkaz."""
+        """A file's canonical address: the API when signed in, else the public link."""
         if self.creds is not None:
             path = (f"/drive/v3/files/{urllib.parse.quote(file_id)}"
                     "?alt=media&supportsAllDrives=true")
@@ -239,7 +195,7 @@ class Pool:
                              "&export=download&confirm=t")
 
     def _where(self, file_id):
-        """(host, cesta, či je to zapamätané presmerovanie)."""
+        """(host, path, whether it is a remembered redirect)."""
         with self.lock:
             hit = self.redirect.get(file_id)
         if hit:
@@ -248,7 +204,7 @@ class Pool:
         return host, path, False
 
     def _remember(self, file_id, location):
-        """Ulož cieľ presmerovania (absolútny aj relatívny)."""
+        """Remember a redirect target (absolute or relative)."""
         parts = urllib.parse.urlsplit(location)
         host = parts.netloc or self.target(file_id)[0]
         path = parts.path or "/"
@@ -261,22 +217,20 @@ class Pool:
         with self.lock:
             self.redirect.pop(file_id, None)
 
-    # limit Drive
-
     def _slow_down(self, retry_after, n):
-        """Limit Drive zastaví celý Pool, nie len vlákno, ktoré naň narazilo."""
+        """Drive's limit stops the whole Pool, not just the thread that hit it."""
         wait = min(2.0 ** n, 60.0)
         try:
             wait = max(wait, float(retry_after))
         except (TypeError, ValueError):
             pass
         with self.lock:
-            nove = max(self.cooldown, time.time() + wait)
-            hlasne = nove > self.cooldown + 1
-            self.cooldown = nove
-        if hlasne:
-            print(f"  drive-serve: limit Drive – čakám {wait:.0f} s "
-                  f"(všetky vlákna)", file=sys.stderr, flush=True)
+            new = max(self.cooldown, time.time() + wait)
+            loud = new > self.cooldown + 1
+            self.cooldown = new
+        if loud:
+            print(f"  drive-serve: Drive limit – waiting {wait:.0f} s "
+                  f"(all threads)", file=sys.stderr, flush=True)
 
     def _wait_out(self):
         while True:
@@ -284,27 +238,20 @@ class Pool:
                 left = self.cooldown - time.time()
             if left <= 0:
                 return
-            # rozptyl, aby po uplynutí okna nevyrazili všetky vlákna naraz
+            # jitter, so threads don't all start at once when the window ends
             time.sleep(min(left, 5.0) + random.random() / 2)
 
-    # čítanie
-
     def get(self, file_id, rng, tries=6, want=None):
-        """GET s hlavičkou Range; vráti (status, headers, telo ako bajty).
-
-        `want` je koľko bajtov sa pýtalo – bez neho sa dá overiť len stavový
-        kód, a ten na verejnej ceste pri odmietnutí klame.
-        """
+        """A GET with a Range header; returns (status, headers, body bytes)."""
+        # `want` is the bytes asked; the public way's status code lies on refusal
         last = None
         attempt = 0
-        # presmerovanie a výmena vypršaného tokenu nie sú zlyhania, na ktoré
-        # sa čaká – nech nezožerú pokusy určené na chyby siete
+        # redirects and token renewals aren't failures – they don't eat network retries
         extra, EXTRA_MAX = 0, 6
         slow, SLOW_MAX = 0, 8
         renewed = False
         while attempt < tries:
-            # limit nepustí ani o dvadsať sekúnd neskôr: stačí naraziť raz za
-            # beh, nie raz za blok
+            # a limit won't lift in twenty seconds: hitting it once a run is enough
             if self.refused:
                 raise RuntimeError(self.refused)
             self._wait_out()
@@ -312,8 +259,7 @@ class Pool:
             headers = {"Range": rng, "User-Agent": UA,
                        "Accept-Encoding": "identity"}
             token = None
-            # token ide len na kanonický API host – adresa z presmerovania je
-            # podpísaná v query (rovnako to robí `curl -L`)
+            # the token only to the canonical API host; a redirect is signed in its query
             if self.creds is not None and host == API_HOST:
                 token = self.creds.token()
                 headers["Authorization"] = "Bearer " + token
@@ -323,7 +269,7 @@ class Pool:
                 resp = conn.getresponse()
                 body = resp.read()
                 status, hdrs = resp.status, resp.headers
-                # 200 na Range znamená, že ho Drive ignoroval; rozhodne dĺžka
+                # 200 on a Range means Drive ignored it; the length decides
                 if status == 206 or (status == 200
                                      and (want is None or len(body) == want)):
                     self._put(host, conn)
@@ -339,7 +285,7 @@ class Pool:
                 time.sleep(min(1.5 ** attempt, 20))
                 continue
 
-            # zapamätané presmerovanie mohlo vypršať
+            # a remembered redirect may have expired
             if cached:
                 self._forget(file_id)
 
@@ -351,28 +297,25 @@ class Pool:
                     continue
 
             if status == 401 and token is not None:
-                # vypršaný token je okamžitá vec, nie čakanie; `renew` drží,
-                # aby ho neobnovovalo každé vlákno. Keď odmietne aj čerstvý,
-                # je to zlé prihlásenie, nie prechodná chyba.
+                # renew once; refusing a fresh token too is a bad sign-in, not transient
                 if not renewed:
                     self.creds.renew(token)
                     renewed = True
                     continue
                 why = api_error(body)
-                hard = (f"Drive odmietol access token aj po obnove (HTTP 401"
-                        + (f", {why}" if why else "") + "). Over "
-                        "`python3 workers/drive/auth.py --check`: účet mohol "
-                        "appke odvolať prístup, alebo secret "
-                        "GDRIVE_CREDENTIALS patrí inému projektu, než v ktorom "
-                        "bol token vyrobený.")
+                hard = ("Drive refused the access token even after renewal (HTTP 401"
+                        + (f", {why}" if why else "") + "). Check "
+                        "`python3 workers/drive/auth.py --check`: the account "
+                        "may have revoked the app's access, or the secret "
+                        "GDRIVE_CREDENTIALS belongs to another project than "
+                        "the token was made in.")
                 self.refused = hard
                 raise RuntimeError(hard)
 
             reason = api_error(body)
             if (reason == "cannotDownloadAbusiveFile" and self.creds is not None
                     and file_id not in self.ack and extra < EXTRA_MAX):
-                # Drive súbor nepreveril antivírusom – potvrdenie sa pridá až
-                # keď si o to povie
+                # Drive didn't virus-scan the file – acknowledge only when asked
                 self.ack.add(file_id)
                 extra += 1
                 continue
@@ -382,7 +325,7 @@ class Pool:
                 if hard:
                     self.refused = hard
                     raise RuntimeError(hard)
-            # limit má vlastný rozpočet: inak ho minie skôr než chyby siete
+            # the limit has its own budget, or it uses up the network retries
             if status == 429 or reason in ("rateLimitExceeded",
                                            "userRateLimitExceeded"):
                 if slow < SLOW_MAX:
@@ -394,28 +337,28 @@ class Pool:
             elif status == 200:
                 why = drive_refusal(body, self.creds is not None)
                 if why:
-                    # toto sa opakovaním nespraví
+                    # retrying won't fix this
                     self.refused = why
                     raise RuntimeError(why)
-                last = (f"HTTP 200 a {len(body)} B namiesto {want} – "
-                        "Drive rozsah ignoroval")
+                last = (f"HTTP 200 and {len(body)} B instead of {want} – "
+                        "Drive ignored the range")
             else:
                 last = f"HTTP {status}"
             attempt += 1
-            # 403 „rate limit" exponenciálne čakanie spoľahlivo prejde
+            # an exponential wait reliably gets past a 403 "rate limit"
             time.sleep(min(1.5 ** attempt, 20))
-        raise RuntimeError(f"Drive neodpovedal ani na {tries}. pokus: {last}")
+        raise RuntimeError(f"Drive didn't answer in {tries} tries: {last}")
 
 
 def parse_ranges(header, size):
-    """`bytes=a-b,c-,-d` → [(start, end), …], konce vrátane, orezané na súbor."""
+    """`bytes=a-b,c-,-d` → [(start, end), …], ends inclusive, clipped to the file."""
     out = []
     for spec in header.split("=", 1)[1].split(","):
         spec = spec.strip()
         if not spec:
             continue
         a, _, b = spec.partition("-")
-        if a == "":                            # „-500" = posledných 500 bajtov
+        if a == "":                            # "-500" = the last 500 bytes
             start, end = max(0, size - int(b)), size - 1
         else:
             start = int(a)
@@ -427,18 +370,13 @@ def parse_ranges(header, size):
 
 
 def make_handler(pool, files, stats):
-    """`files` je meno v URL → (Drive file id, veľkosť).
-
-    Menami preto, že GDAL si sidecary hľadá podľa mena vedľa hlavného súboru:
-    pod `.tif.ovr` nájde pyramídy sám a pri hrubšom cieli číta z nich namiesto
-    zo 145 GiB rastra. Preto sa `GDAL_DISABLE_READDIR_ON_OPEN` nenastavuje.
-    """
+    """`files` is URL name → (Drive file id, size); names let GDAL find `.tif.ovr` itself."""
 
     class Handler(http.server.BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
         def log_message(self, *a):
-            pass                  # inak by každá dlaždica bola riadok v logu
+            pass                  # otherwise every tile would be a log line
 
         def _entry(self):
             name = urllib.parse.unquote(self.path.lstrip("/"))
@@ -447,12 +385,12 @@ def make_handler(pool, files, stats):
         def do_HEAD(self):
             entry = self._entry()
             if not entry:
-                # 404 nie je chyba: takto sa GDAL pýta, či sidecar existuje.
+                # 404 isn't an error: that is how GDAL asks whether a sidecar exists
                 self.send_response(404)
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
-            # Presne tá hlavička, ktorú Drive nevie: skutočná dĺžka.
+            # exactly the header Drive gets wrong: the real length
             self.send_response(200)
             self.send_header("Content-Length", str(entry[1]))
             self.send_header("Accept-Ranges", "bytes")
@@ -464,7 +402,7 @@ def make_handler(pool, files, stats):
             status, _, body = pool.get(file_id, f"bytes={start}-{end}", want=want)
             if len(body) != want:
                 raise RuntimeError(
-                    f"Drive vrátil {len(body)} B namiesto {want} (HTTP {status})")
+                    f"Drive returned {len(body)} B instead of {want} (HTTP {status})")
             with stats["lock"]:
                 stats["requests"] += 1
                 stats["bytes"] += len(body)
@@ -486,8 +424,7 @@ def make_handler(pool, files, stats):
             hdr = self.headers.get("Range")
             asked = bool(hdr and hdr.startswith("bytes="))
             ranges = parse_ranges(hdr, size) if asked else []
-            # rozsah, z ktorého po orezaní nič neostalo, nie je „pošli celý
-            # súbor" – to je 145 GB namiesto 32 kB. Podľa RFC 9110 je to 416.
+            # a range empty after clipping isn't "send the whole file" (145 GB) – RFC 9110 says 416
             if asked and not ranges:
                 self.send_response(416)
                 self.send_header("Content-Range", f"bytes */{size}")
@@ -506,17 +443,14 @@ def make_handler(pool, files, stats):
                 else:
                     self._send_multipart(file_id, size, ranges)
             except (BrokenPipeError, ConnectionResetError):
-                pass              # GDAL zavrel spojenie – bežné a v poriadku
+                pass              # GDAL closed the connection – common and fine
             except Exception as exc:            # noqa: BLE001
-                # zlyhania sa aj rátajú: keď GDAL hlási chybu a tu je nula,
-                # spojenie sa k shimu nedostalo a hľadať sa má inde než na Drive
+                # counted: GDAL errors with zero here never reached the shim
                 with stats["lock"]:
                     stats["failed"] += 1
-                print(f"  drive-serve: {self.path} {hdr} zlyhalo: {exc}",
+                print(f"  drive-serve: {self.path} {hdr} failed: {exc}",
                       file=sys.stderr, flush=True)
-                # odpovedaj aj na chybu – kým sa sem chodilo len vypísať,
-                # GDAL čakal na odpoveď, ktorá nikdy neprišla, a job visel
-                # 2 h 16 min. 502 vráti GDAL ako chybu a job spadne v sekundách.
+                # answer an error too: unanswered, a job hung 2 h 16 min; a 502 fails it in seconds
                 if not self.responded:
                     try:
                         msg = str(exc).encode("utf-8")
@@ -529,11 +463,11 @@ def make_handler(pool, files, stats):
                     except Exception:           # noqa: BLE001
                         pass
                 else:
-                    # hlavičky sú vonku – aspoň nenechaj klienta čakať na telo
+                    # headers are out – at least don't keep the client waiting for a body
                     self.close_connection = True
 
         def _send_stream(self, file_id, size, rng):
-            """Celý súbor po kúskoch – GDAL to nerobí, ale `curl` áno."""
+            """The whole file in pieces – GDAL doesn't, but `curl` does."""
             start, end = rng
             self.send_response(200)
             self.send_header("Content-Length", str(end - start + 1))
@@ -584,33 +518,27 @@ def make_handler(pool, files, stats):
 class Server(socketserver.ThreadingTCPServer):
     daemon_threads = True
     allow_reuse_address = True
-    # fronta čakajúcich spojení: `socketserver` má predvolene 5 a to je pri
-    # šiestich súbežných gdalwarpoch málo. Keď pretečie, jadro SYN ticho zahodí
-    # a GDAL to po dvoch minútach vypíše ako `response_code=0`, čo vyzerá ako
-    # chyba Drive. Berie sa preto `SOMAXCONN` – prázdna fronta nič nestojí.
+    # the backlog: 5 by default drops SYNs under six gdalwarps (`response_code=0`)
     request_queue_size = socket.SOMAXCONN
 
 
 def probe_size(pool, file_id):
-    """Veľkosť z `Content-Range` jednobajtového GETu – HEAD sa nedá veriť."""
+    """The size from a one-byte GET's `Content-Range` – HEAD can't be trusted."""
     status, headers, _ = pool.get(file_id, "bytes=0-0", want=1)
     cr = headers.get("Content-Range", "")
     if "/" not in cr:
         raise RuntimeError(
-            f"Drive nevrátil Content-Range (HTTP {status}, {cr!r}). "
-            + ("Vidí prihlásený účet na ten súbor? "
+            f"Drive returned no Content-Range (HTTP {status}, {cr!r}). "
+            + ("Does the signed-in account see the file? "
                "`python3 workers/drive/dmr5.py --auth-check`"
                if pool.creds is not None else
-               "Je ten súbor zdieľaný pre kohokoľvek s odkazom?"))
+               "Is the file shared with anyone with the link?"))
     return int(cr.rsplit("/", 1)[1])
 
 
 def serve(ids, port=8787, creds=None):
-    """Spustí server na pozadí.
-
-    `ids` je meno v URL → Drive file id, `creds` z `drive/auth.py` (alebo None
-    = verejný odkaz). Vracia (základná url, {meno: veľkosť}, štatistiky).
-    """
+    """Start the server in the background; returns (base url, {name: size}, stats)."""
+    # `ids` is URL name → Drive file id, `creds` from `auth.py` (None = public link)
     pool = Pool(creds=creds)
     files, sizes = {}, {}
     for name, file_id in ids.items():
@@ -623,14 +551,8 @@ def serve(ids, port=8787, creds=None):
 
 
 def gdal_env(extra=None):
-    """Prostredie, v ktorom GDAL cez tento shim číta rozumne.
-
-    `no_proxy` je podstatné: bez neho by GDAL posielal 127.0.0.1 cez proxy.
-    `GDAL_DISABLE_READDIR_ON_OPEN` sa zámerne nenastavuje – skryl by `.ovr`
-    vedľa `.tif`, a práve pyramídy robia hrubšie výrezy lacnými.
-    `GDAL_HTTP_MAX_RETRY` a krátky `CONNECTTIMEOUT`: GDAL predvolene neopakuje
-    nič a na spojenie čaká, kým sa nevzdá jadro.
-    """
+    """An environment where GDAL reads through this shim sensibly."""
+    # `no_proxy` keeps 127.0.0.1 off the proxy; no READDIR switch, it would hide `.ovr`
     env = {
         **os.environ,
         "GDAL_HTTP_MULTIRANGE": "YES",
@@ -655,12 +577,12 @@ def gdal_env(extra=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--file", action="append", required=True, metavar="MENO=ID",
-                    help="meno v URL a Drive file id; dá sa opakovať, aby "
-                         "sa .tif a jeho .ovr podávali vedľa seba")
+    ap.add_argument("--file", action="append", required=True, metavar="NAME=ID",
+                    help="a URL name and a Drive file id; repeatable, so a "
+                         ".tif and its .ovr are served side by side")
     ap.add_argument("--auth", action="store_true",
-                    help="čítať prihlásený ako vlastník (GDRIVE_CREDENTIALS)")
-    ap.add_argument("--port", type=int, default=8787, help="0 = vyber voľný")
+                    help="read signed in as the owner (GDRIVE_CREDENTIALS)")
+    ap.add_argument("--port", type=int, default=8787, help="0 = pick a free one")
     ap.add_argument("--print-url", action="store_true")
     args = ap.parse_args()
 
@@ -668,23 +590,23 @@ def main():
     for spec in args.file:
         name, _, file_id = spec.partition("=")
         if not file_id:
-            ap.error(f"--file čakalo MENO=ID, dostalo {spec!r}")
+            ap.error(f"--file expected NAME=ID, got {spec!r}")
         ids[name] = file_id
 
     creds = None
     if args.auth:
-        # až tu: `drive/auth.py` si spojenia berie odtiaľto, bol by to kruh
+        # only here: `auth.py` takes its connections from this file
         import importlib.util
         spec = importlib.util.spec_from_file_location(
             "drive_auth", os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                       "drive-auth.py"))
+                                       "auth.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         try:
             creds = mod.from_env()
             if creds is None:
-                print("::error::--auth je zapnuté, ale v prostredí nie sú "
-                      "prihlasovacie údaje (GDRIVE_CREDENTIALS).",
+                print("::error::--auth is on, but the environment has no "
+                      "sign-in details (GDRIVE_CREDENTIALS).",
                       file=sys.stderr)
                 return 2
             mod.whoami(creds)
@@ -703,7 +625,7 @@ def main():
         while True:
             time.sleep(60)
             with stats["lock"]:
-                print(f"  drive-serve: {stats['requests']:,} požiadaviek, "
+                print(f"  drive-serve: {stats['requests']:,} requests, "
                       f"{stats['bytes'] / 1e6:,.0f} MB", flush=True)
     except KeyboardInterrupt:
         pass

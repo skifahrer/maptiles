@@ -1,8 +1,8 @@
 {
   "_comment": [
-    "Autori a licencie dát v tvare, ktorý číta aj appka (`LayerCredit`).",
-    "Balík ich menuje v `zdroje` v packages.json; `dem:*` je model, z ktorého kraj stavali.",
-    "`copyright: false` = zdroj bez ©."
+    "Data authors and licences, in the shape the app reads (`LayerCredit`).",
+    "A package names them in `sources` in packages.json; `dem:*` is the model its region was built from.",
+    "`copyright: false` = a source without ©."
   ],
   "osm": {
     "holder": "OpenStreetMap contributors",
@@ -18,7 +18,7 @@
     "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
     "source_url": "https://www.wikipedia.org"
   },
-  "autor": {
+  "author": {
     "holder": "Richard Dvorský",
     "work": "Hillshading, 3D terrain, contours and rock faces"
   },

@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
-"""Rozloží voľné `kľúč=hodnota` z inputu `options` na jednotlivé nastavenia.
+"""Split the free `key=value` input `options` into single settings; an unknown key is an error.
 
-`workflow_dispatch` dovolí najviac 10 inputov, tak sa zvyšok píše do jedného
-poľa. Vrstva sa zapína tam, kde sa vyberá jej zdroj (`ziadne` = vypnuté).
-Neznámy kľúč je chyba, nie ticho ignorovaná hodnota.
-
-Použitie:
     python3 workers/plan/options.py --options=\"rock_res=1\" \\
-        --rebuild=skaly --contour-source=sonny --rock-source=dmr5 \\
+        --rebuild=rocks --contour-source=sonny --rock-source=dmr5 \\
         --shading-source=sonny --test=true --publish-pages=true \\
         --out=$GITHUB_OUTPUT
 """
@@ -24,167 +19,144 @@ _DATA = os.path.join(_WORKERS, "data")
 sys.path.insert(0, os.path.join(_WORKERS, "lib"))
 from cell import terrain_zoom_for, tile_m_per_px  # noqa: E402
 
-# kľúč: (predvolená hodnota, popis)
+# key: (default, description)
 DEFAULTS = {
-    "crop_bbox": ("", "orezať región na west,south,east,north"),
-    "area_bbox": ("", "vlastný výrez W,S,E,N namiesto pohoria z výberu"),
-    # 4 km², nie 2: na dvoch sa skalná plocha často netrafila do ničoho
-    "test_km2": ("4", "veľkosť štvorca pri zapnutom switchi `test` (km²)"),
-    "test_at": ("", "stred testovacieho štvorca `lon,lat` (prázdne = stred výrezu)"),
-    # predvolené: `rebuild: nic` znamená, že sa neprepočítava nič. Vzatú vrstvu
-    # job hlási `::notice::`-om; prepočet si pýta `rebuild`.
-    "reuse_layers": ("true", "nepočítať vrstvu z výškového modelu, ktorá "
-                             "s týmito nastaveniami už raz vznikla"),
-    "size_limit_mb": ("900", "rozpočet celej stránky v MB"),
-    "auto_shrink": ("true", "znížiť zoom dlaždíc, keď sa nezmestia"),
-    "ugkk_fallback": ("true", "keď DMR 5.0 pre výrez nie je, počítať zo Sonnyho"),
-    "ugkk_urls": ("", "priame URL na ÚGKK dáta (posledná záchrana)"),
-    "contour_maxzoom": ("14", "max zoom dlaždíc s vrstevnicami"),
-    # 16 je tvrdý strop Planetilera; vyššie rieši overzoom
-    "rock_maxzoom": ("16", "max zoom dlaždíc so skalami (strop Planetilera je 16)"),
-    # skala je jedna súvislá plocha bez dier: kreslí sa sivou bez priehľadnosti
-    "rock_plne": ("1", "1 = jedna trieda skál (žiadna plocha vnútri inej), "
-                       "0 = triedy steep/cliff ako predtým"),
-    # diery sú žliabky a police – práve ten tvar, pre ktorý sa skaly počítajú
-    "rock_zapln_diery": ("0", "1 = zaplniť diery v skalách (súvislé plochy "
-                              "namiesto tvaru) – neodporúča sa"),
-    # `auto` vyberie mriežku z bunky DEM a rozpočtu času a napíše prečo
-    "rock_res": ("auto", "mriežka na obrys skál v metroch, alebo `auto`"),
-    "contour_smoothing": ("0", "zjemnenie DEM v oblúkových sekundách"),
-    "trails_maxzoom": ("14", "max zoom dlaždíc so značenými trasami"),
-    # `auto` = najnižší zoom, kde je pixel jemnejší než bunka modelu; pevná 13
-    # znamenala, že DMR 5.0 vyzeralo ako Sonny
-    "terrain_maxzoom": ("auto", "max zoom výškových dlaždíc (auto = podľa mriežky modelu)"),
-    # na verejné AWS dlaždice sa 3D nezapína, sú globálne a hrubé
-    "terrain_3d": ("auto", "3D terén v štýle (auto = keď máme vlastné výškové dlaždice)"),
-    # trasy nemajú výber zdroja – idú z toho istého PBF ako mapa
-    "trails": ("true", "generovať značené trasy z OSM relácií"),
-    # násypy, múry, ploty, vedenia, prieseky, pramene, jaskyne, rozhľadne
-    "features": ("true", "generovať krajinné prvky, ktoré OpenMapTiles nemá"),
-    # dlaždice so značkami, z ktorých telefón počíta trasu – ide v základnej
-    # mape aj v balíku `cesty`
-    "navigacia": ("true", "stavať smerovaciu sieť pre tento región – ide "
-                          "v základnej mape aj v balíku `cesty`"),
-    # všetko, po čom sa dá cestovať, aj s obmedzeniami na ceste ako atribútmi
-    # tých istých ciest – vrstva `transportation` OpenMapTiles ich nenesie
-    "transport": ("true", "generovať dopravnú sieť (cesty, trate, trajekty, "
-                          "lanovky) aj s obmedzeniami na ceste – balík `cesty`"),
-    # 14, nie 15: najvyšší `min_zoom` v schéme je 14, vyššie pribúdajú len bajty
-    "transport_maxzoom": ("14", "max zoom dlaždíc s dopravnou sieťou"),
-    # vrstva `boundary` OpenMapTiles je čiara bez mena územia, ktoré ohraničuje
-    "boundaries": ("true", "generovať hranice území a ich názvy – balík "
-                           "`hranice`"),
-    # 12: nad ním už hranica nepribúda, len body sídel (`min_zoom: 10`)
-    "boundaries_maxzoom": ("12", "max zoom dlaždíc s hranicami"),
-    # v OpenMapTiles je voda v troch vrstvách a meno leží mimo geometrie
-    "water": ("true", "generovať vodstvo (rieky, jazerá, more) – balík "
-                      "`vodstvo`"),
-    # 14: najvyšší `min_zoom` v schéme je 13, o jeden vyššie je rezerva
-    "water_maxzoom": ("14", "max zoom dlaždíc s vodstvom"),
-    "rail": ("true", "generovať železnice so stanicami a koľajovou sieťou "
-                     "na navigáciu – balík `zeleznice`"),
-    # 15: kilometrovníky sú od z15
-    "rail_maxzoom": ("15", "max zoom dlaždíc so železnicami"),
-    "buildings": ("true", "generovať sídla – budovy s výmerou a menom – "
-                          "balík `sidla`"),
-    # 14: najvyšší `min_zoom` v schéme, vyššie sa dlaždice zväčšujú
-    "buildings_maxzoom": ("14", "max zoom dlaždíc so sídlami"),
-    # z DMR 5.0 je 5 m dobrý default takmer všade
-    "contour_interval": ("5", "interval vrstevníc v metroch (10 = redšie)"),
-    # 15, nie 14: schéma má triedy s `min_zoom: 15` a Planetiler ich inak zahodí
-    "features_maxzoom": ("15", "max zoom dlaždíc s krajinnými prvkami"),
-    # orez dlaždíc na hranicu regiónu (`workers/lib/region-clip.sh`). Dočasne
-    # vypnutý, vypnutý sa hlási `::warning::`-om v každom behu.
-    "region_clip": ("false", "orezať dlaždice na hranicu regiónu (dočasne vypnuté)"),
-    "publish": ("true", "nahrať hotovú mapu ako ZIPy na Google Drive"),
-    # sťahuje sa, len keď článkov regiónu niet v cache alebo v katalógu
-    "wikipedia": ("true", "články z Wikipédie k objektom regiónu (workflow "
-                          "„Build wiki“ volaný z buildu)"),
-    # `.aar` robí vlastný job na macOS – nástroj `aa` inde neexistuje
-    "apple_archive": ("true", "nahrať mapu aj ako .aar (Apple Archive, job na macOS)"),
-    # prázdne = najnovší asset pre daný výrez
-    "rock_img_asset": ("", "presné meno assetu so skalami z tieňovania (prázdne = spočítať v tomto behu)"),
-    # ladenie pipeline, ktorú si build volá sám (shading-rocks.yml)
-    "rock_img_zoom": ("auto", "zoom dlaždíc tieňovania (auto = najvyšší, čo sa zmestí do stropu)"),
-    "rock_img_options": ("", "prepínače pre výpočet skál z tieňovania, napr. \"fill=40 min_hole=5\""),
-    # `maxzoom` je od začiatku 16 a znižuje sa len pri ladení veľkosti
-    "maxzoom": ("16", "max zoom mapových dlaždíc – Planetiler zvládne najviac 16"),
-    "custom_pbf_url": ("", "vlastný región – URL na .osm.pbf"),
-    "custom_name": ("", "vlastný región – zobrazované meno"),
-    "custom_bbox": ("", "vlastný región – bbox W,S,E,N"),
+    "crop_bbox": ("", "crop the region to west,south,east,north"),
+    "area_bbox": ("", "own cut-out W,S,E,N instead of the range picked"),
+    # 4 km², not 2: on two a rock area often hit nothing
+    "test_km2": ("4", "square size with the `test` switch on (km²)"),
+    "test_at": ("", "centre of the test square `lon,lat` (empty = centre of the cut-out)"),
+    "reuse_layers": ("true", "don't compute a height-model layer already made "
+                             "with these settings"),
+    "size_limit_mb": ("900", "budget of the whole site in MB"),
+    "auto_shrink": ("true", "lower the tile zoom when they don't fit"),
+    "ugkk_fallback": ("true", "when DMR 5.0 is missing for the cut-out, use Sonny"),
+    "ugkk_urls": ("", "direct URLs to ÚGKK data (last resort)"),
+    "contour_maxzoom": ("14", "max zoom of contour tiles"),
+    # 16 is Planetiler's hard cap; overzoom does the rest
+    "rock_maxzoom": ("16", "max zoom of rock tiles (Planetiler caps at 16)"),
+    "rock_solid": ("1", "1 = one rock class (no area inside another), "
+                        "0 = steep/cliff classes as before"),
+    # holes are gullies and ledges – the very shape rocks are computed for
+    "rock_fill_holes": ("0", "1 = fill holes in rocks (solid areas instead of "
+                             "shape) – not recommended"),
+    # `auto` picks the grid from the DEM cell and the time budget, and says why
+    "rock_res": ("auto", "grid for the rock outline in metres, or `auto`"),
+    "contour_smoothing": ("0", "DEM smoothing in arc seconds"),
+    "trails_maxzoom": ("14", "max zoom of waymarked trail tiles"),
+    # `auto` = the lowest zoom whose pixel is finer than the model cell
+    "terrain_maxzoom": ("auto", "max zoom of height tiles (auto = by the model grid)"),
+    # public AWS tiles are global and coarse, so no 3D on them
+    "terrain_3d": ("auto", "3D terrain in the style (auto = when we have our own height tiles)"),
+    # trails have no source choice – the same PBF as the map
+    "trails": ("true", "make waymarked trails from OSM relations"),
+    "features": ("true", "make landscape features OpenMapTiles lacks"),
+    "routing": ("true", "build the routing network of this region – it rides "
+                        "in the base map and in package `roads`"),
+    "transport": ("true", "make the road network (roads, railways, ferries, "
+                          "lifts) with road limits – package `roads`"),
+    # 14, not 15: the schema's highest `min_zoom` is 14
+    "transport_maxzoom": ("14", "max zoom of road network tiles"),
+    "boundaries": ("true", "make area boundaries and their names – package "
+                           "`boundaries`"),
+    # 12: past it only settlement points are added (`min_zoom: 10`)
+    "boundaries_maxzoom": ("12", "max zoom of boundary tiles"),
+    "water": ("true", "make water (rivers, lakes, sea) – package `water`"),
+    # 14: the schema's highest `min_zoom` is 13, one more is headroom
+    "water_maxzoom": ("14", "max zoom of water tiles"),
+    "rail": ("true", "make railways with stations and the track network "
+                     "for navigation – package `railways`"),
+    # 15: kilometre posts start at z15
+    "rail_maxzoom": ("15", "max zoom of railway tiles"),
+    "buildings": ("true", "make settlements – buildings with floor area and "
+                          "name – package `settlements`"),
+    # 14: the schema's highest `min_zoom`, past it tiles only grow
+    "buildings_maxzoom": ("14", "max zoom of settlement tiles"),
+    # from DMR 5.0, 5 m is a good default nearly everywhere
+    "contour_interval": ("5", "contour interval in metres (10 = sparser)"),
+    # 15, not 14: the schema has classes with `min_zoom: 15`
+    "features_maxzoom": ("15", "max zoom of landscape feature tiles"),
+    # clipping tiles to the region outline (`workers/lib/region-clip.sh`); off for now
+    "region_clip": ("false", "clip tiles to the region outline (off for now)"),
+    "publish": ("true", "upload the finished map as ZIPs to Google Drive"),
+    # downloaded only when the region's articles are in neither cache nor catalog
+    "wikipedia": ("true", "Wikipedia articles for the region's objects (workflow "
+                          "“Build wiki” called from the build)"),
+    # `.aar` is a job of its own on macOS – `aa` exists nowhere else
+    "apple_archive": ("true", "upload the map as .aar too (Apple Archive, a macOS job)"),
+    # empty = the newest asset for the cut-out
+    "rock_img_asset": ("", "exact asset name of rocks from hillshading (empty = compute in this run)"),
+    # tuning the pipeline the build calls itself (shading-rocks.yml)
+    "rock_img_zoom": ("auto", "zoom of hillshading tiles (auto = the highest under the cap)"),
+    "rock_img_options": ("", "switches for rocks from hillshading, e.g. \"fill=40 min_hole=5\""),
+    "maxzoom": ("16", "max zoom of map tiles – Planetiler goes to 16 at most"),
+    "custom_pbf_url": ("", "own region – URL of a .osm.pbf"),
+    "custom_name": ("", "own region – display name"),
+    "custom_bbox": ("", "own region – bbox W,S,E,N"),
 }
 
-# voľby, čo sa presťahovali medzi inputy – nech nespadnú na „neznáma voľba"
+# settings that moved between inputs – so they don't fail as "unknown"
 MOVED = {
-    "rock_source": "je samostatný input vo formulári (výber zdroja skál), "
-                   "nie voľba",
-    "test": "je switch vo formulári (rýchly test na pár km²), nie voľba. "
-            "Veľkosť štvorca je voľba `test_km2`",
-    # bolo voľbou, kým bol formulár plný; starý zápis nesmie ticho prejsť
-    "publish_pages": "je switch vo formulári (nasadiť na GitHub Pages), "
-                     "nie voľba. Publikovanie na Drive je samostatná voľba "
-                     "`publish`",
-    "wiki_langs": "je input workflowu „Build wiki“ (wiki.yml) – "
-                  "angličtina a jazyk krajiny sa doplnia samy",
-    "wiki_format": "už nie je: články sú vždy čistý text, iný aplikácia nezobrazí",
-    "wiki_max": "je input workflowu „Build wiki“ (wiki.yml)",
-    "dem_source": "sa rozpadol na tri inputy vo formulári – `contour_source`, "
-                  "`rock_source` a `shading_source`, každá vrstva má svoj "
-                  "zdroj",
-    "layers": "už nie je: vrstva sa zapína tým, že jej vo formulári vyberieš "
-              "zdroj (`ziadne` = negenerovať). Trasy sa vypínajú voľbou "
-              "`trails=false`",
-    "rocks": "už nie je: skaly sa vypínajú výberom `rock_source: ziadne`",
+    "rock_source": "is an input of its own in the form (rock source), not an option",
+    "test": "is a switch in the form (quick test on a few km²), not an option. "
+            "The square size is the option `test_km2`",
+    "publish_pages": "is a switch in the form (deploy to GitHub Pages), not an "
+                     "option. Publishing to Drive is the option `publish`",
+    "wiki_langs": "is an input of the workflow “Build wiki” (wiki.yml) – English "
+                  "and the country's language are added by themselves",
+    "wiki_format": "no longer exists: articles are always plain text",
+    "wiki_max": "is an input of the workflow “Build wiki” (wiki.yml)",
+    "dem_source": "split into three inputs in the form – `contour_source`, "
+                  "`rock_source` and `shading_source`",
+    "layers": "no longer exists: a layer is on when the form names its source "
+              "(`none` = don't make). Trails are turned off with `trails=false`",
+    "rocks": "no longer exists: rocks are turned off with `rock_source: none`",
 }
 
-# Hodnota vo výbere, ktorá vrstvu vypne. Slovom, nie prázdnym reťazcom –
-# v rozbaľovacom zozname má byť vidieť, že „nič" je vedomá voľba.
-NONE = "ziadne"
+# former Slovak names, still carried by the forms of older runs ("Re-run")
+OPTION_ALIAS = {"navigacia": "routing", "rock_plne": "rock_solid",
+                "rock_zapln_diery": "rock_fill_holes"}
+SOURCE_ALIAS = {"ziadne": "none", "tienovanie": "shading"}
 
-# Skaly majú okrem výškových modelov ešte jeden zdroj, ktorý DEM vôbec
-# nečíta: hotové polygóny z workflowu „Dáta · tieňované skaly".
-ROCK_FROM_SHADING = "tienovanie"
+# the choice that turns a layer off; a word, so "nothing" is a visible choice
+NONE = "none"
 
-# `rebuild` je jeden výber namiesto troch zaškrtávatiek – tri booleany boli
-# tri inputy a limit je desať.
-#
-# `tienovanie` SA VOLALO `teren`. Bolo to jediné miesto v celom repozitári,
-# kde sa tá vrstva volala inak než všade inde: vyberá ju `shading_source`
-# („Tieňovanie a 3D terén“), balík je `-tienovanie.zip` a v katalógu je
-# `terrain_source`. Kto ju chcel prepočítať, hľadal vo výbere „tieňovanie“ –
-# a keď ho nenašiel, usúdil, že sa tá vrstva pregenerovať nedá. Príznak ostal
-# `terrain_rebuild`: identifikátory sú anglické, mená vo formulári slovenské.
+# rocks have one more source that reads no DEM: polygons from hillshading
+ROCK_FROM_SHADING = "shading"
+
+# one choice instead of three checkboxes – the form holds ten inputs at most
 REBUILD = {
-    "nic": (),
-    "vrstevnice": ("contours_rebuild",),
-    "skaly": ("rocks_rebuild",),
-    "tienovanie": ("terrain_rebuild",),
-    "clanky": ("wiki_rebuild",),
-    "vsetko": ("contours_rebuild", "rocks_rebuild", "terrain_rebuild",
-               "wiki_rebuild"),
+    "nothing": (),
+    "contours": ("contours_rebuild",),
+    "rocks": ("rocks_rebuild",),
+    "terrain": ("terrain_rebuild",),
+    "articles": ("wiki_rebuild",),
+    "everything": ("contours_rebuild", "rocks_rebuild", "terrain_rebuild",
+                   "wiki_rebuild"),
 }
-# staré mená hodnoty → nové; prekladá sa nahlas, „Re-run“ nesie starý formulár
-REBUILD_ALIAS = {"teren": "tienovanie"}
-# príznaky, ktoré `rebuild` prepína – jeden zoznam, nech sa nedá zabudnúť
+# former values → today's; translated aloud, "Re-run" carries the old form
+REBUILD_ALIAS = {"teren": "terrain", "nic": "nothing", "vrstevnice": "contours",
+                 "skaly": "rocks", "tienovanie": "terrain", "clanky": "articles",
+                 "vsetko": "everything"}
+# the flags `rebuild` switches – one list, so none can be forgotten
 REBUILD_FLAGS = ("contours_rebuild", "rocks_rebuild", "terrain_rebuild",
                  "wiki_rebuild")
 
-# čo `rebuild` NEpregeneruje: „vsetko“ je páka na vrstvy a články, ostatné sa
-# obnovuje inak. Vypisuje sa, inak „vsetko“ vyzerá ako lož.
-REBUILD_MIMO = [
-    ("výškový model (DEM)",
-     "z Drive sa číta raz a ostáva v sklade; jeho podobu nesie MENO SKLADU "
-     "(dnes `dem-dmr5-v2`), takže keď sa zmení pravidlo, ktorým vzniká, "
-     "zmení sa meno a `check-dem` si ho doplní sám"),
-    ("balíky na Drive (ZIP/AAR) a katalóg (`maps.json`, pri teste "
+# what `rebuild` does NOT redo; said aloud, or "everything" reads as a lie
+REBUILD_OUTSIDE = [
+    ("the height model (DEM)",
+     "read from Drive once and kept in the store; its shape is carried by the "
+     "STORE NAME (today `dem-dmr5-v2`), so a changed rule changes the name and "
+     "`check-dem` refills it itself"),
+    ("packages on Drive (ZIP/AAR) and the catalog (`maps.json`, for a test "
      "`maps-test.json`)",
-     "prepisujú sa pri KAŽDOM behu, ktorý ich vyrobí (nahraj a až potom zmaž "
-     "starý); balík vrstvy, ktorú beh nevyrobil, sa zmaže"),
+     "overwritten by EVERY run that makes them (upload, then delete the old); "
+     "a package of a layer the run didn't make is deleted"),
 ]
 
 
 def dem_sources(path=None):
-    """Zdroje z workers/data/dem-sources.json → {kľúč: celý zápis zdroja}."""
+    """Sources from workers/data/dem-sources.json → {key: its whole entry}."""
     path = path or os.path.join(_DATA, "dem-sources.json")
     with open(path) as f:
         raw = json.load(f)
@@ -192,65 +164,80 @@ def dem_sources(path=None):
 
 
 def pick_source(what, value, allowed):
-    """Skontroluje hodnotu jedného výberu zdroja; vráti ju, alebo None pri chybe."""
+    """Check one source choice; return it, or None on error."""
     value = (value or NONE).strip()
+    if value in SOURCE_ALIAS:
+        print(f"::notice::`{value}` for {what} is `{SOURCE_ALIAS[value]}` today – "
+              f"taking it as that.")
+        value = SOURCE_ALIAS[value]
     if value in allowed:
         return value
-    print(f"::error::Neznámy zdroj „{value}“ pre {what}. Známe: "
+    print(f"::error::Unknown source “{value}” for {what}. Known: "
           f"{', '.join(allowed)}", file=sys.stderr)
     return None
+
+
+def check_bool(values, key, label=""):
+    """True when `key` is true/false; says so otherwise."""
+    if values[key] in ("true", "false"):
+        return True
+    print(f"::error::Option “{key}”{f' ({label})' if label else ''} must be true "
+          f"or false, not “{values[key]}”.", file=sys.stderr)
+    return False
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--options", default="")
-    ap.add_argument("--rebuild", default="nic")
+    ap.add_argument("--rebuild", default="nothing")
     ap.add_argument("--contour-source", default=NONE,
-                    help="zdroj výšok pre vrstevnice, alebo `ziadne`")
+                    help="height source for contours, or `none`")
     ap.add_argument("--rock-source", default=NONE,
-                    help="zdroj skál: výškový model, `tienovanie`, alebo `ziadne`")
+                    help="rock source: a height model, `shading`, or `none`")
     ap.add_argument("--shading-source", default=NONE,
-                    help="zdroj výšok pre tieňovanie a 3D terén, alebo `ziadne`")
+                    help="height source for hillshading and 3D terrain, or `none`")
     ap.add_argument("--test", default="false",
-                    help="switch rýchleho testu: true = počítať len štvorec "
-                         "s `test_km2` km²")
+                    help="quick test switch: true = compute only a square of "
+                         "`test_km2` km²")
     ap.add_argument("--publish-pages", default="true",
-                    help="switch nasadenia na GitHub Pages: false = mapa sa "
-                         "postaví a skontroluje, ale nenasadí")
+                    help="GitHub Pages switch: false = the map is built and "
+                         "checked, not deployed")
     ap.add_argument("--dem-sources", default="",
-                    help="cesta k dem-sources.json (default vedľa skriptu)")
+                    help="path to dem-sources.json (default beside the script)")
     ap.add_argument("--out", default="")
     ap.add_argument("--summary", default="",
-                    help="kam pripísať blok do súhrnu behu (GITHUB_STEP_SUMMARY)")
+                    help="where to add a block to the run summary (GITHUB_STEP_SUMMARY)")
     args = ap.parse_args()
 
     values = {k: v for k, (v, _) in DEFAULTS.items()}
     changed = {}
 
-    # shlex, nie split(): hodnota môže byť v úvodzovkách
+    # shlex, not split(): a value may be quoted
     for token in shlex.split(args.options or ""):
         if "=" not in token:
-            print(f"::error::Voľba „{token}“ nemá tvar kľúč=hodnota.", file=sys.stderr)
+            print(f"::error::Option “{token}” is not key=value.", file=sys.stderr)
             return 1
         k, v = token.split("=", 1)
         k = k.strip()
+        if k in OPTION_ALIAS:
+            print(f"::notice::Option `{k}` is `{OPTION_ALIAS[k]}` today – taking it as that.")
+            k = OPTION_ALIAS[k]
         if k in MOVED:
-            print(f"::error::„{k}“ {MOVED[k]}. Vymaž to z `options` "
-                  f"a nastav vo formulári.", file=sys.stderr)
+            print(f"::error::“{k}” {MOVED[k]}. Remove it from `options` "
+                  f"and set it in the form.", file=sys.stderr)
             return 1
         if k not in DEFAULTS:
-            print(f"::error::Neznáma voľba „{k}“. Známe voľby: "
+            print(f"::error::Unknown option “{k}”. Known options: "
                   f"{', '.join(sorted(DEFAULTS))}", file=sys.stderr)
             return 1
         values[k] = v
         changed[k] = v
 
-    # zo switchu a veľkosti vyjde jedno číslo: 0 = ostrý beh, inak strana
-    # štvorca v km². Normalizuje sa – `4.0` aj `4` dajú „4“.
+    # switch and size make one number: 0 = a real run, else the square side in km²
     test_on = (args.test or "false").strip().lower()
     if test_on not in ("true", "false"):
-        print(f"::error::Switch „test“ musí byť true alebo false, "
-              f"nie „{args.test}“.", file=sys.stderr)
+        print(f"::error::Switch “test” must be true or false, "
+              f"not “{args.test}”.", file=sys.stderr)
         return 1
     test_on = test_on == "true"
 
@@ -258,33 +245,33 @@ def main():
     try:
         n = float(size)
     except ValueError:
-        print(f"::error::Voľba „test_km2“ musí byť číslo v km², "
-              f"nie „{size}“.", file=sys.stderr)
+        print(f"::error::Option “test_km2” must be a number in km², "
+              f"not “{size}”.", file=sys.stderr)
         return 1
     if n <= 0:
-        # vypína sa switchom, nie nulou – inak sú na to isté dve páky
-        print(f"::error::Voľba „test_km2“ musí byť väčšia než nula "
-              f"(„{size}“). Rýchly test sa vypína odškrtnutím switchu "
-              f"„test“.", file=sys.stderr)
+        # the switch turns it off, not a zero – or there are two levers for one thing
+        print(f"::error::Option “test_km2” must be above zero "
+              f"(“{size}”). The quick test is turned off by unticking the "
+              f"switch “test”.", file=sys.stderr)
         return 1
     if "test_km2" in changed and not test_on:
-        print("::error::`test_km2` má zmysel len so zapnutým switchom „test“ "
-              "– takto by sa nič nespočítalo inak. Zaškrtni `test`, alebo "
-              "vymaž `test_km2` z options.", file=sys.stderr)
+        print("::error::`test_km2` makes sense only with the switch “test” on – "
+              "nothing would be computed differently. Tick `test`, or remove "
+              "`test_km2` from options.", file=sys.stderr)
         return 1
     values["test_km2"] = f"{n:g}" if test_on else "0"
 
-    # čo sa smie kde vybrať, hovorí `for` v dem-sources.json
+    # what may be picked where is the `for` in dem-sources.json
     srcs = dem_sources(args.dem_sources or None)
     contour_src = pick_source(
-        "vrstevnice (contour_source)", args.contour_source,
+        "contours (contour_source)", args.contour_source,
         [NONE] + [k for k, v in srcs.items() if "contours" in v.get("for", [])])
     rock_src = pick_source(
-        "skaly (rock_source)", args.rock_source,
+        "rocks (rock_source)", args.rock_source,
         [NONE, ROCK_FROM_SHADING]
         + [k for k, v in srcs.items() if "rocks" in v.get("for", [])])
     shading_src = pick_source(
-        "tieňovanie (shading_source)", args.shading_source,
+        "hillshading (shading_source)", args.shading_source,
         [NONE] + [k for k, v in srcs.items() if "shading" in v.get("for", [])])
     if contour_src is None or rock_src is None or shading_src is None:
         return 1
@@ -293,120 +280,86 @@ def main():
     values["rock_source"] = rock_src
     values["shading_source"] = shading_src
 
-    # `terrain_maxzoom: auto` sa rozhodne tu a nikde inde: číslo potom
-    # potrebuje kľúč cache, meno assetu aj atribúcia v štýle
+    # `terrain_maxzoom: auto` is decided here only: cache key, asset name and
+    # style attribution need the number
     tz = values["terrain_maxzoom"].strip().lower()
     if tz == "auto":
         cell = float(srcs.get(shading_src, {}).get("cell_m") or 20)
         values["terrain_maxzoom"] = str(terrain_zoom_for(cell))
         if shading_src != NONE:
-            print(f"Výškové dlaždice: model {shading_src} má mriežku "
-                  f"{cell:g} m → maxzoom "
+            print(f"Height tiles: model {shading_src} has a {cell:g} m grid → maxzoom "
                   f"z{values['terrain_maxzoom']} (pixel "
                   f"{tile_m_per_px(int(values['terrain_maxzoom'])):.1f} m). "
-                  f"Pevný zoom sa dá vynútiť voľbou `terrain_maxzoom=13`.")
+                  f"A fixed zoom can be forced with `terrain_maxzoom=13`.")
     elif not tz.isdigit():
-        print(f"::error::Voľba „terrain_maxzoom“ musí byť číslo alebo "
-              f"`auto`, nie „{values['terrain_maxzoom']}“.", file=sys.stderr)
+        print(f"::error::Option “terrain_maxzoom” must be a number or "
+              f"`auto`, not “{values['terrain_maxzoom']}”.", file=sys.stderr)
         return 1
-    # pri `tienovanie` a `ziadne` je prázdny a nikto nesmie sťahovať DEM
+    # with `shading` and `none` it is empty and nobody may download a DEM
     values["rock_dem"] = rock_src if rock_src in srcs else ""
 
     values["contour_lines"] = "true" if contour_src != NONE else "false"
     values["rocks"] = "true" if rock_src != NONE else "false"
     values["terrain"] = "true" if shading_src != NONE else "false"
-    # `contours` je brána celého jobu, nie vrstva: obe vrstvy idú do jedného .pmtiles
+    # `contours` gates the whole job: both layers go into one .pmtiles
     values["contours"] = ("true" if contour_src != NONE or rock_src != NONE
                           else "false")
-    # `trails=1` by trasy ticho vyplo a zistilo by sa to až v mape
-    if values["trails"] not in ("true", "false"):
-        print(f"::error::Voľba „trails“ musí byť true alebo false, "
-              f"nie „{values['trails']}“.", file=sys.stderr)
-        return 1
-    if values["features"] not in ("true", "false"):
-        print(f"::error::Voľba „features“ musí byť true alebo false, "
-              f"nie „{values['features']}“.", file=sys.stderr)
-        return 1
-    if values["transport"] not in ("true", "false"):
-        print(f"::error::Voľba „transport“ musí byť true alebo false, "
-              f"nie „{values['transport']}“.", file=sys.stderr)
-        return 1
-    for volba, co in (("boundaries", "hranice"), ("water", "vodstvo"),
-                      ("rail", "železnice"), ("buildings", "sídla")):
-        if values[volba] not in ("true", "false"):
-            print(f"::error::Voľba „{volba}“ ({co}) musí byť true alebo "
-                  f"false, nie „{values[volba]}“.", file=sys.stderr)
+    # `trails=1` would silently turn trails off, found only on the map
+    for key, label in (("trails", ""), ("features", ""), ("transport", ""),
+                       ("boundaries", "boundaries"), ("water", "water"),
+                       ("rail", "railways"), ("buildings", "settlements"),
+                       ("routing", ""), ("apple_archive", ""), ("wikipedia", ""),
+                       ("publish", "")):
+        if not check_bool(values, key, label):
             return 1
-    if values["navigacia"] not in ("true", "false"):
-        print(f"::error::Voľba navigacia=... musí byť true alebo false, "
-              f"nie {values['navigacia']}.", file=sys.stderr)
-        return 1
-
-    if values["apple_archive"] not in ("true", "false"):
-        print(f"::error::Voľba „apple_archive“ musí byť true alebo false, "
-              f"nie „{values['apple_archive']}“.", file=sys.stderr)
-        return 1
-    if values["wikipedia"] not in ("true", "false"):
-        print(f"::error::Voľba „wikipedia“ musí byť true alebo false, "
-              f"nie „{values['wikipedia']}“.", file=sys.stderr)
-        return 1
-    if values["publish"] not in ("true", "false"):
-        print(f"::error::Voľba „publish“ musí byť true alebo false, "
-              f"nie „{values['publish']}“.", file=sys.stderr)
-        return 1
-    # switch vo formulári, ale skript sa dá spustiť aj ručne
+    # a switch in the form, but the script can be run by hand
     pages_on = (args.publish_pages or "true").strip().lower()
     if pages_on not in ("true", "false"):
-        print(f"::error::Switch „publish_pages“ musí byť true alebo false, "
-              f"nie „{args.publish_pages}“.", file=sys.stderr)
+        print(f"::error::Switch “publish_pages” must be true or false, "
+              f"not “{args.publish_pages}”.", file=sys.stderr)
         return 1
     values["publish_pages"] = pages_on
 
-    # inak by `contour_interval=päť` spadlo až v `gdal_contour`, po hodine
+    # or `contour_interval=five` fails in `gdal_contour`, an hour in
     try:
         interval = float(values["contour_interval"])
     except ValueError:
-        print(f"::error::Voľba „contour_interval“ musí byť číslo v metroch, "
-              f"nie „{values['contour_interval']}“.", file=sys.stderr)
+        print(f"::error::Option “contour_interval” must be a number in metres, "
+              f"not “{values['contour_interval']}”.", file=sys.stderr)
         return 1
     if interval <= 0:
-        print(f"::error::Voľba „contour_interval“ musí byť väčšia než nula "
-              f"(„{values['contour_interval']}“). Vrstevnice sa vypínajú "
-              f"výberom `contour_source: ziadne`.", file=sys.stderr)
+        print(f"::error::Option “contour_interval” must be above zero "
+              f"(“{values['contour_interval']}”). Contours are turned off by "
+              f"picking `contour_source: none`.", file=sys.stderr)
         return 1
     values["contour_interval"] = f"{interval:g}"
 
-    rebuild = (args.rebuild or "nic").strip()
+    rebuild = (args.rebuild or "nothing").strip()
     if rebuild in REBUILD_ALIAS:
-        print(f"::notice::`rebuild: {rebuild}` sa dnes volá "
-              f"`{REBUILD_ALIAS[rebuild]}` – tá istá vrstva, to isté meno ako "
-              f"vo `shading_source` a v balíku `-tienovanie.zip`. Beriem to "
-              f"ako `{REBUILD_ALIAS[rebuild]}`.")
+        print(f"::notice::`rebuild: {rebuild}` is `{REBUILD_ALIAS[rebuild]}` today – "
+              f"taking it as that.")
         rebuild = REBUILD_ALIAS[rebuild]
     if rebuild not in REBUILD:
-        print(f"::error::Neznáme rebuild „{args.rebuild}“. Známe: "
+        print(f"::error::Unknown rebuild “{args.rebuild}”. Known: "
               f"{', '.join(REBUILD)}", file=sys.stderr)
         return 1
     for flag in REBUILD_FLAGS:
         values[flag] = "true" if flag in REBUILD[rebuild] else "false"
 
-    # rýchly test pregenerúva vždy všetko: je to beh na ladenie a starý
-    # výsledok by znamenal, že ladíš ducha. Cache ostrého behu je v bezpečí –
-    # kľúče nesú `dem_bboxkey`, pri teste bbox testovacieho štvorca.
+    # a quick test always rebuilds everything; the real run's cache is safe –
+    # its keys carry `dem_bboxkey`, which for a test is the test square's bbox
     if test_on:
         for flag in ("contours_rebuild", "rocks_rebuild", "terrain_rebuild"):
             values[flag] = "true"
 
-    if values["reuse_layers"] not in ("true", "false"):
-        print(f"::error::Voľba „reuse_layers“ musí byť true alebo false, "
-              f"nie „{values['reuse_layers']}“.", file=sys.stderr)
+    if not check_bool(values, "reuse_layers"):
         return 1
-    # test neberie nič hotové, z toho istého dôvodu; tichý spor by sa hľadal dlho
+    # a test takes nothing finished, for the same reason
     if test_on and values["reuse_layers"] == "true":
         if "reuse_layers" in changed:
-            print("::notice::`reuse_layers=true` sa pri zapnutom switchi „test“ "
-                  "neuplatní – rýchly test počíta vrstvy vždy nanovo, nech "
-                  "neladíš na starom výsledku.")
+            print("::notice::`reuse_layers=true` doesn't apply with the switch “test” "
+                  "on – a quick test always computes layers anew, so you don't "
+                  "tune on an old result.")
         values["reuse_layers"] = "false"
 
     lines = [f"opt_{k}={v}" for k, v in values.items()]
@@ -414,59 +367,56 @@ def main():
         with open(args.out, "a") as f:
             f.write("\n".join(lines) + "\n")
 
-    # s čím beh štartuje: súhrn prípravného jobu je na stránke behu prvý,
-    # takže sa to dá pozrieť hneď a ostáva na očiach aj po páde
+    # what the run starts with, first on the run page, in sight after a failure too
     if args.summary:
         with open(args.summary, "a") as f:
-            f.write("## Čo z toho vyšlo – s tým beh štartuje\n\n")
-            f.write("| nastavenie | hodnota | |\n|---|---|---|\n")
+            f.write("## What came of it – the run starts with this\n\n")
+            f.write("| setting | value | |\n|---|---|---|\n")
             for k in sorted(values):
-                mark = "**iné než default**" if k in changed else ""
+                mark = "**not the default**" if k in changed else ""
                 f.write(f"| `{k}` | `{values[k] or '—'}` | {mark} |\n")
-            f.write("\nHodnoty bez značky sú predvolené. Tie označené si "
-                    "zadal – buď vo formulári, alebo v poli `options`.\n\n")
+            f.write("\nUnmarked values are defaults. Marked ones you gave – in the "
+                    "form or in the `options` field.\n\n")
 
-    print("Nastavenia:")
+    print("Settings:")
     for k in sorted(values):
         mark = "  ←" if k in changed else ""
         d = DEFAULTS.get(
-            k, ("", "z inputov formulára (zdroje / rebuild / test)"))[1]
-        print(f"  {k:<20} {values[k] or '(prázdne)':<24} {d}{mark}")
+            k, ("", "from the form inputs (sources / rebuild / test)"))[1]
+        print(f"  {k:<20} {values[k] or '(empty)':<24} {d}{mark}")
     if changed:
-        print(f"\nZmenené oproti predvolenému: {', '.join(sorted(changed))}")
+        print(f"\nChanged from the defaults: {', '.join(sorted(changed))}")
     if test_on:
-        print("Pregenerovať: VŠETKO (rýchly test počíta vždy nanovo, nech "
-              f"neladíš na starom výsledku z cache; `rebuild: {rebuild}` "
-              "sa tým prebíja)")
-    elif rebuild != "nic":
-        print(f"Pregenerovať: {rebuild}")
+        print("Rebuild: EVERYTHING (a quick test always computes anew, so you don't "
+              f"tune on an old cached result; it overrides `rebuild: {rebuild}`)")
+    elif rebuild != "nothing":
+        print(f"Rebuild: {rebuild}")
     if values["reuse_layers"] == "true":
-        print("Hotové vrstvy: BERÚ SA – vrstevnice, skaly aj tieňovanie, "
-              "ktoré s týmito nastaveniami už raz vznikli, sa neprepočítajú "
-              "(prepočíta ich `rebuild`)")
+        print("Finished layers: TAKEN – contours, rocks and hillshading already made "
+              "with these settings aren't recomputed (`rebuild` recomputes them)")
     else:
-        print("Hotové vrstvy: NEBERÚ SA (`reuse_layers=false`) – vrstevnice, "
-              "skaly aj tieňovanie sa prepočítajú, len čo sa zmenil sklad "
-              "modelu alebo skript, ktorý ich kreslí")
-    if test_on or rebuild != "nic":
-        # aj to, čo sa NEprepočíta – bez toho „vsetko“ sľubuje viac, než robí
-        print("  prepočíta sa: "
+        print("Finished layers: NOT TAKEN (`reuse_layers=false`) – contours, rocks and "
+              "hillshading are recomputed as soon as the model store or the script "
+              "drawing them changed")
+    if test_on or rebuild != "nothing":
+        # what is NOT recomputed too – or "everything" promises more than it does
+        print("  recomputed: "
               + ", ".join(f.replace("_rebuild", "")
                           for f in REBUILD_FLAGS if values[f] == "true"))
-        for co, ako in REBUILD_MIMO:
-            print(f"  NEprepočíta sa {co} – {ako}")
-    print(f"\nVrstevnice: {contour_src}   Skaly: {rock_src}   "
-          f"Tieňovanie: {shading_src}   Trasy: {values['trails']}   "
-          f"Krajinné prvky: {values['features']}   "
-          f"Dopravná sieť: {values['transport']}   "
-          f"Hranice: {values['boundaries']}   "
-          f"Vodstvo: {values['water']}   "
-          f"Železnice: {values['rail']}   "
-          f"Sídla: {values['buildings']}")
-    print("Rýchly test: " + (f"ZAPNUTÝ, terén (vrstevnice, skaly, tieňovanie) "
-                             f"len na {values['test_km2']} km² zo stredu "
-                             f"výrezu; mapa ostáva celý región a otvorí sa tam"
-                             if test_on else "vypnutý – ostrý beh"))
+        for what, how in REBUILD_OUTSIDE:
+            print(f"  NOT recomputed: {what} – {how}")
+    print(f"\nContours: {contour_src}   Rocks: {rock_src}   "
+          f"Hillshading: {shading_src}   Trails: {values['trails']}   "
+          f"Landscape features: {values['features']}   "
+          f"Road network: {values['transport']}   "
+          f"Boundaries: {values['boundaries']}   "
+          f"Water: {values['water']}   "
+          f"Railways: {values['rail']}   "
+          f"Settlements: {values['buildings']}")
+    print("Quick test: " + (f"ON, terrain (contours, rocks, hillshading) only on "
+                            f"{values['test_km2']} km² in the middle of the cut-out; "
+                            f"the map stays the whole region and opens there"
+                            if test_on else "off – a real run"))
     return 0
 
 

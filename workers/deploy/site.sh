@@ -1,23 +1,16 @@
 #!/usr/bin/env bash
-# Viewer + `manifest.json` do `_site/` – posledný krok pred nasadením na Pages.
+# Viewer + `manifest.json` into `_site/` – the last step before Pages.
 #
-# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
-#
-# Manifest je jediný súbor, z ktorého viewer zistí, čo v tomto builde je:
-# ktoré vrstvy vznikli, po aký zoom siahajú, z akého modelu sú a kde ležia.
-# Vrstva, ktorá nebola zapnutá, v ňom nie je – preto sú položky podmienené
-# a nie vypĺňané prázdnymi hodnotami („je, len prázdna" je iné tvrdenie).
+# The manifest is the one file saying what this build holds; a layer that
+# wasn't on is absent, not empty ("there, just empty" is another claim).
 set -euo pipefail
-# celý `poc/web/`, nie vymenovaný zoznam: ten sa raz rozišiel s priečinkom
-# (`layer-style.js`) a modulový graf padol celý – mapa sa nevykreslila a build
-# bol zelený. Stráži to workers/lint/viewer.py.
+# all of `poc/web/`, not a list that drifts from the folder (workers/lint/viewer.py)
 cp poc/web/*.js poc/web/*.json poc/web/index.html _site/
 
-# hranica regiónu je voliteľná – keď sa polygón nestiahol, v manifeste nesmie
-# byť. (`if`, nie reťazec testov: `set -e` by na poslednom `&&` spadol.)
+# the outline is optional; `if`, not a test chain, or `set -e` trips on the last `&&`
 OUTLINE="${REGION_OUTLINE:-}"
 if [ -n "$OUTLINE" ] && [ ! -s "_site/$OUTLINE" ]; then
-  echo "::warning::Hranica regiónu (_site/$OUTLINE) nevznikla – mapa pôjde bez nej a bude siahať aj za región."
+  echo "::warning::The region outline (_site/$OUTLINE) wasn't made – the map goes without it and reaches beyond the region."
   OUTLINE=""
 fi
 
@@ -28,9 +21,7 @@ else
   GLYPHS="https://fonts.openmaptiles.org/{fontstack}/{range}.pbf"
 fi
 
-# zoznam sád ikoniek pre prepínač; z toho istého `icon-sources.js`, z ktorého
-# ich sťahoval job `assets`. Filtruje sa na tie, čo naozaj vznikli – chýbajúci
-# sprite by bol vo vieweri prázdny prepínač. Vlastné sady z úprav sú v ňom tiež.
+# icon sets for the switch, only those really built – a missing sprite is an empty switch
 ICON_SOURCES=$(node -e "
   Promise.all([
     import('./poc/web/icon-sources.js'),
@@ -40,20 +31,18 @@ ICON_SOURCES=$(node -e "
     let raw = {};
     try { raw = JSON.parse(fs.readFileSync('poc/web/style-overrides.json', 'utf8')); } catch {}
     const ok = (process.env.ICONS_AVAILABLE || '').split(/\\s+/).filter(Boolean);
-    const vsetky = ic.allIconSources(th.normalizeOverrides(raw).overrides);
-    console.log(JSON.stringify(vsetky.filter((s) => ok.includes(s.id))
+    const every = ic.allIconSources(th.normalizeOverrides(raw).overrides);
+    console.log(JSON.stringify(every.filter((s) => ok.includes(s.id))
       .map((s) => ({ id: s.id, label: s.label, sprite: 'sprites/' + s.id,
                      license: s.license, source: s.source, suffix: s.suffix, note: s.note }))));
   });
 ")
 
-# je v tejto mape 3D terén? Odpovedá hotový štýl, nie prepínač: `auto`
-# znamená „zapni, ak máme vlastné výškové dlaždice". Appka podľa toho poľa
-# ponúka vrstvu „3D terén".
+# 3D terrain? the finished style answers, not the switch; the app offers "3D terrain" by it
 TERRAIN_3D=false
 TERRAIN_EXAG=0
 if [ -d _site/styles ]; then
-  # `-s` a `map`: štýlov je viac (typ mapy × téma) a stačí ktorýkoľvek
+  # several styles (map type × theme), any one will do
   read -r TERRAIN_3D TERRAIN_EXAG <<<"$(jq -rs '
     [.[] | .terrain // empty]
     | if length > 0
@@ -61,7 +50,7 @@ if [ -d _site/styles ]; then
       else "false 0" end' _site/styles/*.json 2>/dev/null || echo "false 0")"
   case "$TERRAIN_3D" in true|false) ;; *) TERRAIN_3D=false; TERRAIN_EXAG=0 ;; esac
 fi
-echo "3D terén v štýle: $TERRAIN_3D (prevýšenie $TERRAIN_EXAG×)"
+echo "3D terrain in the style: $TERRAIN_3D (exaggeration $TERRAIN_EXAG×)"
 
 jq -n \
   --arg region "$REGION_KEY" \
@@ -119,11 +108,9 @@ jq -n \
     default_icons: $icons,
     dem: $dem,
     dem_maxzoom: $demmaxzoom,
-    # model výškových dlaždíc je hore pri `dem`, lebo dlaždice sú spoločné –
-    # a nemusí to byť ten istý model ako pri vrstevniciach
+    # height tiles are shared, so their model sits at `dem`, maybe not the one of the contours
     dem_source: $demtilessource,
-    # 3D terén je hore pri `dem` z toho istého dôvodu; prevýšenie je zo štýlu,
-    # nech si ho klient nemusí vymyslieť inak než pipeline
+    # exaggeration from the style, so the client never invents another
     terrain_3d: $terrain3d,
     terrain_exaggeration: $terrainexag,
     regions: {
@@ -134,8 +121,7 @@ jq -n \
         maxzoom: $maxzoom,
         size_mb: $size_mb
       }
-      # rýchly test: mapa je celý región, ale vrstevnice, skaly a tieňovanie
-      # len na tomto štvorci – viewer sa naň otvorí
+      # quick test: terrain only on this square, the viewer opens on it
       + (if $testkm2 > 0 and $testbbox != "" then {
         test_km2: $testkm2,
         test_bbox: ($testbbox | split(",") | map(tonumber))
@@ -145,8 +131,7 @@ jq -n \
         contours_maxzoom: $cmaxzoom,
         contour_interval: $cinterval
       } else {} end)
-      # skaly majú vlastný .pmtiles aj maxzoom – vrstevnice sa dajú vypnúť
-      # a skaly nechať
+      # rocks have their own archive and maxzoom – contours can be off
       + (if $rocks then {
         rocks: ("tiles/" + $region + "-rocks.pmtiles"),
         rocks_maxzoom: $rmaxzoom
@@ -159,25 +144,22 @@ jq -n \
         trails_maxzoom: $tmaxzoom,
         trail_count: $tcount
       } else {} end)
-      # krajinné prvky, ktoré schéma OpenMapTiles nemá – vlastný .pmtiles
+      # landscape features OpenMapTiles lacks – their own archive
       + (if $features then {
         features: ("tiles/" + $region + "-features.pmtiles"),
         features_maxzoom: $fmaxzoom
       } else {} end)
-      # body v krajine: druhý výstup toho istého jobu, preto vlastná položka,
-      # ale ten istý maxzoom
+      # points: second output of the same job, so the same maxzoom
       + (if $points then {
         points: ("tiles/" + $region + "-points.pmtiles"),
         points_maxzoom: $fmaxzoom
       } else {} end)
-      # hranice území. `boundaries_maxzoom` tu musí byť: kto ho nenájde,
-      # dosadí `maxzoom` mapy a nad skutočným stropom pýta neexistujúce
-      # dlaždice – mená obcí ticho zmiznú
+      # without `boundaries_maxzoom` a client asks past the cap and names vanish
       + (if $boundaries then {
         boundaries: ("tiles/" + $region + "-boundaries.pmtiles"),
         boundaries_maxzoom: $bmaxzoom
       } else {} end)
-      # vodstvo – ten istý dôvod pre `water_maxzoom` ako o riadok vyššie
+      # the same reason for `water_maxzoom`
       + (if $water then {
         water: ("tiles/" + $region + "-water.pmtiles"),
         water_maxzoom: $wmaxzoom
@@ -186,7 +168,7 @@ jq -n \
         rail: ("tiles/" + $region + "-rail.pmtiles"),
         rail_maxzoom: $railmaxzoom
       } else {} end)
-      # koľajová sieť na navigáciu vo vlakovom režime
+      # track network for train routing
       + (if $rail and $railrouting then {
         rail_routing: ("tiles/" + $region + "-rail-routing.pmtiles")
       } else {} end)
@@ -194,27 +176,19 @@ jq -n \
         buildings: ("tiles/" + $region + "-buildings.pmtiles"),
         buildings_maxzoom: $bldmaxzoom
       } else {} end)
-      # značky krajiny pri trati a na ceste – sprite, ktorý si appka číta sama
+      # rail and road signs of the country – a sprite the app reads itself
       + (if $railsigns != [] then { rail_signs: $railsigns } else {} end)
-      # celá dopravná sieť. V manifeste je, hoci z nej štýl kreslí len
-      # obmedzenia na ceste: manifest je zoznam toho, čo v mape je (číta ho
-      # `subory.py` pri skladaní balíkov aj katalóg), nie toho, čo pýta štýl.
-      # Bez nej by sa balík `cesty` skladal podľa mien súborov v `_site`.
+      # the manifest lists what the map holds (files.py packs by it), not what the style asks
       + (if $transport then {
         transport: ("tiles/" + $region + "-transport.pmtiles"),
         transport_maxzoom: $trmaxzoom
       } else {} end)
-      # smerovacia sieť – dlaždice so značkami, z ktorých telefón počíta trasu.
-      # Štýl z nej nekreslí nič a je to v poriadku: manifest je zoznam toho, čo
-      # v mape JE (číta ho `subory.py` pri skladaní mapy a balíka `cesty`), nie
-      # toho, čo pýta štýl. `routing_zoom` je pevných z9, ale píše sa sem –
-      # klient nemá odkiaľ vedieť, na akej mriežke archív je.
+      # routing network; `routing_zoom` is fixed z9, but a client has no other way to know the grid
       + (if $routing then {
         routing: ("tiles/" + $region + "-routing.pmtiles"),
         routing_zoom: 9
       } else {} end)
-      # hranica regiónu – viewer ňou prekryje všetko za regiónom, lebo
-      # dlaždice sú orezané len po celých dlaždiciach
+      # tiles are cut per whole tile, so the viewer masks beyond the outline
       + (if $outline != "" then { outline: $outline } else {} end))
     }
   }' > _site/tiles/manifest.json

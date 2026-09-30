@@ -1,260 +1,253 @@
-name: Mapa · vrstvy z výškového modelu
+name: Map · height-model layers
 
-# VRSTEVNICE, SKALY A TIEŇOVANIE – od skladu výškového modelu po `.pmtiles`.
+# CONTOURS, ROCKS AND HILLSHADING – from the height-model store to `.pmtiles`.
 #
-# Samostatný workflow preto, že ich potrebujú dve pipeline (build mapy aj
-# pregenerovanie vrstvy) a dve kópie by sa rozišli v kľúči cache alebo v tom,
-# ktorý model sa doplní. Navyše `build-map-region.yml` narážal na strop 128 KiB.
+# A workflow of its own: two pipelines need it (the map build and regenerating
+# a layer), and two copies would drift in a cache key or the model refilled.
 #
-# Joby: check-dem, mirror-* (doplnenie modelov), shading-rocks, keys (kľúče
-# cache), contours, rocks, terrain. Kusy stránky odkladajú ako `site-*`,
-# merania ako `steps-*`.
+# Jobs: check-dem, mirror-* (refilling models), shading-rocks, keys (cache
+# keys), contours, rocks, terrain. Site pieces go out as `site-*`, timing as `steps-*`.
 #
-# `workflow_call` nededí `secrets` ani `env` volajúceho – prihlásenie chodí
-# cez `secrets: inherit`, podiely na rozpočte cez inputy.
+# `workflow_call` inherits neither the caller's `secrets` nor `env` – sign-in
+# comes through `secrets: inherit`, budget shares through inputs.
 
 on:
   workflow_call:
     inputs:
       region_key:
-        description: "Kľúč regiónu – z neho sú mená `{región}-contours.pmtiles` a spol."
+        description: "Region key – `{region}-contours.pmtiles` and the rest are named by it"
         required: true
         type: string
       area:
-        description: "Výrez z formulára (`cely_region`, alebo kľúč pohoria) – ide do doplňovacích pipeline"
+        description: "The cut-out from the form (`whole_region`, or a range key) – goes to the refill pipelines"
         required: true
         type: string
       area_key:
-        description: "Kľúč vyriešeného výrezu (`cely`, alebo pohorie s príponou testu)"
+        description: "Key of the resolved cut-out (`whole`, or a range with the test suffix)"
         required: true
         type: string
       area_name:
-        description: "Meno výrezu do hlášok a štatistiky"
+        description: "Name of the cut-out for messages and statistics"
         required: false
         default: ""
         type: string
       area_bbox:
-        description: "Bbox výrezu – na ňom sa vrstvy naozaj počítajú"
+        description: "Bbox of the cut-out – the layers are really computed on it"
         required: true
         type: string
       area_km2:
-        description: "Plocha výrezu v km² (rozpočet času pri výbere mriežky skál)"
+        description: "Area of the cut-out in km² (time budget when picking the rock grid)"
         required: false
         default: ""
         type: string
       dem_bbox:
-        description: "Územie, na ktorom sa výškový model číta (bbox s prekryvom so susedom)"
+        description: "The area the height model is read on (bbox overlapping the neighbour)"
         required: true
         type: string
       dem_bboxkey:
-        description: "To isté ako kľúč cache – bbox s `_` namiesto `,.-`"
+        description: "The same for a cache key – the bbox with `_` instead of `,.-`"
         required: true
         type: string
       test_km2:
-        description: "Rýchly test: koľko km² zo stredu (0 = ostrý beh)"
+        description: "Quick test: how many km² in the middle (0 = a real run)"
         required: false
         default: "0"
         type: string
       day:
-        description: "Dnešný dátum – do kľúčov cache, ktoré starnú denne"
+        description: "Today's date – for cache keys that age daily"
         required: false
         default: ""
         type: string
-      # `opt_contours` je brána jobu, nie vrstva: vrstevnice aj skaly z neho
-      # vychádzajú do jedného výpočtu
+      # `opt_contours` gates the job, not a layer: contours and rocks come from one computation
       opt_contours:
-        description: "Brána vrstevníc a skál – `true`, keď je zapnuté aspoň jedno z nich"
+        description: "Gate of contours and rocks – `true` when at least one is on"
         required: true
         type: string
       opt_contour_lines:
-        description: "Kresliť vrstevnice? (`contour_source` nie je `ziadne`)"
+        description: "Draw contours? (`contour_source` isn't `none`)"
         required: true
         type: string
       opt_rocks:
-        description: "Kresliť skaly? (`rock_source` nie je `ziadne`)"
+        description: "Draw rocks? (`rock_source` isn't `none`)"
         required: true
         type: string
       opt_terrain:
-        description: "Kresliť tieňovanie a 3D terén? (`shading_source` nie je `ziadne`)"
+        description: "Draw hillshading and 3D terrain? (`shading_source` isn't `none`)"
         required: true
         type: string
       opt_contour_source:
-        description: "Model terénu pre vrstevnice"
+        description: "Terrain model for contours"
         required: true
         type: string
       opt_rock_source:
-        description: "Zdroj skál – model, alebo `tienovanie`"
+        description: "Rock source – a model, or `shading`"
         required: true
         type: string
-      # prázdny pri `tienovanie` aj `ziadne` – vtedy na model nikto nesiahne
+      # empty for `shading` and `none` – then nobody touches a model
       opt_rock_dem:
-        description: "Zdroj skál, LEN keď je to výškový model (inak prázdny)"
+        description: "Rock source ONLY when it is a height model (else empty)"
         required: false
         default: ""
         type: string
       opt_shading_source:
-        description: "Model terénu pre tieňovanie a 3D"
+        description: "Terrain model for hillshading and 3D"
         required: true
         type: string
       opt_ugkk_fallback:
-        description: "Smie sa pri chýbajúcom DMR 5.0 siahnuť po náhradnom modeli?"
+        description: "May a missing DMR 5.0 fall back to another model?"
         required: false
         default: ""
         type: string
       opt_ugkk_urls:
-        description: "Vlastné adresy archívov ÚGKK (prázdne = číselník)"
+        description: "Own ÚGKK archive addresses (empty = the registry)"
         required: false
         default: ""
         type: string
       opt_contour_interval:
-        description: "Interval vrstevníc v metroch"
+        description: "Contour interval in metres"
         required: false
         default: "5"
         type: string
       opt_contour_maxzoom:
-        description: "Najvyšší zoom dlaždíc s vrstevnicami"
+        description: "Top zoom of contour tiles"
         required: false
         default: "14"
         type: string
       opt_contour_smoothing:
-        description: "Zjemnenie DEM pred trasovaním v oblúkových sekundách"
+        description: "DEM smoothing before tracing, in arc seconds"
         required: false
         default: "0"
         type: string
       rock_slope:
-        description: "Od akého sklonu (°) je terén skala"
+        description: "From which slope (°) terrain is rock"
         required: false
         default: "50"
         type: string
       opt_rock_maxzoom:
-        description: "Najvyšší zoom dlaždíc so skalami"
+        description: "Top zoom of rock tiles"
         required: false
         default: "16"
         type: string
       opt_rock_res:
-        description: "Mriežka na obrys skál v metroch, alebo `auto`"
+        description: "Grid of the rock outline in metres, or `auto`"
         required: false
         default: "auto"
         type: string
-      opt_rock_plne:
-        description: "Plné skalné plochy namiesto obrysu"
+      opt_rock_solid:
+        description: "One rock class instead of steep/cliff"
         required: false
         default: "0"
         type: string
-      opt_rock_zapln_diery:
-        description: "Zaplniť diery v skalách (súvislé plochy namiesto tvaru)"
+      opt_rock_fill_holes:
+        description: "Fill holes in rocks (solid areas instead of shape)"
         required: false
         default: "0"
         type: string
       opt_rock_img_asset:
-        description: "Presné meno uloženého výsledku skál z tieňovania (prázdne = spočítať v tomto behu)"
+        description: "Exact name of the stored rocks from hillshading (empty = compute in this run)"
         required: false
         default: ""
         type: string
       opt_rock_img_zoom:
-        description: "Zoom tieňovaných dlaždíc (`auto` = najvyšší, čo sa zmestí do stropu)"
+        description: "Zoom of hillshading tiles (`auto` = the highest under the cap)"
         required: false
         default: "auto"
         type: string
       opt_rock_img_options:
-        description: "Prepínače pre výpočet skál z tieňovania"
+        description: "Switches for rocks from hillshading"
         required: false
         default: ""
         type: string
       opt_terrain_maxzoom:
-        description: "Najvyšší zoom výškových dlaždíc (`auto` = podľa mriežky modelu)"
+        description: "Top zoom of height tiles (`auto` = by the model grid)"
         required: false
         default: "auto"
         type: string
-      # príznaky z výberu `rebuild`: zahodia cache tej vrstvy a spočítajú ju
-      # nanovo (stráži `workers/lint/rebuild.py`)
+      # flags of the `rebuild` choice: drop that layer's cache and compute it anew
       opt_contours_rebuild:
-        description: "Prepočítať vrstevnice nanovo, aj keď sú v cache"
+        description: "Recompute contours even when cached"
         required: false
         default: "false"
         type: string
       opt_rocks_rebuild:
-        description: "Prepočítať skaly nanovo, aj keď sú v cache"
+        description: "Recompute rocks even when cached"
         required: false
         default: "false"
         type: string
       opt_terrain_rebuild:
-        description: "Prepočítať tieňovanie nanovo, aj keď je v cache"
+        description: "Recompute hillshading even when cached"
         required: false
         default: "false"
         type: string
-      # `true` = vrstva, ktorá s týmito nastaveniami už raz vznikla, sa
-      # neprepočítava. Hľadá sa predponou kľúča a job to hlási `::notice::`-om.
-      # Predvolené: prepočet si pýta výber `rebuild`, nie zmena skriptu.
+      # `true` = a layer already made with these settings isn't recomputed;
+      # found by key prefix, the job says so with `::notice::`
       opt_reuse_layers:
-        description: "Nepočítať vrstvu, ktorá s týmito nastaveniami už raz vznikla"
+        description: "Don't compute a layer already made with these settings"
         required: false
         default: "true"
         type: string
       opt_size_limit_mb:
-        description: "Rozpočet celej stránky v MB"
+        description: "Budget of the whole site in MB"
         required: false
         default: "900"
         type: string
       budget_contours_pct:
-        description: "Podiel vrstevníc na rozpočte stránky v percentách"
+        description: "Contours' share of the site budget in percent"
         required: false
         default: "25"
         type: string
       budget_rocks_pct:
-        description: "Podiel skál na rozpočte stránky v percentách"
+        description: "Rocks' share of the site budget in percent"
         required: false
         default: "12"
         type: string
       budget_terrain_pct:
-        description: "Podiel tieňovania na rozpočte stránky v percentách"
+        description: "Hillshading's share of the site budget in percent"
         required: false
         default: "12"
         type: string
     outputs:
-      # čo naozaj vzniklo – volajúci to potrebuje do štýlu, manifestu aj
-      # katalógu. Ide von aj výsledok jobu (`res_*`).
+      # what really came to be – the caller needs it for style, manifest and catalog
       contours_enabled:
-        description: "Vznikli vrstevnice?"
+        description: "Were contours made?"
         value: ${{ jobs.contours.outputs.enabled }}
       contours_maxzoom:
-        description: "Zoom, po ktorý vrstevnice naozaj sú"
+        description: "The zoom contours really reach"
         value: ${{ jobs.contours.outputs.maxzoom }}
       contours_dem_source:
-        description: "Z ktorého modelu sú vrstevnice NAOZAJ (mohol sa prepnúť na náhradný)"
+        description: "Which model contours REALLY come from (a fallback may have kicked in)"
         value: ${{ jobs.contours.outputs.dem_source }}
       rocks_enabled:
-        description: "Vznikli skaly?"
+        description: "Were rocks made?"
         value: ${{ jobs.rocks.outputs.rocks_enabled }}
       rocks_maxzoom:
-        description: "Zoom, po ktorý skaly naozaj sú"
+        description: "The zoom rocks really reach"
         value: ${{ jobs.rocks.outputs.rocks_maxzoom }}
       rock_slope:
-        description: "Prah sklonu, ktorým skaly naozaj vznikli"
+        description: "The slope threshold rocks were really made with"
         value: ${{ jobs.rocks.outputs.rock_slope }}
       rock_source:
-        description: "Z čoho sú skaly NAOZAJ (model, alebo `tienovanie`)"
+        description: "What rocks REALLY come from (a model, or `shading`)"
         value: ${{ jobs.rocks.outputs.rock_source }}
       terrain_enabled:
-        description: "Vzniklo tieňovanie?"
+        description: "Was hillshading made?"
         value: ${{ jobs.terrain.outputs.enabled }}
       terrain_maxzoom:
-        description: "Zoom, po ktorý sú výškové dlaždice"
+        description: "The zoom height tiles reach"
         value: ${{ jobs.terrain.outputs.maxzoom }}
       terrain_dem_source:
-        description: "Z ktorého modelu je tieňovanie NAOZAJ"
+        description: "Which model hillshading REALLY comes from"
         value: ${{ jobs.terrain.outputs.dem_source }}
       res_contours:
-        description: "Výsledok jobu s vrstevnicami (do súhrnu behu)"
-        value: ${{ jobs.vysledky.outputs.contours }}
+        description: "Result of the contours job (for the run summary)"
+        value: ${{ jobs.results.outputs.contours }}
       res_terrain:
-        description: "Výsledok jobu s tieňovaním (do súhrnu behu)"
-        value: ${{ jobs.vysledky.outputs.terrain }}
+        description: "Result of the hillshading job (for the run summary)"
+        value: ${{ jobs.results.outputs.terrain }}
       res_shading_rocks:
-        description: "Výsledok podpipeline so skalami z tieňovania (do súhrnu behu)"
-        value: ${{ jobs.vysledky.outputs.shading_rocks }}
-    # `workflow_call` nededí secrets sám. Bez nich sa cache na Drive ani sklady
-    # modelov nemajú ako otvoriť. `DRIVE_CLIENT` je repository variable.
+        description: "Result of the rocks-from-hillshading pipeline (for the run summary)"
+        value: ${{ jobs.results.outputs.shading_rocks }}
+    # `workflow_call` doesn't inherit secrets; `DRIVE_CLIENT` is a repository variable
     secrets:
       GDRIVE_CREDENTIALS:
         required: false
@@ -267,107 +260,80 @@ permissions:
   contents: read
 
 env:
-  # prihlásenie na Drive pre celý workflow, nie po jobe: stačí na jeden
-  # zabudnúť a ten sa ticho vráti k počítaniu všetkého odznova
+  # Drive sign-in for the whole workflow: one forgotten job silently recomputes everything
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
   DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
   DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
-  # sklady na Drive, nie GitHub releasy (formát je vo `workers/drive/store.py`).
-  # Dlaždice Sonny's LiDAR DTM.
+  # stores on Drive (`workers/drive/store.py`). Sonny's LiDAR DTM tiles.
   DEM_STORE: dem-sonny
-  # druhý Sonnyho model (1″ .hgt): zvislý krok 1 m, skaly z neho sú polámanejšie
+  # Sonny's second model (1″ .hgt): a 1 m vertical step, rocks from it are more broken
   SONNY1_STORE: dem-sonny1
-  # otvorené dáta ÚGKK (DMR 3.5), tie isté 1°×1° dlaždice
+  # ÚGKK open data (DMR 3.5), the same 1°×1° tiles
   DMR35_STORE: dem-dmr35
-  # ÚGKK DMR 5.0, mriežka 5 m; dopĺňa sa po stupňoch, ktoré bbox pretína
+  # ÚGKK DMR 5.0, 5 m grid; refilled by the degrees the bbox crosses
   DMR5_STORE: dem-dmr5-v2
-  # výrez DMR 5.0 v plnom 1 m rozlíšení, jeden COG na pohorie
+  # DMR 5.0 cut-outs at the full 1 m, one COG per range
   UGKK_STORE: dem-ugkk
-  # vyhladenie DEM pred trasovaním – okno priemeru v METROCH. Toto zubatosť
-  # naozaj odstráni, `-simplify` a zaoblenie ju len zaokrúhlia. Okno musí byť
-  # malé: 5×5 zmazalo aj rebrá a žľaby široké pár metrov.
-  # V metroch, nie v bunkách – na hrubom modeli tak vyjde jedna bunka a nehladí
-  # sa nič. 0 = vypnuté.
+  # DEM smoothing before tracing – the averaging window in METRES; this really
+  # removes jaggies. Small: 5×5 erased ridges and gullies a few metres wide. 0 = off.
   CONTOUR_DEM_LOWPASS: "2"
-  # záporné = koľko štvrtín bunky DEM (tolerancia z orezaného rastra),
-  # 0 = vypnuté, kladné = metre. Polovica bunky už odrezáva tvar terénu.
+  # negative = quarters of a DEM cell, 0 = off, positive = metres
   CONTOUR_SIMPLIFY: "-1"
-  # zaoblenie zvyšných rohov: dovolený priehyb tetivy v štvrtinách kroku
-  # mriežky dlaždice. Limitnou krivkou (B-spline), nie Chaikinom – ten necháva
-  # zo 120° rohu vyše 30°, teda pravidelný zub. Dva = polovica kroku mriežky,
-  # teda presne to, čo zaokrúhlenie do dlaždice spraví aj tak.
+  # rounding the remaining corners: allowed chord sag in quarters of the tile
+  # grid step, by a limit curve (B-spline) – Chaikin leaves a regular tooth
   CONTOUR_SMOOTH: "2"
-  # sklad s hotovými výškovými (hillshade) dlaždicami
+  # the store of finished height (hillshade) tiles
   TERRAIN_STORE: dem-terrain
-  # sklad s hotovými skalami: závisia len od územia a nastavení, tie sú v mene
+  # the store of finished rocks: they depend only on area and settings, both in the name
   ROCK_STORE: dem-rocks
-  # skaly z tieňovaných dlaždíc – napĺňa ich „Dáta · tieňované skaly"
+  # rocks from hillshading tiles – filled by “Data · rocks from hillshading”
   ROCK_IMG_STORE: dem-rocks-img
-  # sklad častí rastra sklonu; nevyprší (na rozdiel od cache) a časti majú
-  # absolútnu mriežku, takže sa delia medzi výrezmi
+  # the store of slope raster parts; never expires, and parts share an absolute grid
   SLOPE_STORE: dem-slope
-  ROCK_RES: auto # záložná mriežka na sklon (m), keď voľba rock_res chýba
-  # mriežka, na ktorej sa trasuje obrys – nemusí byť tá, na ktorej je uložený
-  # sklon: pixel dlaždice má pri z16 1,57 m, takže 1 m nesie detail navyše
-  # za jedenásťnásobok času. `auto` = najjemnejšia, ktorú je ešte vidieť.
+  ROCK_RES: auto # fallback slope grid (m) when the option rock_res is missing
+  # the grid the outline is traced on; `auto` = the finest still visible
   ROCK_VEC_RES: auto
-  # najmenšia plocha = jedna bunka mriežky. Zjednodušenie obrysu (m):
-  # -1 = štvrtina mriežky, 0 = vypnuté
+  # the smallest area = one grid cell; outline simplification (m): -1 = a quarter of the grid, 0 = off
   ROCK_SIMPLIFY: "-1"
-  # zaoblenie obrysu – to isté ako CONTOUR_SMOOTH, len podľa ROCK_MAXZOOM.
-  # Po zjednodušení ostávajú ostré rohy (lom zo 4,6° na 28,5°). 0 = vypnuté.
+  # rounding the outline – as CONTOUR_SMOOTH, by ROCK_MAXZOOM. 0 = off.
   ROCK_SMOOTH: "2"
-  # verzia algoritmu v mene assetu: iný algoritmus = iné skaly, takže sa staré
-  # nesmú použiť. v5 = švy medzi blokmi sa naozaj zlepia.
+  # the algorithm version in the asset name: another algorithm = other rocks. v5 = seams really merge.
   ROCK_ALGO: v5
-  ROCK_CLIFF_PLUS: "15" # o koľko ° nad prahom začína trieda `cliff` (tmavšia)
-  # sklon sa počíta po častiach: bbox kraja má pri 2 m vyše 3 mld. buniek.
-  # Vektorizuje sa až hotová mozaika – po častiach by sa diery na hranici stratili.
+  ROCK_CLIFF_PLUS: "15" # degrees above the threshold where class `cliff` (darker) starts
+  # slope is computed in parts: a region bbox has over 3 bn cells at 2 m
   ROCK_CHUNK_CELLS: "150000000"
-  # koľko minút majú skaly trvať; `0` = neobmedzene, a to je predvolené.
-  # Zastaviť to aj tak nezastavovalo (vektorizácia je jeden nedeliteľný
-  # priechod), ostávalo z toho len to, že `rock_res: auto` podľa toho volil
-  # hrubšiu mriežku, než model má. Kto sa ponáhľa, zadá `rock_res` natvrdo.
-  # Stropy, čo ostali: timeout jobu a `ROCK_MAX_RSS_GB`.
+  # minutes rocks may take; `0` = unlimited, the default. Hurry = a fixed `rock_res`.
   ROCK_BUDGET_MIN: "0"
-  # strana bloku pri vektorizácii: `gdal_contour -p` nad celou mozaikou je
-  # superlineárny a nedobehol vôbec. Po blokoch je pamäť ohraničená a hotový
-  # blok ostáva na disku, takže sa zrušený beh dá nadviazať; švy zlepí únia.
-  # 0 = jeden priechod nad celou mozaikou.
+  # block side for vectorising: memory stays bounded, a cancelled run resumes, union merges seams.
+  # 0 = one pass over the whole mosaic.
   ROCK_BLOCK_PX: "4096"
-  ROCK_MAX_RSS_GB: "12" # nad tým sa gdal_contour zastaví s hláškou, nie OOM
-  # tep k percentám dopĺňa pamäť, CPU, disk a rast výstupu
+  ROCK_MAX_RSS_GB: "12" # past it gdal_contour stops with a message, not OOM
+  # the heartbeat adds memory, CPU, disk and output growth to the percentage
   ROCK_HEARTBEAT_S: "30"
-  # podiely na rozpočte chodia inputom: `workflow_call` `env:` nededí a ten
-  # istý údaj číta aj job `tiles` u volajúceho
+  # budget shares come as inputs: `workflow_call` inherits no `env:`
   BUDGET_CONTOURS_PCT: ${{ inputs.budget_contours_pct }}
   BUDGET_ROCKS_PCT: ${{ inputs.budget_rocks_pct }}
   BUDGET_TERRAIN_PCT: ${{ inputs.budget_terrain_pct }}
 
 jobs:
-  # je v sklade terén pre toto územie? Iný zdroj výšok nemáme, takže by build
-  # po pár minútach zlyhal – radšej to doplnia joby `mirror-*` dopredu
+  # is terrain for this area in the store? The `mirror-*` jobs refill it first
   check-dem:
-    name: Kontrola výškového modelu
+    name: Height-model check
     runs-on: ubuntu-latest
-    # stačí, že aspoň jedna vrstva chce DEM. Skaly z tieňovania model nečítajú,
-    # preto `opt_rock_dem` (prázdny pri `tienovanie` aj `ziadne`)
+    # enough that one layer wants a DEM; rocks from hillshading read none
     if: ${{ inputs.opt_contour_lines == 'true' || inputs.opt_rock_dem != '' || inputs.opt_terrain == 'true' }}
     outputs:
-      # ktorý model treba doplniť pre ktorú vrstvu; keď dve chcú ten istý,
-      # ostane vyplnená len prvá – nech sa to isté nesťahuje dvakrát
+      # which model to refill for which layer; two wanting one keep only the first
       mirror_contours: ${{ steps.check.outputs.mirror_contours }}
       mirror_rocks: ${{ steps.check.outputs.mirror_rocks }}
       mirror_terrain: ${{ steps.check.outputs.mirror_terrain }}
-      # DMR 5.0 sa dopĺňa cez `Dáta · DMR 5.0` a podľa PODOBY, nie vrstvy:
-      # výrez a 1° dlaždice sú dva assety a môžu chýbať oba naraz.
-      # `mirror_dmr5_area` je bbox, nie kľúč pohoria; meno assetu ide zvlášť.
+      # DMR 5.0 is refilled through `Data · DMR 5.0` by SHAPE, not layer: a
+      # cut-out and 1° tiles are two assets and both may be missing
       mirror_dmr5_area: ${{ steps.check.outputs.mirror_dmr5_area }}
       mirror_dmr5_asset: ${{ steps.check.outputs.mirror_dmr5_asset }}
       mirror_dmr5_tiles: ${{ steps.check.outputs.mirror_dmr5_tiles }}
-      # otlačok skladu na vrstvu – po doplnení skladu sa nesmie vrátiť starý
-      # výsledok, ale doplnenie DMR 5.0 nesmie zahodiť vrstevnice zo Sonnyho
+      # a store fingerprint per layer, so a DMR 5.0 refill keeps Sonny's contours
       demkey_contours: ${{ steps.check.outputs.demkey_contours }}
       demkey_rocks: ${{ steps.check.outputs.demkey_rocks }}
       demkey_terrain: ${{ steps.check.outputs.demkey_terrain }}
@@ -375,36 +341,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # rozhodovanie je vo `workers/dem/check.sh`; to isté si robí aj
-      # `workers/dem/fetch.sh`, tak ho oba berú z `workers/dem/target.py`
-      - name: Sú v sklade dlaždice pre bbox?
+      # the decision is `workers/dem/check.sh`, from `workers/dem/target.py` as fetch.sh's
+      - name: Are there tiles in the store for the bbox?
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
-          # bbox aj výrez už raz vyriešila príprava, nepočítajú sa druhý raz.
-          # `dem_bbox`, nie `bbox`: kontroluje sa územie, na ktorom sa DEM naozaj číta.
+          # `dem_bbox`, not `bbox`: the area the DEM is really read on
           BBOX: ${{ inputs.dem_bbox }}
           AREA_KEY: ${{ inputs.area_key }}
-          # výrez pretnutý s regiónom (v teste zmenšený na štvorec)
+          # the cut-out intersected with the region (a square in a test)
           AREA_BBOX: ${{ inputs.area_bbox }}
           SRC_CONTOURS: ${{ inputs.opt_contour_source }}
           SRC_ROCKS: ${{ inputs.opt_rock_dem }}
           SRC_TERRAIN: ${{ inputs.opt_shading_source }}
         run: workers/dem/check.sh
 
-  # doplnenie výškových dát: jeden workflow, tri joby – po jednom na vrstvu.
-  # Vrstvy môžu chcieť rôzne modely a chýbať môžu oba naraz; `check-dem` vie
-  # povedať, že model už dopĺňa iná vrstva, takže sa to isté nesťahuje dvakrát.
-  # Spúšťajú sa samy, keď v sklade nie sú dlaždice pre naše územie.
+  # refilling height data: one workflow, a job per layer; they start themselves
   mirror-contours:
-    name: Doplniť výškový model (vrstevnice)
+    name: Refill the height model (contours)
     needs: check-dem
     if: ${{ !cancelled() && needs.check-dem.outputs.mirror_contours != '' }}
     permissions:
-      # `read`, nie `write`: doplnenie publikuje na Drive, nie do releasu
+      # `read`, not `write`: the refill publishes to Drive, not a release
       contents: read
     uses: ./.github/workflows/update-dem.yml
-    # Sonny chodí z Drive: bez tokenu by naň platil verejný denný limit
+    # Sonny comes from Drive: without a token the public daily limit applies
     secrets: inherit
     with:
       what: ${{ needs.check-dem.outputs.mirror_contours }}
@@ -412,130 +373,103 @@ jobs:
       custom_url: ${{ inputs.opt_ugkk_urls }}
 
   mirror-rocks:
-    name: Doplniť výškový model (skaly)
+    name: Refill the height model (rocks)
     needs: check-dem
-    # keď skaly berú ten istý model ako vrstevnice, `check-dem` ho nechá prázdny
+    # when rocks take the contours' model, `check-dem` leaves this empty
     if: ${{ !cancelled() && needs.check-dem.outputs.mirror_rocks != '' }}
     permissions:
-      # `read`, nie `write`: doplnenie publikuje na Drive, nie do releasu
       contents: read
     uses: ./.github/workflows/update-dem.yml
-    secrets: inherit                      # Drive, ako vyššie
+    secrets: inherit                      # Drive, as above
     with:
       what: ${{ needs.check-dem.outputs.mirror_rocks }}
       area: ${{ inputs.area }}
       custom_url: ${{ inputs.opt_ugkk_urls }}
 
   mirror-terrain:
-    name: Doplniť výškový model (tieňovanie)
+    name: Refill the height model (hillshading)
     needs: check-dem
     if: ${{ !cancelled() && needs.check-dem.outputs.mirror_terrain != '' }}
     permissions:
-      # `read`, nie `write`: doplnenie publikuje na Drive, nie do releasu
       contents: read
     uses: ./.github/workflows/update-dem.yml
-    secrets: inherit                      # Drive, ako vyššie
+    secrets: inherit                      # Drive, as above
     with:
       what: ${{ needs.check-dem.outputs.mirror_terrain }}
       area: ${{ inputs.area }}
       custom_url: ${{ inputs.opt_ugkk_urls }}
 
-  # DMR 5.0 nechodí cez `update-dem.yml`: ten sťahuje archív na runner, a model
-  # má 145 GB. Číta sa cez HTTP Range priamo z Drive (`dmr5-drive.yml`).
-  # Dva joby nad jedným workflowom – `dmr5` má dva tvary (výrez v plnom
-  # rozlíšení, 1° dlaždice na 5 m) a chýbať môžu naraz.
+  # DMR 5.0 is 145 GB, read by HTTP Range straight from Drive (`dmr5-drive.yml`);
+  # two shapes (full-resolution cut-out, 5 m 1° tiles) may both be missing
   mirror-dmr5-area:
-    name: Doplniť DMR 5.0 (výrez, plné rozlíšenie)
+    name: Refill DMR 5.0 (cut-out, full resolution)
     needs: check-dem
     if: ${{ !cancelled() && needs.check-dem.outputs.mirror_dmr5_area != '' }}
     permissions:
-      # `read`, nie `write`: doplnenie publikuje na Drive, nie do releasu
       contents: read
     uses: ./.github/workflows/dmr5-drive.yml
-    # kvôli GDRIVE_CREDENTIALS: bez tokenu platí denný limit sťahovania
+    # for GDRIVE_CREDENTIALS: without a token the daily download limit applies
     secrets: inherit
     with:
-      # bbox toho, čo si beh vypýtal, a meno, ktoré `check-dem` nenašiel.
-      # Kľúč pohoria sem nechodí – vyriešil by sa druhýkrát na celý obdĺžnik.
+      # the bbox the run asked for and the name `check-dem` didn't find
       area: ${{ needs.check-dem.outputs.mirror_dmr5_area }}
       asset: ${{ needs.check-dem.outputs.mirror_dmr5_asset }}
       tiles: false
 
   mirror-dmr5-tiles:
-    name: Doplniť DMR 5.0 (dlaždice)
+    name: Refill DMR 5.0 (tiles)
     needs: check-dem
     if: ${{ !cancelled() && needs.check-dem.outputs.mirror_dmr5_tiles != '' }}
     permissions:
-      # `read`, nie `write`: doplnenie publikuje na Drive, nie do releasu
       contents: read
     uses: ./.github/workflows/dmr5-drive.yml
-    secrets: inherit                      # GDRIVE_CREDENTIALS, ako vyššie
+    secrets: inherit                      # GDRIVE_CREDENTIALS, as above
     with:
-      # bbox rozšírený na celé stupne – `N49E020.tif` je sľub o celom stupni
+      # the bbox widened to whole degrees – `N49E020.tif` promises a whole degree
       area: ${{ needs.check-dem.outputs.mirror_dmr5_tiles }}
       tiles: true
       grid_m: "5"
 
-  # skaly z tieňovaných dlaždíc: pri `rock_source: tienovanie` sa obrázky
-  # stiahnu rovno v tomto behu (tá istá pipeline, len volaná). Dlaždice majú
-  # vlastnú cache podľa výrezu a zoomu.
+  # rocks from hillshading tiles: with `rock_source: shading` the pictures are
+  # downloaded in this run (the same pipeline, called)
   shading-rocks:
-    name: Skaly z tieňovania
-    if: ${{ !cancelled() && inputs.opt_rock_source == 'tienovanie' && inputs.opt_rock_img_asset == '' }}
+    name: Rocks from hillshading
+    if: ${{ !cancelled() && inputs.opt_rock_source == 'shading' && inputs.opt_rock_img_asset == '' }}
     permissions:
-      # `read`, nie `write`: doplnenie publikuje na Drive, nie do releasu.
       contents: read
     uses: ./.github/workflows/shading-rocks.yml
-    # Kvôli cache na Drive: bez tokenu by si tá podpipeline nemala ako otvoriť
-    # sklad stiahnutých dlaždíc a ťahala by gigabajty z freemap.sk odznova.
+    # for the Drive cache: without a token it would pull gigabytes from freemap.sk again
     secrets: inherit
     with:
-      # V testovacom režime ide dole rovno bbox testovacieho štvorca, nie meno
-      # pohoria. Ten workflow by si síce vedel štvorec spočítať sám, ale
-      # z vlastného prieniku (SK) namiesto prieniku s regiónom – a dva výpočty
-      # toho istého sa raz rozídu. Rozísť sa tu znamená skaly mimo mapy.
+      # a test passes the test square's bbox, not the range: one computation, not two
       area: ${{ inputs.test_km2 != '0' && inputs.area_bbox || inputs.area }}
       zoom: ${{ inputs.opt_rock_img_zoom }}
-      # Rýchly test nepoužije nič z cache – vrátane TEJTO podpipeline. Sama
-      # si totiž odkladá rozrobené obrysy a bez `fresh=1` by na ne nadviazala,
-      # takže by si po zmene prahu dostal polovicu starého výsledku a polovicu
-      # nového. Vlastné `rock_img_options` to vedia prebiť (`fresh=0`) – tokeny
-      # sa spracúvajú zľava doprava a posledná hodnota vyhráva.
-      # Stiahnuté JPG dlaždice sa nezahadzujú: to sú vstupné dáta z cudzieho
-      # (dobrovoľníckeho) servera, nie výsledok výpočtu.
-      # TO ISTÉ PLATÍ PRI `rebuild: skaly`: pri `rock_source: tienovanie` sa
-      # sklon nepočíta vôbec, obrysy robí táto podpipeline – a bez `fresh=1`
-      # nadviazala na svoje rozrobené kusy, takže výber sľúbil prepočet
-      # a vrátil starý výsledok (`workers/lint/rebuild.py`).
+      # a quick test and `rebuild: rocks` take nothing cached from this pipeline
+      # either (`fresh=1`); own `rock_img_options` may override it (`fresh=0`)
       options: ${{ (inputs.test_km2 != '0' || inputs.opt_rocks_rebuild == 'true') && format('fresh=1 {0}', inputs.opt_rock_img_options) || inputs.opt_rock_img_options }}
 
-  # ---------- kľúče cache ----------
-  # Vlastný job, lebo kľúč potrebuje OBOJE: bbox z prípravy a otlačok releasu
-  # s DEM z kontroly. A potrebuje ho restore, save aj mazanie pri
-  # pregenerovaní – keby bol napísaný trikrát, stačí ho raz zabudnúť opraviť
-  # a cache sa ticho rozsype (ukladá sa pod iný kľúč, než sa hľadá).
+  # ---------- cache keys ----------
+  # a job of its own: a key needs the bbox and the DEM fingerprint, and restore,
+  # save and rebuild must share it, or the cache silently falls apart
   keys:
-    name: Kľúče cache
+    name: Cache keys
     needs: [check-dem, mirror-contours, mirror-rocks, mirror-terrain,
             mirror-dmr5-area, mirror-dmr5-tiles]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
-      # `actions: write` tu bolo na mazanie GitHub cache. Cache je na Drive,
-      # takže sa maže tokenom vlastníka z `env:` workflowu a GitHub na to
-      # žiadne právo nepotrebuje.
+      # the cache is on Drive, deleted with the owner's token from `env:`
       contents: read
     outputs:
-      # Tri vrstvy, tri nezávislé kľúče – a ku každému predpona `*_hotove`
-      # (tie isté nastavenia, iný otlačok skladu či skriptov) a kľúč
-      # `contours_stary` spred rozdelenia. Rozpis je vo `workers/plan/cache-keys.sh`.
+      # three layers, three keys, each with a `*_done` prefix and the legacy key
+      # (`workers/plan/cache-keys.sh`)
       contours: ${{ steps.keys.outputs.contours }}
-      contours_hotove: ${{ steps.keys.outputs.contours_hotove }}
-      contours_stary: ${{ steps.keys.outputs.contours_stary }}
+      contours_done: ${{ steps.keys.outputs.contours_done }}
+      contours_legacy: ${{ steps.keys.outputs.contours_legacy }}
       rocks: ${{ steps.keys.outputs.rocks }}
-      rocks_hotove: ${{ steps.keys.outputs.rocks_hotove }}
+      rocks_done: ${{ steps.keys.outputs.rocks_done }}
       terrain: ${{ steps.keys.outputs.terrain }}
-      terrain_hotove: ${{ steps.keys.outputs.terrain_hotove }}
+      terrain_done: ${{ steps.keys.outputs.terrain_done }}
       demtiles_contours: ${{ steps.keys.outputs.demtiles_contours }}
       demtiles_rocks: ${{ steps.keys.outputs.demtiles_rocks }}
       demtiles_terrain: ${{ steps.keys.outputs.demtiles_terrain }}
@@ -544,12 +478,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Kľúč potrebuje restore, save aj mazanie pri pregenerovaní. Keby bol
-      # napísaný trikrát, stačí ho raz zabudnúť opraviť a cache sa ticho
-      # rozsype (uloží sa pod iným kľúčom, než sa hľadá).
-      # Skladanie kľúčov je vo `workers/plan/cache-keys.sh` (strop súboru 128 kB).
-      # `hashFiles` je funkcia GitHubu, tak sa jej výsledok podá ako env.
-      - name: Kľúče cache
+      # `hashFiles` is a GitHub function, so its result goes in as env
+      - name: Cache keys
         id: keys
         env:
           AREA_IN: ${{ inputs.area }}
@@ -564,37 +494,33 @@ jobs:
           OPT_CONTOUR_SOURCE: ${{ inputs.opt_contour_source }}
           OPT_ROCK_IMG_ASSET: ${{ inputs.opt_rock_img_asset }}
           OPT_ROCK_MAXZOOM: ${{ inputs.opt_rock_maxzoom }}
-          OPT_ROCK_PLNE: ${{ inputs.opt_rock_plne }}
+          OPT_ROCK_SOLID: ${{ inputs.opt_rock_solid }}
           OPT_ROCK_RES: ${{ inputs.opt_rock_res }}
           OPT_ROCK_SOURCE: ${{ inputs.opt_rock_source }}
-          OPT_ROCK_ZAPLN_DIERY: ${{ inputs.opt_rock_zapln_diery }}
+          OPT_ROCK_FILL_HOLES: ${{ inputs.opt_rock_fill_holes }}
           OPT_SHADING_SOURCE: ${{ inputs.opt_shading_source }}
           OPT_TERRAIN_MAXZOOM: ${{ inputs.opt_terrain_maxzoom }}
           ROCK_SLOPE: ${{ inputs.rock_slope }}
-          # dva otlačky, nie jeden: oprava v `rocks.sh` nemá zahodiť hodinu
-          # vrstevníc. V otlačku musí byť každý súbor, ktorý rozhoduje o tvare.
-          # Otlačok vidí len súbory – ladenie tvaru je v `env:`, takže je
-          # v kľúči zvlášť (`workers/plan/cache-keys.sh`).
+          # two fingerprints: a fix in `rocks.sh` mustn't drop an hour of contours;
+          # every file deciding the shape must be in them
           SCHEMA_CONTOURS: ${{ hashFiles('workers/contours-rocks/contours.yml', 'workers/contours-rocks/build.sh', 'workers/contours-rocks/smooth-shapes.py', 'workers/lib/contour-blocks.py') }}
           SCHEMA_ROCKS: ${{ hashFiles('workers/contours-rocks/rocks.yml', 'workers/contours-rocks/rocks.sh', 'workers/contours-rocks/build.sh', 'workers/contours-rocks/rock-areas.py', 'workers/contours-rocks/rock-plan.py', 'workers/contours-rocks/slope-chunks.py', 'workers/contours-rocks/smooth-shapes.py', 'workers/lib/contour-blocks.py') }}
-          # otlačok spred rozdelenia, len do kľúča `*_stary` – zoznam súborov
-          # sa preto nesmie meniť
+          # the fingerprint from before the split, only for `*_legacy` – the file list must not change
           SCHEMA_HASH: ${{ hashFiles('workers/contours-rocks/contours.yml', 'workers/contours-rocks/rocks.yml', 'workers/contours-rocks/rock-areas.py', 'workers/contours-rocks/rock-plan.py', 'workers/contours-rocks/smooth-shapes.py', 'workers/contours-rocks/build.sh', 'workers/contours-rocks/rocks.sh', 'workers/lib/contour-blocks.py') }}
         run: workers/plan/cache-keys.sh
 
-      # kým starý záznam existuje, nový sa pod ten istý kľúč neuloží
-      - name: Pregenerovanie – zmaž staré cache
+      # while the old entry exists, a new one isn't saved under the same key
+      - name: Rebuild – delete the old caches
         if: ${{ inputs.opt_contours_rebuild == 'true' || inputs.opt_rocks_rebuild == 'true' || inputs.opt_terrain_rebuild == 'true' }}
         run: |
           set -uo pipefail
-          drop() { # $1 = kľúč cache
+          drop() { # $1 = cache key
             python3 workers/drive/cache.py --delete --key="$1"
           }
-          # vrstva po vrstve: `rebuild: skaly` nemá zahodiť hodinu vrstevníc.
-          # Aj kľúč spred rozdelenia, inak by ostala v tieni starého záznamu.
+          # layer by layer: `rebuild: rocks` mustn't drop an hour of contours
           if [ '${{ inputs.opt_contours_rebuild }}' = 'true' ]; then
             drop '${{ steps.keys.outputs.contours }}'
-            drop '${{ steps.keys.outputs.contours_stary }}'
+            drop '${{ steps.keys.outputs.contours_legacy }}'
           fi
           if [ '${{ inputs.opt_rocks_rebuild }}' = 'true' ]; then
             drop '${{ steps.keys.outputs.rocks }}'
@@ -603,31 +529,27 @@ jobs:
             drop '${{ steps.keys.outputs.terrain }}'
           fi
 
-  # najdlhší job (skaly sú desiatky minút). Vlastný job = vlastný timeout,
-  # a keď spadne, mapa ani tieňovanie sa nezahodia
+  # the longest job; its own job = its own timeout, a failure keeps map and hillshading
   contours:
-    name: Vrstevnice
-    # `shading-rocks` je v needs kvôli poradiu, nie dátam; pri inom zdroji je
-    # preskočený a `!cancelled()` sa o preskočenú závislosť nezastaví
+    name: Contours
+    # `shading-rocks` is in needs for order, not data; skipped it doesn't stop `!cancelled()`
     needs: [keys, shading-rocks]
     if: ${{ !cancelled() && inputs.opt_contours == 'true' }}
     runs-on: ubuntu-latest
     permissions:
-      # `read`: hotové skaly idú do skladu na Drive, nie do releasu
+      # `read`: finished rocks go to the Drive store, not a release
       contents: read
     outputs:
       enabled: ${{ steps.contours.outputs.enabled }}
       maxzoom: ${{ steps.contours.outputs.maxzoom }}
-      # skaly sú od vrstevníc oddelené: vlastný .pmtiles, maxzoom aj zapínač
       dem_source: ${{ steps.contours.outputs.dem_source }}
       size_mb: ${{ steps.contours.outputs.size_mb }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      # meranie musí byť v pracovnom priečinku – `hashFiles` inam nevidí
-      - name: Priprav priečinok na meranie
+      # timing must sit in the workspace – `hashFiles` sees nothing else
+      - name: Prepare the timing folder
         run: mkdir -p steps-out
-
 
       - name: Setup Java 21
         uses: actions/setup-java@v5
@@ -635,85 +557,68 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Cache Planetileru (restore)
+      - name: Planetiler cache (restore)
         id: planetiler-cache
         uses: ./.github/actions/cache-restore
         with:
           path: planetiler.jar
           key: planetiler-latest-${{ inputs.day }}
 
-      - name: Stiahni Planetiler
+      - name: Download Planetiler
         run: workers/lib/planetiler.sh
-      # terén ide z externého DEM (Sonny's LiDAR DTM): OSM výškový model nemá.
-      # Copernicus GLO-30 ako záloha je zámerne vypnutý – je to model povrchu,
-      # takže by vrstevnice v lese viedli po korunách. Keď dlaždica chýba,
-      # build radšej zlyhá s hláškou.
-      #
-      # Skaly vznikajú z toho istého DEM (sklon terénu). Robia sa pred
-      # dlaždicami, aby Planetiler dostal presne to, čo z rozpočtu zvýšilo.
-      # Pri `contours_rebuild` sa restore preskočí.
-      - name: Cache vrstevníc (restore)
+      # terrain comes from an external DEM; Copernicus GLO-30 is off on purpose –
+      # a surface model would lead contours over treetops
+      - name: Contours cache (restore)
         id: contours-cache
         if: ${{ inputs.opt_contours == 'true' && inputs.opt_contours_rebuild != 'true' }}
         uses: ./.github/actions/cache-restore
         with:
           path: contours-out
           key: ${{ needs.keys.outputs.contours }}
-          # predpona s nastaveniami, keď si beh pýta hotové vrstvy: trafí sa na
-          # najnovšie s tými istými nastaveniami. Prázdna = prísna cache.
-          restore-keys: ${{ inputs.opt_reuse_layers == 'true' && needs.keys.outputs.contours_hotove || '' }}
+          # the settings prefix when the run takes finished layers; empty = a strict cache
+          restore-keys: ${{ inputs.opt_reuse_layers == 'true' && needs.keys.outputs.contours_done || '' }}
 
-      # jednorazová migrácia: kým vrstevnice a skaly zdieľali kľúč, ležali pod
-      # `contours-v10-…`. Presný kľúč, nie predpona – staré skaly majú ten istý
-      # s príponou `-rocks`. Dá sa zmazať, keď cache prejde obrátkou (30 dní).
-      - name: Cache vrstevníc – kľúč spred rozdelenia (restore)
-        id: contours-cache-stary
+      # a one-off migration: the key from before contours and rocks split
+      - name: Contours cache – key from before the split (restore)
+        id: contours-cache-legacy
         if: ${{ inputs.opt_contours == 'true' && inputs.opt_contours_rebuild != 'true' && steps.contours-cache.outputs.cache-hit != 'true' && steps.contours-cache.outputs.cache-matched-key == '' }}
         uses: ./.github/actions/cache-restore
         with:
           path: contours-out
-          key: ${{ needs.keys.outputs.contours_stary }}
+          key: ${{ needs.keys.outputs.contours_legacy }}
 
-      # jedna odpoveď na „počítať, alebo nie" pre všetky štyri miesta v jobe
-      - name: Sú vrstevnice hotové?
-        id: hotove
+      # one answer to “compute or not” for all four places in the job
+      - name: Are the contours done?
+        id: done
         env:
-          VRSTVA: Vrstevnice
+          LAYER: Contours
           HIT: ${{ steps.contours-cache.outputs.cache-hit }}
           MATCHED: ${{ steps.contours-cache.outputs.cache-matched-key }}
-          HIT_STARY: ${{ steps.contours-cache-stary.outputs.cache-hit }}
-        run: workers/plan/hotova-vrstva.sh
+          HIT_LEGACY: ${{ steps.contours-cache-legacy.outputs.cache-hit }}
+        run: workers/plan/layer-done.sh
 
-      # DEM dlaždice sú desiatky MB a menia sa len so skladom (`demkey`);
-      # nepregenerúvajú sa nikdy – sú to stiahnuté dáta, nie výpočet.
-      # Cachuje sa celý `dem/` (môžu tam byť dva modely naraz), medzivýsledky
-      # idú do `work/`, nech sa do cache nedostane `clip.tif`.
-      - name: Stiahni polygón kraja
+      - name: Download the region polygon
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           name: region-poly
           path: data
 
-      # len keď sa naozaj počíta: model je gigabajty a k hotovej vrstve netreba
-      - name: Cache DEM dlaždíc (restore)
+      # only when computing: the model is gigabytes, a finished layer needs none
+      - name: DEM tile cache (restore)
         id: demtiles-cache
-        if: ${{ inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' }}
+        if: ${{ inputs.opt_contours == 'true' && steps.done.outputs.compute == 'true' }}
         uses: ./.github/actions/cache-restore
         with:
           path: dem
           key: ${{ needs.keys.outputs.demtiles_contours }}
 
-      # sklad častí sklonu: vďaka nemu zrušený beh nezahodí hodinu čítania
-      # z Drive. Kľúč nesie výrez a mriežku, nie prah sklonu – ten sa uplatní
-      # až pri vektorizácii. `restore-keys` je podstatné: časti majú absolútnu
-      # mriežku, takže starší záznam pre to isté pohorie je použiteľný.
-      - name: Vrstevnice a skaly z DEM
-        if: ${{ inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' }}
+      - name: Contours and rocks from the DEM
+        if: ${{ inputs.opt_contours == 'true' && steps.done.outputs.compute == 'true' }}
         env:
           ONLY: contours
           GH_TOKEN: ${{ github.token }}
-          # územie výpočtu, nie mapy: pri teste je to štvorec so 4 km²
+          # the computation's area, not the map's: a 4 km² square in a test
           REGION_BBOX: ${{ inputs.dem_bbox }}
           REGION_KEY: ${{ inputs.region_key }}
           AREA_KEY_IN: ${{ inputs.area_key }}
@@ -726,8 +631,8 @@ jobs:
           OPT_CONTOUR_SMOOTHING: ${{ inputs.opt_contour_smoothing }}
           OPT_CONTOUR_MAXZOOM: ${{ inputs.opt_contour_maxzoom }}
           OPT_ROCK_MAXZOOM: ${{ inputs.opt_rock_maxzoom }}
-          OPT_ROCK_PLNE: ${{ inputs.opt_rock_plne }}
-          OPT_ROCK_ZAPLN_DIERY: ${{ inputs.opt_rock_zapln_diery }}
+          OPT_ROCK_SOLID: ${{ inputs.opt_rock_solid }}
+          OPT_ROCK_FILL_HOLES: ${{ inputs.opt_rock_fill_holes }}
           ROCK_SLOPE_IN: ${{ inputs.rock_slope }}
           ROCK_RES_IN: ${{ inputs.opt_rock_res }}
           OPT_ROCKS: ${{ inputs.opt_rocks }}
@@ -737,31 +642,28 @@ jobs:
           OPT_ROCKS_REBUILD: ${{ inputs.opt_rocks_rebuild }}
           OPT_SIZE_LIMIT_MB: ${{ inputs.opt_size_limit_mb }}
           OPT_UGKK_FALLBACK: ${{ inputs.opt_ugkk_fallback }}
-          # testovací beh sa skladu nesmie dotknúť; `rocks_rebuild` ho má obísť
+          # a test run mustn't touch the store; `rocks_rebuild` must skip it
           OPT_TEST_KM2: ${{ inputs.test_km2 }}
           SLOPE_DIR: slope-chunks
-          # Drive je latenčný, nie úzky; nad ~16 vláknami začne odpovedať 403
+          # Drive is latent, not narrow; past ~16 threads it answers 403
           SLOPE_JOBS: "6"
-          # skaly z `dmr5` čítajú sklon rovno z Drive, takže token treba aj tu
+          # `dmr5` rocks read slope straight from Drive, so the token is needed here too
           GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
           DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
           DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
           DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
         run: bash workers/contours-rocks/build.sh
-      # ukladá sa hneď a len to, čo sa naozaj spočítalo: vrstva vzatá po
-      # predpone by o sebe tvrdila dnešný otlačok skriptov
-      - name: Cache vrstevníc (save)
-        if: ${{ always() && inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' && hashFiles('contours-out/contours.pmtiles') != '' }}
+      # saved at once and only what was really computed
+      - name: Contours cache (save)
+        if: ${{ always() && inputs.opt_contours == 'true' && steps.done.outputs.compute == 'true' && hashFiles('contours-out/contours.pmtiles') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
         with:
           path: contours-out
           key: ${{ needs.keys.outputs.contours }}
 
-      # `always()`: sklad má prežiť práve tie behy, ktoré sa nedopočítali.
-      # Testovací beh sa neukladá – `restore-keys` berie najnovší záznam, takže
-      # by ďalší ostrý beh dostal ten chudobný.
-      - name: Cache DEM dlaždíc (save)
+      # `always()`: the store must survive exactly the runs that didn't finish
+      - name: DEM tile cache (save)
         if: ${{ always() && inputs.opt_contours == 'true' && steps.demtiles-cache.outputs.cache-hit != 'true' && hashFiles('dem/**') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
@@ -769,14 +671,14 @@ jobs:
           path: dem
           key: ${{ needs.keys.outputs.demtiles_contours }}
 
-      # vo `workers/contours-rocks/site.sh` – ten istý krok majú dva joby
-      - name: Zaraď vrstevnice do webu
+      # `workers/contours-rocks/site.sh` – two jobs share the step
+      - name: Put the contours into the site
         id: contours
         if: ${{ inputs.opt_contours == 'true' }}
         env:
           ONLY: contours
-          # „nič sa nepočítalo" je aj hotová vrstva z predošlého behu
-          CACHE_HIT: ${{ steps.hotove.outputs.mam }}
+          # “nothing was computed” includes a finished layer of an earlier run
+          CACHE_HIT: ${{ steps.done.outputs.have }}
           OPT_CONTOUR_LINES: ${{ inputs.opt_contour_lines }}
           OPT_CONTOUR_MAXZOOM: ${{ inputs.opt_contour_maxzoom }}
           OPT_ROCKS: ${{ inputs.opt_rocks }}
@@ -784,19 +686,17 @@ jobs:
           REGION_KEY: ${{ inputs.region_key }}
         run: workers/contours-rocks/site.sh
 
-      # do skladu na Drive, nie ako artefakt. Zoznam súborov je vo
-      # `workers/deploy/publish-results.sh` – ten istý krok majú dva joby.
-      - name: Odlož skaly a vrstevnice do skladu
+      # into the Drive store, not an artifact (`workers/deploy/publish-results.sh`)
+      - name: Store rocks and contours
         if: ${{ inputs.opt_contours == 'true' && hashFiles('data/rock.gpkg') != '' }}
         continue-on-error: true
         env:
-          CO: teren
-          NAZOV: teren-${{ inputs.region_key }}-s${{ inputs.rock_slope }}-g${{ inputs.opt_rock_res }}
+          KIND: terrain
+          NAME: terrain-${{ inputs.region_key }}-s${{ inputs.rock_slope }}-g${{ inputs.opt_rock_res }}
         run: workers/deploy/publish-results.sh
 
-      # každý job vyrobí svoj kus `_site` a `deploy` ich zlepí.
-      # compression-level 0: .pmtiles aj .png sú už komprimované.
-      - name: Odlož časť stránky
+      # each job makes its piece of `_site`; compression-level 0, all compressed already
+      - name: Keep the site piece
         if: ${{ always() && hashFiles('_site/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -806,12 +706,12 @@ jobs:
           compression-level: 0
           if-no-files-found: ignore
 
-      # štatistika skál ide k meraniu krokov, nie na stránku
-      - name: Pribal štatistiku skál k meraniu
+      # rock statistics go with the step timing, not onto the site
+      - name: Add the rock statistics to the timing
         if: ${{ always() }}
         run: cp contours-out/rock-stats.txt steps-out/ 2>/dev/null || true
 
-      - name: Odlož meranie krokov
+      - name: Keep the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -820,16 +720,13 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # tieňovanie a 3D terén sú nezávislé od vrstevníc – oboje potrebuje len DEM
   rocks:
-    # druhá polovica toho, čo bolo „Vrstevnice a skaly": ten istý skript
-    # s `ONLY: rocks`. Rozpis krokov stojí pri jobe `contours`.
-    name: Skaly
+    # the other half: the same script with `ONLY: rocks`; the steps are explained at `contours`
+    name: Rocks
     needs: [keys, shading-rocks]
     if: ${{ !cancelled() && inputs.opt_contours == 'true' }}
     runs-on: ubuntu-latest
     permissions:
-      # `read`: hotové skaly idú do skladu na Drive, nie do releasu
       contents: read
     outputs:
       enabled: ${{ steps.contours.outputs.rocks_enabled }}
@@ -842,7 +739,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Priprav priečinok na meranie
+      - name: Prepare the timing folder
         run: mkdir -p steps-out
 
       - name: Setup Java 21
@@ -851,56 +748,55 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Cache Planetileru (restore)
+      - name: Planetiler cache (restore)
         id: planetiler-cache
         uses: ./.github/actions/cache-restore
         with:
           path: planetiler.jar
           key: planetiler-latest-${{ inputs.day }}
 
-      - name: Stiahni Planetiler
+      - name: Download Planetiler
         run: workers/lib/planetiler.sh
-      - name: Cache skál (restore)
+      - name: Rock cache (restore)
         id: contours-cache
         if: ${{ inputs.opt_contours == 'true' && inputs.opt_rocks_rebuild != 'true' }}
         uses: ./.github/actions/cache-restore
         with:
           path: contours-out
           key: ${{ needs.keys.outputs.rocks }}
-          # to isté ako pri vrstevniciach, s výnimkou: pri `rock_source:
-          # tienovanie` a prázdnom `rock_img_asset` obrysy práve teraz počíta
-          # job `shading-rocks` a vziať hotové by znamenalo zahodiť jeho prácu
-          restore-keys: ${{ (inputs.opt_reuse_layers == 'true' && (inputs.opt_rock_source != 'tienovanie' || inputs.opt_rock_img_asset != '')) && needs.keys.outputs.rocks_hotove || '' }}
+          # except: with `rock_source: shading` and no `rock_img_asset`, job
+          # `shading-rocks` is computing the outlines right now
+          restore-keys: ${{ (inputs.opt_reuse_layers == 'true' && (inputs.opt_rock_source != 'shading' || inputs.opt_rock_img_asset != '')) && needs.keys.outputs.rocks_done || '' }}
 
-      - name: Sú skaly hotové?
-        id: hotove
+      - name: Are the rocks done?
+        id: done
         env:
-          VRSTVA: Skaly
+          LAYER: Rocks
           HIT: ${{ steps.contours-cache.outputs.cache-hit }}
           MATCHED: ${{ steps.contours-cache.outputs.cache-matched-key }}
-        run: workers/plan/hotova-vrstva.sh
+        run: workers/plan/layer-done.sh
 
-      # bez polygónu by sa vrstva počítala na celom bboxe regiónu
-      - name: Stiahni polygón kraja
+      # without the polygon the layer would be computed on the whole region bbox
+      - name: Download the region polygon
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           name: region-poly
           path: data
 
-      # model aj časti sklonu sú vstupy výpočtu – k hotovým skalám ich netreba
-      - name: Cache DEM dlaždíc (restore)
+      # model and slope parts are inputs – finished rocks need neither
+      - name: DEM tile cache (restore)
         id: demtiles-cache
-        if: ${{ inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' }}
+        if: ${{ inputs.opt_contours == 'true' && steps.done.outputs.compute == 'true' }}
         uses: ./.github/actions/cache-restore
         with:
           path: dem
           key: ${{ needs.keys.outputs.demtiles_rocks }}
 
-      # `opt_rocks_rebuild` tu ostáva: sklon sa má prečítať nanovo
-      - name: Cache častí sklonu (restore)
+      # `opt_rocks_rebuild` stays here: the slope is to be read anew
+      - name: Slope part cache (restore)
         id: slope-cache
-        if: ${{ inputs.opt_contours == 'true' && inputs.opt_rocks_rebuild != 'true' && steps.hotove.outputs.pocitaj == 'true' }}
+        if: ${{ inputs.opt_contours == 'true' && inputs.opt_rocks_rebuild != 'true' && steps.done.outputs.compute == 'true' }}
         uses: ./.github/actions/cache-restore
         with:
           path: slope-chunks
@@ -908,8 +804,8 @@ jobs:
           restore-keys: |
             ${{ needs.keys.outputs.slope }}
 
-      - name: Vrstevnice a skaly z DEM
-        if: ${{ inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' }}
+      - name: Contours and rocks from the DEM
+        if: ${{ inputs.opt_contours == 'true' && steps.done.outputs.compute == 'true' }}
         env:
           ONLY: rocks
           GH_TOKEN: ${{ github.token }}
@@ -925,8 +821,8 @@ jobs:
           OPT_CONTOUR_SMOOTHING: ${{ inputs.opt_contour_smoothing }}
           OPT_CONTOUR_MAXZOOM: ${{ inputs.opt_contour_maxzoom }}
           OPT_ROCK_MAXZOOM: ${{ inputs.opt_rock_maxzoom }}
-          OPT_ROCK_PLNE: ${{ inputs.opt_rock_plne }}
-          OPT_ROCK_ZAPLN_DIERY: ${{ inputs.opt_rock_zapln_diery }}
+          OPT_ROCK_SOLID: ${{ inputs.opt_rock_solid }}
+          OPT_ROCK_FILL_HOLES: ${{ inputs.opt_rock_fill_holes }}
           ROCK_SLOPE_IN: ${{ inputs.rock_slope }}
           ROCK_RES_IN: ${{ inputs.opt_rock_res }}
           OPT_ROCKS: ${{ inputs.opt_rocks }}
@@ -939,24 +835,24 @@ jobs:
           OPT_TEST_KM2: ${{ inputs.test_km2 }}
           SLOPE_DIR: slope-chunks
           SLOPE_JOBS: "6"
-          # tento krok číta z Drive najviac: sklon ide po častiach zo 145 GB rastra
+          # this step reads Drive the most: slope in parts of a 145 GB raster
           GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
           DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
           DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
           DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
         run: bash workers/contours-rocks/build.sh
 
-      # ukladá sa len hotová vrstva: bez `rocks.pmtiles` alebo s `rock-failed.txt`
-      # by sa pod dnešným kľúčom tvárilo ako hotové aj to, čo spadlo
-      - name: Cache skál (save)
-        if: ${{ always() && inputs.opt_contours == 'true' && steps.hotove.outputs.pocitaj == 'true' && hashFiles('contours-out/rocks.pmtiles') != '' && hashFiles('contours-out/rock-failed.txt') == '' }}
+      # only a finished layer is saved: without `rocks.pmtiles` or with
+      # `rock-failed.txt` a failure would pass as done under today's key
+      - name: Rock cache (save)
+        if: ${{ always() && inputs.opt_contours == 'true' && steps.done.outputs.compute == 'true' && hashFiles('contours-out/rocks.pmtiles') != '' && hashFiles('contours-out/rock-failed.txt') == '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
         with:
           path: contours-out
           key: ${{ needs.keys.outputs.rocks }}
 
-      - name: Cache častí sklonu (save)
+      - name: Slope part cache (save)
         if: ${{ always() && inputs.opt_contours == 'true' && inputs.test_km2 == '0' && steps.slope-cache.outputs.cache-hit != 'true' && hashFiles('slope-chunks/**') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
@@ -964,7 +860,7 @@ jobs:
           path: slope-chunks
           key: ${{ needs.keys.outputs.slope }}${{ github.run_id }}
 
-      - name: Cache DEM dlaždíc (save)
+      - name: DEM tile cache (save)
         if: ${{ always() && inputs.opt_contours == 'true' && steps.demtiles-cache.outputs.cache-hit != 'true' && hashFiles('dem/**') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
@@ -972,13 +868,12 @@ jobs:
           path: dem
           key: ${{ needs.keys.outputs.demtiles_rocks }}
 
-      # vo `workers/contours-rocks/site.sh` – ten istý krok majú dva joby
-      - name: Zaraď vrstevnice do webu
+      - name: Put the contours into the site
         id: contours
         if: ${{ inputs.opt_contours == 'true' }}
         env:
           ONLY: rocks
-          CACHE_HIT: ${{ steps.hotove.outputs.mam }}
+          CACHE_HIT: ${{ steps.done.outputs.have }}
           OPT_CONTOUR_LINES: ${{ inputs.opt_contour_lines }}
           OPT_CONTOUR_MAXZOOM: ${{ inputs.opt_contour_maxzoom }}
           OPT_ROCKS: ${{ inputs.opt_rocks }}
@@ -986,16 +881,15 @@ jobs:
           REGION_KEY: ${{ inputs.region_key }}
         run: workers/contours-rocks/site.sh
 
-      # do skladu na Drive, nie ako artefakt (`workers/deploy/publish-results.sh`)
-      - name: Odlož skaly a vrstevnice do skladu
+      - name: Store rocks and contours
         if: ${{ inputs.opt_contours == 'true' && hashFiles('data/rock.gpkg') != '' }}
         continue-on-error: true
         env:
-          CO: teren
-          NAZOV: skaly-${{ inputs.region_key }}-s${{ inputs.rock_slope }}-g${{ inputs.opt_rock_res }}
+          KIND: terrain
+          NAME: rocks-${{ inputs.region_key }}-s${{ inputs.rock_slope }}-g${{ inputs.opt_rock_res }}
         run: workers/deploy/publish-results.sh
 
-      - name: Odlož časť stránky
+      - name: Keep the site piece
         if: ${{ always() && hashFiles('_site/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -1005,11 +899,11 @@ jobs:
           compression-level: 0
           if-no-files-found: ignore
 
-      - name: Pribal štatistiku skál k meraniu
+      - name: Add the rock statistics to the timing
         if: ${{ always() }}
         run: cp contours-out/rock-stats.txt steps-out/ 2>/dev/null || true
 
-      - name: Odlož meranie krokov
+      - name: Keep the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -1019,12 +913,12 @@ jobs:
           if-no-files-found: ignore
 
   terrain:
-    name: Tieňovanie a 3D terén
+    name: Hillshading and 3D terrain
     needs: keys
     if: ${{ !cancelled() && inputs.opt_terrain == 'true' }}
     runs-on: ubuntu-latest
     permissions:
-      # `read`: hotové dlaždice idú do skladu na Drive, nie do releasu
+      # `read`: finished tiles go to the Drive store, not a release
       contents: read
     outputs:
       enabled: ${{ steps.terrain.outputs.enabled }}
@@ -1033,52 +927,46 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      # meranie musí byť v pracovnom priečinku – `hashFiles` inam nevidí
-      - name: Priprav priečinok na meranie
+      - name: Prepare the timing folder
         run: mkdir -p steps-out
 
-
-      # tieňovanie a 3D: MapLibre nevie čítať výšky z GeoTIFFu, potrebuje
-      # pyramídu PNG dlaždíc (terrarium). Model si vyberá vlastným inputom –
-      # tieňovanie potrebuje celý región, vrstevnice stačia z výrezu.
-      # Závisia len od územia, tak sa ukladajú do skladu `dem-terrain`.
-      # Polygón kraja: bez neho by sa vrstva počítala na celom bboxe regiónu.
-      - name: Stiahni polygón kraja
+      # MapLibre reads no heights from a GeoTIFF, it needs a PNG (terrarium)
+      # pyramid; they depend only on the area and go to store `dem-terrain`
+      - name: Download the region polygon
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           name: region-poly
           path: data
 
-      - name: Cache výškových dlaždíc (restore)
+      - name: Height tile cache (restore)
         id: terrain-cache
         if: ${{ inputs.opt_terrain == 'true' && inputs.opt_terrain_rebuild != 'true' }}
         uses: ./.github/actions/cache-restore
         with:
           path: terrain-out
           key: ${{ needs.keys.outputs.terrain }}
-          # hotové tieňovanie z predošlého behu – viď `opt_reuse_layers` hore
-          restore-keys: ${{ inputs.opt_reuse_layers == 'true' && needs.keys.outputs.terrain_hotove || '' }}
+          # finished hillshading of an earlier run – see `opt_reuse_layers`
+          restore-keys: ${{ inputs.opt_reuse_layers == 'true' && needs.keys.outputs.terrain_done || '' }}
 
-      - name: Je tieňovanie hotové?
-        id: hotove
+      - name: Is the hillshading done?
+        id: done
         env:
-          VRSTVA: Tieňovanie
+          LAYER: Hillshading
           HIT: ${{ steps.terrain-cache.outputs.cache-hit }}
           MATCHED: ${{ steps.terrain-cache.outputs.cache-matched-key }}
-        run: workers/plan/hotova-vrstva.sh
+        run: workers/plan/layer-done.sh
 
-      # až za rozhodnutím a len keď sa počíta: model je gigabajty a hotové
-      # dlaždice z neho nepotrebujú nič
-      - name: Cache DEM dlaždíc (restore)
+      # after the decision and only when computing: finished tiles need no model
+      - name: DEM tile cache (restore)
         id: demtiles-cache
-        if: ${{ inputs.opt_terrain == 'true' && steps.hotove.outputs.pocitaj == 'true' }}
+        if: ${{ inputs.opt_terrain == 'true' && steps.done.outputs.compute == 'true' }}
         uses: ./.github/actions/cache-restore
         with:
           path: dem
           key: ${{ needs.keys.outputs.demtiles_terrain }}
 
-      - name: Tieňovanie reliéfu (PNG dlaždice z vybraného DEM)
+      - name: Relief hillshading (PNG tiles from the chosen DEM)
         id: terrain
         if: ${{ inputs.opt_terrain == 'true' }}
         env:
@@ -1087,24 +975,22 @@ jobs:
           SHADING_SOURCE: ${{ inputs.opt_shading_source }}
           TERRAIN_MAXZOOM: ${{ inputs.opt_terrain_maxzoom }}
           TERRAIN_REBUILD: ${{ inputs.opt_terrain_rebuild }}
-          # rozpočet na tieňovanie sa rieši pri počítaní dlaždíc, nie až
-          # v kontrole pred nasadením
+          # the hillshading budget is decided while computing tiles, not at the check
           SIZE_LIMIT_MB: ${{ inputs.opt_size_limit_mb }}
           GH_TOKEN: ${{ github.token }}
           OPT_UGKK_FALLBACK: ${{ inputs.opt_ugkk_fallback }}
         run: workers/terrain/build.sh
-      # uloží sa len to, čo sa naozaj spočítalo (viď job s vrstevnicami)
-      - name: Cache výškových dlaždíc (save)
-        if: ${{ always() && inputs.opt_terrain == 'true' && steps.terrain.outputs.fell_back != 'true' && steps.hotove.outputs.pocitaj == 'true' && hashFiles('terrain-out/**') != '' }}
+      # only what was really computed is saved (see the contours job)
+      - name: Height tile cache (save)
+        if: ${{ always() && inputs.opt_terrain == 'true' && steps.terrain.outputs.fell_back != 'true' && steps.done.outputs.compute == 'true' && hashFiles('terrain-out/**') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
         with:
           path: terrain-out
           key: ${{ needs.keys.outputs.terrain }}
 
-      # tieňovanie má vlastný zdroj a tým aj vlastný kľúč – bez tohto kroku by
-      # sa jeho restore nikdy netrafil
-      - name: Cache DEM dlaždíc (save)
+      # hillshading has its own source and key – without this its restore never hits
+      - name: DEM tile cache (save)
         if: ${{ always() && steps.demtiles-cache.outputs.cache-hit != 'true' && hashFiles('dem/**') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
@@ -1112,9 +998,7 @@ jobs:
           path: dem
           key: ${{ needs.keys.outputs.demtiles_terrain }}
 
-      # každý job vyrobí svoj kus `_site`; compression-level 0, obsah je
-      # už komprimovaný
-      - name: Odlož časť stránky
+      - name: Keep the site piece
         if: ${{ always() && hashFiles('_site/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -1124,7 +1008,7 @@ jobs:
           compression-level: 0
           if-no-files-found: ignore
 
-      - name: Odlož meranie krokov
+      - name: Keep the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -1133,12 +1017,10 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # `needs` na volanom workflowe hovorí len o celku – volajúci by nevedel, či
-  # spadli vrstevnice, alebo tieňovanie. Job teda nerobí nič, len vydá výsledky.
-  # Zberný job, nie `jobs.<id>.result` vo výstupoch: actionlint to nepozná.
-  # `always()`, inak by sa pri spadnutej vrstve preskočil.
-  vysledky:
-    name: Výsledky vrstiev
+  # `needs` on a called workflow speaks of the whole; this job only hands out
+  # results (actionlint doesn't know `jobs.<id>.result` in outputs), `always()`
+  results:
+    name: Layer results
     needs: [contours, rocks, terrain, shading-rocks]
     if: ${{ always() }}
     runs-on: ubuntu-latest
@@ -1148,7 +1030,7 @@ jobs:
       terrain: ${{ needs.terrain.result }}
       shading_rocks: ${{ needs.shading-rocks.result }}
     steps:
-      - name: Ako dopadli vrstvy
+      - name: How the layers went
         run: |
           set -uo pipefail
-          echo "vrstevnice=${{ needs.contours.result }}, skaly=${{ needs.rocks.result }}, tieňovanie=${{ needs.terrain.result }}, skaly z tieňovania=${{ needs.shading-rocks.result }}"
+          echo "contours=${{ needs.contours.result }}, rocks=${{ needs.rocks.result }}, hillshading=${{ needs.terrain.result }}, rocks from hillshading=${{ needs.shading-rocks.result }}"

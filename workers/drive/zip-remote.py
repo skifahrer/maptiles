@@ -1,43 +1,21 @@
 #!/usr/bin/env python3
 """
-Čítanie vzdialeného ZIPu cez HTTP Range – bez toho, aby sa stiahol celý.
+Reading a remote ZIP over HTTP Range – without downloading all of it.
 
-PREČO: DMR 5.0 od ÚGKK je jeden archív
-`https://opendata.skgeodesy.sk/static/LLS/DMR5/DMR5_0_sjtsk03_bpv.zip`
-a má ~198 GB. GitHub runner má voľných ~60 GB na disku, takže sa ten súbor
-nemá kam stiahnuť – ani raz, ani po častiach na to isté miesto. Klasické
-„stiahni a rozbaľ“ tu neexistuje.
+ÚGKK's DMR 5.0 is one ~198 GB archive and a runner has ~60 GB free. A ZIP ends
+in a central directory with exact offsets, so with HTTP Range one can read the
+tail, then the directory, then only one member's bytes, unpacked on the fly.
+ZIP64 is required: at 198 GB offsets exceed 4 GB.
 
-ZIP je ale na náhodný prístup stavaný: na konci má centrálny adresár so
-zoznamom položiek a s ich presnými offsetmi. Keď server vie HTTP Range
-(a `opendata.skgeodesy.sk` je statické úložisko, takže vie), dá sa:
-
-  1. prečítať posledných pár desiatok kB → koniec centrálneho adresára,
-  2. prečítať samotný centrálny adresár → zoznam VŠETKÝCH položiek,
-  3. stiahnuť LEN byty jednej položky (alebo súvislého úseku položiek)
-     a rozbaliť ich za behu.
-
-Vďaka tomu sa dá z archívu prečítať len to, čo treba – bez toho, aby sa
-čokoľvek stiahlo na disk. Používa to `workers/drive/dmr5-remote.py` (inventár
-archívu z jeho centrálneho adresára) a `workers/drive/dmr5-raster.py` (hlavičky súborov,
-z ktorých sa zisťuje, či sa raster dá vôbec rozumne otvoriť).
-
-ZIP64 JE POVINNÝ: pri 198 GB sú offsety väčšie než 4 GB, takže obyčajný
-koniec centrálneho adresára nesie samé 0xFFFFFFFF a skutočné čísla sú
-v ZIP64 zázname. Bez toho by sa archív javil ako prázdny alebo rozbitý.
-
-Použitie z príkazového riadka:
-
-    # čo je v archíve (bez sťahovania obsahu)
+    # what is in the archive (no content downloaded)
     python3 workers/drive/zip-remote.py list URL --limit=50
     python3 workers/drive/zip-remote.py list URL --json=manifest.json
 
-    # rozbaliť konkrétne položky do adresára
+    # unpack chosen members into a directory
     python3 workers/drive/zip-remote.py extract URL --out=dir --index=0-99
 
-Ako knižnica:
+As a library:
 
-    from importlib import util
     rz = RemoteZip(url)
     for e in rz.entries():
         ...
@@ -53,7 +31,7 @@ import urllib.error
 import urllib.request
 import zlib
 
-# Rovnaký User-Agent ako sonda – niektoré CDN odmietajú prázdneho klienta.
+# the probe's User-Agent – some CDNs refuse an empty client
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
       "(KHTML, like Gecko) Version/17.4 Safari/605.1.15")
 
@@ -63,8 +41,7 @@ EOCD64_LOC_SIG = b"PK\x06\x07"
 CDIR_SIG = b"PK\x01\x02"
 LFH_SIG = b"PK\x03\x04"
 
-# Koniec centrálneho adresára je posledných 22 bajtov + komentár (max 64 kB).
-# Berieme 128 kB, aby sa doň zmestil aj ZIP64 záznam pred ním.
+# the directory end is the last 22 bytes + comment (max 64 kB); 128 kB fits ZIP64 too
 TAIL = 128 * 1024
 
 
@@ -78,7 +55,7 @@ def _open(url, headers, timeout):
 
 
 class RemoteZip:
-    """ZIP na konci HTTP odkazu. Sťahuje len to, o čo sa vysloveně pýtaš."""
+    """A ZIP at the end of an HTTP link; downloads only what is asked for."""
 
     def __init__(self, url, timeout=60, retries=5, verbose=True):
         self.url = url
@@ -88,19 +65,12 @@ class RemoteZip:
         self._entries = None
         self.size = self._probe_size()
 
-    # ---------- HTTP ----------
-
     def _log(self, msg):
         if self.verbose:
             print(msg, flush=True)
 
     def _probe_size(self):
-        """Veľkosť súboru a kontrola, že server naozaj vie Range.
-
-        HEAD samotný nestačí: `Accept-Ranges` občas chýba aj tam, kde Range
-        funguje, a naopak. Preto sa pýtame o jeden bajt a pozeráme sa, či
-        príde 206 s `Content-Range` – to je jediný dôkaz.
-        """
+        """The file size, checking the server really does Range (a 206 for one byte)."""
         last = None
         for attempt in range(self.retries):
             try:
@@ -111,22 +81,22 @@ class RemoteZip:
                     r.read(1)
                 if code != 206 or "/" not in cr:
                     raise RemoteZipError(
-                        f"server nevie HTTP Range (HTTP {code}, "
-                        f"Content-Range: {cr or '—'}). Bez neho sa 198 GB "
-                        f"archív spracovať nedá.")
+                        f"the server can't do HTTP Range (HTTP {code}, "
+                        f"Content-Range: {cr or '—'}). Without it a 198 GB "
+                        f"archive can't be processed.")
                 total = cr.rsplit("/", 1)[1].strip()
                 if not total.isdigit():
-                    raise RemoteZipError(f"nečitateľný Content-Range: {cr}")
+                    raise RemoteZipError(f"unreadable Content-Range: {cr}")
                 return int(total)
             except RemoteZipError:
                 raise
-            except Exception as exc:              # sieť, 5xx, timeout
+            except Exception as exc:              # network, 5xx, timeout
                 last = exc
                 time.sleep(min(2 ** attempt, 30))
-        raise RemoteZipError(f"{self.url} neodpovedá: {last}")
+        raise RemoteZipError(f"{self.url} doesn't answer: {last}")
 
     def _stream(self, start, end):
-        """Otvorí odpoveď na `bytes=start-end` (obe vrátane)."""
+        """Open the answer to `bytes=start-end` (both inclusive)."""
         hdr = {"User-Agent": UA, "Range": f"bytes={start}-{end}"}
         last = None
         for attempt in range(self.retries):
@@ -135,23 +105,23 @@ class RemoteZip:
                 if r.getcode() != 206:
                     r.close()
                     raise RemoteZipError(
-                        f"na Range odpovedal HTTP {r.getcode()} – server by "
-                        f"poslal celý súbor ({self.size} B)")
+                        f"a Range got HTTP {r.getcode()} – the server would "
+                        f"send the whole file ({self.size} B)")
                 return r
             except RemoteZipError:
                 raise
             except urllib.error.HTTPError as exc:
                 if exc.code in (416,):
-                    raise RemoteZipError(f"neplatný rozsah {start}-{end}") from exc
+                    raise RemoteZipError(f"invalid range {start}-{end}") from exc
                 last = exc
                 time.sleep(min(2 ** attempt, 30))
             except Exception as exc:
                 last = exc
                 time.sleep(min(2 ** attempt, 30))
-        raise RemoteZipError(f"rozsah {start}-{end} sa nepodarilo otvoriť: {last}")
+        raise RemoteZipError(f"range {start}-{end} couldn't be opened: {last}")
 
     def get(self, start, length):
-        """Načíta presne `length` bajtov od `start` do pamäte."""
+        """Read exactly `length` bytes from `start` into memory."""
         end = min(start + length, self.size) - 1
         buf = bytearray()
         want = end - start + 1
@@ -166,16 +136,14 @@ class RemoteZip:
             finally:
                 r.close()
             if len(buf) < want:
-                # Prenos sa pretrhol – pokračuje sa tam, kde skončil.
-                self._log(f"  … prenos sa pretrhol na {len(buf)}/{want} B, "
-                          f"pokračujem")
+                # the transfer broke – resume where it ended
+                self._log(f"  … the transfer broke at {len(buf)}/{want} B, "
+                          f"resuming")
         return bytes(buf)
 
     def reader(self, start, end):
-        """Prúd bajtov `start..end` (vrátane), ktorý sa sám obnoví."""
+        """A byte stream `start..end` (inclusive) that resumes itself."""
         return _ResumableReader(self, start, end)
-
-    # ---------- centrálny adresár ----------
 
     def _find_directory(self):
         tail_len = min(TAIL, self.size)
@@ -183,13 +151,12 @@ class RemoteZip:
         pos = tail.rfind(EOCD_SIG)
         if pos < 0:
             raise RemoteZipError(
-                "na konci súboru nie je koniec centrálneho adresára (PK\\x05\\x06) – "
-                "buď to nie je ZIP, alebo server poslal chybovú stránku.")
+                "the file doesn't end in a central directory end (PK\\x05\\x06) – "
+                "either it isn't a ZIP, or the server sent an error page.")
         cd_count, cd_size, cd_off = struct.unpack_from("<2xHII", tail, pos + 8)
         base = self.size - tail_len
 
-        # ZIP64: 0xFFFF/0xFFFFFFFF znamená „skutočné číslo je inde“. Pri
-        # 198 GB to tak je vždy.
+        # ZIP64: 0xFFFF/0xFFFFFFFF means "the real number is elsewhere", always at 198 GB
         loc = tail.rfind(EOCD64_LOC_SIG, 0, pos)
         if loc >= 0 and (cd_count == 0xFFFF or cd_size == 0xFFFFFFFF
                          or cd_off == 0xFFFFFFFF):
@@ -200,17 +167,17 @@ class RemoteZip:
                 rec = self.get(eocd64_off, 56)
             if rec[:4] != EOCD64_SIG:
                 raise RemoteZipError(
-                    f"ZIP64 záznam na offsete {eocd64_off} nezačína PK\\x06\\x06")
+                    f"the ZIP64 record at offset {eocd64_off} doesn't start with PK\\x06\\x06")
             cd_count, cd_size, cd_off = struct.unpack_from("<QQQ", rec, 32)
         return cd_off, cd_size, cd_count
 
     def entries(self):
-        """Zoznam položiek archívu (číta sa raz, potom z pamäte)."""
+        """The archive's members (read once, then from memory)."""
         if self._entries is not None:
             return self._entries
         cd_off, cd_size, cd_count = self._find_directory()
-        self._log(f"Centrálny adresár: {cd_count} položiek, "
-                  f"{cd_size / 1048576:.1f} MB na offsete {cd_off}")
+        self._log(f"Central directory: {cd_count} members, "
+                  f"{cd_size / 1048576:.1f} MB at offset {cd_off}")
         blob = self.get(cd_off, cd_size)
         out, p = [], 0
         while p + 46 <= len(blob) and blob[p:p + 4] == CDIR_SIG:
@@ -226,24 +193,17 @@ class RemoteZip:
             })
             p += 46 + nlen + elen + clen
         if len(out) != cd_count:
-            self._log(f"::warning::v adresári je {len(out)} položiek, hlavička "
-                      f"hlási {cd_count}")
+            self._log(f"::warning::the directory has {len(out)} members, the "
+                      f"header says {cd_count}")
         self._entries = out
         return out
 
-    # ---------- rozbaľovanie ----------
-
     def head(self, entry, want=65536):
-        """Začiatok jednej položky – bez sťahovania celého súboru.
-
-        Používa to kalibrácia v `dmr5-remote.py`: z prvých riadkov sa dá zistiť
-        súradnicový systém a to, čo v mene súboru znamenajú ktoré čísla.
-        Preto sa sťahuje len toľko komprimovaných bajtov, koľko na to treba.
-        """
+        """The start of one member – only as many compressed bytes as needed."""
         take = min(entry["csize"], max(want, 1 << 16))
         raw = self.get(entry["offset"], 30 + entry["nlen"] + 4096 + take)
         if raw[:4] != LFH_SIG:
-            raise RemoteZipError(f"{entry['name']}: chýba lokálna hlavička")
+            raise RemoteZipError(f"{entry['name']}: the local header is missing")
         nlen, elen = struct.unpack_from("<HH", raw, 26)
         data = raw[30 + nlen + elen:30 + nlen + elen + take]
         if entry["method"] == 0:
@@ -252,36 +212,26 @@ class RemoteZip:
         try:
             return dec.decompress(data, want)
         except zlib.error as exc:
-            raise RemoteZipError(f"{entry['name']}: nedá sa rozbaliť ({exc})")
+            raise RemoteZipError(f"{entry['name']}: can't be unpacked ({exc})")
 
     def extract_span(self, entries, on_file, hard_limit=None):
-        """Rozbalí položky JEDNÝM prenosom, ak ležia za sebou.
-
-        `entries` musia byť zo `self.entries()`. Sťahuje sa súvislý úsek od
-        prvej po poslednú položku a lokálne hlavičky sa čítajú z prúdu, ako
-        idú – to je jedna HTTP požiadavka na celú časť namiesto jednej na
-        každý súbor (pri 20 000 malých súboroch je to rozdiel medzi minútami
-        a hodinami).
-
-        `on_file(entry, stream)` dostane rozbalený prúd; ak ho neprečíta celý,
-        zvyšok sa preskočí. Vráti počet spracovaných položiek.
-        """
+        """Unpack members in ONE transfer (one request instead of one a file)."""
+        # `on_file(entry, stream)` gets the unpacked stream; unread rest is skipped
         if not entries:
             return 0
         ents = sorted(entries, key=lambda e: e["offset"])
         start = ents[0]["offset"]
-        # Koniec: dáta poslednej položky + rezerva na lokálnu hlavičku
-        # a prípadný data descriptor (16 B pri ZIP64).
+        # the end: the last member's data + room for its header and a data descriptor
         last = ents[-1]
         end = min(last["offset"] + 30 + last["nlen"] + 4096 + last["csize"] + 24,
                   self.size) - 1
         span = end - start + 1
         if hard_limit and span > hard_limit:
             raise RemoteZipError(
-                f"úsek má {span / 1048576:.0f} MB, strop je "
+                f"the span has {span / 1048576:.0f} MB, the cap is "
                 f"{hard_limit / 1048576:.0f} MB")
-        self._log(f"Úsek {start}–{end} ({span / 1048576:.1f} MB), "
-                  f"{len(ents)} položiek")
+        self._log(f"Span {start}–{end} ({span / 1048576:.1f} MB), "
+                  f"{len(ents)} members")
 
         rd = self.reader(start, end)
         done = 0
@@ -290,8 +240,8 @@ class RemoteZip:
             head = rd.read_exact(30)
             if head[:4] != LFH_SIG:
                 raise RemoteZipError(
-                    f"na offsete {e['offset']} nie je lokálna hlavička "
-                    f"({e['name']}) – archív sa medzitým zmenil?")
+                    f"no local header at offset {e['offset']} "
+                    f"({e['name']}) – did the archive change meanwhile?")
             nlen, elen = struct.unpack_from("<HH", head, 26)
             rd.read_exact(nlen + elen)
             on_file(e, _EntryStream(rd, e))
@@ -302,14 +252,14 @@ class RemoteZip:
 
 
 def _zip64_fix(extra, csize, usize, hoff):
-    """Doplní skutočné veľkosti/offset zo ZIP64 rozšírenia (ID 0x0001)."""
+    """Fill the real sizes/offset from the ZIP64 extra field (ID 0x0001)."""
     p = 0
     while p + 4 <= len(extra):
         tag, ln = struct.unpack_from("<HH", extra, p)
         body = extra[p + 4:p + 4 + ln]
         if tag == 0x0001:
             q = 0
-            # Poradie je dané: sú tam LEN tie polia, ktoré vonku pretiekli.
+            # a fixed order: ONLY the fields that overflowed outside are there
             if usize == 0xFFFFFFFF and q + 8 <= len(body):
                 usize = struct.unpack_from("<Q", body, q)[0]; q += 8
             if csize == 0xFFFFFFFF and q + 8 <= len(body):
@@ -321,12 +271,7 @@ def _zip64_fix(extra, csize, usize, hoff):
 
 
 class _ResumableReader:
-    """Sekvenčné čítanie rozsahu, ktoré prežije pretrhnutý prenos.
-
-    Pri 2 GB úseku z jedného servera je pretrhnutie normálna vec, nie
-    výnimka – reader si pamätá absolútnu pozíciu a pri chybe si vypýta
-    zvyšok znova od nej.
-    """
+    """Sequential reading of a range surviving a broken transfer (it remembers its position)."""
 
     def __init__(self, rz, start, end):
         self.rz = rz
@@ -348,8 +293,8 @@ class _ResumableReader:
                 self._ensure()
                 part = self.r.read(n)
                 if not part:
-                    # Predčasný koniec – skúsiť znova od aktuálnej pozície.
-                    raise IOError("prúd skončil skôr, než mal")
+                    # an early end – try again from the current position
+                    raise IOError("the stream ended too early")
                 self.pos += len(part)
                 self.fails = 0
                 return part
@@ -358,7 +303,7 @@ class _ResumableReader:
                 self.fails += 1
                 if self.fails > self.rz.retries:
                     raise RemoteZipError(
-                        f"čítanie od {self.pos} zlyhalo {self.fails}×: {exc}")
+                        f"reading from {self.pos} failed {self.fails}×: {exc}")
                 time.sleep(min(2 ** self.fails, 30))
 
     def read_exact(self, n):
@@ -366,7 +311,7 @@ class _ResumableReader:
         while len(buf) < n:
             part = self.read(n - len(buf))
             if not part:
-                raise RemoteZipError(f"chýba {n - len(buf)} B na konci úseku")
+                raise RemoteZipError(f"{n - len(buf)} B missing at the span's end")
             buf += part
         return bytes(buf)
 
@@ -380,12 +325,12 @@ class _ResumableReader:
     def skip_to(self, abs_pos):
         if abs_pos < self.pos:
             raise RemoteZipError(
-                f"nedá sa vrátiť späť ({self.pos} → {abs_pos}); položky musia "
-                f"ísť po offsete")
+                f"can't go back ({self.pos} → {abs_pos}); members must "
+                f"go by offset")
         self.skip(abs_pos - self.pos)
 
     def drain_entry(self, e):
-        """Dočíta zvyšok dát položky, aby prúd sedel na ďalšiu hlavičku."""
+        """Read the rest of a member's data so the stream sits on the next header."""
         left = e.get("_left", 0)
         if left:
             self.skip(left)
@@ -404,7 +349,7 @@ class _ResumableReader:
 
 
 class _EntryStream:
-    """Rozbalený obsah jednej položky ako súborový prúd (iba `read`)."""
+    """One member's unpacked content as a file stream (`read` only)."""
 
     def __init__(self, rd, entry):
         self.rd = rd
@@ -416,13 +361,13 @@ class _EntryStream:
             self.dec = zlib.decompressobj(-zlib.MAX_WBITS)
         else:
             raise RemoteZipError(
-                f"{entry['name']}: kompresia {entry['method']} sa nepodporuje "
-                f"(vieme 0 = uložené a 8 = deflate)")
+                f"{entry['name']}: compression {entry['method']} isn't supported "
+                f"(we know 0 = stored and 8 = deflate)")
         self.buf = bytearray()
         self.eof = False
 
     def _fill(self):
-        """Doplní výstupný buffer aspoň o jedno prečítanie zo siete."""
+        """Fill the output buffer by at least one network read."""
         while not self.buf and not self.eof:
             if self.e["_left"] <= 0:
                 if self.dec is not None:
@@ -451,7 +396,7 @@ class _EntryStream:
         return out
 
     def __iter__(self):
-        """Riadky – DMR 5.0 sú textové výškové body, tak sa to hodí."""
+        """Lines – handy for text elevation points."""
         rest = b""
         while True:
             chunk = self.read(1 << 20)
@@ -466,10 +411,8 @@ class _EntryStream:
                 yield ln
 
 
-# ---------- CLI ----------
-
 def _parse_index(spec, n):
-    """„0-99,150,200-“ → množina indexov."""
+    """\"0-99,150,200-\" → a list of indices."""
     if not spec:
         return list(range(n))
     out = []
@@ -489,27 +432,27 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("cmd", choices=["list", "extract"])
     ap.add_argument("url")
-    ap.add_argument("--limit", type=int, default=40, help="koľko vypísať")
-    ap.add_argument("--json", default="", help="kam uložiť manifest")
-    ap.add_argument("--index", default="", help="ktoré položky (0-9,20)")
-    ap.add_argument("--out", default="out", help="kam rozbaliť")
+    ap.add_argument("--limit", type=int, default=40, help="how many to print")
+    ap.add_argument("--json", default="", help="where to save the manifest")
+    ap.add_argument("--index", default="", help="which members (0-9,20)")
+    ap.add_argument("--out", default="out", help="where to unpack")
     ap.add_argument("--timeout", type=float, default=60)
     args = ap.parse_args(argv)
 
     rz = RemoteZip(args.url, timeout=args.timeout)
-    print(f"Veľkosť archívu: {rz.size / 1e9:.1f} GB ({rz.size} B)")
+    print(f"Archive size: {rz.size / 1e9:.1f} GB ({rz.size} B)")
     ents = rz.entries()
     total_c = sum(e["csize"] for e in ents)
     total_u = sum(e["usize"] for e in ents)
-    print(f"Položiek: {len(ents)}, komprimované {total_c / 1e9:.1f} GB, "
-          f"rozbalené {total_u / 1e9:.1f} GB")
+    print(f"Members: {len(ents)}, compressed {total_c / 1e9:.1f} GB, "
+          f"unpacked {total_u / 1e9:.1f} GB")
 
     if args.cmd == "list":
         for e in ents[:args.limit]:
             print(f"  [{e['i']:6d}] {e['name']}  "
                   f"{e['csize'] / 1048576:.2f} → {e['usize'] / 1048576:.2f} MB")
         if len(ents) > args.limit:
-            print(f"  … a ďalších {len(ents) - args.limit}")
+            print(f"  … and {len(ents) - args.limit} more")
         if args.json:
             with open(args.json, "w") as f:
                 json.dump({"url": args.url, "size": rz.size, "entries": ents},
@@ -531,7 +474,7 @@ def main(argv=None):
         print(f"  ✓ {e['name']} → {dest}")
 
     n = rz.extract_span(pick, write)
-    print(f"Rozbalených položiek: {n}")
+    print(f"Members unpacked: {n}")
     return 0
 
 

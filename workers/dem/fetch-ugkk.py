@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Zoženie 1 m LiDAR od ÚGKK (DMR 5.0) pre jeden výrez – s viacerými cestami.
+"""Fetch 1 m LiDAR from ÚGKK (DMR 5.0) for one cutout – by several routes.
 
-ÚGKK nemá jeden zdokumentovaný spôsob, ako sa k DMR 5.0 dostať programovo, tak
-sa skúšajú cesty po poradí a prvá, ktorá dá skutočný výškový raster, vyhráva:
-ArcGIS ImageServer (`exportImage`), WCS (`GetCoverage`) a priame URL
-(`--direct-urls`) z vládneho cloudu alebo Mapového klienta.
+ÚGKK has no single documented way to reach DMR 5.0 programmatically, so routes
+are tried in order and the first to give a real elevation raster wins:
+ArcGIS ImageServer (`exportImage`), WCS (`GetCoverage`) and direct URLs
+(`--direct-urls`) from the government cloud or the Map Client.
 
-Výsledok je jeden GeoTIFF (COG) na výrez – ten sa zrkadlí do skladu.
+The result is one GeoTIFF (COG) per cutout – mirrored into the store.
 
-Použitie:
+Usage:
     python3 workers/dem/fetch-ugkk.py --bbox=W,S,E,N --out=ugkk.tif
     python3 workers/dem/fetch-ugkk.py --bbox=… --out=… --direct-urls=a.zip,b.zip
 """
@@ -50,9 +50,9 @@ def download(url, path, timeout=300):
 
 
 def is_elevation_raster(path, min_cell_m=2.5):
-    """Je to naozaj výškový raster s dostatočne jemnou mriežkou?
+    """Is it really an elevation raster with a fine enough grid?
 
-    Bez tejto kontroly by ticho prešiel aj 10 m model alebo obrázok.
+    Without this check a 10 m model or an image would pass silently.
     """
     try:
         info = json.loads(run(["gdalinfo", "-json", path]).stdout)
@@ -74,25 +74,24 @@ def is_elevation_raster(path, min_cell_m=2.5):
             "size": info.get("size")}
 
 
-# ---------------------------------------------------------------- 1. ArcGIS
 def try_arcgis(bbox, tmp, sources, tile_px=4000):
     src = json.load(open(sources))["ugkk"]
-    # keď hostiteľ neodpovedá, nemá zmysel skúšať šesť ciest na tom istom stroji
+    # a dead host makes six routes on the same machine pointless
     candidates = list(src["candidates"])
 
-    # katalóg najprv: je to iný hostiteľ a dáva skutočné URL služieb
+    # catalogue first: another host, and it gives real service URLs
     if src.get("catalog"):
-        print("  hľadám služby v metadátovom katalógu…")
+        print("  looking for services in the metadata catalogue…")
         try:
             found = _probe.discover_from_catalog(src["catalog"])
             candidates = [u for u in found if "ImageServer" in u or "WCS" in u.upper()] + candidates
         except Exception as exc:
-            print(f"   – katalóg zlyhal: {type(exc).__name__}")
+            print(f"   – catalogue failed: {type(exc).__name__}")
 
     for d in src.get("directories", src.get("directory") and [src["directory"]] or []):
         ok, why = _probe.host_reachable(d)
         if not ok:
-            print(f"  ✗ {urllib.parse.urlparse(d).hostname} neodpovedá ({why})")
+            print(f"  ✗ {urllib.parse.urlparse(d).hostname} doesn't answer ({why})")
             continue
         try:
             candidates += _probe.probe_directory(d)
@@ -109,7 +108,7 @@ def try_arcgis(bbox, tmp, sources, tile_px=4000):
             print(f"  ArcGIS: {url} (pixel {meta['pixel_m']} m)")
             service = url
             break
-        why = meta.get("why") or f"pixel {meta.get('pixel_m')} m – to nie je 1 m model"
+        why = meta.get("why") or f"pixel {meta.get('pixel_m')} m – not a 1 m model"
         print(f"  – {url}: {why}")
     if not service:
         return None
@@ -120,7 +119,7 @@ def try_arcgis(bbox, tmp, sources, tile_px=4000):
     nx = max(1, math.ceil((e - w) * mx / tile_px))
     ny = max(1, math.ceil((n - s) * 110540 / tile_px))
     dx, dy = (e - w) / nx, (n - s) / ny
-    print(f"  sťahujem {nx}×{ny} = {nx*ny} dlaždíc", flush=True)
+    print(f"  downloading {nx}×{ny} = {nx*ny} tiles", flush=True)
 
     tiles, t0 = [], time.time()
     for iy in range(ny):
@@ -136,27 +135,26 @@ def try_arcgis(bbox, tmp, sources, tile_px=4000):
                     "size": f"{max(1, round((te-tw)*mx))},{max(1, round((tn-ts)*110540))}",
                 })
                 if "href" not in d:
-                    print(f"    ::warning::dlaždica {iy}/{ix}: {str(d)[:70]}")
+                    print(f"    ::warning::tile {iy}/{ix}: {str(d)[:70]}")
                     continue
                 download(d["href"], out)
                 tiles.append(out)
             except Exception as exc:
-                print(f"    ::warning::dlaždica {iy}/{ix}: {type(exc).__name__}")
+                print(f"    ::warning::tile {iy}/{ix}: {type(exc).__name__}")
             done = iy * nx + ix + 1
             el = time.time() - t0
-            print(f"    [{done}/{nx*ny}] {hms(el)}, zostáva ~{hms(el/done*(nx*ny-done))}",
+            print(f"    [{done}/{nx*ny}] {hms(el)}, ~{hms(el/done*(nx*ny-done))} left",
                   flush=True)
     return tiles or None
 
 
-# ------------------------------------------------------------------- 2. WCS
 def try_wcs(bbox, tmp, sources):
     src = json.load(open(sources))["ugkk"]
     w, s, e, n = bbox
     for base in src.get("wcs", []):
         ok, why = _probe.host_reachable(base)
         if not ok:
-            print(f"  – WCS {base}: hostiteľ neodpovedá ({why})")
+            print(f"  – WCS {base}: host doesn't answer ({why})")
             continue
         try:
             caps = urllib.request.urlopen(urllib.request.Request(
@@ -167,9 +165,9 @@ def try_wcs(bbox, tmp, sources):
             print(f"  – WCS {base}: {type(exc).__name__}")
             continue
         if b"Capabilities" not in caps:
-            print(f"  – WCS {base}: odpoveď nie je GetCapabilities")
+            print(f"  – WCS {base}: the answer isn't GetCapabilities")
             continue
-        print(f"  WCS odpovedal: {base}")
+        print(f"  WCS answered: {base}")
         for cov in src.get("wcs_coverages", []):
             out = os.path.join(tmp, "wcs.tif")
             url = base + ("&" if "?" in base else "?") + urllib.parse.urlencode({
@@ -184,17 +182,16 @@ def try_wcs(bbox, tmp, sources):
                 continue
             meta = is_elevation_raster(out)
             if meta and meta["ok"]:
-                print(f"    ✓ {cov}: bunka {meta['cell_m']:.1f} m, {meta['type']}")
+                print(f"    ✓ {cov}: cell {meta['cell_m']:.1f} m, {meta['type']}")
                 return [out]
             print(f"    – {cov}: {meta}")
     return None
 
 
-# ---------------------------------------------------- 3. priame URL (istota)
 def try_direct(urls, tmp):
-    """Čo si stiahol ručne z vládneho cloudu alebo z Mapového klienta.
+    """What you downloaded by hand from the government cloud or the Map Client.
 
-    Jediná cesta, ktorá nezávisí od toho, či ÚGKK nejakú službu zverejnil.
+    The only route that doesn't depend on ÚGKK publishing some service.
     """
     got = []
     for i, url in enumerate(u.strip() for u in urls if u.strip()):
@@ -220,12 +217,12 @@ def try_direct(urls, tmp):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bbox", required=True, help="west,south,east,north")
-    ap.add_argument("--out", required=True, help="výstupný GeoTIFF (COG)")
+    ap.add_argument("--out", required=True, help="output GeoTIFF (COG)")
     ap.add_argument("--sources", default=os.path.join(_DATA, "dem-sources.json"))
     ap.add_argument("--direct-urls", default="",
-                    help="čiarkami oddelené URL na .tif/.zip (posledná záchrana)")
+                    help="comma separated URLs of .tif/.zip (last resort)")
     ap.add_argument("--max-cells", type=float, default=3e9,
-                    help="strop buniek výrezu pri 1 m (0 = bez stropu)")
+                    help="cap on cutout cells at 1 m (0 = no cap)")
     ap.add_argument("--keep-temp", action="store_true")
     args = ap.parse_args()
 
@@ -234,11 +231,11 @@ def main():
     lat = (s + n) / 2
     km2 = (e - w) * 111.32 * math.cos(math.radians(lat)) * (n - s) * 110.54
     cells = km2 * 1e6
-    print(f"Výrez {args.bbox} = {km2:.0f} km² → {cells/1e9:.2f} mld. buniek pri 1 m")
+    print(f"Cutout {args.bbox} = {km2:.0f} km² → {cells/1e9:.2f} bn cells at 1 m")
     if args.max_cells and cells > args.max_cells:
-        print(f"::error::To je {cells*4/1e9:.0f} GB vo Float32, strop je "
-              f"{args.max_cells/1e9:.1f} mld. buniek. Metrový model má zmysel na "
-              f"pohorie, nie na kraj – zvoľ menší výrez (input `area`).")
+        print(f"::error::That is {cells*4/1e9:.0f} GB in Float32, the cap is "
+              f"{args.max_cells/1e9:.1f} bn cells. A metre model makes sense for a "
+              f"range, not a region – pick a smaller cutout (input `area`).")
         return 2
 
     tmp = tempfile.mkdtemp(prefix="ugkk-", dir=os.path.dirname(args.out) or ".")
@@ -246,20 +243,18 @@ def main():
     try:
         tiles, how = None, ""
         if args.direct_urls:
-            # priame URL majú prednosť: používateľ vie lepšie, čo chce, než
-            # naše hádanie názvov služieb
-            print("── 0. priame URL (zadané ručne)")
-            tiles, how = try_direct(args.direct_urls.split(","), tmp), "priame URL"
+            # the user knows better than our guessed service names
+            print("── 0. direct URLs (given by hand)")
+            tiles, how = try_direct(args.direct_urls.split(","), tmp), "direct URLs"
 
-        # dostupnosť hostiteľa najprv, nie až po neúspechu: všetky služby sú
-        # na `skgeodesy.sk` a každá by vyčerpala štyri profily plus curl
+        # host first: every service is on `skgeodesy.sk`, each would burn four profiles
         host_ok = True
         if not tiles:
             host_ok, why = _probe.host_reachable(
                 json.load(open(args.sources))["ugkk"]["directory"])
             if not host_ok:
-                print(f"── hostiteľ skgeodesy.sk neodpovedá ({why}) – "
-                      f"ImageServer ani WCS nemá zmysel skúšať")
+                print(f"── host skgeodesy.sk doesn't answer ({why}) – "
+                      f"no point trying ImageServer or WCS")
             else:
                 print("── 1. ArcGIS ImageServer")
                 tiles, how = try_arcgis(bbox, tmp, args.sources), "ArcGIS ImageServer"
@@ -268,37 +263,35 @@ def main():
                     tiles, how = try_wcs(bbox, tmp, args.sources), "WCS"
 
         if not tiles:
-            print("::error::Ani jedna cesta k ÚGKK DMR 5.0 nevyšla.")
+            print("::error::No route to ÚGKK DMR 5.0 worked.")
             print()
             if not host_ok:
-                # to podstatné zistenie: nie sú to zlé názvy služieb, ale celý
-                # hostiteľ je z GitHub runnera nedostupný
-                print("PRÍČINA: hostiteľ skgeodesy.sk z GitHub runnera vôbec")
-                print("neodpovedá – HTTPS požiadavka na jeho koreň neprejde.")
-                print("Nie sú to zle uhádnuté názvy služieb, nedá sa tam dostať.")
-                print("Odkazy zo ZBGIS Mapového klienta preto v ugkk_urls tiež")
-                print("nepomôžu, sú na tej istej doméne.")
+                print("CAUSE: host skgeodesy.sk doesn't answer from the GitHub")
+                print("runner at all – an HTTPS request to its root fails.")
+                print("It isn't wrongly guessed service names, it can't be reached.")
+                print("Links from the ZBGIS Map Client in ugkk_urls won't help")
+                print("either, they are on the same domain.")
                 print()
-                print("ČO FUNGUJE: stiahnuť DMR 5.0 raz ručne a nahrať do skladu.")
-                print("  1. ZBGIS Mapový klient → Terén → Export údajov → DMR 5.0")
-                print(f"     (vyber územie, do 400 km²)")
-                print("  2. rozbaľ a zlep do jedného GeoTIFFu, napr.:")
+                print("WHAT WORKS: download DMR 5.0 once by hand and upload it to the store.")
+                print("  1. ZBGIS Map Client → Terrain → Data export → DMR 5.0")
+                print("     (pick the area, up to 400 km²)")
+                print("  2. unzip and join into one GeoTIFF, e.g.:")
                 print("       gdalbuildvrt all.vrt *.tif")
                 print("       gdal_translate -of COG -co COMPRESS=DEFLATE \\")
                 print("         -co PREDICTOR=3 all.vrt " + os.path.basename(args.out))
-                print(f"  3. nahraj do skladu na Drive:")
+                print("  3. upload to the Drive store:")
                 print(f"       python3 workers/drive/store.py --put "
                       f"--store=dem-ugkk --file={os.path.basename(args.out)}")
-                print("  Odvtedy si to build berie zo skladu a nič nesťahuje.")
+                print("  From then on the build takes it from the store and downloads nothing.")
                 print()
-                print("Alebo: ugkk_urls s odkazom, ktorý JE z GitHubu dostupný.")
+                print("Or: ugkk_urls with a link that IS reachable from GitHub.")
             else:
-                print("Hostiteľ odpovedá, ale ani jedna služba nedala 1 m raster.")
-                print("Skús ugkk_urls s priamymi odkazmi zo ZBGIS Mapového klienta")
-                print("(Terén → Export údajov → DMR 5.0, do 400 km²).")
+                print("The host answers, but no service gave a 1 m raster.")
+                print("Try ugkk_urls with direct links from the ZBGIS Map Client")
+                print("(Terrain → Data export → DMR 5.0, up to 400 km²).")
             return 1
 
-        # zlepiť a uložiť ako COG – jeden súbor na výrez
+        # one COG per cutout
         vrt = os.path.join(tmp, "all.vrt")
         run(["gdalbuildvrt", "-q", "-resolution", "highest", vrt] + tiles)
         run(["gdalwarp", "-q", "-overwrite", "-te", repr(w), repr(s), repr(e), repr(n),
@@ -308,12 +301,13 @@ def main():
 
         meta = is_elevation_raster(args.out)
         mb = os.path.getsize(args.out) / 1048576
-        print(f"\n✓ Hotové cez: {how}")
-        print(f"  {args.out}: {mb:.0f} MB, bunka ~{meta['cell_m']:.2f} m, "
-              f"{meta['type']}, {meta['size']} px, trvalo {hms(time.time()-t0)}")
+        print(f"\n✓ Done via: {how}")
+        print(f"  {args.out}: {mb:.0f} MB, cell ~{meta['cell_m']:.2f} m, "
+              f"{meta['type']}, {meta['size']} px, took {hms(time.time()-t0)}")
         if not meta["ok"]:
-            print(f"::warning::Bunka {meta['cell_m']:.1f} m nie je 1 m model – "
-                  f"skontroluj, či to naozaj je DMR 5.0.")
+            print(f"::warning::Cell {meta['cell_m']:.1f} m isn't a 1 m model – "
+                  f"check it really is DMR 5.0.")
+
         return 0
     finally:
         if not args.keep_temp:

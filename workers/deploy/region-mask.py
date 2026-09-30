@@ -1,39 +1,11 @@
 #!/usr/bin/env python3
-"""
-Hranica stiahnutého regiónu pre viewer: `data/region.geojson` → `_site/region.geojson`.
+"""Outline of the downloaded region for the viewer: `data/region.geojson` → `_site/region.geojson`.
 
-PREČO TO VZNIKLO. Mapa sa stavia z PBF kraja, ale dlaždice sa robia na
-OBDĹŽNIKU jeho bboxu – a Planetiler do nich okrem OSM dát kreslí aj vodstvo,
-pobrežia a Natural Earth, ktoré sú celosvetové. Prešovský kraj má bbox
-199 × 82 km, čiže skoro dvojnásobok svojej plochy: po stiahnutí regiónu do
-telefónu tak mapa pokračovala do Poľska aj na Ukrajinu, len tam z nej ostalo
-podfarbené prázdno bez ciest a sídel. Používateľ z toho nemá ako prečítať, kde
-jeho stiahnutá mapa naozaj končí – vyzerá to ako mapa, ktorá sa nedonačítala.
+Tiles are made on the bbox rectangle, so the style masks everything outside the
+region (`outside`) and draws its outline (`outline`) – from the same polygon the
+PBF is cut with, never a second one. A run smaller than the region is clipped to
+its bbox first (Sutherland–Hodgman).
 
-ČO S TÝM. Dve polovice, a obe sú potrebné:
-
-  1. Dlaždice sa mimo kraja prestanú VYRÁBAŤ (`--polygon` Planetileru,
-     `workers/lib/region-clip.sh`). To je hrubý orez – Planetiler vynechá celé
-     dlaždice, ktoré sa tvaru nedotknú, takže na z14 môže presahovať ešte
-     zhruba jednu dlaždicu (~1,5 km).
-  2. Presnú hranicu dokreslí až ŠTÝL, a to z tohto súboru: `mimo` je plocha
-     „všetko okrem regiónu" (vykreslí sa farbou podkladu, takže za hranicou
-     nie je nič) a `hranica` je obrys, aby bolo vidieť, kde stiahnutá mapa
-     končí. To isté dostane web aj iOS, lebo štýl je spoločný.
-
-TVAR SA NEPOČÍTA DRUHÝKRÁT. Berie sa polygón z `workers/plan/region-poly.py`,
-teda ten istý `.poly`, ktorým je orezaný PBF a ktorý dostáva `-cutline`
-vrstevníc a maska tieňovania. Keby si hranicu kreslil viewer po svojom, bola
-by to druhá pravda o jednej hranici (pravidlo 1) – a rozišla by sa ticho:
-mapa by vyzerala celá, len by jej kúsok chýbal alebo prebýval.
-
-OREZ NA BBOX BEHU. Keď je mapa menšia než kraj (`crop_bbox`, vlastný región),
-prstence sa najprv orežú na bbox, ktorý beh naozaj postavil – Sutherland–
-Hodgman proti obdĺžniku. Bez toho by maska sľubovala mapu tam, kde nie sú
-dlaždice. Pri bežnom behu (kraj celý) sa neoreže nič a prstence idú tak, ako
-prišli.
-
-Použitie:
     python3 workers/deploy/region-mask.py --poly=data/region.geojson \\
         --bbox=19.865,48.745,22.585,49.48 --out=_site/region.geojson
 """
@@ -43,13 +15,12 @@ import math
 import os
 import sys
 
-# Web Mercator končí na ±85,0511° – vyššie sa mapa nekreslí, takže plocha
-# „mimo regiónu" nemá načo siahať ďalej.
+# Web Mercator ends at ±85.0511°, the mask needs no more
 LAT_MAX = 85.0511
 
 
 def rings_from_geojson(path):
-    """GeoJSON → `[(prstenec, je_diera)]`; prstenec je zoznam `(lon, lat)`."""
+    """GeoJSON → `[(ring, is_hole)]`; a ring is a list of `(lon, lat)`."""
     with open(path) as f:
         data = json.load(f)
     feats = (data.get("features") if data.get("type") == "FeatureCollection"
@@ -65,63 +36,57 @@ def rings_from_geojson(path):
             for i, ring in enumerate(poly or []):
                 pts = [(float(x), float(y)) for x, y in ring]
                 if len(pts) >= 3:
-                    out.append((pts, i > 0))     # prvý prstenec = obrys
+                    out.append((pts, i > 0))     # the first ring is the outline
     return out
 
 
 def clip_ring(ring, bbox):
-    """Prstenec orezaný na obdĺžnik (Sutherland–Hodgman), alebo `[]`.
-
-    Konvexný orezávač, takže na obdĺžnik to platí aj pre nekonvexný prstenec;
-    z kraja rozdeleného bboxom na dva kusy vyjde jeden prstenec so spojnicou
-    po hrane obdĺžnika. Pri obryse je tá spojnica presne to, čo tam patrí –
-    mapa naozaj končí na hrane bboxu.
-    """
+    """Ring clipped to a rectangle (Sutherland–Hodgman), or `[]`; the map ends on the bbox edge."""
     w, s, e, n = bbox
-    hrany = (("x>", w), ("x<", e), ("y>", s), ("y<", n))
-    body = list(ring)
-    if body and body[0] == body[-1]:
-        body = body[:-1]
-    for smer, hodnota in hrany:
-        if not body:
+    edges = (("x>", w), ("x<", e), ("y>", s), ("y<", n))
+    pts = list(ring)
+    if pts and pts[0] == pts[-1]:
+        pts = pts[:-1]
+    for side, value in edges:
+        if not pts:
             return []
 
-        def vnutri(p):
-            return (p[0] >= hodnota if smer == "x>" else
-                    p[0] <= hodnota if smer == "x<" else
-                    p[1] >= hodnota if smer == "y>" else
-                    p[1] <= hodnota)
+        def inside(p):
+            return (p[0] >= value if side == "x>" else
+                    p[0] <= value if side == "x<" else
+                    p[1] >= value if side == "y>" else
+                    p[1] <= value)
 
-        def prienik(a, b):
-            if smer in ("x>", "x<"):
-                t = (hodnota - a[0]) / (b[0] - a[0]) if b[0] != a[0] else 0.0
-                return (hodnota, a[1] + t * (b[1] - a[1]))
-            t = (hodnota - a[1]) / (b[1] - a[1]) if b[1] != a[1] else 0.0
-            return (a[0] + t * (b[0] - a[0]), hodnota)
+        def cross(a, b):
+            if side in ("x>", "x<"):
+                t = (value - a[0]) / (b[0] - a[0]) if b[0] != a[0] else 0.0
+                return (value, a[1] + t * (b[1] - a[1]))
+            t = (value - a[1]) / (b[1] - a[1]) if b[1] != a[1] else 0.0
+            return (a[0] + t * (b[0] - a[0]), value)
 
-        nove = []
-        for i, b in enumerate(body):
-            a = body[i - 1]
-            if vnutri(b):
-                if not vnutri(a):
-                    nove.append(prienik(a, b))
-                nove.append(b)
-            elif vnutri(a):
-                nove.append(prienik(a, b))
-        body = nove
-    return body if len(body) >= 3 else []
+        kept = []
+        for i, b in enumerate(pts):
+            a = pts[i - 1]
+            if inside(b):
+                if not inside(a):
+                    kept.append(cross(a, b))
+                kept.append(b)
+            elif inside(a):
+                kept.append(cross(a, b))
+        pts = kept
+    return pts if len(pts) >= 3 else []
 
 
-def uzavri(ring, presnost=6):
-    """Prstenec na GeoJSON súradnice – zaokrúhlený a uzavretý."""
-    coords = [[round(x, presnost), round(y, presnost)] for x, y in ring]
+def close(ring, precision=6):
+    """A ring as GeoJSON coordinates – rounded and closed."""
+    coords = [[round(x, precision), round(y, precision)] for x, y in ring]
     if coords[0] != coords[-1]:
         coords.append(coords[0])
     return coords
 
 
 def ring_area_km2(ring):
-    """Plocha prstenca v km² – rovinná aproximácia, stačí na výpis."""
+    """Ring area in km² – a planar approximation, enough for the log."""
     if len(ring) < 3:
         return 0.0
     lat0 = sum(y for _, y in ring) / len(ring)
@@ -135,51 +100,35 @@ def ring_area_km2(ring):
     return abs(s) / 2.0
 
 
-def svet_ring():
+def world_ring():
     return [(-180.0, -LAT_MAX), (180.0, -LAT_MAX),
             (180.0, LAT_MAX), (-180.0, LAT_MAX)]
 
 
-def mask_geojson(obrysy, diery):
-    """Dve črty: `mimo` (plocha okolo regiónu) a `hranica` (jeho obrys).
-
-    `mimo` je JEDEN polygón cez celý svet, v ktorom sú obrysy regiónu DIERAMI –
-    presne tak, ako to earcut v MapLibre potrebuje (prvý prstenec je obrys,
-    ďalšie diery; na smere navíjania mu nezáleží). Diery samotného regiónu
-    (enkláva vnútri kraja) idú do masky ako samostatné plné polygóny: to, čo
-    nie je kraj, sa má prekryť aj vtedy, keď to leží v jeho vnútri.
-    """
-    mask = [[uzavri(svet_ring())] + [uzavri(r) for r in obrysy]]
-    mask += [[uzavri(r)] for r in diery]
-    # Obrys ide ako jeden polygón s dierami – kreslí sa `line` vrstvou, ktorá
-    # obtiahne každý prstenec, takže enklávy dostanú hranicu tiež.
-    hranica = [[uzavri(r)] + [uzavri(d) for d in diery] for r in obrysy[:1]]
-    hranica += [[uzavri(r)] for r in obrysy[1:]]
+def mask_geojson(outlines, holes):
+    """`outside` (one world polygon with the region as holes) and `outline`; enclaves masked too."""
+    mask = [[close(world_ring())] + [close(r) for r in outlines]]
+    mask += [[close(r)] for r in holes]
+    # a `line` layer strokes every ring, so enclaves get an outline as well
+    outline = [[close(r)] + [close(h) for h in holes] for r in outlines[:1]]
+    outline += [[close(r)] for r in outlines[1:]]
     return {
         "type": "FeatureCollection",
-        "_comment": ("Hranica stiahnutého regiónu pre viewer (web aj iOS): "
-                     "`mimo` je plocha okolo regiónu, `hranica` jeho obrys. "
-                     "Vyrába workers/deploy/region-mask.py z toho istého "
-                     "polygónu, ktorým je orezaný PBF."),
+        "_comment": ("Outline of the downloaded region for the viewer (web and iOS): "
+                     "`outside` is the area around the region, `outline` its edge. "
+                     "Made by workers/deploy/region-mask.py from the polygon the "
+                     "PBF is cut with."),
         "features": [
-            {"type": "Feature", "properties": {"kind": "mimo"},
+            {"type": "Feature", "properties": {"kind": "outside"},
              "geometry": {"type": "MultiPolygon", "coordinates": mask}},
-            {"type": "Feature", "properties": {"kind": "hranica"},
-             "geometry": {"type": "MultiPolygon", "coordinates": hranica}},
+            {"type": "Feature", "properties": {"kind": "outline"},
+             "geometry": {"type": "MultiPolygon", "coordinates": outline}},
         ],
     }
 
 
 def pad_bbox(bbox, meters):
-    """`bbox` zväčšený o `meters` na každú stranu (stupne podľa šírky).
-
-    NA ČO TO JE. `region-poly.py` polygón NAFÚKNE o kus von – prekryv so
-    susedným krajom namiesto medzery na hranici (rozpis tam). Bez tohto by
-    `--bbox` nižšie bol ešte TESNÝ obdĺžnik z `workers/data/regions.json`
-    (presne okolo pôvodného, nenafúknutého polygónu) a orez „mapa je menšia
-    než kraj" (`orez` nižšie) by nafúknutý pás pri KAŽDOM bežnom behu odrezal
-    späť na starú, presnú hranicu – presne to, čo mal `--pad-m` zabrániť.
-    """
+    """`bbox` grown by `meters` on each side, so the clip keeps `region-poly.py`'s buffer."""
     if not meters:
         return bbox
     w, s, e, n = bbox
@@ -192,26 +141,25 @@ def pad_bbox(bbox, meters):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--poly", default="data/region.geojson",
-                    help="polygón regiónu z workers/plan/region-poly.py")
-    ap.add_argument("--bbox", default="", help="bbox behu: west,south,east,north")
+                    help="region polygon from workers/plan/region-poly.py")
+    ap.add_argument("--bbox", default="", help="bbox of the run: west,south,east,north")
     ap.add_argument("--pad-m", type=float, default=0.0,
-                    help="o koľko m zväčšiť --bbox pred orezom – rovnaké "
-                         "číslo, o aké `region-poly.py` nafúkol --poly "
-                         "(BORDER_BUFFER_M), inak orez z tejto vrstvy "
-                         "nafúknutý pás zase odreže (viď `pad_bbox`)")
+                    help="metres to grow --bbox by before clipping – the same "
+                         "number `region-poly.py` buffered --poly by "
+                         "(BORDER_BUFFER_M), see `pad_bbox`")
     ap.add_argument("--out", default="_site/region.geojson")
     args = ap.parse_args()
 
     if not os.path.isfile(args.poly):
-        print(f"::warning::Polygón regiónu ({args.poly}) nie je – mapa sa "
-              f"nasadí bez hranice a v aplikácii bude siahať aj za región. "
-              f"Zvyčajne to znamená, že sa v jobe `plan` nestiahol `.poly`; "
-              f"skús beh zopakovať.")
+        print(f"::warning::The region polygon ({args.poly}) is missing – the map "
+              f"deploys without an outline and reaches beyond the region in the "
+              f"app. Usually the `plan` job didn't download the `.poly`; "
+              f"try the run again.")
         return 0
 
     rings = rings_from_geojson(args.poly)
     if not rings:
-        print(f"::error::V {args.poly} nie je ani jeden prstenec.",
+        print(f"::error::{args.poly} holds not one ring.",
               file=sys.stderr)
         return 1
 
@@ -222,50 +170,49 @@ def main():
             bbox = pad_bbox((w, max(s, -LAT_MAX), e, min(n, LAT_MAX)),
                             args.pad_m)
         except ValueError:
-            print(f"::error::--bbox má byť west,south,east,north, prišlo "
+            print(f"::error::--bbox must be west,south,east,north, got "
                   f"'{args.bbox}'.", file=sys.stderr)
             return 1
 
-    # Orezáva sa LEN keď región z bboxu behu naozaj vytŕča (crop_bbox, vlastný
-    # región). Pri bežnom behu je kraj celý vnútri a orez by len pridal body.
-    orez = False
+    # clip ONLY when the region sticks out of the run's bbox (crop_bbox, custom region)
+    clip = False
     if bbox:
         xs = [x for ring, _ in rings for x, _ in ring]
         ys = [y for ring, _ in rings for _, y in ring]
-        orez = (min(xs) < bbox[0] or max(xs) > bbox[2]
+        clip = (min(xs) < bbox[0] or max(xs) > bbox[2]
                 or min(ys) < bbox[1] or max(ys) > bbox[3])
 
-    obrysy, diery = [], []
+    outlines, holes = [], []
     for ring, hole in rings:
-        r = clip_ring(ring, bbox) if orez else list(ring)
+        r = clip_ring(ring, bbox) if clip else list(ring)
         if not r:
             continue
-        (diery if hole else obrysy).append(r)
+        (holes if hole else outlines).append(r)
 
-    if not obrysy:
-        print(f"::error::Po oreze na bbox {args.bbox} neostal z regiónu ani "
-              f"kúsok – bbox behu a polygón regiónu sa neprekrývajú. Over "
-              f"`crop_bbox` (a `custom_bbox`), či je naozaj v tom regióne.",
+    if not outlines:
+        print(f"::error::Clipped to bbox {args.bbox} nothing of the region is "
+              f"left – the run's bbox and the region polygon don't overlap. Check "
+              f"that `crop_bbox` (and `custom_bbox`) really lie in that region.",
               file=sys.stderr)
         return 1
 
-    data = mask_geojson(obrysy, diery)
+    data = mask_geojson(outlines, holes)
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with open(args.out, "w") as f:
         json.dump(data, f)
 
-    plocha = (sum(ring_area_km2(r) for r in obrysy)
-              - sum(ring_area_km2(r) for r in diery))
-    bodov = sum(len(r) for r in obrysy) + sum(len(r) for r in diery)
+    area = (sum(ring_area_km2(r) for r in outlines)
+            - sum(ring_area_km2(r) for r in holes))
+    points = sum(len(r) for r in outlines) + sum(len(r) for r in holes)
     kb = os.path.getsize(args.out) / 1024
-    print(f"Hranica regiónu: {args.out}")
-    print(f"  prstencov            {len(obrysy)} (+{len(diery)} dier), "
-          f"{bodov} bodov, {kb:.1f} kB")
-    print(f"  plocha regiónu       {plocha:,.0f} km²")
-    print(f"  orez na bbox behu    "
-          f"{args.bbox if orez else 'netreba (región je celý v bboxe)'}")
-    print("  Za touto hranicou štýl nekreslí nič – ani vodstvo a Natural "
-          "Earth, ktoré Planetiler dáva do dlaždíc na celom obdĺžniku.")
+    print(f"Region outline: {args.out}")
+    print(f"  rings                {len(outlines)} (+{len(holes)} holes), "
+          f"{points} points, {kb:.1f} kB")
+    print(f"  region area          {area:,.0f} km²")
+    print(f"  clip to run bbox     "
+          f"{args.bbox if clip else 'not needed (the region is inside the bbox)'}")
+    print("  The style draws nothing past this outline – not even water and "
+          "Natural Earth, which Planetiler puts into tiles over the whole rectangle.")
     return 0
 
 

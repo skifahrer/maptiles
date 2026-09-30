@@ -1,19 +1,9 @@
 #!/usr/bin/env python3
-"""`gdal_contour -p` po blokoch – aby to dobehlo aj nad veľkým územím.
+"""`gdal_contour -p` in blocks – so it finishes over a large area too.
 
-Skladanie prstencov nie je lineárne v počte buniek: čím viac rozpracovaných
-prstencov GDAL drží, tým drahšie je pridať segment. Namerané tempo po krokoch:
-2 %/min do 17,5 %, potom 1,07, 0,36 a 0,26 – žiadny beh nad celým výrezom
-nikdy nedobehol. V bloku sa prstence poskladajú rýchlo a čo je hotové, je na
-disku, takže zrušený beh nezahodí prácu.
-
-Platí sa za to švami: plocha cez hranicu bloku vypadne ako dva polygóny.
-`zlep_svy()` ich spojí `ST_Union`-om nad tými, čo sa hranice naozaj dotýkajú.
-Bez spatialite beh pokračuje s rozseknutými plochami a povie to – rozseknutá
-skala je horšia mapa, nie žiadna mapa.
-
-Používajú to obe cesty ku skalám (`rock-areas.py`, `rocks-shading/vector.py`);
-boli to dve implementácie a rozišli sa. Čo je rozdielne, sa podáva parametrom.
+Assembling rings isn't linear in cells, so one pass over a cut-out never
+finished; in a block rings assemble fast and finished blocks stay on disk.
+The price is seams, which `stitch_seams()` joins by `ST_Union`.
 """
 import json
 import os
@@ -26,37 +16,30 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from watch import dir_mb, hms, run_watched  # noqa: E402
 
 
-# varovanie, ktoré GDAL vypíše nad každým blokom a je tu očakávané: z okna sa
-# `<SRS>` vyhadzuje zámerne. Filtruje sa preto, že je to ten istý text, akým
-# sa raz ohlásila skutočná chyba (skaly na zlých súradniciach, 0 dlaždíc) –
-# varovanie, ktoré raz znamená „v poriadku" a raz „mapa je rozbitá", si človek
-# odvykne čítať. Vypíše sa raz aj s dôvodom, ostatné sa spočítajú.
-OCAKAVANE_VAROVANIE = "No SRS set on layer"
+# printed over every block and expected here: `<SRS>` is dropped from the window on purpose
+EXPECTED_WARNING = "No SRS set on layer"
 
 
-def _stderr_von(text, *, prve, kde):
-    """Vypíše stderr z GDALu; očakávané varovanie zhrnie, zvyšok pustí celý.
-
-    Vracia počet riadkov očakávaného varovania, nech ich vie volajúci spočítať.
-    """
-    ocakavane = 0
-    for riadok in (text or "").splitlines():
-        if not riadok.strip():
+def _pass_stderr(text, *, first, where):
+    """Print GDAL's stderr; summarise the expected warning, let the rest through."""
+    expected = 0
+    for line in (text or "").splitlines():
+        if not line.strip():
             continue
-        if OCAKAVANE_VAROVANIE in riadok:
-            ocakavane += 1
-            if prve:
-                print(f"    (GDAL: „{riadok.strip()}“ – tak to má byť, "
-                      f"z okna bloku sa `<SRS>` vyhadzuje zámerne, aby "
-                      f"súradnice ostali metrické. Ďalšie výskyty sa už "
-                      f"nevypisujú, spočítajú sa.)", flush=True)
+        if EXPECTED_WARNING in line:
+            expected += 1
+            if first:
+                print(f"    (GDAL: \"{line.strip()}\" – as it should be, "
+                      f"`<SRS>` is dropped from the block window on purpose so "
+                      f"coordinates stay metric. Further ones are only "
+                      f"counted.)", flush=True)
             continue
-        print(f"    {kde}: {riadok.rstrip()}", flush=True)
-    return ocakavane
+        print(f"    {where}: {line.rstrip()}", flush=True)
+    return expected
 
 
 def raster_size(vrt):
-    """(šírka, výška) rastra v pixeloch."""
+    """(width, height) of a raster in pixels."""
     try:
         info = json.loads(subprocess.run(["gdalinfo", "-json", vrt],
                                          check=True, capture_output=True,
@@ -66,19 +49,15 @@ def raster_size(vrt):
         return 0, 0
 
 
-def plan(w_px, h_px, blok_px):
-    """Ľavé horné rohy blokov. Blok je štvorec `blok_px`, posledný je menší."""
+def plan(w_px, h_px, block_px):
+    """Top-left corners of the blocks; a block is a `block_px` square, the last smaller."""
     return [(bx, by)
-            for by in range(0, h_px, blok_px)
-            for bx in range(0, w_px, blok_px)]
+            for by in range(0, h_px, block_px)
+            for bx in range(0, w_px, block_px)]
 
 
-def oznac_svy(src, dst, na_hranici):
-    """Prepíše GeoJSONSeq a útvarom na hranici bloku pridá `"sev":1`.
-
-    Rozhoduje sa podľa toho, či sa súradnice útvaru dotýkajú okraja bloku –
-    `na_hranici(geometry)` vráti True/False. Len tie idú potom do únie.
-    """
+def mark_seams(src, dst, on_edge):
+    """Rewrite a GeoJSONSeq, adding `"seam":1` to shapes on the block edge."""
     n = 0
     with open(src) as fi, open(dst, "w") as fo:
         for line in fi:
@@ -89,15 +68,15 @@ def oznac_svy(src, dst, na_hranici):
                 obj = json.loads(line)
             except ValueError:
                 continue
-            if na_hranici(obj.get("geometry") or {}):
-                obj.setdefault("properties", {})["sev"] = 1
+            if on_edge(obj.get("geometry") or {}):
+                obj.setdefault("properties", {})["seam"] = 1
                 n += 1
             fo.write(json.dumps(obj, separators=(",", ":")) + "\n")
     return n
 
 
-def _suradnice(geom):
-    """Body geometrie – bez ohľadu na to, či je to Polygon alebo MultiPolygon."""
+def _coords(geom):
+    """A geometry's points, Polygon or MultiPolygon alike."""
     t, c = geom.get("type"), geom.get("coordinates")
     if t == "Polygon":
         for ring in c or []:
@@ -108,69 +87,60 @@ def _suradnice(geom):
                 yield from ring
 
 
-def _plocha(geom):
-    """Plocha geometrie v m² (shoelace nad metrickými súradnicami).
-
-    Bez GDAL a bez závislostí – potrebuje sa len na porovnanie „koľko plochy
-    išlo do únie a koľko z nej vyšlo". Diery sa odčítajú, takže to zhruba
-    sedí aj na plochy s vnútornými prstencami.
-    """
-    def ring(body):
+def _area(geom):
+    """A geometry's area in m² (shoelace over metric coordinates), holes subtracted."""
+    def ring(points):
         s = 0.0
-        for i in range(len(body) - 1):
-            x0, y0 = body[i][0], body[i][1]
-            x1, y1 = body[i + 1][0], body[i + 1][1]
+        for i in range(len(points) - 1):
+            x0, y0 = points[i][0], points[i][1]
+            x1, y1 = points[i + 1][0], points[i + 1][1]
             s += x0 * y1 - x1 * y0
         return abs(s) / 2.0
 
     t, c = geom.get("type"), geom.get("coordinates")
     if t == "Polygon":
-        prst = c or []
-        return ring(prst[0]) - sum(ring(r) for r in prst[1:]) if prst else 0.0
+        rings = c or []
+        return ring(rings[0]) - sum(ring(r) for r in rings[1:]) if rings else 0.0
     if t == "MultiPolygon":
-        spolu = 0.0
+        total = 0.0
         for poly in c or []:
             if poly:
-                spolu += ring(poly[0]) - sum(ring(r) for r in poly[1:])
-        return spolu
+                total += ring(poly[0]) - sum(ring(r) for r in poly[1:])
+        return total
     return 0.0
 
 
-def plocha_suboru(path):
-    """Súčet plôch všetkých útvarov v GeoJSONSeq (m²)."""
-    spolu = 0.0
+def file_area(path):
+    """The sum of all shapes' areas in a GeoJSONSeq (m²)."""
+    total = 0.0
     try:
         with open(path) as f:
             for line in f:
                 if not line.strip():
                     continue
                 try:
-                    spolu += _plocha(json.loads(line).get("geometry") or {})
+                    total += _area(json.loads(line).get("geometry") or {})
                 except ValueError:
                     continue
     except FileNotFoundError:
         return 0.0
-    return spolu
+    return total
 
 
-def _dotyka_sa(geom, x0, y0, x1, y1, tol):
-    """Siaha geometria na okraj okna (v súradniciach rastra)?"""
-    for x, y in _suradnice(geom):
+def _touches(geom, x0, y0, x1, y1, tol):
+    """Does the geometry reach the window's edge (in raster coordinates)?"""
+    for x, y in _coords(geom):
         if (abs(x - x0) <= tol or abs(x - x1) <= tol
                 or abs(y - y0) <= tol or abs(y - y1) <= tol):
             return True
     return False
 
 
-def skontroluj_metricke(seq, minimum=1000.0, vzoriek=200):
-    """Sú súradnice v metroch, alebo sa niekde stratili do stupňov?
-
-    Nevidno to na ničom inom: beh dobehne a je zelený, len má každá plocha
-    rádovo 1e-9 m² a filter najmenšej plochy ju vyhodí. Preto chyba, nie
-    varovanie. Rozhoduje najväčšia súradnica zo vzorky, nie prvá.
-    """
-    najvacsia = 0.0
-    videl = False
+def check_metric(seq, minimum=1000.0, samples=200):
+    """Are coordinates in metres, or were they lost to degrees somewhere?"""
+    # an error, not a warning: the run ends green with every area ~1e-9 m² filtered out
+    largest = 0.0
+    seen = False
     try:
         with open(seq) as f:
             for line in f:
@@ -180,219 +150,192 @@ def skontroluj_metricke(seq, minimum=1000.0, vzoriek=200):
                     obj = json.loads(line)
                 except ValueError:
                     continue
-                for x, y in _suradnice(obj.get("geometry") or {}):
-                    videl = True
-                    najvacsia = max(najvacsia, abs(x), abs(y))
-                    vzoriek -= 1
-                    if vzoriek <= 0:
+                for x, y in _coords(obj.get("geometry") or {}):
+                    seen = True
+                    largest = max(largest, abs(x), abs(y))
+                    samples -= 1
+                    if samples <= 0:
                         break
-                if vzoriek <= 0:
+                if samples <= 0:
                     break
     except FileNotFoundError:
         return True
-    if videl and najvacsia < minimum:
-        # `RuntimeError`, nie `ValueError`: volajúci ju vypisuje ako
-        # `::error::` s hláškou – tá je zrozumiteľná, traceback nie
+    if seen and largest < minimum:
+        # `RuntimeError`: the caller prints it as `::error::`, a readable message
         raise RuntimeError(
-            f"súradnice vyzerajú ako stupne (najväčšia {najvacsia:.6f}), nie "
-            f"ako metre – z okna bloku sa nevyhodil `<SRS>` a GDAL ich "
-            f"prepočítal do WGS84. Plocha by potom vyšla rádovo 1e-9 m² "
-            f"a filter najmenšej plochy by vyhodil VŠETKY skaly, pričom beh "
-            f"by ostal zelený (behy 31245134321 a 31426542010).")
+            f"coordinates look like degrees (largest {largest:.6f}), not "
+            f"metres – `<SRS>` wasn't dropped from the block window and GDAL "
+            f"converted them to WGS84. Areas would come to ~1e-9 m² and the "
+            f"smallest-area filter would drop ALL rocks, the run staying "
+            f"green (runs 31245134321 and 31426542010).")
     return True
 
 
-def po_blokoch(vrt, out_dir, urovne, atributy, blok_px, geo, *, budget_s=0):
-    """Obrysy po blokoch do `out_dir/b*.geojsonl`. Vráti (priečinok, počet).
-
-    `urovne`   – zoznam prahov pre `-fl`
-    `atributy` – napr. `["-amin", "smin", "-amax", "smax"]`
-    `geo`      – (ox, oy, res): ľavý horný roh a veľkosť bunky v metroch
-    `budget_s` – strop času, vypnutý kým ho niekto nezapne. Hotové bloky
-                 ostávajú na disku, takže `TimeoutError` nie je zahodená práca.
-    """
+def by_blocks(vrt, out_dir, levels, attributes, block_px, geo, *, budget_s=0):
+    """Outlines in blocks into `out_dir/b*.geojsonl`. Returns (folder, count)."""
+    # geo = (ox, oy, res) in metres; finished blocks stay, so `TimeoutError` loses nothing
     w_px, h_px = raster_size(vrt)
     if not w_px:
-        raise RuntimeError(f"z {vrt} sa nedá prečítať rozmer rastra")
+        raise RuntimeError(f"the raster size can't be read from {vrt}")
     ox, oy, res = geo
-    bloky = plan(w_px, h_px, blok_px)
+    blocks = plan(w_px, h_px, block_px)
     os.makedirs(out_dir, exist_ok=True)
-    hotovych = sum(1 for i in range(len(bloky))
+    finished = sum(1 for i in range(len(blocks))
                    if os.path.exists(os.path.join(out_dir, f"b{i:05d}.geojsonl")))
-    print(f"  blok {blok_px}×{blok_px} px, {len(bloky)} blokov"
-          + (f", {hotovych} už hotových z predošlého behu" if hotovych else ""),
+    print(f"  block {block_px}×{block_px} px, {len(blocks)} blocks"
+          + (f", {finished} already done by an earlier run" if finished else ""),
           flush=True)
 
     t0 = time.time()
-    spravene = 0
-    bez_srs = 0
-    for i, (bx, by) in enumerate(bloky):
-        cesta = os.path.join(out_dir, f"b{i:05d}.geojsonl")
-        if os.path.exists(cesta):
+    done = 0
+    no_srs = 0
+    for i, (bx, by) in enumerate(blocks):
+        path = os.path.join(out_dir, f"b{i:05d}.geojsonl")
+        if os.path.exists(path):
             continue
-        bw, bh = min(blok_px, w_px - bx), min(blok_px, h_px - by)
-        okno = os.path.join(out_dir, "okno.vrt")
-        # `-of VRT` je len XML nad tým istým rastrom – výrez nestojí ani bajt
+        bw, bh = min(block_px, w_px - bx), min(block_px, h_px - by)
+        window = os.path.join(out_dir, "window.vrt")
+        # `-of VRT` is XML over the same raster – the cut-out costs no byte
         subprocess.run(["gdal_translate", "-q", "-of", "VRT",
                         "-srcwin", str(bx), str(by), str(bw), str(bh),
-                        vrt, okno], check=True)
-        # z okna sa vyhodí <SRS>: ovládač GeoJSON prepočítava do WGS84 vždy,
-        # keď zdroj vie, v čom je, takže by `gdal_contour` vypísal stupne
-        # a každá skala by mala 1e-9 m². Stalo sa to dvakrát.
-        with open(okno) as f:
+                        vrt, window], check=True)
+        # drop <SRS>: the GeoJSON driver converts to WGS84 whenever it knows the source's
+        with open(window) as f:
             xml = f.read()
-        with open(okno, "w") as f:
+        with open(window, "w") as f:
             f.write(re.sub(r"\s*<SRS[^>]*>.*?</SRS>", "", xml, flags=re.S))
-        part = cesta + ".part"
+        part = path + ".part"
         if os.path.exists(part):
             os.remove(part)
-        # stderr sa chytá, nie potláča; pri páde sa vypíše všetko a až potom
-        # sa chyba prehodí ďalej
-        hotovo = subprocess.run(
-            ["gdal_contour", "-p", "-q", "-fl", *urovne, *atributy,
+        # stderr is caught, not muted; on failure all of it is printed first
+        result = subprocess.run(
+            ["gdal_contour", "-p", "-q", "-fl", *levels, *attributes,
              "-f", "GeoJSONSeq", "-nln", "band",
-             # súradnice sú metrické, dve desatiny = centimeter
-             "-lco", "COORDINATE_PRECISION=2", okno, part],
+             # metric coordinates, two decimals = a centimetre
+             "-lco", "COORDINATE_PRECISION=2", window, part],
             capture_output=True, text=True)
-        # `prve` sa viaže na prvý výskyt, nie na prvý blok
-        bez_srs += _stderr_von(hotovo.stderr, prve=(bez_srs == 0),
-                               kde="gdal_contour")
-        if hotovo.stdout.strip():
-            print(f"    gdal_contour: {hotovo.stdout.strip()}", flush=True)
-        hotovo.check_returncode()
-        # strážca: prvý blok sa pozrie, či sú súradnice naozaj metrické
-        if spravene == 0:
-            skontroluj_metricke(part)
-        # súradnice sú v metroch výrezu; hranica bloku je jeho okraj
+        # `first` binds to the first occurrence, not the first block
+        no_srs += _pass_stderr(result.stderr, first=(no_srs == 0),
+                               where="gdal_contour")
+        if result.stdout.strip():
+            print(f"    gdal_contour: {result.stdout.strip()}", flush=True)
+        result.check_returncode()
+        # a guard: the first block checks the coordinates really are metric
+        if done == 0:
+            check_metric(part)
+        # coordinates are in the cut-out's metres; the block's edge is its border
         x0, y0 = ox + bx * res, oy - by * res
         x1, y1 = x0 + bw * res, y0 - bh * res
-        oznac_svy(part, cesta, lambda g: _dotyka_sa(g, x0, y1, x1, y0, res))
+        mark_seams(part, path, lambda g: _touches(g, x0, y1, x1, y0, res))
         os.remove(part)
-        spravene += 1
+        done += 1
         el = time.time() - t0
-        # postup po blokoch je jediné, čo o tej dlhej fáze niečo povie
-        if spravene and (i % max(1, len(bloky) // 50) == 0 or i == len(bloky) - 1):
-            zvysok = el / spravene * (len(bloky) - i - 1)
-            print(f"  … obrysy: blok {i + 1}/{len(bloky)}, beží {hms(el)}, "
-                  f"zostáva ~{hms(zvysok)}, na disku {dir_mb(out_dir):.0f} MB",
+        # progress by block is all that tells anything about this long phase
+        if done and (i % max(1, len(blocks) // 50) == 0 or i == len(blocks) - 1):
+            rest = el / done * (len(blocks) - i - 1)
+            print(f"  … outlines: block {i + 1}/{len(blocks)}, running {hms(el)}, "
+                  f"~{hms(rest)} left, {dir_mb(out_dir):.0f} MB on disk",
                   flush=True)
-        # rozpočet až po zapísanom bloku – ďalší beh nadviaže presne tu
+        # the budget only after a written block – the next run picks up here
         if budget_s and el > budget_s:
-            raise TimeoutError(f"obrysy: {i + 1}/{len(bloky)} blokov")
-    # koľko blokov varovanie vypísalo, sa povie: keď ho zrazu nemá jeden
-    # z 364, je to rozdiel oproti zvyšku a stojí za to, aby bol vidieť
-    if bez_srs:
-        print(f"  (GDAL hlásil „{OCAKAVANE_VAROVANIE}“ pri {bez_srs} "
-              f"z {spravene} počítaných blokov – očakávané)", flush=True)
-    return out_dir, len(bloky)
+            raise TimeoutError(f"outlines: {i + 1}/{len(blocks)} blocks")
+    # the count is shown: one block of 364 without it is worth seeing
+    if no_srs:
+        print(f"  (GDAL reported \"{EXPECTED_WARNING}\" for {no_srs} "
+              f"of {done} computed blocks – expected)", flush=True)
+    return out_dir, len(blocks)
 
 
-def zlep_svy(seq, tmp, *, klucovy_atribut="smin", heartbeat=30,
-             max_s=0, label="švy"):
-    """Spojí plochy rozseknuté hranicou bloku. Vráti cestu k výsledku.
-
-    Unionuje len útvary s `sev=1`, po triedach – inak by sa stena zlepila
-    so svahom.
-
-    Únia sa môže nepodariť a nepovie to návratovým kódom: `ST_Union` padá na
-    neplatných geometriách, ogr2ogr pritom skončí úspechom a napíše prázdny
-    súbor (raz tak z Vysokých Tatier ostalo 44 plôch so súhrnnou plochou
-    0,00 km²). Preto `ST_MakeValid` pred úniou, prepočet plochy po nej
-    a návrat pôvodných útvarov, keď vyjde prázdna.
-
-    A výstupu sa nesmie dať SRS – tá istá pasca ako pri okne bloku, len o krok
-    neskôr: `-a_srs` nad GeoJSONSeq metre neoznačí, ale zmení na stupne.
-    """
-    svy = os.path.join(tmp, "svy.geojsonl")
-    zvysok = os.path.join(tmp, "bez-svov.geojsonl")
-    n_sev = n_ok = 0
-    with open(seq) as fi, open(svy, "w") as fs, open(zvysok, "w") as fz:
+def stitch_seams(seq, tmp, *, key_attribute="smin", heartbeat=30,
+                 max_s=0, label="seams"):
+    """Join areas cut by a block edge, per class. Returns the result's path."""
+    # ST_Union may fail silently on invalid geometry, so ST_MakeValid, and the
+    # area is checked after; no SRS on output: `-a_srs` over GeoJSONSeq makes degrees
+    seams = os.path.join(tmp, "seams.geojsonl")
+    rest = os.path.join(tmp, "no-seams.geojsonl")
+    n_seam = n_ok = 0
+    with open(seq) as fi, open(seams, "w") as fs, open(rest, "w") as fz:
         for line in fi:
             if not line.strip():
                 continue
-            if '"sev":1' in line.replace(" ", ""):
+            if '"seam":1' in line.replace(" ", ""):
                 fs.write(line)
-                n_sev += 1
+                n_seam += 1
             else:
                 fz.write(line)
                 n_ok += 1
-    if not n_sev:
-        print("  švy: žiadna plocha nesiaha na hranicu bloku", flush=True)
-        return zvysok
+    if not n_seam:
+        print("  seams: no area reaches a block edge", flush=True)
+        return rest
 
-    print(f"  švy: {n_sev} plôch na hranici bloku, {n_ok} mimo – "
-          f"zlepujem tie prvé", flush=True)
-    zlep = os.path.join(tmp, "zlepene.geojsonl")
-    # žiadne `-a_srs` ani `-t_srs` (viď docstring). `ST_Union` je rovinná
-    # operácia a SRID ju nezaujíma. `COORDINATE_PRECISION=2`: centimeter stačí.
-    chyba = None
+    print(f"  seams: {n_seam} areas on a block edge, {n_ok} away from it – "
+          f"stitching the former", flush=True)
+    stitched = os.path.join(tmp, "stitched.geojsonl")
+    # no `-a_srs` or `-t_srs`; `ST_Union` is planar and ignores SRID
+    error = None
     try:
-        run_watched(["ogr2ogr", "-f", "GeoJSONSeq", zlep, svy,
+        run_watched(["ogr2ogr", "-f", "GeoJSONSeq", stitched, seams,
                      "-lco", "COORDINATE_PRECISION=2",
                      "-dialect", "SQLITE", "-explodecollections",
-                     "-sql", f"SELECT {klucovy_atribut}, "
+                     "-sql", f"SELECT {key_attribute}, "
                              f"ST_Union(ST_MakeValid(geometry)) AS geometry "
-                             f"FROM svy GROUP BY {klucovy_atribut}"],
-                    label, tmp=zlep, every=heartbeat, max_s=max_s)
+                             f"FROM seams GROUP BY {key_attribute}"],
+                    label, tmp=stitched, every=heartbeat, max_s=max_s)
     except Exception as exc:
-        chyba = f"{type(exc).__name__}"
+        error = f"{type(exc).__name__}"
 
-    # úspech ogr2ogr nestačí a nerozhoduje ani počet útvarov (zlepiť 22 kúskov
-    # do jedného je zmysel únie) – rozhoduje plocha
-    n_zlep = 0
-    if not chyba and os.path.exists(zlep):
-        with open(zlep) as f:
-            n_zlep = sum(1 for line in f if line.strip())
-    # jednotky sa kontrolujú skôr než plocha: inak by sa prepočet do stupňov
-    # ohlásil ako „stratená plocha" a poslal hľadať chybu do GEOSu
-    if n_zlep:
+    # ogr2ogr's success isn't enough, nor the shape count – the area decides
+    n_stitched = 0
+    if not error and os.path.exists(stitched):
+        with open(stitched) as f:
+            n_stitched = sum(1 for line in f if line.strip())
+    # units before area, or degrees would be reported as "lost area"
+    if n_stitched:
         try:
-            skontroluj_metricke(zlep)
+            check_metric(stitched)
         except RuntimeError as exc:
-            chyba = ("únia vyšla v STUPŇOCH, nie v metroch – výstup dostal "
-                     "SRS (`-a_srs`/`-t_srs`) a GeoJSON ovládač podľa neho "
-                     f"súradnice prepočítal do WGS84; {exc}")
-    plocha_pred = plocha_suboru(svy)
-    plocha_po = plocha_suboru(zlep) if n_zlep and not chyba else 0.0
-    stratene = (plocha_pred > 0 and plocha_po < plocha_pred * 0.5)
-    if chyba or not n_zlep or stratene:
-        preco = (f"({chyba})" if chyba else
-                 "(únia skončila prázdna – hľadaj v logu `TopologyException`)"
-                 if not n_zlep else
-                 f"(z {plocha_pred/1e6:.2f} km² ostalo {plocha_po/1e6:.2f} km²)")
-        # dôvod v tej hláške už dvakrát ukazoval vedľa („Chýba spatialite?",
-        # potom natvrdo `TopologyException`), preto sa berie z toho, čo sa
-        # naozaj zistilo, a nedopisuje sa k nemu domnienka
-        print(f"::warning::Zlepenie švov sa nedá použiť {preco}"
-              + f". Vraciam {n_sev} pôvodných plôch nezlepených: na hraniciach "
-              f"blokov ({label}) budú rozseknuté a diery na nich otvorené, ale "
-              f"BUDÚ – v mape je to vidieť ako priamu hranu v obryse. Keď je "
-              f"dôvodom prázdna únia, hľadaj v logu vyššie `TopologyException` "
-              f"z GEOS nad obrysom z gdal_contour; spatialite v tom nie je, "
-              f"ten je nainštalovaný.", flush=True)
+            error = ("the union came out in DEGREES, not metres – the output "
+                     "got an SRS (`-a_srs`/`-t_srs`) and the GeoJSON driver "
+                     f"converted the coordinates to WGS84; {exc}")
+    area_before = file_area(seams)
+    area_after = file_area(stitched) if n_stitched and not error else 0.0
+    lost = (area_before > 0 and area_after < area_before * 0.5)
+    if error or not n_stitched or lost:
+        why = (f"({error})" if error else
+               "(the union came out empty – look for `TopologyException` in the log)"
+               if not n_stitched else
+               f"(of {area_before/1e6:.2f} km² {area_after/1e6:.2f} km² were left)")
+        # the reason comes from what was found, never a guess
+        print(f"::warning::Stitching the seams can't be used {why}"
+              + f". Returning {n_seam} original areas unstitched: on block edges "
+              f"({label}) they will be cut and their holes open, but THERE – "
+              f"on the map a straight edge in the outline. When the reason is an "
+              f"empty union, look above for GEOS `TopologyException` over the "
+              f"gdal_contour outline; it isn't spatialite, that is installed.",
+              flush=True)
         return seq
 
-    print(f"  švy: {n_sev} plôch zlepených na {n_zlep} "
-          f"({plocha_pred/1e6:.2f} → {plocha_po/1e6:.2f} km²)", flush=True)
-    spolu = os.path.join(tmp, "zlepene-spolu.geojsonl")
-    with open(spolu, "w") as fo:
-        for src in (zvysok, zlep):
+    print(f"  seams: {n_seam} areas stitched into {n_stitched} "
+          f"({area_before/1e6:.2f} → {area_after/1e6:.2f} km²)", flush=True)
+    together = os.path.join(tmp, "stitched-all.geojsonl")
+    with open(together, "w") as fo:
+        for src in (rest, stitched):
             if os.path.exists(src):
                 with open(src) as fi:
                     for line in fi:
                         if line.strip():
                             fo.write(line)
-    return spolu
+    return together
 
 
-def zlej(out_dir, dst):
-    """Zlepí bloky do jedného GeoJSONSeq (v poradí, nech je beh opakovateľný)."""
+def join_blocks(out_dir, dst):
+    """Glue the blocks into one GeoJSONSeq (in order, so a run is repeatable)."""
     n = 0
     with open(dst, "w") as fo:
-        for meno in sorted(os.listdir(out_dir)):
-            if not meno.endswith(".geojsonl"):
+        for name in sorted(os.listdir(out_dir)):
+            if not name.endswith(".geojsonl"):
                 continue
-            with open(os.path.join(out_dir, meno)) as fi:
+            with open(os.path.join(out_dir, name)) as fi:
                 for line in fi:
                     if line.strip():
                         fo.write(line)

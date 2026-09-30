@@ -1,52 +1,46 @@
-name: Mapa · Regenerate state
+name: Map · Regenerate state
 
-# JEDNA VRSTVA V CELEJ KRAJINE NA JEDNO KLIKNUTIE. Nad každým krajom spustí
-# „Pregeneruj vrstvu kraja" pre to jedno, čo si vyberieš.
+# ONE LAYER ACROSS A COUNTRY IN ONE CLICK: over every region it runs
+# “Regenerate region layer” for the one thing you pick.
 #
-# Zoznam volieb drží `workers/state/jobs.py`. `body`, `cesty`, `hranice`
-# a `vodstvo` sú minúty na kraj (počítajú sa z toho istého PBF ako mapa;
-# `cesty` nesú aj smerovaciu sieť); `vrstevnice`, `skaly` a `tienovanie`
-# desiatky minút až hodiny.
+# The choices are `workers/state/jobs.py`. `points`, `roads`, `boundaries` and
+# `water` take minutes per region (the same PBF as the map; `roads` carry the
+# routing network too); `contours`, `rocks` and `terrain` tens of minutes to hours.
 #
-# Beží ako štafeta, z toho istého dôvodu ako „Build map state": job má strop
-# šesť hodín. Jadro je vo `workers/state/estafeta.sh`, zvyšok v `regenerate.sh`.
-#
-# Na Drive sa prepíše len ten jeden balík a položka v `maps.json` sa doplní.
-# Vrstevnice a skaly sú jeden balík, takže sa počítajú obe (druhá z cache).
-# Spadnutý kraj dávku nezastaví, posledný úsek na tom spadne.
+# A relay like “Build map state”: a job has a six-hour cap. The core is
+# `workers/state/relay-core.sh`, the rest `regenerate.sh`. Only that one package
+# is overwritten on Drive and the `maps.json` entry is added to.
 
 on:
   workflow_dispatch:
     inputs:
-      # zoznam drží workers/data/regions.json (stráži lint workflowov)
+      # the list is workers/data/regions.json (the workflow lint guards it)
       country:
-        description: "Krajina – pregeneruje sa v každom jej kraji"
+        description: "Country – regenerated in every region of it"
         required: true
         default: slovensko
         type: choice
         options:
           - slovensko
-      # zoznam drží `workers/state/jobs.py`; poradie je od najlacnejšieho
-      co:
-        description: "Čo pregenerovať v každom kraji"
+      # the list is `workers/state/jobs.py`; cheapest first
+      what:
+        description: "What to regenerate in every region"
         required: true
-        default: body
+        default: points
         type: choice
         options:
-          - body
-          - cesty
-          - hranice
-          - vodstvo
-          - zeleznice
-          - sidla
-          - vrstevnice
-          - skaly
-          - tienovanie
-      # zdroje a prah platia len pre vrstvy z výškového modelu – tie idú celým
-      # buildom kraja a bez nich by sa postavil s predvolenými hodnotami.
-      # Hodnoty aj predvoľby sú tie isté ako vo formulári kraja.
+          - points
+          - roads
+          - boundaries
+          - water
+          - railways
+          - settlements
+          - contours
+          - rocks
+          - terrain
+      # sources and slope matter only for DEM layers; values as in the region form
       contour_source:
-        description: "Vrstevnice – z ktorého modelu terénu (ziadne = negenerovať)"
+        description: "Contours – which terrain model (none = don't make)"
         required: false
         default: dmr5
         type: choice
@@ -55,9 +49,9 @@ on:
           - sonny1
           - dmr35
           - dmr5
-          - ziadne
+          - none
       rock_source:
-        description: "Skaly – zo sklonu modelu, alebo z tieňovania (ziadne = negenerovať)"
+        description: "Rocks – from the model's slope, or from hillshading (none = don't make)"
         required: false
         default: dmr5
         type: choice
@@ -66,10 +60,10 @@ on:
           - sonny1
           - dmr35
           - dmr5
-          - tienovanie
-          - ziadne
+          - shading
+          - none
       shading_source:
-        description: "Tieňovanie a 3D terén – z ktorého modelu (ziadne = negenerovať)"
+        description: "Hillshading and 3D terrain – which model (none = don't make)"
         required: false
         default: dmr5
         type: choice
@@ -78,57 +72,54 @@ on:
           - sonny1
           - dmr35
           - dmr5
-          - ziadne
+          - none
       rock_slope:
-        description: "Od akého sklonu (°) je terén skala (50 = steny, 40 = aj strmé svahy)"
+        description: "From which slope (°) terrain is rock (50 = faces, 40 = steep slopes too)"
         required: false
         default: "50"
         type: string
-      # pri dávke je to skúška samotnej dávky, nie mapy
+      # for a batch this tests the batch
       test:
-        description: "Rýchly test: každý kraj len na 4 km² zo stredu (skúška dávky)"
+        description: "Quick test: every region only on 4 km² in its middle (a batch trial)"
         required: false
         default: false
         type: boolean
       options:
-        description: "Zriedka menené nastavenia ako kľúč=hodnota (viď workers/plan/options.py)"
+        description: "Rarely changed settings as key=value (see workers/plan/options.py)"
         required: false
         default: ""
         type: string
-      # štafetový kolík, nie pole pre človeka – dávka si ho vypĺňa sama.
-      # Vstup a nie súbor v repozitári: nevznikajú commity, ktoré by sa bili
-      # s `maps.json` od práve bežiaceho kraja.
-      pokracovanie:
-        description: "Nevypĺňaj – kolík štafety, dávka si ho podáva sama"
+      # the relay baton, not a field for people
+      continuation:
+        description: "Leave empty – the relay baton, the batch passes it itself"
         required: false
         default: ""
         type: string
 
-# `actions: write` je to jediné, čo tento workflow robí: spúšťa iné behy
+# `actions: write` is all this workflow does: it dispatches other runs
 permissions:
   contents: read
   actions: write
 
-# zámerne bez `concurrency`, ako pri „Build map state": pri troch behoch
-# v skupine GitHub prostredný zruší a dávka by si sama odhryzla článok
+# no `concurrency` on purpose, as in “Build map state”
 
 jobs:
-  estafeta:
-    name: Úsek štafety
+  relay:
+    name: Relay leg
     runs-on: ubuntu-latest
-    # pod stropom šiestich hodín s rezervou – čakanie na kraj má strop 5 h
+    # under the six-hour cap – waiting for a region is capped at 5 h
     timeout-minutes: 350
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Počkaj na kraj, spusti ďalší a odovzdaj štafetu
+      - name: Wait for the region, start the next and hand over the relay
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           REF: ${{ github.ref_name }}
           COUNTRY: ${{ inputs.country }}
-          CO: ${{ inputs.co }}
-          POKRACOVANIE: ${{ inputs.pokracovanie }}
+          WHAT: ${{ inputs.what }}
+          CONTINUATION: ${{ inputs.continuation }}
           CONTOUR_SOURCE: ${{ inputs.contour_source }}
           ROCK_SOURCE: ${{ inputs.rock_source }}
           SHADING_SOURCE: ${{ inputs.shading_source }}

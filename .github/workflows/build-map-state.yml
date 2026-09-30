@@ -1,38 +1,31 @@
-name: Mapa · Build map state
+name: Map · Build map state
 
-# CELÁ KRAJINA NA JEDNO KLIKNUTIE: spustí „Build map region" pre každý kraj,
-# jeden po druhom, a nechá ťa tak.
+# A WHOLE COUNTRY IN ONE CLICK: runs “Build map region” for every region, one
+# after another. A relay, not one long job – a region takes up to three hours,
+# a job six (`workers/state/relay.sh`).
 #
-# Beží ako ŠTAFETA, nie jeden dlhý job: kraj trvá aj tri hodiny, krajov je osem
-# a job má strop šesť hodín. Jeden beh = jeden úsek (počkaj – spusti – odovzdaj
-# ďalšiemu svojmu behu). Rozpis vo `workers/state/relay.sh`.
+# It differs from one region in three things:
+#   area          always `whole_region`
+#   publish_pages always off – Pages holds one map, eight runs would overwrite it
+#   reuse_layers  added as `true`: layers already made with these settings stay
 #
-# Proti jednému kraju sa líši v troch veciach:
-#   area          natvrdo `cely_region`
-#   publish_pages natvrdo vypnuté – na Pages je jedna mapa a osem behov by ju
-#                 osemkrát prepísalo
-#   reuse_layers  dopĺňa sa ako `true`: vrstvy, ktoré s týmito nastaveniami už
-#                 raz vznikli, sa neprepočítavajú (to je väčšina toho dňa)
-#
-# Spadnutý kraj dávku nezastaví (posledný úsek na tom spadne, nech nekončí
-# zelená s dierou v mape); ZRUŠENIE áno – je to jediný spôsob, ako bežiacej
-# dávke povedať „dosť". Rozpis vo `workers/state/estafeta.sh`.
+# A failed region doesn't stop the batch (the last leg fails on it); a
+# CANCEL does (`workers/state/relay-core.sh`).
 
 on:
   workflow_dispatch:
     inputs:
-      # zoznam drží workers/data/regions.json (stráži lint workflowov)
+      # the list is workers/data/regions.json (the workflow lint guards it)
       country:
-        description: "Krajina – postaví sa každý jej kraj"
+        description: "Country – every region of it is built"
         required: true
         default: slovensko
         type: choice
         options:
           - slovensko
-      # ďalej to isté, čo má formulár jedného kraja. `relay.sh` ich podáva
-      # každému behu celé a zakaždým – články štafety sú samostatné behy
+      # the rest is the one-region form; `relay.sh` passes them whole every time
       contour_source:
-        description: "Vrstevnice – z ktorého modelu terénu (ziadne = negenerovať)"
+        description: "Contours – which terrain model (none = don't make)"
         required: false
         default: dmr5
         type: choice
@@ -41,9 +34,9 @@ on:
           - sonny1
           - dmr35
           - dmr5
-          - ziadne
+          - none
       rock_source:
-        description: "Skaly – zo sklonu modelu, alebo z tieňovania (ziadne = negenerovať)"
+        description: "Rocks – from the model's slope, or from hillshading (none = don't make)"
         required: false
         default: dmr5
         type: choice
@@ -52,10 +45,10 @@ on:
           - sonny1
           - dmr35
           - dmr5
-          - tienovanie
-          - ziadne
+          - shading
+          - none
       shading_source:
-        description: "Tieňovanie a 3D terén – z ktorého modelu (ziadne = negenerovať)"
+        description: "Hillshading and 3D terrain – which model (none = don't make)"
         required: false
         default: dmr5
         type: choice
@@ -64,71 +57,66 @@ on:
           - sonny1
           - dmr35
           - dmr5
-          - ziadne
+          - none
       rock_slope:
-        description: "Od akého sklonu (°) je terén skala (50 = steny, 40 = aj strmé svahy)"
+        description: "From which slope (°) terrain is rock (50 = faces, 40 = steep slopes too)"
         required: false
         default: "50"
         type: string
       rebuild:
-        description: "Čo pregenerovať nanovo, aj keď to už je v cache"
+        description: "What to rebuild even when it is cached"
         required: false
-        default: nic
+        default: nothing
         type: choice
         options:
-          - nic
-          - vrstevnice
-          - skaly
-          - tienovanie
-          - clanky
-          - vsetko
-      # pri dávke je to skúška samotnej dávky, nie mapy: osem krajov po pár
-      # minútach namiesto po hodinách
+          - nothing
+          - contours
+          - rocks
+          - terrain
+          - articles
+          - everything
+      # for a batch this tests the batch, not the map: minutes per region
       test:
-        description: "Rýchly test: každý kraj len na 4 km² zo stredu (skúška dávky)"
+        description: "Quick test: every region only on 4 km² in its middle (a batch trial)"
         required: false
         default: false
         type: boolean
       options:
-        description: "Zriedka menené nastavenia ako kľúč=hodnota (viď workers/plan/options.py)"
+        description: "Rarely changed settings as key=value (see workers/plan/options.py)"
         required: false
         default: ""
         type: string
-      # štafetový kolík, nie pole pre človeka – dávka si ho vypĺňa sama.
-      # Vstup a nie súbor v repozitári: stav je vidieť priamo na behu
-      # a nevznikajú commity, ktoré by sa bili s `maps.json`.
-      pokracovanie:
-        description: "Nevypĺňaj – kolík štafety, dávka si ho podáva sama"
+      # the relay baton, not a field for people; an input so the state shows on the run
+      continuation:
+        description: "Leave empty – the relay baton, the batch passes it itself"
         required: false
         default: ""
         type: string
 
-# `actions: write` je to jediné, čo tento workflow robí: spúšťa iné behy
+# `actions: write` is all this workflow does: it dispatches other runs
 permissions:
   contents: read
   actions: write
 
-# zámerne bez `concurrency`: články štafety sú samostatné behy toho istého
-# workflowu a pri troch v jednej skupine GitHub prostredný zruší – dávka by si
-# tak sama odhryzla článok. Jeden kraj naraz drží samotná štafeta.
+# no `concurrency` on purpose: with three runs in a group GitHub cancels the
+# middle one and the batch would bite off a leg; the relay keeps one region at a time
 
 jobs:
-  estafeta:
-    name: Úsek štafety
+  relay:
+    name: Relay leg
     runs-on: ubuntu-latest
-    # pod stropom šiestich hodín s rezervou: čakanie na kraj má v skripte
-    # strop 5 h, takže na spustenie ďalšieho článku ostáva hodina
+    # under the six-hour cap: waiting for a region is capped at 5 h in the script
     timeout-minutes: 350
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Počkaj na kraj, spusti ďalší a odovzdaj štafetu
+      - name: Wait for the region, start the next and hand over the relay
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           REF: ${{ github.ref_name }}
           COUNTRY: ${{ inputs.country }}
-          POKRACOVANIE: ${{ inputs.pokracovanie }}
+          CONTINUATION: ${{ inputs.continuation }}
           CONTOUR_SOURCE: ${{ inputs.contour_source }}
           ROCK_SOURCE: ${{ inputs.rock_source }}
           SHADING_SOURCE: ${{ inputs.shading_source }}

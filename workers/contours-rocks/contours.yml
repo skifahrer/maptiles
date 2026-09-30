@@ -1,13 +1,9 @@
-# Planetiler custom schema – vrstevnice z digitálneho modelu terénu.
+# Planetiler custom schema – contours from a digital terrain model.
 #
-# OSM výškové dáta nemá, terén ide z externého DEM (Sonny's LiDAR DTM alebo
-# Copernicus GLO-30). Vstup vyrába build-map-region.yml cez gdal_contour.
-# Skaly majú vlastný .pmtiles (rocks.yml) – iný maxzoom.
-#
-# `level` delí vrstevnice na tri triedy:
-#   major = násobky 100 m, mid = násobky 50 m, minor = ostatné
-schema_name: FricoMaps vrstevnice
-schema_description: Vrstevnice a nadmorská výška z DEM
+# OSM has no heights; the input comes from an external DEM via gdal_contour.
+# `level`: major = multiples of 100 m, mid = of 50 m, minor = the rest.
+schema_name: FricoMaps contours
+schema_description: Contours and elevation from a DEM
 attribution: © Richard Dvorský / <a href="https://www.geoportal.sk/">ÚGKK SR · DMR 5.0 (LiDAR) · CC BY 4.0</a> / <a href="https://sonny.4lima.de/">Sonny's LiDAR DTM</a> / <a href="https://spacedata.copernicus.eu/">Copernicus DEM</a>
 
 sources:
@@ -19,9 +15,8 @@ sources:
 layers:
   - id: contour
     features:
-      # hlavné vrstevnice (100 m) – jediná trieda pod z12; do z10 sa
-      # nekreslia vôbec (sivý závoj). `min_zoom` a `minzoom` v štýle sa musia
-      # zhodovať, stráži workers/lint/zoom-floor.py.
+      # major contours (100 m) – the only class below z12; `min_zoom` must
+      # match the style's `minzoom`, workers/lint/zoom-floor.py guards it
       - source: contours
         geometry: line
         min_zoom: 11
@@ -31,7 +26,7 @@ layers:
           - key: ele
             type: integer
           - key: level
-      # polovičné (50 m)
+      # mid (50 m)
       - source: contours
         geometry: line
         min_zoom: 12
@@ -41,7 +36,7 @@ layers:
           - key: ele
             type: integer
           - key: level
-      # základný interval – až na detailnom zoome, inak by mapa zčernela
+      # the base interval – only zoomed in, or the map turns black
       - source: contours
         geometry: line
         min_zoom: 13

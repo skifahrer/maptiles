@@ -1,58 +1,50 @@
 #!/usr/bin/env bash
-# Zapni GitHub Pages a prepni zdroj na Actions – a keď sa nedá, povedz to.
+# Turn GitHub Pages on with Actions as its source – and say so when it can't.
 #
-# Vlastný skript, lebo build-map-region.yml je pri strope 128 KiB.
+# With a branch source the deploy works, but the next push to master overwrites
+# the map, so this tries, reports what the API said, and goes on.
 #
-# Pri zdroji „z vetvy" nasadenie funguje, len mapu prepíše najbližší push do
-# master. Kým sa to prepínalo natvrdo, beh na tom padal (`GITHUB_TOKEN` na
-# zmenu nastavenia repozitára nestačí) a mapa nebola žiadna. Preto: skúsiť,
-# nahlas povedať, čo API odpovedalo, a ísť ďalej.
-#
-# Vstup:  GH_TOKEN, GITHUB_REPOSITORY
-# Výstup: `build_type` do GITHUB_OUTPUT – `workflow`, keď berie z Actions.
+# In:  GH_TOKEN, GITHUB_REPOSITORY
+# Out: `build_type` into GITHUB_OUTPUT – `workflow` when it takes Actions.
 
 set -uo pipefail
-RUCNE="Nastav to ručne raz: Settings → Pages → Build and deployment → Source: 'GitHub Actions'."
-# Ohlásená vopred, nie až v `if ODPOVED=$(…)`: pod `set -u` je premenná, ktorá
-# vznikne len vo vetve, tá istá trieda tichého omylu ako chýbajúce `env:`.
-ODPOVED=""
+BY_HAND="Set it once by hand: Settings → Pages → Build and deployment → Source: 'GitHub Actions'."
+# declared up front: under `set -u` a variable made only in a branch is a silent trap
+ANSWER=""
 
 PAGES=$(gh api "repos/$GITHUB_REPOSITORY/pages" 2>/dev/null || true)
 
 if [ -z "$PAGES" ]; then
-  echo "GitHub Pages nie je zapnuté – zapínam so zdrojom GitHub Actions…"
-  if ODPOVED=$(gh api -X POST "repos/$GITHUB_REPOSITORY/pages" \
+  echo "GitHub Pages is off – turning it on with the GitHub Actions source…"
+  if ANSWER=$(gh api -X POST "repos/$GITHUB_REPOSITORY/pages" \
        -f 'build_type=workflow' 2>&1); then
-    echo "  ✓ zapnuté"
+    echo "  ✓ on"
     PAGES=$(gh api "repos/$GITHUB_REPOSITORY/pages" 2>/dev/null || true)
   else
-    echo "  API odpovedalo: $ODPOVED"
-    # Bez zapnutých Pages sa nasadiť NEDÁ – tu zastaviť treba.
-    echo "::error::GitHub Pages nie je zapnuté a tokenu sa ho nepodarilo zapnúť (na to treba admin práva). $RUCNE"
+    echo "  The API answered: $ANSWER"
+    # without Pages there is no deploying – stop here
+    echo "::error::GitHub Pages is off and the token couldn't turn it on (that needs admin rights). $BY_HAND"
     exit 1
   fi
 fi
 
 BT=$(printf '%s' "$PAGES" | jq -r '.build_type // "?"')
 if [ "$BT" != 'workflow' ]; then
-  echo "Pages berie zdroj z vetvy (build_type=$BT) – skúšam prepnúť na GitHub Actions…"
-  if ODPOVED=$(gh api -X PUT "repos/$GITHUB_REPOSITORY/pages" \
+  echo "Pages takes its source from a branch (build_type=$BT) – trying to switch to GitHub Actions…"
+  if ANSWER=$(gh api -X PUT "repos/$GITHUB_REPOSITORY/pages" \
        -f 'build_type=workflow' 2>&1); then
-    # Overiť, a nie veriť: keby PUT prešlo a nastavenie ostalo staré,
-    # build by dobehol do zelena a na stránke by aj tak bolo README.
+    # verify, don't trust: a PUT may pass and the setting stay old
     BT=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq '.build_type // "?"' 2>/dev/null || echo '?')
-    [ "$BT" = 'workflow' ] && echo "  ✓ prepnuté (build_type=$BT)"
+    [ "$BT" = 'workflow' ] && echo "  ✓ switched (build_type=$BT)"
   else
-    echo "  API odpovedalo: $ODPOVED"
+    echo "  The API answered: $ANSWER"
   fi
 fi
 
 echo "build_type=$BT" >> "$GITHUB_OUTPUT"
 if [ "$BT" != 'workflow' ]; then
-  # VAROVANIE, nie chyba. Mapa sa nasadí a bude na stránke; zmizne
-  # až pri najbližšom pushi do master, keď ju prepíše zabudovaný
-  # Jekyll builder obsahom repozitára (uvidíš README).
-  echo "::warning::GitHub Pages berie zdroj z vetvy (build_type=$BT), nie z Actions, a tokenu sa to nepodarilo prepnúť. Mapa sa nasadí, ale najbližší push do master ju prepíše obsahom repozitára (uvidíš README). $RUCNE"
+  # a warning, not an error: the map deploys and lives until the next push to master
+  echo "::warning::GitHub Pages takes its source from a branch (build_type=$BT), not from Actions, and the token couldn't switch it. The map deploys, but the next push to master overwrites it with the repository contents (you'll see the README). $BY_HAND"
 else
-  echo "Pages je zapnuté a berie z Actions ✓ – nasadí sa mapa z tohto behu"
+  echo "Pages is on and takes Actions ✓ – this run's map deploys"
 fi

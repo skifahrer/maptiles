@@ -1,78 +1,62 @@
 #!/usr/bin/env bash
-# Vrstevnice a skalné plochy z výškových modelov → contours-out/contours.pmtiles.
+# Contours and rock areas from elevation models → contours-out/contours.pmtiles.
 #
-# Samostatný skript preto, že súbor s workflowom má strop, nad ktorým ho GitHub
-# ticho neprijme. Hodnoty z formulára a z prípravy chodia cez prostredie (viď
-# krok „Vrstevnice a skaly z DEM" v build-map-region.yml), k tomu `env:` celého
-# workflowu a prihlásenie na Drive.
+# Values from the form and the plan come through the environment (see the step
+# "Contours and rocks from the DEM"), plus the workflow's `env:` and Drive sign-in.
 
 set -euo pipefail
 sudo apt-get update -qq
 sudo apt-get install -y -qq gdal-bin libsqlite3-mod-spatialite zstd
 python3 -m pip install --quiet numpy
-# `work/` sú medzivýsledky (`clip.tif` má aj gigabajty) – zámerne mimo `dem/`,
-# ktoré ide celé do cache.
-# `slope-chunks/` je sklad častí rastra sklonu, vďaka ktorému zrušený beh
-# nezahodí hodinu čítania z Drive; preto sa ani na konci nemaže.
+# `work/` holds intermediates (gigabytes) outside the cached `dem/`; `slope-chunks/`
+# keeps slope parts so a cancelled run doesn't lose an hour of Drive reading
 SLOPE_DIR="${SLOPE_DIR:-slope-chunks}"
 mkdir -p dem data work contours-out "$SLOPE_DIR"
 
 BBOX="$REGION_BBOX"
 IFS=, read -r W S E N <<< "$BBOX"
 
-# orez na polygón kraja, nie len na bbox: za hranicou kraja je DMR 5.0 prázdne
-# a hranica dát je pre `gdaldem slope` zvislá stena, teda falošné skaly.
-# `-crop_to_cutline` sa nepoužíva – okno má ostať to isté, nech sa nemenia kľúče.
+# cut to the region polygon: the data's edge is a wall to `gdaldem slope`, false rocks
 CUT=()
 if [ -s data/region.geojson ]; then
   CUT=(-cutline data/region.geojson)
-  echo "Orez na kraj: data/region.geojson (mimo kraja bude nodata)"
+  echo "Region clip: data/region.geojson (nodata outside the region)"
 else
-  echo "::warning::Polygón kraja nie je (data/region.geojson) – počíta sa celý bbox regiónu, teda aj mimo kraj. Za hranicou Slovenska je DMR 5.0 prázdne a z hrany dát vychádzajú falošné skaly."
+  echo "::warning::No region polygon (data/region.geojson) – the whole region bbox is computed, outside the region too. Beyond Slovakia DMR 5.0 is empty and the data's edge makes false rocks."
 fi
 INTERVAL="$CONTOUR_INTERVAL"
 case "$INTERVAL" in ''|*[!0-9]*) INTERVAL=10 ;; esac
 
-# výrez vyriešila príprava (`workers/plan/area.py`), tu sa už len preberá
+# the plan resolved the cut-out (`workers/plan/area.py`)
 AREA_KEY="$AREA_KEY_IN"
 AREA_NAME="$AREA_NAME_IN"
 AREA_BBOX="$AREA_BBOX_IN"
-if [ "$AREA_KEY" != "cely" ]; then
-  # `area` je dnes `choice` a prázdna hodnota sa v ňom vybrať nedá –
-  # celý región je voľba `cely_region`
-  echo "::warning::Vrstevnice aj skaly sa počítajú LEN na výreze „$AREA_NAME“ ($AREA_BBOX, ${AREA_KM2} km²). Vo zvyšku regiónu nebude v mape ani jedno – toto je beh na testovanie, nie na nasadenie. Pre celý región zvoľ v inpute „area“ hodnotu „cely_region“."
-  # vrstevnice sa ďalej trasujú z výrezu, nie z celého regiónu
+if [ "$AREA_KEY" != "whole" ]; then
+  echo "::warning::Contours and rocks are computed ONLY on the cut-out \"$AREA_NAME\" ($AREA_BBOX, ${AREA_KM2} km²). The rest of the region gets none of them – this run is for testing, not deploying. For the whole region pick \"whole_region\" for the \"area\" input."
   IFS=, read -r W S E N <<< "$AREA_BBOX"
 fi
 
-# vrstevnice a skaly sú dva joby, ale jeden skript: obe polovice stoja na tom
-# istom výreze, DEM aj rozpočte. Čo sa počíta, hovorí `ONLY`.
-# Dva joby preto, že strop času platí na job – pomalé skaly brali so sebou aj
-# hotové vrstevnice.
+# two jobs, one script: both halves stand on the same cut-out, DEM and budget
 ONLY="${ONLY:-all}"
 case "$ONLY" in
   contours) OPT_ROCK_DEM=""; OPT_ROCKS=false ;;
   rocks)    OPT_CONTOUR_LINES=false ;;
   all)      ;;
-  *) echo "::error::ONLY musí byť 'contours', 'rocks' alebo 'all' (dostal '$ONLY')."; exit 1 ;;
+  *) echo "::error::ONLY must be 'contours', 'rocks' or 'all' (got '$ONLY')."; exit 1 ;;
 esac
-echo "Táto polovica: $ONLY"
+echo "This half: $ONLY"
 
-# sťahovanie DEM je v samostatnom skripte – potrebuje ho aj job s tieňovaním.
-# Vrstevnice a skaly majú vlastný výber zdroja, takže tu môžu byť naraz dva
-# modely; keď je zdroj ten istý, druhé volanie nesťahuje nič.
-# Dlaždicové modely sa sťahujú pre celý región (cache je pod kľúčom regiónu),
-# ÚGKK po výrezoch – pri 1 m je celý kraj mimo možností.
-
-fetch_dem() { # $1 = zdroj → DEM_VRT, DEM_GOT (čo sa NAOZAJ použilo)
+# contours and rocks have their own source choice, so two models may be here;
+# tiled models are fetched for the whole region, ÚGKK by cut-out
+fetch_dem() { # $1 = source → DEM_VRT, DEM_GOT (what was REALLY used)
   local src="$1" fbbox rc
   if [ -s "dem/$src/all.vrt" ]; then
     DEM_VRT="dem/$src/all.vrt"; DEM_GOT="$src"
-    echo "DEM $src: mozaika už je ✓"
+    echo "DEM $src: the mosaic is here ✓"
     return 0
   fi
-  # DMR 5.0 na výrez je jeden COG presne pre ten výrez
-  if [ "$src" = 'dmr5' ] && [ "$AREA_KEY_IN" != 'cely' ]; then
+  # DMR 5.0 for a cut-out is one COG for exactly that cut-out
+  if [ "$src" = 'dmr5' ] && [ "$AREA_KEY_IN" != 'whole' ]; then
     fbbox="$AREA_BBOX"
   else
     fbbox="$BBOX"
@@ -83,21 +67,20 @@ fetch_dem() { # $1 = zdroj → DEM_VRT, DEM_GOT (čo sa NAOZAJ použilo)
   rc=$?
   set -e
   if [ "$rc" -eq 3 ]; then
-    # ten model pre toto územie nemáme. Nikdy ticho: `dem-source.txt` nesie,
-    # čo sa naozaj použilo
+    # no such model for this area; never silent – `dem-source.txt` says what was used
     local how
-    if [ "$src" = 'dmr5' ] && [ "$AREA_KEY_IN" != 'cely' ]; then
-      how="workflow 'Dáta · DMR 5.0' s area: $AREA_KEY_IN"
+    if [ "$src" = 'dmr5' ] && [ "$AREA_KEY_IN" != 'whole' ]; then
+      how="workflow 'Data · DMR 5.0' with area: $AREA_KEY_IN"
     elif [ "$src" = 'dmr5' ]; then
-      how="workflow 'Dáta · DMR 5.0' s area: cele_slovensko"
+      how="workflow 'Data · DMR 5.0' with area: whole_country"
     else
-      how="workflow 'Dáta · výškové modely' so zdrojom $src"
+      how="workflow 'Data · elevation models' with source $src"
     fi
     if [ "$OPT_UGKK_FALLBACK" != 'true' ]; then
-      echo "::error::Model $src pre toto územie nie je k dispozícii a ugkk_fallback je vypnutý. Naplň ho ($how), zapni fallback, alebo vyber iný zdroj."
+      echo "::error::Model $src isn't available for this area and ugkk_fallback is off. Fill it ($how), turn the fallback on, or pick another source."
       exit 1
     fi
-    echo "::warning::Model $src pre toto územie nie je k dispozícii – počíta sa zo Sonnyho (20 m). Mapa bude, len s hrubším modelom. Doplní ho $how."
+    echo "::warning::Model $src isn't available for this area – computing from Sonny (20 m). The map will be there, with a coarser model. $how fills it."
     fetch_dem sonny
     return 0
   elif [ "$rc" -ne 0 ]; then
@@ -106,10 +89,9 @@ fetch_dem() { # $1 = zdroj → DEM_VRT, DEM_GOT (čo sa NAOZAJ použilo)
   DEM_VRT="dem/$src/all.vrt"; DEM_GOT="$src"
 }
 
-# rozmer rastra a počet buniek povedia, či ide o minúty alebo o hodinu –
-# ešte pred prvým gdalwarpom
-dem_info() { # $1 = popis, $2 = mozaika
-  echo "── Vstupný DEM: $1 ──────────────────────────────"
+# raster size and cell count tell minutes from an hour, before the first gdalwarp
+dem_info() { # $1 = label, $2 = mosaic
+  echo "── Input DEM: $1 ──────────────────────────────"
   gdalinfo "$2" 2>/dev/null \
     | grep -E "^Size is|^Pixel Size|^Upper Left|^Lower Right" || true
   python3 - "$W" "$S" "$E" "$N" "$2" <<'PY'
@@ -123,19 +105,19 @@ try:
     dx, dy = abs(gt[1]), abs(gt[5])
     cells = ((e - w) / dx) * ((n - s) / dy)
     lat = (s + n) / 2
-    print(f"  výrez        {e-w:.3f}° × {n-s:.3f}°  "
+    print(f"  cut-out      {e-w:.3f}° × {n-s:.3f}°  "
           f"(~{(e-w)*111.32*math.cos(math.radians(lat)):.0f} × "
           f"{(n-s)*110.54:.0f} km)")
-    print(f"  bunka DEM    {dx*111320*math.cos(math.radians(lat)):.0f} × "
+    print(f"  DEM cell     {dx*111320*math.cos(math.radians(lat)):.0f} × "
           f"{dy*110540:.0f} m")
-    print(f"  buniek       {cells/1e6:.1f} mil.")
+    print(f"  cells        {cells/1e6:.1f} M")
 except Exception as exc:
-    print(f"  (rozmer sa nedá zistiť: {exc})")
+    print(f"  (size unknown: {exc})")
 PY
   echo "─────────────────────────────────────────────────────"
 }
 
-# `opt_rock_dem` je prázdny, keď skaly idú z tieňovania alebo sú vypnuté
+# `opt_rock_dem` is empty when rocks come from hillshading or are off
 CONTOUR_SRC="$OPT_CONTOUR_SOURCE"
 ROCK_DEM="$OPT_ROCK_DEM"
 CONTOUR_VRT=""; CONTOUR_DEM=""
@@ -144,64 +126,52 @@ ROCK_VRT=""; ROCK_DEM_USED=""
 if [ "$OPT_CONTOUR_LINES" = 'true' ]; then
   fetch_dem "$CONTOUR_SRC"
   CONTOUR_VRT="$DEM_VRT"; CONTOUR_DEM="$DEM_GOT"
-  dem_info "vrstevnice ($CONTOUR_DEM)" "$CONTOUR_VRT"
+  dem_info "contours ($CONTOUR_DEM)" "$CONTOUR_VRT"
 fi
 if [ -n "$ROCK_DEM" ]; then
-  # DMR 5.0 sa na skaly nesťahuje vcelku: sklon si ho číta z Drive po častiach
-  # a každú si odloží do skladu. Celý COG by znamenal prejsť dáta dvakrát.
+  # DMR 5.0 isn't downloaded whole for rocks: the slope reads it from Drive in chunks
   if [ "$ROCK_DEM" = 'dmr5' ]; then
     ROCK_VRT=""; ROCK_DEM_USED=dmr5
-    echo "DEM skaly (dmr5): číta sa z Drive po častiach, nesťahuje sa vcelku"
+    echo "Rock DEM (dmr5): read from Drive in chunks, not downloaded whole"
   else
     fetch_dem "$ROCK_DEM"
     ROCK_VRT="$DEM_VRT"; ROCK_DEM_USED="$DEM_GOT"
     [ "$ROCK_VRT" = "$CONTOUR_VRT" ] \
-      || dem_info "skaly ($ROCK_DEM_USED)" "$ROCK_VRT"
+      || dem_info "rocks ($ROCK_DEM_USED)" "$ROCK_VRT"
   fi
 fi
 
-# zjemnenie DEM pred trasovaním; default 0 = len orez na bbox
 T_CONT=$(date +%s)
 
-make_empty_gpkg() { # $1 = súbor, $2 = vrstva, $3 = typ geometrie
-  # schéma odkazuje na obe vrstvy vždy, takže súbor musí existovať aj vtedy,
-  # keď je vrstva vypnutá
+make_empty_gpkg() { # $1 = file, $2 = layer, $3 = geometry type
+  # the schema always refers to both layers, so the file must exist when a layer is off
   echo '{"type":"FeatureCollection","features":[]}' > work/empty.geojson
   ogr2ogr -f GPKG "$1" work/empty.geojson -nln "$2" -overwrite \
     -nlt "$3" -a_srs EPSG:4326 -lco GEOMETRY_NAME=geom
 }
 
 if [ "$OPT_CONTOUR_LINES" != 'true' ]; then
-  echo "Vrstevnice: vypnuté (contour_source: ziadne) – prázdna vrstva."
+  echo "Contours: off (contour_source: none) – empty layer."
   make_empty_gpkg data/contours.gpkg contours LINESTRING
 else
   SMOOTH="$OPT_CONTOUR_SMOOTHING"
   case "$SMOOTH" in ''|*[!0-9.]*) SMOOTH=0 ;; esac
   if [ "${SMOOTH%%.*}" -gt 0 ] 2>/dev/null; then
     RES=$(python3 -c "print(f'{$SMOOTH / 3600:.8f}')")
-    echo "Zjemnenie DEM: ${SMOOTH}″ (mriežka $RES°)"
-    python3 workers/lib/watch.py --label="orez DEM" --watch-file=work/clip.tif \
+    echo "DEM coarsening: ${SMOOTH}″ (grid $RES°)"
+    python3 workers/lib/watch.py --label="DEM clip" --watch-file=work/clip.tif \
       -- gdalwarp -overwrite -te "$W" "$S" "$E" "$N" "${CUT[@]}" \
          -tr "$RES" "$RES" -r average "$CONTOUR_VRT" work/clip.tif
   else
-    echo "Zjemnenie DEM: vypnuté – vrstevnice sa trasujú z plného rozlíšenia."
-    python3 workers/lib/watch.py --label="orez DEM" --watch-file=work/clip.tif \
+    echo "DEM coarsening: off – contours are traced at full resolution."
+    python3 workers/lib/watch.py --label="DEM clip" --watch-file=work/clip.tif \
       -- gdalwarp -overwrite -te "$W" "$S" "$E" "$N" "${CUT[@]}" \
          "$CONTOUR_VRT" work/clip.tif
   fi
 
-  # ---------- vyhladenie samotného DEM ----------
-  # Toto zubatosť naozaj odstráni: `gdal_contour` interpoluje priesečník na
-  # hrane bunky, takže z hladkého poľa výšok vyjde hladká čiara aj bez úprav.
-  # Čo ju krčí, je mikroreliéf v LiDARovom DTM.
-  #
-  # Okno ale nesmie byť veľké – nie je v ňom len šum: rebro či terasa široká
-  # pár metrov je tvar, ktorý v teréne naozaj je (5×5 nechalo z 12 m tvaru 27 %,
-  # 3×3 nechá 63 %). Zadáva sa v metroch, nie v bunkách, preto sa smie zapnúť
-  # predvolene: na hrubom modeli vyjde jedna bunka a nehladí sa nič. `0` to vypne.
-  #
-  # Priemer robia dva gdalwarpy (zmenšenie `average`, zväčšenie `cubicspline`) –
-  # lacnejšie a pamäťovo bezpečnejšie než gigabajtový raster cez numpy.
+  # smoothing the DEM itself removes the jaggedness: LiDAR micro-relief crinkles the line.
+  # The window is in metres (a coarse model gets one cell, nothing), `0` turns it off;
+  # a mean by two gdalwarps is cheaper and safer than a gigabyte raster in numpy.
   CONTOUR_RASTER=work/clip.tif
   LOWPASS_M="${CONTOUR_DEM_LOWPASS:-2}"
   case "$LOWPASS_M" in ''|*[!0-9.]*) LOWPASS_M=2 ;; esac
@@ -214,9 +184,8 @@ info = json.loads(subprocess.run(["gdalinfo", "-json", "work/clip.tif"],
                                  check=True).stdout)
 gt = info["geoTransform"]
 cell_deg = min(abs(gt[1]), abs(gt[5]))
-cell_m = cell_deg * 110540          # stupeň po šírke, viď nižšie pri tolerancii
-# okno musí byť nepárny násobok bunky (`2r+1`); r = 0 znamená, že model je na
-# mikroreliéf privhrubý
+cell_m = cell_deg * 110540          # a degree of latitude, as for the tolerance below
+# an odd multiple of the cell (`2r+1`); r = 0 means the model is too coarse for micro-relief
 r = int(round(want_m / cell_m / 2)) if cell_m > 0 else 0
 print(f"{2 * r + 1} {cell_deg:.10f} {cell_m:.2f}")
 PY
@@ -224,74 +193,60 @@ PY
   LP_RC=$?
   set -e
   if [ "$LP_RC" -ne 0 ] || [ -z "$LP_OUT" ]; then
-    echo "::warning::Veľkosť okna na vyhladenie DEM sa nedá spočítať – vrstevnice sa trasujú z nevyhladeného modelu."
+    echo "::warning::The DEM smoothing window can't be computed – contours are traced from the unsmoothed model."
   else
     read -r LP_WIN LP_CELL_DEG LP_CELL_M <<< "$LP_OUT"
     if [ "$LP_WIN" -le 1 ]; then
-      echo "Vyhladenie DEM: vypnuté – bunka modelu má ${LP_CELL_M} m, čo je viac než okno ${LOWPASS_M} m (mikroreliéf v ňom nie je)."
+      echo "DEM smoothing: off – the model cell is ${LP_CELL_M} m, more than the ${LOWPASS_M} m window (no micro-relief in it)."
     else
       LP_COARSE=$(python3 -c "print(f'{$LP_CELL_DEG * $LP_WIN:.10f}')")
-      echo "Vyhladenie DEM: okno ${LP_WIN}×${LP_WIN} buniek (~$(python3 -c "print(f'{$LP_CELL_M * $LP_WIN:.1f}')") m) – priemer, potom späť na pôvodnú mriežku"
-      python3 workers/lib/watch.py --label="vyhladenie DEM (priemer)" \
+      echo "DEM smoothing: a ${LP_WIN}×${LP_WIN} cell window (~$(python3 -c "print(f'{$LP_CELL_M * $LP_WIN:.1f}')") m) – mean, then back to the original grid"
+      python3 workers/lib/watch.py --label="DEM smoothing (mean)" \
         --watch-file=work/lp.tif \
         -- gdalwarp -overwrite -r average -tr "$LP_COARSE" "$LP_COARSE" \
            work/clip.tif work/lp.tif
-      python3 workers/lib/watch.py --label="vyhladenie DEM (späť na mriežku)" \
+      python3 workers/lib/watch.py --label="DEM smoothing (back to the grid)" \
         --watch-file=work/clip-smooth.tif \
         -- gdalwarp -overwrite -r cubicspline -te "$W" "$S" "$E" "$N" \
            -tr "$LP_CELL_DEG" "$LP_CELL_DEG" work/lp.tif work/clip-smooth.tif
       rm -f work/lp.tif
       CONTOUR_RASTER=work/clip-smooth.tif
-      # pôvodný orez má aj gigabajty – na disku runnera je to rozdiel medzi
-      # „prejde" a „no space left on device"
+      # the original clip has gigabytes – the difference to "no space left on device"
       rm -f work/clip.tif
     fi
   fi
 
-  # cez watch.py: gdal_contour nad krajom beží desiatky minút a doteraz pri tom
-  # nepovedal ani slovo
-  python3 workers/lib/watch.py --label="vrstevnice" --watch-file=work/raw.gpkg \
+  # through watch.py: gdal_contour over a region runs tens of minutes in silence
+  python3 workers/lib/watch.py --label="contours" --watch-file=work/raw.gpkg \
     -- gdal_contour -a ele -i "$INTERVAL" -f GPKG -nln contours \
        "$CONTOUR_RASTER" work/raw.gpkg
 
-  # `level` rozdelí vrstevnice na hlavné/polovičné/základné. Hranice sa počítajú
-  # z intervalu, nie natvrdo zo 100/50 – zvýrazňuje sa každá desiata a piata.
+  # `level` from the interval: every tenth is major, every fifth mid
   MAJOR=$(( INTERVAL * 10 ))
   MID=$(( INTERVAL * 5 ))
-  echo "Vrstevnice: interval ${INTERVAL} m z modelu $CONTOUR_DEM, zvýraznená každá ${MAJOR} m (major) a ${MID} m (mid)"
+  echo "Contours: ${INTERVAL} m interval from model $CONTOUR_DEM, every ${MAJOR} m major and ${MID} m mid"
 
-  # ---------- zjednodušenie a zaoblenie ----------
-  # Tá istá dvojica ako pri skalách: vrstevnica je izolínia nad rastrom, čiže
-  # chodí po hranách buniek a tie schodíky sú v mape vidieť.
-  # Poradie je podstatné – najprv sa zmažú schodíky, až potom sa zaoblia rohy;
-  # opačne by sa zaoblil každý schodík zvlášť.
-  # Tolerancia je v stupňoch (vrstevnice sú EPSG:4326). Záporné číslo = koľko
-  # štvrtín bunky DEM, `0` = vypnuté, kladné = metre.
-  # Štvrtina bunky, nie polovica: zjednodušenie predlžuje segmenty a zaoblenie
-  # reže rohy dlhé štvrtinu segmentu, takže dlhší segment odreže väčší kus tvaru.
+  # simplify, then round: stairs first, or each stair gets rounded on its own.
+  # Tolerance in degrees; negative = quarters of a DEM cell, `0` = off, positive = metres.
   C_SIMPLIFY="${CONTOUR_SIMPLIFY:--1}"
-  # dve čísla: tolerancia v stupňoch (do ogr2ogr) a tá istá v metroch (do logu).
-  # Prepočet je na jednom mieste.
+  # two numbers: the tolerance in degrees (for ogr2ogr) and in metres (for the log)
   set +e
   SIMPL_OUT=$(python3 - "$C_SIMPLIFY" "$CONTOUR_RASTER" <<'PY'
 import json, subprocess, sys
 want, raster = float(sys.argv[1]), sys.argv[2]
-# dlhší z dvoch stupňov – ten po šírke (110 540 m): rozhoduje o najhoršom
-# prípade v oboch smeroch prepočtu
+# the longer degree, of latitude: the worst case both ways
 m_per_deg = 110540
 if want == 0:
     deg = 0.0
 elif want > 0:
-    deg = want / m_per_deg          # zadané v metroch
+    deg = want / m_per_deg          # given in metres
 else:
-    # raster, z ktorého sa naozaj trasovalo – pri zapnutom vyhladení je to
-    # `clip-smooth.tif` a `clip.tif` už neexistuje
+    # the raster really traced – `clip.tif` is gone once smoothed
     info = json.loads(subprocess.run(
         ["gdalinfo", "-json", raster],
         capture_output=True, text=True, check=True).stdout)
     gt = info["geoTransform"]
-    # -1 = štvrtina bunky, -2 = polovica, -4 = celá. Nad polovicou sa čiara
-    # začína odliepať od terénu.
+    # -1 = a quarter cell, -2 = half, -4 = whole; over half the line leaves the terrain
     deg = min(abs(gt[1]), abs(gt[5])) * (-want) / 4
 print(f"{deg:.10f} {deg * m_per_deg:.2f}")
 PY
@@ -300,22 +255,20 @@ PY
   set -e
   SIMPL_ARGS=()
   if [ "$SIMPL_RC" -ne 0 ] || [ -z "$SIMPL_OUT" ]; then
-    # vrstevnice sú spočítané, tak sa kvôli kozmetike nezhadzuje beh – ale
-    # musí byť počuť, prečo ostali schodíkové
-    echo "::warning::Tolerancia zjednodušenia vrstevníc sa nedá spočítať – idú bez neho (schodíky po hranách buniek ostanú)."
+    # cosmetics don't fail the run, but it must say why the stairs stayed
+    echo "::warning::The contour simplification tolerance can't be computed – going without (stairs along cell edges stay)."
   else
     read -r SIMPL_DEG SIMPL_M <<< "$SIMPL_OUT"
-    # nula sa píše `0.0000000000` (formát `%.10f`) – porovnáva sa reťazec,
-    # lebo bash desatinné čísla nevie
+    # bash has no decimals, so zero is compared as the `%.10f` string
     if [ "$SIMPL_DEG" = "0.0000000000" ]; then
-      echo "Zjednodušenie vrstevníc: vypnuté (CONTOUR_SIMPLIFY=0)."
+      echo "Contour simplification: off (CONTOUR_SIMPLIFY=0)."
     else
       SIMPL_ARGS=(-simplify "$SIMPL_DEG")
-      echo "Zjednodušenie vrstevníc: ${SIMPL_DEG}° (~${SIMPL_M} m)"
+      echo "Contour simplification: ${SIMPL_DEG}° (~${SIMPL_M} m)"
     fi
   fi
 
-  python3 workers/lib/watch.py --label="triedenie vrstevníc" \
+  python3 workers/lib/watch.py --label="sorting contours" \
     --watch-file=work/level.gpkg \
     -- ogr2ogr -f GPKG work/level.gpkg work/raw.gpkg -nln contours \
     "${SIMPL_ARGS[@]}" \
@@ -325,35 +278,30 @@ PY
          ELSE 'minor' END AS level
        FROM contours WHERE ele IS NOT NULL"
 
-  # zaoblenie: rohy po zjednodušení nahradí limitná krivka (kvadratický
-  # B-spline). Chaikin sa k nej len blíži a robí to lokálne – zo 120° rohu
-  # ostane vyše 30°, čiže pravidelný zub. Číslo je dovolený priehyb tetivy
-  # v štvrtinách kroku mriežky dlaždice; `0` to vypne.
+  # rounding by the limit curve (quadratic B-spline); the number is the chord sag
+  # in quarters of the tile grid step, `0` turns it off
   C_SMOOTH="${CONTOUR_SMOOTH:-2}"
   case "$C_SMOOTH" in ''|*[!0-9]*) C_SMOOTH=2 ;; esac
   if [ "$C_SMOOTH" -gt 0 ]; then
-    echo "Zaoblenie vrstevníc: limitná krivka, priehyb ${C_SMOOTH}/4 kroku mriežky z${OPT_CONTOUR_MAXZOOM}"
+    echo "Contour rounding: limit curve, sag ${C_SMOOTH}/4 of the z${OPT_CONTOUR_MAXZOOM} grid step"
     if ! python3 workers/contours-rocks/smooth-shapes.py --in=work/level.gpkg \
            --out=data/contours.gpkg --layer=contours \
            --maxzoom="$OPT_CONTOUR_MAXZOOM" --sag="$C_SMOOTH"; then
-      # zaoblenie je kozmetika nad hotovými vrstevnicami; keby zhodilo beh,
-      # prišli by sme o spočítané. Ale musí to byť počuť.
-      echo "::warning::Zaoblenie vrstevníc zlyhalo – idú zubaté, tak ako predtým."
+      # cosmetics over finished contours mustn't lose them, but it must be heard
+      echo "::warning::Contour rounding failed – they go jagged, as before."
       cp work/level.gpkg data/contours.gpkg
     fi
   else
-    echo "Zaoblenie vrstevníc: vypnuté (contour_smooth=0)."
+    echo "Contour rounding: off (contour_smooth=0)."
     cp work/level.gpkg data/contours.gpkg
   fi
   ls -lh data/contours.gpkg
-  printf '%s\t%s\t%s\t%s\n' "30" "Vrstevnice (gdal_contour)" "$(( $(date +%s) - T_CONT ))" \
-    "interval ${INTERVAL} m z $CONTOUR_DEM, $(du -h data/contours.gpkg | cut -f1)" \
+  printf '%s\t%s\t%s\t%s\n' "30" "Contours (gdal_contour)" "$(( $(date +%s) - T_CONT ))" \
+    "${INTERVAL} m interval from $CONTOUR_DEM, $(du -h data/contours.gpkg | cut -f1)" \
     >> steps-out/contours.tsv
 fi
 
-# druhá polovica výpočtu je vo `workers/contours-rocks/rocks.sh` – tento súbor
-# prerástol 800 riadkov. Číta sa cez `.`, nie ako vlastný proces: obe polovice
-# si podávajú premenné (`ROCK_SLOPE`, `ROCK_DEM_USED`, `RR`).
+# the second half is sourced, not run: both halves share variables (`ROCK_SLOPE`, `ROCK_DEM_USED`, `RR`)
 # shellcheck source=workers/contours-rocks/rocks.sh
 . workers/contours-rocks/rocks.sh
 
@@ -361,59 +309,48 @@ CZ="$OPT_CONTOUR_MAXZOOM"
 case "$CZ" in ''|*[!0-9]*) CZ=14 ;; esac
 if [ "$CZ" -gt 16 ]; then CZ=16; fi
 
-# skaly majú vlastný .pmtiles a vlastný maxzoom: vrstevnice sú čiary cez celý
-# kraj a rozpočet minú okolo z14, skaly sú plochy len tam, kde je terén strmý,
-# takže sa do z16 zmestia. 16 je tvrdý strop Planetilera, vyššie rieši overzoom.
+# rocks have their own .pmtiles and maxzoom: areas only where steep fit up to z16,
+# Planetiler's hard cap; overzoom does the rest
 RZ="$OPT_ROCK_MAXZOOM"
 case "$RZ" in ''|*[!0-9]*) RZ=16 ;; esac
 if [ "$RZ" -gt 16 ]; then RZ=16; fi
 
-# vrstevnice, skaly a mapa si delia rozpočet stránky; prepočet z hotového GPKG
-# je lacný
+# contours, rocks and the map share the site budget
 LIMIT_MB="$OPT_SIZE_LIMIT_MB"
 case "$LIMIT_MB" in ''|*[!0-9]*) LIMIT_MB=900 ;; esac
 CBUDGET_MB=$(( LIMIT_MB * BUDGET_CONTOURS_PCT / 100 ))
 RBUDGET_MB=$(( LIMIT_MB * BUDGET_ROCKS_PCT / 100 ))
 
-# hľadanie zoomu, ktorý sa zmestí do rozpočtu, je vo vlastnom súbore.
-# Funkcia po sebe nechá `PM_Z` (použitý zoom) a `PM_MB` – návratová hodnota by
-# sa miešala s výstupom Planetilera.
+# leaves `PM_Z` (zoom used) and `PM_MB` behind
 . workers/lib/pmtiles-budget.sh
 
 T_PM=$(date +%s)
-# balí sa len tá polovica, ktorú tento job počítal; prázdny `.pmtiles` by
-# v deploy prepísal ten skutočný z druhého jobu
+# only this job's half: an empty `.pmtiles` would overwrite the other job's in deploy
 if [ "$ONLY" != 'rocks' ]; then
-  # ôsmy parameter je strop zoomu, po ktorý sa smie ísť hore, keď v rozpočte
-  # ostane miesto – `contour_maxzoom` je teda želanie aj dno
-  pmtiles_do_rozpoctu workers/contours-rocks/contours.yml contours-out/contours.pmtiles \
-    "$CZ" "$CBUDGET_MB" 10 "Vrstevnice" \
-    "zvýš contour_interval (napr. 20 m) alebo ich pre toto územie vypni." 16
+  # the eighth argument caps how high it may go with room left: `contour_maxzoom` is a wish and a floor
+  pmtiles_in_budget workers/contours-rocks/contours.yml contours-out/contours.pmtiles \
+    "$CZ" "$CBUDGET_MB" 10 "Contours" \
+    "raise contour_interval (e.g. 20 m) or turn them off for this area." 16
   CZ="$PM_Z"
 fi
 
 if [ "$ONLY" != 'contours' ]; then
-  # skaly majú `rock_maxzoom` predvolene 16 (strop Planetilera)
-  pmtiles_do_rozpoctu workers/contours-rocks/rocks.yml contours-out/rocks.pmtiles \
-    "$RZ" "$RBUDGET_MB" 12 "Skaly" \
-    "zvýš rock_min_area alebo zmenši výrez."
+  pmtiles_in_budget workers/contours-rocks/rocks.yml contours-out/rocks.pmtiles \
+    "$RZ" "$RBUDGET_MB" 12 "Rocks" \
+    "raise rock_min_area or shrink the cut-out."
   RZ="$PM_Z"
   echo "$RZ" > contours-out/rock-maxzoom.txt
 fi
 
-# skutočne použitý maxzoom, zdroj výšok (do atribúcie) a prah sklonu (do
-# manifestu) si odloží aj cache
+# the cache keeps the maxzoom used, the height source (attribution) and slope threshold (manifest)
 echo "$CZ" > contours-out/maxzoom.txt
-# do atribúcie ide model, z ktorého sú vrstevnice; keď sú vypnuté, ten zo skál.
-# Dva riadky namiesto vnorenej expanzie: tá končí dvomi zloženými zátvorkami
-# za sebou a GitHub taký súbor neprijme.
+# attribution: the contours' model, the rocks' when contours are off
 DEM_FOR_STYLE="$CONTOUR_DEM"
 [ -n "$DEM_FOR_STYLE" ] || DEM_FOR_STYLE="$ROCK_DEM_USED"
 echo "$DEM_FOR_STYLE" > contours-out/dem-source.txt
-# prah sklonu má zmysel len pri skalách z DEM; pri `tienovanie` ide do
-# manifestu `off` a namiesto neho zdroj skál
+# the slope threshold means something only for rocks from a DEM
 if [ "$OPT_ROCKS" = 'true' ] \
-   && [ "$OPT_ROCK_SOURCE" != 'tienovanie' ]; then
+   && [ "$OPT_ROCK_SOURCE" != 'shading' ]; then
   echo "$ROCK_SLOPE" > contours-out/rock-slope.txt
 else
   echo "off" > contours-out/rock-slope.txt
@@ -424,15 +361,14 @@ else
   echo "off" > contours-out/rock-source.txt
 fi
 ls -lh contours-out/
-# do merania ide len tá polovica, ktorú tento job počítal – inak by súhrn
-# hlásil vrstvu, ktorá v tom jobe vôbec nebežala
-MERANIE=""
+# measured: only this job's half, or the summary reports a layer that didn't run
+MEASURE=""
 if [ "$ONLY" != 'rocks' ]; then
-  MERANIE="vrstevnice z$CZ ($(du -h contours-out/contours.pmtiles | cut -f1))"
+  MEASURE="contours z$CZ ($(du -h contours-out/contours.pmtiles | cut -f1))"
 fi
 if [ "$ONLY" != 'contours' ]; then
-  [ -n "$MERANIE" ] && MERANIE="$MERANIE, "
-  MERANIE="${MERANIE}skaly z$RZ ($(du -h contours-out/rocks.pmtiles | cut -f1))"
+  [ -n "$MEASURE" ] && MEASURE="$MEASURE, "
+  MEASURE="${MEASURE}rocks z$RZ ($(du -h contours-out/rocks.pmtiles | cut -f1))"
 fi
-printf '%s\t%s\t%s\t%s\n' "50" "Vrstevnice a skaly → PMTiles" "$(( $(date +%s) - T_PM ))" \
-  "$MERANIE" >> steps-out/contours.tsv
+printf '%s\t%s\t%s\t%s\n' "50" "Contours and rocks → PMTiles" "$(( $(date +%s) - T_PM ))" \
+  "$MEASURE" >> steps-out/contours.tsv
