@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Kontrola: každý sklad, ktorý si pipeline pýta, je v zozname známych skladov.
+"""Every store the pipeline asks for is in the list of known stores.
 
-„Ktoré sklady existujú" si hovoria tri miesta: `drive/store.py` (`KNOWN`),
-`data/dem-sources.json` a `env:` vo workflowoch. Keď sa rozídu, padá to až po
-práci – `dem-sonny1` v `KNOWN` chýbal, doplnenie stiahlo 12 dlaždíc,
-prevzorkovalo ich a spadlo na nahratí; za ním spadli štyri joby.
+Three places say which stores exist: `drive/store.py` (`KNOWN`),
+`data/dem-sources.json` and workflow `env:`. When they drift it fails only after
+the work – on upload.
 """
 import glob
 import json
@@ -16,49 +15,45 @@ SOURCES = "workers/data/dem-sources.json"
 
 bad = []
 
-# KNOWN sa číta zo zdrojáku regulárnym výrazom a nie importom: `store.py` si pri
-# načítaní vyrobí prihlásenie na Drive a stiahne pol sveta modulov, čo kontrola
-# pri pushi nepotrebuje.
+# regex, not import: importing `store.py` signs in to Drive and pulls many modules
 text = open(STORE_PY, encoding="utf-8").read()
-blok = re.search(r"^KNOWN = \{(.*?)^\}", text, re.S | re.M)
-if not blok:
-    print(f"::error::V {STORE_PY} sa nedá nájsť `KNOWN = {{…}}` – kontrola "
-          f"skladov nemá čo porovnávať. Keď sa ten zoznam presunul, uprav aj "
-          f"`workers/lint/stores.py`.")
+block = re.search(r"^KNOWN = \{(.*?)^\}", text, re.S | re.M)
+if not block:
+    print(f"::error::`KNOWN = {{…}}` can't be found in {STORE_PY} – the store check "
+          f"has nothing to compare. If that list moved, update "
+          f"`workers/lint/stores.py` too.")
     sys.exit(1)
-known = set(re.findall(r'"([^"]+)"\s*:', blok.group(1)))
-print(f"{STORE_PY}: pozná {len(known)} skladov")
+known = set(re.findall(r'"([^"]+)"\s*:', block.group(1)))
+print(f"{STORE_PY}: knows {len(known)} stores")
 
-# 1. Zdroje výšok: `store` (dlaždice) aj `store_area` (výrez v plnom rozlíšení).
-zdroje = json.load(open(SOURCES, encoding="utf-8"))
-for key, meta in zdroje.items():
+# 1. elevation sources: `store` (tiles) and `store_area` (full-resolution cutout)
+sources = json.load(open(SOURCES, encoding="utf-8"))
+for key, meta in sources.items():
     if key.startswith("_") or not isinstance(meta, dict):
         continue
-    for pole in ("store", "store_area"):
-        sklad = meta.get(pole)
-        if sklad and sklad not in known:
-            bad.append(f"{SOURCES}: zdroj `{key}` chce sklad `{sklad}` "
-                       f"({pole}), ktorý v KNOWN vo {STORE_PY} nie je. Doplň ho "
-                       f"tam – inak beh spadne až pri nahrávaní, keď je práca "
-                       f"hotová (beh 31533988137).")
+    for field in ("store", "store_area"):
+        store = meta.get(field)
+        if store and store not in known:
+            bad.append(f"{SOURCES}: source `{key}` wants store `{store}` "
+                       f"({field}), which KNOWN in {STORE_PY} lacks. Add it "
+                       f"there – otherwise the run fails only on upload, when the "
+                       f"work is done.")
 
-# 2. `env:` vo workflowoch: `…_STORE: dem-…`. Berie sa hodnota, nie meno
-# premennej – práve tá ide do `--store=`.
+# 2. workflow `env:` `…_STORE: dem-…`; the value is what goes to `--store=`
 for path in sorted(glob.glob(".github/workflows/*.yml")):
-    for premenna, hodnota in re.findall(r"^\s*([A-Z0-9_]*STORE):\s*(\S+)\s*$",
+    for var, value in re.findall(r"^\s*([A-Z0-9_]*STORE):\s*(\S+)\s*$",
                                         open(path, encoding="utf-8").read(),
                                         re.M):
-        hodnota = hodnota.strip("'\"")
-        # Premenná, ktorá nesie priečinok Drive alebo výraz `${{ … }}`, nie je
-        # meno skladu – tá sa kontrolovať nedá a ani nemá.
-        if hodnota.startswith("${{") or "/" in hodnota:
+        value = value.strip("'\"")
+        # a Drive folder or a `${{ … }}` expression isn't a store name
+        if value.startswith("${{") or "/" in value:
             continue
-        if hodnota not in known:
-            bad.append(f"{path}: `{premenna}: {hodnota}` – taký sklad "
-                       f"{STORE_PY} nepozná. Buď je v mene preklep, alebo ho "
-                       f"treba dopísať do KNOWN.")
+        if value not in known:
+            bad.append(f"{path}: `{var}: {value}` – {STORE_PY} knows no such "
+                       f"store. Either the name has a typo, or it must be added "
+                       f"to KNOWN.")
 
 for b in bad:
     print(f"::error::{b}")
-print(f"sklady: {len(bad)} chýb")
+print(f"stores: {len(bad)} errors")
 sys.exit(1 if bad else 0)

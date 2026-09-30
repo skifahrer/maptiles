@@ -1,26 +1,21 @@
 #!/usr/bin/env python3
-"""Kontrola: token vlastníka Drive sa dostane všade, kde sa z Drive číta.
+"""The Drive owner's token reaches every place that reads from Drive.
 
-Z Drive sa číta na štyroch miestach a leží na ňom aj cache buildu. Keď token
-na jedno miesto nepríde, nič nespadne – len sa číta verejným odkazom s denným
-limitom alebo sa cache nenájde a build počíta hodiny odznova.
-
-Kontroluje sa z oboch strán: či volajúci podáva `secrets: inherit` a či to
-volaný deklaruje (`workflow_call` nededí nič sám). `DRIVE_CLIENT` medzi
-secrets nie je – `client_id` nie je tajný údaj, je to repository variable.
+When the token misses one place nothing fails – it just reads through a public
+link with a daily quota, or the cache isn't found and the build recomputes for
+hours. Checked from both sides: the caller passes `secrets: inherit` and the
+callee declares it. `DRIVE_CLIENT` is a repository variable, not a secret.
 """
 import glob, re, sys, yaml
 
-# prihlásenie sa dá podať v jednom secrete alebo po kusoch; nekompletná
-# skupina sa nesmie brať ako „veď tam niečo je" – drive-auth.py na polovici
-# údajov spadne až v tom trojhodinovom behu
+# sign-in comes as one secret or in parts; a partial group fails only hours into a run
 BLOB = "GDRIVE_CREDENTIALS"
 GROUPS = (("GDRIVE_CLIENT_ID", "GDRIVE_CLIENT_SECRET",
            "GDRIVE_REFRESH_TOKEN"),
           ("DRIVE_SECRET", "DRIVE_REFRESH"))
 
 def authed(names):
-    """Dá sa z týchto premenných prihlásiť?"""
+    """Can these variables sign in?"""
     return (BLOB in names
             or any(all(k in names for k in g) for g in GROUPS))
 
@@ -28,14 +23,11 @@ def why_not(names):
     for g in GROUPS:
         have = [k for k in g if k in names]
         if have:
-            return (f"z {'/'.join(g)} tam je len "
-                    f"{', '.join(have)} – prihlásenie s polovicou "
-                    f"údajov `drive-auth.py` odmieta")
-    return f"chýba {BLOB} alebo {'/'.join(GROUPS[1])}"
+            return (f"of {'/'.join(g)} only {', '.join(have)} is there – "
+                    f"`drive-auth.py` refuses half a sign-in")
+    return f"{BLOB} or {'/'.join(GROUPS[1])} is missing"
 
-# volanie sa hľadá na začiatku riadku v `run:`: tie isté mená spomínajú ako
-# dáta aj iné kontroly. Interpret je nepovinný (`run: workers/dem/check.sh`),
-# pred cestou smú stáť len shellové kľúčové slová a operátory.
+# a call at a `run:` line start (other lints name the same files as data)
 CMD = re.compile(r"^\s*(?:(?:if|elif|then|else|do|!|&&|\|\|)\s+)*"
                  r"(?:\w+=\$\()?(?:(?:python3?|bash|sh)\s+)?"
                  r"(?:\./)?[\w./-]*"
@@ -44,9 +36,9 @@ CMD = re.compile(r"^\s*(?:(?:if|elif|then|else|do|!|&&|\|\|)\s+)*"
                  r"|drive-folder|drive-cache|drive-store"
                  r"|publish-map|publish-results)"
                  r"\.(?:py|sh)\b", re.M)
-# cache leží na Drive, takže každý krok s ňou sa musí vedieť prihlásiť
+# the cache lives on Drive, so every step using it must sign in
 CACHE = "./.github/actions/cache-"
-# workflowy, ktoré samy z Drive čítajú – volajúci im prihlásenie musí podať
+# workflows that read Drive themselves – callers must pass them the sign-in
 CALLED = ("./.github/workflows/dmr5-drive" + ".yml",
           "./.github/workflows/update-dem" + ".yml",
           "./.github/workflows/shading-rocks" + ".yml")
@@ -57,16 +49,16 @@ for path in sorted(glob.glob(".github/workflows/*.yml")):
     top = d.get("env") or {}
     for name, job in (d.get("jobs") or {}).items():
         job = job or {}
-        # volaný si secret vyzdvihne sám, ale volajúci mu ho musí podať
+        # the callee picks the secret up, but the caller must pass it
         if job.get("uses") in CALLED:
             called = job["uses"].rsplit("/", 1)[1]
             sec = job.get("secrets")
             if not (sec == "inherit"
                     or (isinstance(sec, dict) and authed(sec))):
-                print(f"::error file={path}::job '{name}' volá "
-                      f"{called} bez `secrets: inherit`, takže "
-                      f"doplnenie by z Drive čítalo verejným odkazom "
-                      f"s denným limitom.")
+                print(f"::error file={path}::job '{name}' calls "
+                      f"{called} without `secrets: inherit`, so the "
+                      f"refill would read Drive through a public link "
+                      f"with a daily quota.")
                 bad += 1
             continue
         jenv = job.get("env") or {}
@@ -78,29 +70,29 @@ for path in sorted(glob.glob(".github/workflows/*.yml")):
             names = set(top) | set(jenv) | set(step.get("env") or {})
             if authed(names):
                 continue
-            print(f"::error file={path}::krok "
-                  f"'{step.get('name', '?')}' v jobe '{name}' "
-                  + ("pracuje s cache na Drive" if cache else
-                     "číta z Drive")
-                  + f", ale prihlásiť sa z toho nedá: "
+            print(f"::error file={path}::step "
+                  f"'{step.get('name', '?')}' in job '{name}' "
+                  + ("uses the Drive cache" if cache else
+                     "reads from Drive")
+                  + f", but can't sign in: "
                   f"{why_not(names)}. "
-                  + ("Cache by sa nenašla ani neuložila a build by "
-                     "počítal všetko odznova"
+                  + ("The cache would be neither found nor saved and the "
+                     "build would recompute everything"
                      if cache else
-                     "Bežal by na verejnom dennom limite")
-                  + " – doplň to do `env:` toho kroku, jobu alebo "
-                    "celého workflowu.")
+                     "It would run on the public daily quota")
+                  + " – add it to the `env:` of that step, job or the "
+                    "whole workflow.")
             bad += 1
 
-# a druhá strana: volaný workflow to musí prijať
+# and the other side: the called workflow must accept it
 for called in CALLED:
     d = yaml.safe_load(open(called[2:]))
     on = d[[k for k in d if k is True or k == "on"][0]]
     decl = (on.get("workflow_call") or {}).get("secrets") or {}
     if not authed(decl):
         print(f"::error file={called[2:]}::`workflow_call` "
-              f"nedeklaruje prihlásenie na Drive ({why_not(decl)}), "
-              f"takže mu ho volajúci nemá ako podať.")
+              f"declares no Drive sign-in ({why_not(decl)}), "
+              f"so callers have no way to pass it.")
         bad += 1
-print(f"prihlásenie na Drive: {bad} chýb")
+print(f"Drive sign-in: {bad} errors")
 sys.exit(1 if bad else 0)

@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
-"""Kontrola: skript vo `workers/` dostáva env, ktoré naozaj číta.
+"""A script in `workers/` gets the env it really reads.
 
-Keď sa veľký `run:` blok stiahne do skriptu, stane sa jedno z dvoch:
-`${{ výraz }}` sa zmení na `$PREMENNÚ` a tá sa zabudne dopísať do `env:`
-(skript beží s prázdnym reťazcom a nespadne), alebo sa premenuje `id` kroku,
-na ktorý sa odkazujú výstupy jobu (job ticho vráti prázdno).
-
-Čo si skript nastaví sám a `${VAR:-default}` sa neráta. Sourcovaný
-`workers/*.sh` sa prečíta tiež.
+When a big `run:` block moves into a script, either a `${{ expression }}` turns
+into `$VARIABLE` that's never added to `env:` (the script runs with an empty
+string and doesn't fail), or a step `id` the job outputs point at is renamed
+(the job quietly returns nothing). What the script sets itself and
+`${VAR:-default}` don't count; a sourced `workers/*.sh` is read too.
 """
 import glob, os, re, sys, yaml
 
-# Dáva ich GitHub alebo shell sám; `GH_TOKEN` a spol. číta nástroj
-# pod skriptom, takže sa v jeho texte nemusia objaviť.
+# given by GitHub or the shell; `GH_TOKEN` and co. are read by tools under the script
 BUILTIN = {
     "GITHUB_OUTPUT", "GITHUB_ENV", "GITHUB_PATH", "GITHUB_STEP_SUMMARY",
     "GITHUB_WORKSPACE", "GITHUB_REPOSITORY", "GITHUB_REF", "GITHUB_SHA",
@@ -24,12 +21,11 @@ BUILTIN = {
     "GDRIVE_CREDENTIALS", "DRIVE_CLIENT", "DRIVE_SECRET", "DRIVE_REFRESH",
 }
 
-def bez_komentarov(s):
+def no_comments(s):
     return "\n".join(l for l in s.split("\n") if not re.match(r"^\s*#", l))
 
-def bez_apostrofov(s):
-    """`'…'` preč – bash v nich nič nerozvíja, takže `$r` z jq programu
-    (`jq --arg r … '.[$r].name'`) nie je premenná prostredia."""
+def no_single_quotes(s):
+    """Drop `'…'` – bash expands nothing there, so a jq `$r` isn't an env variable."""
     out, i, in_d = [], 0, False
     while i < len(s):
         c = s[i]
@@ -45,9 +41,9 @@ def bez_apostrofov(s):
         out.append(c); i += 1
     return "".join(out)
 
-def nastavene(s):
-    """Čo si skript nastaví sám (vrátane `local a b c` a `mapfile`)."""
-    s = bez_komentarov(s)
+def assigned(s):
+    """What a script sets itself (`local a b c` and `mapfile` included)."""
+    s = no_comments(s)
     out = set(re.findall(
         r"(?:^|[;&|(]|\bexport\s+|\blocal\s+|\bdeclare\s+-\w+\s+)"
         r"\s*([A-Za-z_][A-Za-z0-9_]*)=", s, re.M))
@@ -59,37 +55,29 @@ def nastavene(s):
     for m in re.findall(r"^\s*(?:local|declare|typeset)\s+(.+)$", s, re.M):
         for tok in m.split():
             out.add(re.split(r"=", tok)[0])
-    # `source workers/x.sh` – ten súbor vieme prečítať, tak sa doňho pozrieme.
-    # Bez toho by kontrola hlásila premennú, ktorú nastavuje sourcovaný skript
-    # (`PM_Z` z `pmtiles-budget.sh`), ako chýbajúcu z prostredia.
-    for cesta in re.findall(r"^\s*(?:source|\.)\s+(workers/[\w./-]+\.sh)",
+    # `source workers/x.sh` is readable, so its assignments count too
+    for path in re.findall(r"^\s*(?:source|\.)\s+(workers/[\w./-]+\.sh)",
                             s, re.M):
-        if os.path.exists(cesta):
-            out |= nastavene(open(cesta).read())
-    # Čokoľvek iné sourcované sa staticky zistiť nedá.
+        if os.path.exists(path):
+            out |= assigned(open(path).read())
+    # anything else sourced can't be known statically
     if re.search(r"^\s*(?:source|\.)\s+(?!workers/[\w./-]+\.sh\s*$)\S",
                  s, re.M):
         out.add("__SOURCED__")
     return {v for v in out if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", v)}
 
-def citane(s):
-    """Čo skript číta a musí mu to niekto dať. `${VAR:-x}` sa neráta –
-    na ten prípad má predvolenú hodnotu."""
-    s = bez_apostrofov(bez_komentarov(s))
-    volitelne = set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::?[-=+])", s))
+def read_vars(s):
+    """What a script reads and someone must give it; `${VAR:-x}` has a default."""
+    s = no_single_quotes(no_comments(s))
+    optional = set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::?[-=+])", s))
     out = set(re.findall(r"\$\{#?([A-Za-z_][A-Za-z0-9_]*)", s))
     out |= set(re.findall(r"\$([A-Za-z_][A-Za-z0-9_]*)", s))
-    # vnorený node/python si prostredie číta po svojom
+    # embedded node/python read the environment their own way
     out |= set(re.findall(r"process\.env\.([A-Za-z_][A-Za-z0-9_]*)", s))
     out |= set(re.findall(r"environ(?:\.get\(|\[)[\"']([A-Za-z_][A-Za-z0-9_]*)", s))
-    return out - volitelne
+    return out - optional
 
-# Otvárací token výrazu workflowu. Kým táto kontrola bývala heredocom
-# v `lint-workflows.yml`, musel sa SKLADAŤ – doslova napísaný by z toho YAMLu
-# spravil presne tú chybu, ktorú hľadá, a actionlint by sa naň zhodil. Odkedy
-# je to samostatný `.py`, tá pasca neplatí (kontrola `Zátvorky výrazov` čítá
-# len `run:` bloky), ale skladanie tu ostáva: hľadá sa v `workers/*.sh` a tam
-# je to ten istý druh chyby.
+# a workflow expression's opening token, assembled so this file never contains it
 OPEN = "$" + "{" * 2
 
 bad = 0
@@ -101,42 +89,42 @@ for path in sorted(glob.glob(".github/workflows/*.yml")):
             m = re.fullmatch(r"(?:bash\s+|sh\s+)?(workers/[\w./-]+\.sh)", run)
             if not m:
                 continue
-            skript = m.group(1)
-            if not os.path.exists(skript):
+            script = m.group(1)
+            if not os.path.exists(script):
                 print(f"::error file={path}::{job_name} / "
-                      f"{st.get('name')}: {skript} neexistuje")
+                      f"{st.get('name')}: {script} doesn't exist")
                 bad += 1
                 continue
-            text = open(skript).read()
+            text = open(script).read()
             if OPEN in text:
-                print(f"::error file={skript}::ostal v ňom výraz "
-                      f"workflowu ({OPEN} …) – v shelli sa "
-                      f"nevyhodnotí, skončí ako holý text")
+                print(f"::error file={script}::a workflow expression "
+                      f"({OPEN} …) is left in it – the shell doesn't "
+                      f"evaluate it, it ends up as plain text")
                 bad += 1
-            dane = (set(wf.get("env") or {}) | set(job.get("env") or {})
-                    | set(st.get("env") or {}) | nastavene(text) | BUILTIN)
-            chyba = sorted(v for v in citane(text)
-                           if v not in dane and not v.isdigit()
-                           and not ("__SOURCED__" in dane and v.islower()))
-            if chyba:
+            given = (set(wf.get("env") or {}) | set(job.get("env") or {})
+                    | set(st.get("env") or {}) | assigned(text) | BUILTIN)
+            missing = sorted(v for v in read_vars(text)
+                           if v not in given and not v.isdigit()
+                           and not ("__SOURCED__" in given and v.islower()))
+            if missing:
                 print(f"::error file={path}::{job_name} / "
-                      f"{st.get('name')} → {skript}: skript číta "
-                      f"{chyba} z prostredia, ale krok mu to nedáva. "
-                      f"Doplň to do `env:` kroku – inak beží "
-                      f"s prázdnym reťazcom a nespadne.")
+                      f"{st.get('name')} → {script}: the script reads "
+                      f"{missing} from the environment, but the step doesn't "
+                      f"give it. Add it to the step's `env:` – otherwise it "
+                      f"runs with an empty string and doesn't fail.")
                 bad += 1
 
-    # `steps.<id>.outputs` musí mať svoj krok
+    # `steps.<id>.outputs` must have its step
     for job_name, job in (wf.get("jobs") or {}).items():
         ids = {s["id"] for s in (job.get("steps") or []) if s.get("id")}
         blob = yaml.dump(job, allow_unicode=True)
         for ref in sorted(set(re.findall(
                 r"steps\.([A-Za-z0-9_-]+)\.outputs", blob))):
             if ref not in ids:
-                print(f"::error file={path}::job '{job_name}' sa "
-                      f"odkazuje na steps.{ref}.outputs, ale taký krok "
-                      f"v ňom nie je (má: {sorted(ids)}). Premenovaný "
-                      f"krok = ticho prázdny výstup jobu.")
+                print(f"::error file={path}::job '{job_name}' "
+                      f"refers to steps.{ref}.outputs, but has no such "
+                      f"step (it has: {sorted(ids)}). A renamed step = a "
+                      f"quietly empty job output.")
                 bad += 1
-print(f"skripty vo workers a ich env: {bad} chýb")
+print(f"workers scripts and their env: {bad} errors")
 sys.exit(1 if bad else 0)

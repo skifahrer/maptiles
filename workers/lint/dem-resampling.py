@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""Kontrola: resampling výškového modelu si nikto nevyberá sám.
+"""Nobody picks the elevation model resampling on their own.
 
-Odpovedá `workers/lib/cell.py` – lenže odpovedať sa dá aj tak, že sa do
-príkazu napíše `-r average`. `dmr5-cut.py` tak robil z 4 m pyramídy 5 m bunky:
-pri pomere 1,25 `average` nepriemeruje, ale každý štvrtý pixel preskočí,
-a z toho rytmu je v mape pravidelná mriežka.
+`workers/lib/cell.py` answers – but a hard-coded `-r average` answers too. At a
+1.25 ratio `average` doesn't average but skips every fourth pixel, and that
+rhythm becomes a regular grid in the map.
 
-  1. `resampling(5, 4)` nesmie byť `average` (inak by stačilo stiahnuť
-     `AVERAGE_RATIO` na 1 a mriežka sa vráti);
-  2. kto prevzorkúva model, pýta sa `lib/cell.py` – žiadny kernel natvrdo;
-  3. pyramída sa vyberá v `dmr5-cut.pyramid_level`, nie cez `-ovr AUTO`:
-     z úrovne vyplýva pomer pixel/bunka.
+  1. `resampling(5, 4)` mustn't be `average`;
+  2. whoever resamples a model asks `lib/cell.py` – no hard-coded kernel;
+  3. the pyramid is picked in `dmr5-cut.pyramid_level`, not by `-ovr AUTO`:
+     the level sets the pixel/cell ratio.
 """
 import os
 import re
@@ -21,30 +19,25 @@ _WORKERS = os.path.dirname(_HERE)
 sys.path.insert(0, os.path.join(_WORKERS, "lib"))
 import cell  # noqa: E402
 
-# Súbory, ktoré VYRÁBAJÚ výškový model (nie tie, čo z neho robia dlaždice –
-# tie stráži `workers/lint/terrain.py`). Kernel v nich musí prísť z `cell.py`.
-VYRABAJU = [
+# files that MAKE an elevation model; their kernel must come from `cell.py`
+MAKERS = [
     os.path.join("workers", "drive", "dmr5-cut.py"),
     os.path.join("workers", "drive", "dmr5-raster.py"),
     os.path.join("workers", "dem", "tiles.py"),
 ]
 
-# Kernely GDALu, ktoré sa dajú napísať natvrdo. `near` medzi nimi NIE JE:
-# pri zhodnej mriežke je to čisté posunutie o zlomok pixela, teda jediná
-# voľba, ktorá nefiltruje vôbec – a `dem/tiles.py` ju tak aj používa.
-KERNELY = ("average", "bilinear", "cubic", "cubicspline", "lanczos", "mode")
+# hard-codable GDAL kernels; not `near`, the one that doesn't filter at all
+KERNELS = ("average", "bilinear", "cubic", "cubicspline", "lanczos", "mode")
 
-# Riadky, ktoré smú kernel menovať aj bez `cell.py`. Každá výnimka musí
-# povedať, PREČO – inak je to len tichý návrat do pôvodného stavu.
-VYNIMKY = {
-    # Prehľadové úrovne COG sa robia zmenšovaním 2×, čo je práve
-    # `AVERAGE_RATIO` – priemer je tam poctivý aj lacný.
+# lines that may name a kernel without `cell.py`, each with a reason
+EXCEPTIONS = {
+    # COG overviews halve, exactly `AVERAGE_RATIO` – averaging is honest there
     "RESAMPLING=AVERAGE",
 }
 
 
-def kod_bez_komentarov(text):
-    """Riadky kódu – komentáre o resamplingu HOVORIŤ smú, kód ho nesmie voliť."""
+def code_lines(text):
+    """Code lines – comments may TALK about resampling, code mustn't pick it."""
     out = []
     for r in text.splitlines():
         if r.lstrip().startswith("#"):
@@ -56,86 +49,78 @@ def kod_bez_komentarov(text):
 def main():
     bad = []
 
-    # ---------- 1. doktrína ----------
-    # Pyramídy DMR 5.0 sú 2, 4, 8 … m, cieľ dlaždíc je 5 m – teda sa vždy
-    # číta zo 4 m a pomer je 1,25. Toto je to jediné číslo, na ktorom celá
-    # oprava stojí.
+    # 1. the doctrine: DMR 5.0 pyramids are 2, 4, 8 … m, tiles 5 m, so the ratio is 1.25
     if cell.resampling(5.0, 4.0) == "average":
         bad.append(
-            "`cell.resampling(5, 4)` vrátila `average`. Presne pri tomto pomere "
-            "(1,25) GDAL nepriemeruje, ale preskakuje každú štvrtú zdrojovú "
-            "bunku – a z toho rytmu spraví hillshade pravidelnú mriežku. Tak "
-            "vznikla mriežka v tieňovaní aj zubatosť vrstevníc; namerané "
-            "v `workers/dem/measure-resampling.py`.")
+            "`cell.resampling(5, 4)` returned `average`. At exactly this ratio "
+            "(1.25) GDAL doesn't average but skips every fourth source cell – "
+            "and hillshade turns that rhythm into a regular grid. Measured in "
+            "`workers/dem/measure-resampling.py`.")
     if cell.AVERAGE_RATIO < 2.0:
-        bad.append(f"`AVERAGE_RATIO` je {cell.AVERAGE_RATIO:g}, čiže sa smie "
-                   f"priemerovať aj tam, kde cieľový pixel neprekryje ani dve "
-                   f"bunky. To je celá tá mriežka – hranica je 2 a je meraná.")
-    # A druhá strana: pri poctivom zmenšovaní sa priemerovať MUSÍ, inak by
-    # sa 1 m LiDAR na 5 m bral vzorkovaním a stratil by sa detail, ktorý tam
-    # je (`dmr5-raster.whole_country` ide 1 m → 5 m, pomer 5).
+        bad.append(f"`AVERAGE_RATIO` is {cell.AVERAGE_RATIO:g}, so averaging is "
+                   f"allowed where a target pixel covers less than two cells. "
+                   f"That's the whole grid – the limit is 2, and measured.")
+    # the other side: honest downscaling MUST average, or 1 m → 5 m loses detail
     if cell.resampling(5.0, 1.0) != "average":
-        bad.append("`cell.resampling(5, 1)` nevrátila `average` – z 1 m na 5 m "
-                   "je pomer 5, tam je priemer poctivý aj lacný a vzorkovanie "
-                   "by zahodilo detail, ktorý v modeli je.")
+        bad.append("`cell.resampling(5, 1)` didn't return `average` – 1 m to 5 m "
+                   "is a ratio of 5, where averaging is honest and cheap and "
+                   "sampling would drop detail the model has.")
 
-    # ---------- 2. kernel sa nepíše natvrdo ----------
-    for rel in VYRABAJU:
-        cesta = os.path.join(os.path.dirname(_WORKERS), rel)
-        if not os.path.exists(cesta):
-            bad.append(f"{rel} neexistuje – keď sa premenoval, uprav aj "
-                       f"`workers/lint/dem-resampling.py`, inak táto kontrola "
-                       f"ticho nekontroluje nič.")
+    # 2. no hard-coded kernel
+    for rel in MAKERS:
+        path = os.path.join(os.path.dirname(_WORKERS), rel)
+        if not os.path.exists(path):
+            bad.append(f"{rel} doesn't exist – if it was renamed, update "
+                       f"`workers/lint/dem-resampling.py` too, or this check "
+                       f"quietly checks nothing.")
             continue
-        text = open(cesta, encoding="utf-8").read()
+        text = open(path, encoding="utf-8").read()
         if "from cell import" not in text:
-            bad.append(f"{rel} prevzorkúva výškový model, ale nepýta sa "
-                       f"`workers/lib/cell.py` – kernel si teda vyberá sám "
-                       f"a raz sa s doktrínou rozíde.")
-        for i, riadok in enumerate(kod_bez_komentarov(text), 1):
-            if any(v in riadok for v in VYNIMKY):
+            bad.append(f"{rel} resamples an elevation model but doesn't ask "
+                       f"`workers/lib/cell.py` – it picks its own kernel and "
+                       f"will drift from the doctrine.")
+        for i, line in enumerate(code_lines(text), 1):
+            if any(v in line for v in EXCEPTIONS):
                 continue
-            for k in KERNELY:
-                if re.search(r'"-r",\s*"%s"' % k, riadok) or \
-                        re.search(r'"%s"\s*,\s*"-of"' % k, riadok):
+            for k in KERNELS:
+                if re.search(r'"-r",\s*"%s"' % k, line) or \
+                        re.search(r'"%s"\s*,\s*"-of"' % k, line):
                     bad.append(
-                        f"{rel}:{i}: kernel `{k}` napísaný natvrdo. Ktorým "
-                        f"resamplingom sa ide, hovorí `cell.resampling(cieľ, "
-                        f"zdroj)` – práve takto napísané `-r average` pri pomere "
-                        f"1,25 zapieklo mriežku do dlaždíc v sklade.")
+                        f"{rel}:{i}: kernel `{k}` hard-coded. The resampling "
+                        f"comes from `cell.resampling(target, source)` – a "
+                        f"hard-coded `-r average` at 1.25 baked the grid into "
+                        f"stored tiles.")
 
-    # ---------- 3. pyramída sa vyberá na jednom mieste ----------
+    # 3. the pyramid is picked in one place
     cut = os.path.join(os.path.dirname(_WORKERS), "workers", "drive", "dmr5-cut.py")
     drive = os.path.join(os.path.dirname(_WORKERS), "workers", "drive", "dmr5.py")
     if os.path.exists(cut):
         text = open(cut, encoding="utf-8").read()
         if "def pyramid_level" not in text:
-            bad.append("Vo `workers/drive/dmr5-cut.py` nie je `pyramid_level` – "
-                       "z ktorej pyramídy sa číta, musí odpovedať jedno miesto: "
-                       "to isté číslo vypisuje plán a podľa neho sa vyberá "
-                       "resampling.")
-        for i, riadok in enumerate(kod_bez_komentarov(text), 1):
-            if '"-ovr", "AUTO"' in riadok.replace("'", '"'):
+            bad.append("`workers/drive/dmr5-cut.py` has no `pyramid_level` – one "
+                       "place must say which pyramid is read: the plan prints "
+                       "that number and the resampling follows it.")
+        for i, line in enumerate(code_lines(text), 1):
+            if '"-ovr", "AUTO"' in line.replace("'", '"'):
                 bad.append(
-                    f"workers/drive/dmr5-cut.py:{i}: `-ovr AUTO` necháva výber "
-                    f"pyramídy na GDALe. Z tej úrovne ale vyplýva pomer "
-                    f"pixel/bunka, ktorým sa riadi resampling – dve odpovede "
-                    f"na jednu otázku (pravidlo 1). Úroveň vyberá "
-                    f"`pyramid_level` a podáva sa do `-ovr`.")
+                    f"workers/drive/dmr5-cut.py:{i}: `-ovr AUTO` leaves the "
+                    f"pyramid to GDAL. But the level sets the pixel/cell ratio "
+                    f"the resampling follows – two answers to one question. "
+                    f"`pyramid_level` picks the level and passes it to `-ovr`.")
     if os.path.exists(drive):
         text = open(drive, encoding="utf-8").read()
         if "pyramid_level" not in text:
-            bad.append("`workers/drive/dmr5.py` si počet čítaných pixelov "
-                       "počíta bez `pyramid_level` – plán by potom hovoril o "
-                       "inej pyramíde, než z akej sa naozaj číta.")
+            bad.append("`workers/drive/dmr5.py` counts read pixels without "
+                       "`pyramid_level` – the plan would then speak of another "
+                       "pyramid than the one really read.")
 
     if bad:
         for b in bad:
             print(f"::error::{b}")
         return 1
-    print(f"DEM resampling: kernel vyberá `lib/cell.py` "
+    print(f"DEM resampling: `lib/cell.py` picks the kernel "
           f"(resampling(5, 4) = `{cell.resampling(5.0, 4.0)}`, "
-          f"AVERAGE_RATIO = {cell.AVERAGE_RATIO:g}), pyramídu `pyramid_level` ✓")
+          f"AVERAGE_RATIO = {cell.AVERAGE_RATIO:g}), `pyramid_level` the pyramid ✓")
     return 0
 
 

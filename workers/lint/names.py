@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""Meno, ktoré worker číta, musí byť aj napísané.
+"""A name a worker reads must also be written.
 
-Workery s pomlčkou v mene sa načítavajú cez `importlib` (`plan = _load(…)`),
-takže `plan.SLOPE_CELLS_PER_S` nevidí ani `bash -n`, ani import. Skrátenie
-komentárov zmazalo `KONŠTANTA = 5.1e6  # …` aj s hodnotou a beh skál padol
-až na runneri po štvrťhodine – po zaplatenom sťahovaní DEM.
-
-Stráži sa dvoje: `alias.MENO` na načítanom module a čítanie VEĽKÝCH mien
-v tom istom súbore. Veľké preto, že konštanty sa tak píšu a lokálne mená nie.
+Workers with a dash in the name load through `importlib` (`plan = _load(…)`),
+so neither `bash -n` nor an import sees `plan.SLOPE_CELLS_PER_S`. Two things are
+guarded: `alias.NAME` on a loaded module, and reading UPPER-CASE names in the
+same file (constants are written so, local names aren't).
 """
 import ast
 import builtins
@@ -15,142 +12,142 @@ import glob
 import os
 import sys
 
-SUBORY = sorted(glob.glob("workers/**/*.py", recursive=True))
-VSTAVANE = set(dir(builtins))
+FILES = sorted(glob.glob("workers/**/*.py", recursive=True))
+BUILTIN = set(dir(builtins))
 
 
-def je_konstanta(meno):
-    return meno[:1].isupper() and meno.upper() == meno and meno not in VSTAVANE
+def is_constant(name):
+    return name[:1].isupper() and name.upper() == name and name not in BUILTIN
 
 
-def vrchne_mena(strom):
-    """Mená, ktoré modul viaže navrchu – teda tie, ktoré vie dať von."""
-    mena = set()
-    for uzol in strom.body:
-        if isinstance(uzol, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            mena.add(uzol.name)
-        elif isinstance(uzol, (ast.Import, ast.ImportFrom)):
-            mena.update(a.asname or a.name.split(".")[0] for a in uzol.names)
-        elif isinstance(uzol, ast.AnnAssign):
-            mena.update(viazane(uzol.target))
-        elif isinstance(uzol, ast.AugAssign):
-            mena.update(viazane(uzol.target))
-        elif isinstance(uzol, ast.Assign):
-            for ciel in uzol.targets:
-                mena.update(viazane(ciel))
-        elif isinstance(uzol, (ast.For, ast.AsyncFor)):
-            mena.update(viazane(uzol.target))
-        elif isinstance(uzol, (ast.If, ast.Try, ast.With, ast.While)):
-            # `try: import x / except: x = None` a spol.
-            mena.update(vrchne_mena(ast.Module(body=uzol.body, type_ignores=[])))
-            for vetva in (getattr(uzol, "orelse", []), getattr(uzol, "finalbody", [])):
-                mena.update(vrchne_mena(ast.Module(body=vetva, type_ignores=[])))
-            for h in getattr(uzol, "handlers", []):
-                mena.update(vrchne_mena(ast.Module(body=h.body, type_ignores=[])))
-    return mena
+def top_names(tree):
+    """Names a module binds at top level – the ones it can export."""
+    names = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            names.update(a.asname or a.name.split(".")[0] for a in node.names)
+        elif isinstance(node, ast.AnnAssign):
+            names.update(bound(node.target))
+        elif isinstance(node, ast.AugAssign):
+            names.update(bound(node.target))
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                names.update(bound(target))
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            names.update(bound(node.target))
+        elif isinstance(node, (ast.If, ast.Try, ast.With, ast.While)):
+            # `try: import x / except: x = None` and the like
+            names.update(top_names(ast.Module(body=node.body, type_ignores=[])))
+            for branch in (getattr(node, "orelse", []), getattr(node, "finalbody", [])):
+                names.update(top_names(ast.Module(body=branch, type_ignores=[])))
+            for h in getattr(node, "handlers", []):
+                names.update(top_names(ast.Module(body=h.body, type_ignores=[])))
+    return names
 
 
-def viazane(ciel):
-    if isinstance(ciel, ast.Name):
-        return {ciel.id}
-    if isinstance(ciel, ast.Starred):
-        return viazane(ciel.value)
-    if isinstance(ciel, (ast.Tuple, ast.List)):
-        return set().union(*(viazane(p) for p in ciel.elts)) if ciel.elts else set()
+def bound(target):
+    if isinstance(target, ast.Name):
+        return {target.id}
+    if isinstance(target, ast.Starred):
+        return bound(target.value)
+    if isinstance(target, (ast.Tuple, ast.List)):
+        return set().union(*(bound(p) for p in target.elts)) if target.elts else set()
     return set()
 
 
-def vsetky_viazane(uzol):
-    """Všetko, čo sa kdekoľvek pod uzlom viaže – na miestne mená stačí."""
-    mena = set()
-    for p in ast.walk(uzol):
+def all_bound(node):
+    """Everything bound anywhere under a node – enough for local names."""
+    names = set()
+    for p in ast.walk(node):
         if isinstance(p, ast.Name) and isinstance(p.ctx, (ast.Store, ast.Del)):
-            mena.add(p.id)
+            names.add(p.id)
         elif isinstance(p, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            mena.add(p.name)
+            names.add(p.name)
         elif isinstance(p, (ast.Import, ast.ImportFrom)):
-            mena.update(a.asname or a.name.split(".")[0] for a in p.names)
+            names.update(a.asname or a.name.split(".")[0] for a in p.names)
         elif isinstance(p, ast.arg):
-            mena.add(p.arg)
+            names.add(p.arg)
         elif isinstance(p, ast.ExceptHandler) and p.name:
-            mena.add(p.name)
+            names.add(p.name)
         elif isinstance(p, ast.Global):
-            mena.update(p.names)
-    return mena
+            names.update(p.names)
+    return names
 
 
-def nacitane_moduly(cesta, strom):
-    """`alias = _load("meno", "…/subor.py")` → alias: cesta na ten súbor."""
-    von = {}
-    for uzol in ast.walk(strom):
-        if not isinstance(uzol, ast.Assign) or len(uzol.targets) != 1:
+def loaded_modules(path, tree):
+    """`alias = _load("name", "…/file.py")` → alias: that file's path."""
+    out = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
             continue
-        if not isinstance(uzol.targets[0], ast.Name):
+        if not isinstance(node.targets[0], ast.Name):
             continue
-        vyraz = uzol.value
-        if not isinstance(vyraz, ast.Call) or not isinstance(vyraz.func, ast.Name):
+        expr = node.value
+        if not isinstance(expr, ast.Call) or not isinstance(expr.func, ast.Name):
             continue
-        if vyraz.func.id not in ("_load", "load"):
+        if expr.func.id not in ("_load", "load"):
             continue
-        # posledný reťazec v argumentoch je meno súboru aj pri `os.path.join`
-        subory = [t.value for a in vyraz.args for t in ast.walk(a)
+        # the last string argument is the file name, `os.path.join` too
+        files = [t.value for a in expr.args for t in ast.walk(a)
                   if isinstance(t, ast.Constant) and isinstance(t.value, str)
                   and t.value.endswith(".py")]
-        if not subory:
+        if not files:
             continue
-        ciel = os.path.join(os.path.dirname(cesta), subory[-1])
-        if not os.path.exists(ciel):
-            zhody = [f for f in SUBORY if os.path.basename(f) == subory[-1]]
-            if len(zhody) != 1:
+        target = os.path.join(os.path.dirname(path), files[-1])
+        if not os.path.exists(target):
+            matches = [f for f in FILES if os.path.basename(f) == files[-1]]
+            if len(matches) != 1:
                 continue
-            ciel = zhody[0]
-        von[uzol.targets[0].id] = ciel
-    return von
+            target = matches[0]
+        out[node.targets[0].id] = target
+    return out
 
 
-def chyby_v(cesta, stromy):
-    strom = stromy[cesta]
-    zle = []
+def errors_in(path, trees):
+    tree = trees[path]
+    wrong = []
 
-    moduly = nacitane_moduly(cesta, strom)
-    for uzol in ast.walk(strom):
-        if not isinstance(uzol, ast.Attribute) or not isinstance(uzol.ctx, ast.Load):
+    modules = loaded_modules(path, tree)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Attribute) or not isinstance(node.ctx, ast.Load):
             continue
-        if not isinstance(uzol.value, ast.Name) or uzol.value.id not in moduly:
+        if not isinstance(node.value, ast.Name) or node.value.id not in modules:
             continue
-        ciel = moduly[uzol.value.id]
-        if uzol.attr not in vrchne_mena(stromy[ciel]):
-            zle.append((uzol.lineno,
-                        f"`{uzol.value.id}.{uzol.attr}` číta z `{ciel}`, "
-                        f"ale to meno tam nie je"))
+        target = modules[node.value.id]
+        if node.attr not in top_names(trees[target]):
+            wrong.append((node.lineno,
+                        f"`{node.value.id}.{node.attr}` reads from `{target}`, "
+                        f"but that name isn't there"))
 
-    vrchne = vrchne_mena(strom) | VSTAVANE | {"__file__", "__name__", "__doc__"}
-    for funkcia in [u for u in ast.walk(strom)
+    top = top_names(tree) | BUILTIN | {"__file__", "__name__", "__doc__"}
+    for func in [u for u in ast.walk(tree)
                     if isinstance(u, (ast.FunctionDef, ast.AsyncFunctionDef))]:
-        miestne = vsetky_viazane(funkcia)
-        for p in ast.walk(funkcia):
+        local = all_bound(func)
+        for p in ast.walk(func):
             if not isinstance(p, ast.Name) or not isinstance(p.ctx, ast.Load):
                 continue
-            if je_konstanta(p.id) and p.id not in vrchne and p.id not in miestne:
-                zle.append((p.lineno, f"`{p.id}` sa číta, ale nikde sa nenastavuje"))
-    return zle
+            if is_constant(p.id) and p.id not in top and p.id not in local:
+                wrong.append((p.lineno, f"`{p.id}` is read but set nowhere"))
+    return wrong
 
 
 def main():
-    stromy = {}
-    for cesta in SUBORY:
+    trees = {}
+    for path in FILES:
         try:
-            stromy[cesta] = ast.parse(open(cesta, encoding="utf-8").read(), cesta)
+            trees[path] = ast.parse(open(path, encoding="utf-8").read(), path)
         except SyntaxError as e:
-            print(f"::error file={cesta},line={e.lineno}::{e.msg}")
+            print(f"::error file={path},line={e.lineno}::{e.msg}")
             return 1
     bad = 0
-    for cesta in SUBORY:
-        for riadok, sprava in sorted(set(chyby_v(cesta, stromy))):
-            print(f"::error file={cesta},line={riadok}::{sprava}. "
-                  f"Skrátenie komentára nesmie zmazať riadok s hodnotou.")
+    for path in FILES:
+        for line, message in sorted(set(errors_in(path, trees))):
+            print(f"::error file={path},line={line}::{message}. "
+                  f"Shortening a comment must not delete the line with the value.")
             bad += 1
-    print(f"mená, ktoré musia existovať: {bad} chýb")
+    print(f"names that must exist: {bad} errors")
     return 1 if bad else 0
 
 

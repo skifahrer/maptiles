@@ -1,90 +1,83 @@
 #!/usr/bin/env python3
-"""Workery ležia v priečinku podľa jobu – a presne jednu úroveň hlboko.
+"""Workers lie in a folder per job – exactly one level deep.
 
-Pri presune z plochého zoznamu ticho prestali platiť kontroly, ktoré si cesty
-hľadali vzorom `workers/*.sh`: lomku nechytí ani jeden a všetky prešli na
-prázdnom zozname.
-
-  1. v `workers/` samotnom nesmie ležať spustiteľný worker;
-  2. hĺbka je presne jedna úroveň – moduly si spoločné veci hľadajú cez
-     `os.path.dirname(_HERE)`, čo je `workers/` len z `workers/<job>/`;
-  3. priečinok musí byť známy: nový job dopíš sem aj do tabuľky v CLAUDE.md.
+  1. no runnable worker lies in `workers/` itself;
+  2. the depth is exactly one – modules find shared things through
+     `os.path.dirname(_HERE)`, which is `workers/` only from `workers/<job>/`;
+  3. the folder must be known: add a new job here and to `workers/README.md`.
 """
 import os
 import sys
 
-# Priečinok = job (alebo workflow, ktorý ten job volá). Musí sedieť s tabuľkou
-# v CLAUDE.md („Ako je usporiadané workers/") – dva zoznamy toho istého sa raz
-# rozídu, tak je jeden z nich tu a druhý je odkaz naň.
-ZNAME = {
-    "data": "číselníky (areas, regions, dem-sources)",
-    "lib": "čo patrí viacerým jobom (watch, planetiler, png, rozpočet)",
-    "plan": "joby `settings`, `plan` a `keys`",
-    "dem": "job `check-dem` a doplnenie modelu",
-    "drive": "Google Drive: DMR 5.0, sklad, cache, prihlásenie",
-    "contours-rocks": "joby `contours` a `rocks`",
-    "rocks-shading": "workflow „Dáta · tieňované skaly“",
+# folder = job (or the workflow that job calls)
+KNOWN = {
+    "data": "lookups (areas, regions, dem-sources)",
+    "lib": "what several jobs share (watch, planetiler, png, budget)",
+    "plan": "jobs `settings`, `plan` and `keys`",
+    "dem": "job `check-dem` and model refills",
+    "drive": "Google Drive: DMR 5.0, store, cache, sign-in",
+    "contours-rocks": "jobs `contours` and `rocks`",
+    "rocks-shading": "workflow “Data · shaded rocks”",
     "terrain": "job `terrain`",
     "trails": "job `trails`",
     "features": "job `features`",
-    "transport": "workflow „Mapa · dopravná sieť“ (transport.yml)",
-    "boundaries": "workflow „Mapa · hranice území“ (boundaries.yml)",
-    "water": "workflow „Mapa · vodstvo“ (water.yml)",
-    "rail": "workflow „Mapa · železnice“ (rail.yml)",
-    "buildings": "workflow „Mapa · sídla“ (buildings.yml)",
-    "routing": "navigácia: profil, smerovacie dlaždice a poradie uzlov",
+    "transport": "workflow “Map · transport network” (transport.yml)",
+    "boundaries": "workflow “Map · boundaries” (boundaries.yml)",
+    "water": "workflow “Map · water” (water.yml)",
+    "rail": "workflow “Map · railways” (rail.yml)",
+    "buildings": "workflow “Map · settlements” (buildings.yml)",
+    "routing": "routing: profile, routing tiles and node order",
     "tiles": "job `tiles`",
-    "wiki": "workflow „Build wiki“ (wiki.yml)",
-    "world": "workflow „Build svet“ (world-map.yml)",
-    "state": "workflowy „… state“ (dávky krajov krajiny)",
+    "wiki": "workflow “Map · Build wiki” (wiki.yml)",
+    "world": "workflow “Map · Build world” (world-map.yml)",
+    "state": "the “… state” workflows (batches of a country's regions)",
     "assets": "job `assets`",
-    "styles": "štýly pre web aj iOS",
-    "deploy": "job `deploy` a publikovanie",
-    "lint": "kontroly, ktoré púšťa lint-workflows.yml",
-    "tools": "mimo buildu (upratovanie)",
+    "styles": "styles for web and iOS",
+    "deploy": "job `deploy` and publishing",
+    "lint": "checks run by lint-workflows.yml",
+    "tools": "outside the build (cleanup)",
 }
-PRIPONY = (".py", ".sh", ".mjs")
+SUFFIXES = (".py", ".sh", ".mjs")
 
 bad = 0
-korene = sorted(f for f in os.listdir("workers")
+roots = sorted(f for f in os.listdir("workers")
                 if os.path.isfile(os.path.join("workers", f)))
-for f in korene:
-    if f.endswith(PRIPONY):
-        print(f"::error file=workers/{f}::worker leží priamo vo `workers/`, "
-              f"nie v priečinku podľa jobu. Presuň ho do `workers/<job>/` – "
-              f"kontroly (dĺžka súboru, env krokov, publikovanie) hľadajú "
-              f"`workers/<job>/*` a na tento by sa ticho nepozreli.")
+for f in roots:
+    if f.endswith(SUFFIXES):
+        print(f"::error file=workers/{f}::a worker lies directly in `workers/`, "
+              f"not in a job folder. Move it to `workers/<job>/` – checks "
+              f"(file length, step env, publishing) look at `workers/<job>/*` "
+              f"and would quietly skip this one.")
         bad += 1
 
-for meno in sorted(os.listdir("workers")):
-    cesta = os.path.join("workers", meno)
-    if not os.path.isdir(cesta) or meno == "__pycache__":
+for name in sorted(os.listdir("workers")):
+    path = os.path.join("workers", name)
+    if not os.path.isdir(path) or name == "__pycache__":
         continue
-    if meno not in ZNAME:
-        print(f"::error file={cesta}::neznámy priečinok `{meno}`. Priečinok je "
-              f"job – dopíš ho do ZNAME v tomto skripte a do tabuľky "
-              f"v CLAUDE.md, alebo súbory presuň k jobu, ktorému patria.")
+    if name not in KNOWN:
+        print(f"::error file={path}::unknown folder `{name}`. A folder is a job – "
+              f"add it to KNOWN in this script and to workers/README.md, or move "
+              f"the files to the job they belong to.")
         bad += 1
         continue
-    for koren, _, subory in os.walk(cesta):
-        if "__pycache__" in koren:
+    for root, _, files in os.walk(path):
+        if "__pycache__" in root:
             continue
-        hlbka = koren.count(os.sep)
-        for s in subory:
-            if not s.endswith(PRIPONY):
+        depth = root.count(os.sep)
+        for s in files:
+            if not s.endswith(SUFFIXES):
                 continue
-            if hlbka > 1:  # workers/<job> = 1
-                print(f"::error file={os.path.join(koren, s)}::worker je hlbšie "
-                      f"než `workers/<job>/`. Moduly si spoločné veci hľadajú "
-                      f"cez `os.path.dirname(_HERE)`, a to znamená `workers/` "
-                      f"len pri hĺbke jedna – z druhej úrovne mieri `_DATA` "
-                      f"vedľa.")
+            if depth > 1:  # workers/<job> = 1
+                print(f"::error file={os.path.join(root, s)}::a worker is deeper "
+                      f"than `workers/<job>/`. Modules find shared things "
+                      f"through `os.path.dirname(_HERE)`, which is `workers/` "
+                      f"only at depth one – from level two `_DATA` misses.")
                 bad += 1
 
-pocty = {m: len([s for s in os.listdir(os.path.join("workers", m))
-                 if s.endswith(PRIPONY)])
-         for m in ZNAME if os.path.isdir(os.path.join("workers", m))}
-print("workery podľa jobu: "
-      + ", ".join(f"{m} {n}" for m, n in sorted(pocty.items()) if n))
-print(f"usporiadanie workers/: {bad} chýb")
+counts = {m: len([s for s in os.listdir(os.path.join("workers", m))
+                 if s.endswith(SUFFIXES)])
+         for m in KNOWN if os.path.isdir(os.path.join("workers", m))}
+print("workers per job: "
+      + ", ".join(f"{m} {n}" for m, n in sorted(counts.items()) if n))
+print(f"workers/ layout: {bad} errors")
 sys.exit(1 if bad else 0)

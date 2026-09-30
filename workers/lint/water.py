@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-"""Vodstvo: filter pustí, čo schéma chce – a meno je na tom istom prvku.
+"""Water: the filter passes what the schema wants – and the name is on the same feature.
 
-Päť tichých vecí:
+Five quiet things:
 
-  1. predfilter (`filter.txt`) a schéma (`water.yml`) sa rozídu – Planetiler
-     dostane PBF, v ktorom ten tag už nie je, a beh zazelená;
-  2. filter prestane doťahovať členov relácií: jazerá a priehrady sú
-     multipolygóny, ktorých členovia `natural=water` nemajú, takže s `-R`
-     by po Domaši v dlaždiciach neostalo nič;
-  3. z dlaždice zmizne `name` – kvôli tomu vrstva existuje (v OpenMapTiles je
-     meno vody vo vlastnej vrstve mimo geometrie);
-  4. more sa začne kresliť ako plocha – plocha oceánu v OSM neexistuje, takže
-     z rezaného PBF by vzniklo more končiace na hranici výrezu;
-  5. PBF sa prestane rezať na región – Planetiler reže po dlaždiciach a na z6
-     je jedna široká 5 600 km, takže sa do nej zmestí aj Tisa, 270 km za
-     Bratislavským krajom (v PBF ako člen relácie štátnej hranice).
+  1. the prefilter (`filter.txt`) and schema (`water.yml`) drift – Planetiler
+     gets a PBF without that tag and the run goes green;
+  2. the filter stops pulling relation members: lakes and reservoirs are
+     multipolygons whose members lack `natural=water`, so with `-R` they vanish;
+  3. `name` leaves the tile – the layer exists for it (OpenMapTiles keeps water
+     names in a separate layer);
+  4. the sea gets drawn as an area – OSM has no ocean area, so a cut PBF would
+     give a sea ending at the cutout edge;
+  5. the PBF stops being cut to the region – Planetiler cuts by tile and a z6
+     tile is 5 600 km wide, so rivers far outside the region fit in.
 """
 import os
 import sys
@@ -27,12 +25,12 @@ SCHEMA = os.path.join(_WORKERS, "water", "water.yml")
 FILTER = os.path.join(_WORKERS, "water", "filter.txt")
 BUILD = os.path.join(_WORKERS, "water", "build.sh")
 
-# Čo vrstva SĽUBUJE – „rieky, jazerá, more“. Trieda → čím to je v OSM.
-SLUBY = {
-    "river": "rieky",
-    "stream": "potoky",
-    "water": "jazerá, priehrady a rybníky (`natural=water`)",
-    "coastline": "more (pobrežná čiara)",
+# what the layer PROMISES – class → what it is in OSM
+PROMISED = {
+    "river": "rivers",
+    "stream": "streams",
+    "water": "lakes, reservoirs and ponds (`natural=water`)",
+    "coastline": "the sea (coastline)",
 }
 
 bad = []
@@ -43,7 +41,7 @@ def err(msg):
 
 
 def filter_keys(path):
-    """Holé kľúče z `osmium tags-filter --expressions` (bez `n/`, `w/`, `r/`)."""
+    """Bare keys from `osmium tags-filter --expressions` (without `n/`, `w/`, `r/`)."""
     out = set()
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -56,122 +54,115 @@ def filter_keys(path):
     return out
 
 
-def prepinace_filtra(build):
-    """Prepínače SKUTOČNÉHO `osmium tags-filter`, nie zmienok v komentároch.
-
-    Číta sa celý príkaz aj s pokračovaním na ďalších riadkoch (`\\`), lebo
-    prepínač môže stáť aj tam. Hľadať len prvý výskyt slova v súbore je málo:
-    prvá zmienka je dnes v hlavičke a kontrola by potom čítala komentár.
-    """
-    riadky = build.splitlines()
-    for i, r in enumerate(riadky):
+def filter_switches(build):
+    """Switches of the REAL `osmium tags-filter` call, continuation lines included."""
+    lines = build.splitlines()
+    for i, r in enumerate(lines):
         if r.lstrip().startswith("#") or "osmium tags-filter" not in r:
             continue
-        prikaz = [r]
-        while prikaz[-1].rstrip().endswith("\\") and i + 1 < len(riadky):
+        command = [r]
+        while command[-1].rstrip().endswith("\\") and i + 1 < len(lines):
             i += 1
-            prikaz.append(riadky[i])
-        return " " + " ".join(prikaz) + " "
+            command.append(lines[i])
+        return " " + " ".join(command) + " "
     return ""
 
 
 def main():
     for path in (SCHEMA, FILTER, BUILD):
         if not os.path.exists(path):
-            print(f"::error::{path} neexistuje.")
+            print(f"::error::{path} doesn't exist.")
             return 1
 
     with open(SCHEMA, encoding="utf-8") as f:
         schema = yaml.safe_load(f)
-    bloky = [b for v in (schema.get("layers") or [])
+    blocks = [b for v in (schema.get("layers") or [])
              for b in (v.get("features") or [])]
-    if not bloky:
-        err(f"{SCHEMA}: schéma nemá ani jeden blok – vrstva by bola prázdna.")
-        return hotovo()
+    if not blocks:
+        err(f"{SCHEMA}: the schema has not a single block – the layer would be empty.")
+        return done()
 
-    # ---- 1. predfilter pustí, čo schéma chce ----
-    pusta = filter_keys(FILTER)
-    chce, triedy = set(), set()
-    for b in bloky:
-        podmienka = b.get("include_when") or {}
-        chce |= set(podmienka.keys())
-        for hodnoty in podmienka.values():
-            triedy |= set(map(str, hodnoty if isinstance(hodnoty, list)
-                              else [hodnoty]))
-    chyba = sorted(chce - pusta)
-    if chyba:
-        err(f"{FILTER}: schéma sa pýta na {', '.join(chyba)}, ale predfilter "
-            f"to nepúšťa (pozná {', '.join(sorted(pusta))}). Planetiler by "
-            f"dostal PBF, v ktorom ten tag už nie je – dlaždice by vznikli, "
-            f"beh by bol zelený a tá časť vodstva by v nich nebola.")
+    # 1. the prefilter passes what the schema wants
+    passes = filter_keys(FILTER)
+    wants, classes = set(), set()
+    for b in blocks:
+        condition = b.get("include_when") or {}
+        wants |= set(condition.keys())
+        for values in condition.values():
+            classes |= set(map(str, values if isinstance(values, list)
+                              else [values]))
+    missing = sorted(wants - passes)
+    if missing:
+        err(f"{FILTER}: the schema asks for {', '.join(missing)}, but the prefilter "
+            f"doesn't pass it (it knows {', '.join(sorted(passes))}). Planetiler "
+            f"would get a PBF without that tag – tiles made, run green, and that "
+            f"part of the water missing.")
 
-    # ---- 2. filter doťahuje členov relácií ----
+    # 2. the filter pulls relation members
     with open(BUILD, encoding="utf-8") as f:
         build = f.read()
-    prepinace = prepinace_filtra(build)
-    if not prepinace:
-        err(f"{BUILD}: `osmium tags-filter` tu nie je – bez predfiltra číta "
-            f"Planetiler celý región a táto kontrola nemá čo overiť.")
-    # `-r` NEEXISTUJE. osmium pozná len `-R`/`--omit-referenced` (opačný
-    # význam), na `-r` skončí s „unrecognised option“ a job padne hneď.
-    if " -r " in prepinace:
-        err(f"{BUILD}: `osmium tags-filter -r` – taký prepínač osmium nemá "
-            f"a skončí na ňom s „unrecognised option“. Členov relácií "
-            f"doťahuje sám, netreba o ne žiadať.")
-    if " -R " in prepinace or "--omit-referenced" in prepinace:
-        err(f"{BUILD}: `osmium tags-filter` beží s `-R`/`--omit-referenced`, "
-            f"takže z PBF vypadnú ČLENOVIA relácií. Veľké jazerá a priehrady "
-            f"sú multipolygóny, ktorých členovia `natural=water` nemajú – po "
-            f"Domaši by v dlaždiciach ticho neostalo nič. Bez toho prepínača "
-            f"ich osmium doťahuje sám.")
+    switches = filter_switches(build)
+    if not switches:
+        err(f"{BUILD}: no `osmium tags-filter` here – without a prefilter "
+            f"Planetiler reads the whole region and this check has nothing to verify.")
+    # `-r` doesn't exist; osmium only knows `-R` (the opposite) and fails on `-r`
+    if " -r " in switches:
+        err(f"{BUILD}: `osmium tags-filter -r` – osmium has no such switch and "
+            f"fails with “unrecognised option”. It pulls relation members "
+            f"itself, no need to ask.")
+    if " -R " in switches or "--omit-referenced" in switches:
+        err(f"{BUILD}: `osmium tags-filter` runs with `-R`/`--omit-referenced`, "
+            f"so relation MEMBERS drop out of the PBF. Big lakes and reservoirs "
+            f"are multipolygons whose members lack `natural=water` – they'd "
+            f"quietly vanish from the tiles. Without the switch osmium pulls them.")
 
-    # ---- 2b. z PBF ide preč, čo je mimo regiónu ----
+    # 2b. what lies outside the region leaves the PBF
     if "region-cut.sh" not in build:
-        err(f"{BUILD}: PBF sa nereže na región (`workers/lib/region-cut.sh`). "
-            f"Orez dlaždíc to nezastúpi – reže sa po celých dlaždiciach, takže "
-            f"na nízkom zoome sa do tej jednej, čo región pretína, zmestia aj "
-            f"rieky stovky kilometrov za ním a v mape ich vidno.")
+        err(f"{BUILD}: the PBF isn't cut to the region (`workers/lib/region-cut.sh`). "
+            f"Tile clipping can't replace it – it cuts whole tiles, so at low zoom "
+            f"rivers hundreds of kilometres away fit the one tile crossing the "
+            f"region and show in the map.")
 
-    # ---- 3. meno je na tom istom prvku ----
-    for i, b in enumerate(bloky, start=1):
-        atr = {a.get("key") for a in (b.get("attributes") or [])
+    # 3. the name is on the same feature
+    for i, b in enumerate(blocks, start=1):
+        attrs = {a.get("key") for a in (b.get("attributes") or [])
                if isinstance(a, dict)}
-        if "name" not in atr:
-            err(f"{SCHEMA}: blok {i} nedáva `name`. Presne to je rozdiel proti "
-                f"OpenMapTiles, kde meno vody leží vo vlastnej vrstve mimo "
-                f"geometrie – bez neho je to zase len modrá čiara.")
+        if "name" not in attrs:
+            err(f"{SCHEMA}: block {i} gives no `name`. That's the difference from "
+                f"OpenMapTiles, where water names lie in a separate layer – "
+                f"without it it's just a blue line again.")
 
-    # ---- 3b. čo vrstva sľubuje, v nej naozaj je ----
-    for trieda, co in SLUBY.items():
-        if trieda not in triedy:
-            err(f"{SCHEMA}: v schéme nie sú {co} (`{trieda}`). Balík sľubuje "
-                f"„rieky, jazerá a more“ – vypadnutú triedu vidno až vtedy, "
-                f"keď sa niekto pozrie, kadiaľ tečie.")
+    # 3b. what the layer promises is really in it
+    for cls, what in PROMISED.items():
+        if cls not in classes:
+            err(f"{SCHEMA}: the schema lacks {what} (`{cls}`). The package "
+                f"promises “rivers, lakes and the sea” – a dropped class shows "
+                f"only when someone looks where it flows.")
 
-    # ---- 4. pobrežie ide ako čiara, nie ako plocha ----
-    for i, b in enumerate(bloky, start=1):
-        podmienka = b.get("include_when") or {}
-        hodnoty = podmienka.get("natural") or []
-        if not isinstance(hodnoty, list):
-            hodnoty = [hodnoty]
-        if "coastline" in map(str, hodnoty) and b.get("geometry") != "line":
-            err(f"{SCHEMA}: blok {i} berie `natural=coastline` ako "
-                f"`{b.get('geometry')}`. Plocha oceánu v OSM neexistuje – "
-                f"skladá sa z pobrežných čiar celej planéty, takže z rezaného "
-                f"PBF kraja by vzniklo more, ktoré končí na hranici výrezu. "
-                f"Plochu kreslí základná mapa z `water_polygons`.")
-    return hotovo()
+    # 4. the coastline goes as a line, not an area
+    for i, b in enumerate(blocks, start=1):
+        condition = b.get("include_when") or {}
+        values = condition.get("natural") or []
+        if not isinstance(values, list):
+            values = [values]
+        if "coastline" in map(str, values) and b.get("geometry") != "line":
+            err(f"{SCHEMA}: block {i} takes `natural=coastline` as "
+                f"`{b.get('geometry')}`. OSM has no ocean area – it's built from "
+                f"the whole planet's coastlines, so a cut regional PBF would give "
+                f"a sea ending at the cutout edge. The base map draws the area "
+                f"from `water_polygons`.")
+    return done()
 
 
-def hotovo():
+def done():
     for b in bad:
         print(f"::error::{b}")
     if bad:
-        print(f"\n{len(bad)} problém(ov) vo vodstve.")
+        print(f"\n{len(bad)} problem(s) in the water layer.")
         return 1
-    print("Vodstvo: predfilter pustí, čo schéma chce, doťahuje členov relácií, "
-          "PBF sa reže na región, meno je na tom istom prvku a pobrežie ide "
-          "ako čiara.")
+    print("Water: the prefilter passes what the schema wants and pulls relation "
+          "members, the PBF is cut to the region, the name is on the same feature "
+          "and the coastline goes as a line.")
     return 0
 
 

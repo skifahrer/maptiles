@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""`needs.<job>.outputs.<x>` musí ukazovať na výstup, ktorý ten job naozaj vydá.
+"""`needs.<job>.outputs.<x>` must point at an output that job really gives.
 
-Neexistujúci výstup nie je chyba behu – GitHub ho vyhodnotí ako prázdny
-reťazec, `if:` na ňom vyjde nepravdivo, vrstva sa nepridá a beh zazelená.
+A missing output isn't a run error – GitHub reads it as an empty string, an
+`if:` on it is false, the layer isn't added and the run goes green.
 
-  1. `needs.<job>` musí byť v `needs:` toho jobu;
-  2. výstup musí existovať – pri obyčajnom jobe v jeho `outputs:`, pri jobe
-     s `uses: ./.github/workflows/X.yml` v `on.workflow_call.outputs` toho
-     volaného súboru (volaný job vo volajúcom `outputs:` nemá a mať nebude).
+  1. `needs.<job>` must be in that job's `needs:`;
+  2. the output must exist – for a plain job in its `outputs:`, for a job with
+     `uses: ./.github/workflows/X.yml` in that file's `on.workflow_call.outputs`.
 """
 import glob
 import os
@@ -18,31 +17,20 @@ import yaml
 
 
 def load(path):
-    """YAML bez zakomentovaných riadkov.
-
-    Kontrola je z časti TEXTOVÁ (hľadá `needs.…` v celom súbore), takže by inak
-    našla odkaz aj v komentári, ktorý ju samu popisuje – presne to sa už raz
-    stalo. Zahadzujú sa len celé zakomentované riadky, nie `#` uprostred
-    príkazu, kde môže byť súčasťou textu.
-    """
+    """YAML without whole commented-out lines, which the text search would match."""
     txt = open(path, encoding="utf-8").read()
     txt = re.sub(r"^[ \t]*#.*$", "", txt, flags=re.M)
     return txt, (yaml.safe_load(txt) or {})
 
 
 def call_outputs(uses):
-    """Výstupy volaného workflowu, alebo None, keď to nie je lokálne volanie.
+    """A called workflow's outputs, or None when it isn't a local call.
 
-    `on:` sa v YAMLe načíta ako boolean `True` (je to v jazyku áno/nie), takže
-    sa kľúč hľadá pod oboma menami – inak by tá vetva ticho vracala prázdno
-    a kontrola by bola zase falošná.
+    YAML reads `on:` as boolean `True`, so both keys are tried.
     """
     if not isinstance(uses, str) or not uses.startswith("./"):
         return None
-    # `removeprefix`, NIE `lstrip("./")`: `lstrip` berie ZNAKY, nie predponu,
-    # takže z `./.github/workflows/roads.yml` spraví `github/workflows/…` –
-    # bez tej bodky súbor neexistuje, výstupy vyjdú prázdne a kontrola hlási
-    # chybu, ktorá tam nie je.
+    # `removeprefix`, not `lstrip("./")`, which strips characters and eats `.github`
     path = uses.split("@", 1)[0].removeprefix("./")
     if not os.path.exists(path):
         return {}
@@ -76,8 +64,8 @@ def main():
             if isinstance(needs, str):
                 needs = [needs]
             if tgt not in needs:
-                print(f"::error file={path}::job '{cur}' používa needs.{tgt}, "
-                      f"ale nemá ho v needs")
+                print(f"::error file={path}::job '{cur}' uses needs.{tgt}, "
+                      f"but lacks it in needs")
                 errs += 1
                 continue
             key = m.group(3)
@@ -86,16 +74,16 @@ def main():
             declared = jobs[tgt].get("outputs") or {}
             called = call_outputs(jobs[tgt].get("uses"))
             if called is not None:
-                # Job je volanie iného workflowu – jeho výstupy sú TAM.
+                # the job calls another workflow – its outputs are THERE
                 declared = called
             if key not in declared:
-                kde = (f" (volá `{jobs[tgt]['uses']}`, výstup musí byť v jeho "
-                       f"`on.workflow_call.outputs`)" if called is not None
-                       else "")
-                print(f"::error file={path}::job '{tgt}' nemá výstup '{key}' "
-                      f"(chce ho '{cur}'){kde}")
+                where = (f" (it calls `{jobs[tgt]['uses']}`, the output must be in "
+                         f"its `on.workflow_call.outputs`)" if called is not None
+                         else "")
+                print(f"::error file={path}::job '{tgt}' has no output '{key}' "
+                      f"('{cur}' wants it){where}")
                 errs += 1
-    print(f"odkazov medzi jobmi: {errs} chýb")
+    print(f"references between jobs: {errs} errors")
     return 1 if errs else 0
 
 

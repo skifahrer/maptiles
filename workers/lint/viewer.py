@@ -1,96 +1,94 @@
 #!/usr/bin/env python3
-"""Viewer sa musí na Pages celý nasadiť – každý súbor, ktorý si pýta.
+"""The viewer must deploy to Pages whole – every file it asks for.
 
-`deploy/site.sh` mal vymenovaný zoznam súborov a ten sa s priečinkom rozišiel:
-prehliadač na 404 zahodí celý modulový graf, takže sa nespustí ani `app.js`
-a na stránke ostane biela plocha. Build je pritom zelený.
+On a 404 the browser drops the whole module graph, so not even `app.js` runs and
+the page stays blank while the build is green.
 
-  1. každý relatívny import v grafe od `index.html` musí existovať;
-  2. `site.sh` musí kopírovať celý priečinok, nie vymenovaný zoznam.
+  1. every relative import in the graph from `index.html` must exist;
+  2. `site.sh` must copy the whole folder, not a list of files.
 """
 import os
 import re
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-# `workers/lint/` → koreň repozitára. Hĺbka je vždy jedna úroveň (CLAUDE.md).
+# `workers/lint/` → the repository root
 _ROOT = os.path.dirname(os.path.dirname(_HERE))
 WEB = os.path.join(_ROOT, "poc", "web")
 SITE_SH = os.path.join(_ROOT, "workers", "deploy", "site.sh")
 
-# `from "./x.js"`, `import "./x.js"`, `import("./x.js")` aj `src="./x.js"`.
+# `from "./x.js"`, `import "./x.js"`, `import("./x.js")` and `src="./x.js"`
 IMPORT = re.compile(r'(?:from|import)\s*\(?\s*["\']\./([A-Za-z0-9._-]+\.js)["\']')
 SRC = re.compile(r'src="\.?/?([A-Za-z0-9._-]+\.js)"')
 
 
-def graf():
-    """Súbory, ktoré viewer naozaj potrebuje – od `index.html` cez importy."""
-    videne, fronta, chyby = set(), ["index.html"], []
-    while fronta:
-        meno = fronta.pop()
-        if meno in videne:
+def graph():
+    """Files the viewer really needs – from `index.html` through imports."""
+    seen, queue, errors = set(), ["index.html"], []
+    while queue:
+        name = queue.pop()
+        if name in seen:
             continue
-        videne.add(meno)
-        cesta = os.path.join(WEB, meno)
-        if not os.path.exists(cesta):
+        seen.add(name)
+        path = os.path.join(WEB, name)
+        if not os.path.exists(path):
             continue
-        text = open(cesta, encoding="utf-8").read()
-        for m in IMPORT.findall(text) + (SRC.findall(text) if meno.endswith(".html") else []):
-            fronta.append(m)
-    return videne, chyby
+        text = open(path, encoding="utf-8").read()
+        for m in IMPORT.findall(text) + (SRC.findall(text) if name.endswith(".html") else []):
+            queue.append(m)
+    return seen, errors
 
 
 def main():
     bad = []
-    potrebne, _ = graf()
+    needed, _ = graph()
 
-    # 1) existuje všetko, čo si viewer pýta?
-    for meno in sorted(potrebne):
-        if not os.path.exists(os.path.join(WEB, meno)):
+    # 1) does everything the viewer asks for exist?
+    for name in sorted(needed):
+        if not os.path.exists(os.path.join(WEB, name)):
             bad.append(
-                f"::error file=poc/web::viewer si importuje `{meno}`, ale ten "
-                f"v `poc/web/` nie je. Prehliadač na 404 zahodí celý modulový "
-                f"graf – nespustí sa ani `app.js` a na stránke bude biela plocha."
+                f"::error file=poc/web::the viewer imports `{name}`, but it isn't "
+                f"in `poc/web/`. On a 404 the browser drops the whole module "
+                f"graph – not even `app.js` runs and the page stays blank."
             )
 
-    # 2) kopíruje `site.sh` celý priečinok, alebo si zase drží zoznam?
+    # 2) does `site.sh` copy the whole folder, or keep a list again?
     try:
         sh = open(SITE_SH, encoding="utf-8").read()
     except OSError as exc:
-        bad.append(f"::error file=workers/deploy/site.sh::nedá sa prečítať: {exc}")
+        bad.append(f"::error file=workers/deploy/site.sh::can't be read: {exc}")
         sh = ""
 
     cp = [r for r in sh.splitlines() if r.strip().startswith("cp ") and "poc/web" in r]
     if not cp:
         bad.append(
-            "::error file=workers/deploy/site.sh::nenašiel sa `cp` z `poc/web/` "
-            "do `_site` – bez neho na Pages nie je viewer vôbec."
+            "::error file=workers/deploy/site.sh::no `cp` from `poc/web/` to "
+            "`_site` found – without it Pages has no viewer at all."
         )
-    radok = " ".join(cp)
-    # Zoznam po súboroch je to, čo sa rozišlo minule. Vzor (`*.js`) sa rozísť nemá.
-    if cp and "poc/web/*.js" not in radok:
+    line = " ".join(cp)
+    # a per-file list drifts; a glob (`*.js`) can't
+    if cp and "poc/web/*.js" not in line:
         bad.append(
-            "::error file=workers/deploy/site.sh::`cp` z `poc/web/` vymenúva "
-            "jednotlivé `.js` namiesto `poc/web/*.js`. Presne tak sa stratil "
-            "`layer-style.js`: pribudol do priečinka, do zoznamu ho nikto "
-            "nedopísal a mapa prestala fungovať bez jediného slova."
+            "::error file=workers/deploy/site.sh::the `cp` from `poc/web/` lists "
+            "single `.js` files instead of `poc/web/*.js`. A file added to the "
+            "folder but not the list breaks the map without a word."
         )
 
-    # 3) a naozaj sa tým dostane von všetko, čo graf chce?
-    if cp and "poc/web/*.js" in radok:
-        for meno in sorted(potrebne):
-            if meno.endswith(".js"):
+    # 3) and does that really ship everything the graph wants?
+    if cp and "poc/web/*.js" in line:
+        for name in sorted(needed):
+            if name.endswith(".js"):
                 continue
-            if meno not in radok and not meno.endswith(".html"):
+            if name not in line and not name.endswith(".html"):
                 bad.append(
-                    f"::error file=workers/deploy/site.sh::`{meno}` je v grafe "
-                    f"viewera, ale `cp` ho do `_site` nedostane."
+                    f"::error file=workers/deploy/site.sh::`{name}` is in the "
+                    f"viewer's graph, but the `cp` doesn't get it into `_site`."
                 )
 
     for r in bad:
         print(r)
-    print(f"viewer na Pages: {len(bad)} chýb "
-          f"({len(potrebne)} súborov v grafe: {', '.join(sorted(potrebne))})")
+    print(f"viewer on Pages: {len(bad)} errors "
+          f"({len(needed)} files in the graph: {', '.join(sorted(needed))})")
     return 1 if bad else 0
 
 
