@@ -1,27 +1,7 @@
-# Planetiler custom schema – značené trasy (turistické, cyklo, bežky, jazdecké).
-#
-# Trasa je v OSM `type=route` relácia nad cudzími cestami a schéma
-# OpenMapTiles relácie trás nemá – v dlaždiciach je len cesta, bez značenia.
-#
-# Vstup vyrába build-map-region.yml:
-#   osmium tags-filter (r/route=…) → workers/trails/routes.py → data/trails.geojson
-#
-# Jedna línia = jedna trasa na jednej ceste; po ceste ich vedie aj päť naraz,
-# takže každá dostane svoj pruh (`side`, `off`) a štýl ju podľa neho posunie
-# vedľa cesty. Pešie trasy idú na jednu stranu, kolesové na druhú.
-#
-# `mark`, `mark_bg` a `mark_fg` sú turistická značka tak, ako je namaľovaná na
-# strome – to, čo človek v teréne sleduje; ikonka druhu trasy hovorí len, že
-# tadiaľ ide „nejaká turistická".
-#
-# `way` (`path` / `road`) hovorí, po čom trasa vedie: odstup, pri ktorom sa
-# pásik lepí na chodník, leží uprostred asfaltky. Aký odstup pre ktorý prípad,
-# si drží štýl.
-#
-# `tier` je dôležitosť podľa siete (iwn/nwn/rwn/lwn) – riadi, od akého zoomu je
-# trasa v dlaždiciach.
-schema_name: FricoMaps značené trasy
-schema_description: Turistické chodníky, cyklotrasy, bežky a jazdecké trasy z OSM relácií
+# Planetiler custom schema – marked trails (hiking, cycling, ski, horse).
+# Input from `workers/trails/routes.py`: one line per route per way, in its lane.
+schema_name: FricoMaps marked trails
+schema_description: Hiking paths, cycle routes, ski and horse trails from OSM relations
 attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 
 sources:
@@ -32,7 +12,7 @@ sources:
 layers:
   - id: trail
     features:
-      # diaľkové trasy (E-cesty, národné magistrály) – vidieť ich už z diaľky
+      # long-distance routes (E-paths, national trails) show from afar
       - source: trails
         geometry: line
         min_zoom: 8
@@ -41,18 +21,13 @@ layers:
             - international
             - national
         attributes: &trail_attributes
-          # druh trasy – štýl podľa neho volí farbu, hrúbku aj ikonu
+          # route kind – the style picks colour, width and icon by it
           - key: route
-          # farba značky: pomenovaná (red, blue, …) → prefarbiteľná paletou
+          # named mark colour (red, blue, …) → recolourable by palette
           - key: colour
-          # surový hex z OSM, keď farba nie je žiadna z pomenovaných
+          # raw OSM hex when the colour is none of the named ones
           - key: hex
-          # ZNAČKA, AKO JE NA STROME – tvar, podklad a farba. Sú to tri
-          # atribúty preto, že štýl z nich skladá meno obrázka v sprite
-          # (`mark-<mark_bg>-<mark_fg>-<mark>`) a developer mode vie tvar
-          # prepnúť bez toho, aby prišiel o farby z OSM. Trasa, ktorá značku
-          # nemá (neznáma farba), ich nemá ani jeden a kreslí sa jej ikonka
-          # druhu trasy.
+          # the mark as painted: the style builds `mark-<mark_bg>-<mark_fg>-<mark>`
           - key: mark
           - key: mark_bg
           - key: mark_fg
@@ -60,21 +35,20 @@ layers:
           - key: tier
           - key: name
           - key: ref
-          # pruh vedľa cesty: strana (+1 pešie, −1 kolesové), poradie v rade
-          # na tej strane (od nuly) a koľko trás na tej ceste celkovo je
+          # lane: side (+1 walking, −1 wheeled), order on that side, routes on the way
           - key: side
             type: integer
           - key: off
             type: double
           - key: cnt
             type: integer
-          # po čom trasa vedie – `path` (chodník, lesná cesta) alebo `road`
+          # what it runs on – `path` or `road`
           - key: way
-          # id relácie – v mape sa dá kliknúť a dohľadať trasu v OSM
+          # relation id, to look the route up in OSM
           - key: rel
             type: long
 
-      # regionálne značenie – väčšina turistických trás u nás
+      # regional marking – most hiking routes
       - source: trails
         geometry: line
         min_zoom: 10
@@ -82,7 +56,7 @@ layers:
           tier: regional
         attributes: *trail_attributes
 
-      # miestne okruhy a náučné chodníky – až keď je vidieť aj cesta pod nimi
+      # local loops and nature trails – once the way below shows too
       - source: trails
         geometry: line
         min_zoom: 12
@@ -90,10 +64,7 @@ layers:
           tier: local
         attributes: *trail_attributes
 
-    # Trasa je v OSM poskladaná z desiatok krátkych ciest. Zlepenie úsekov
-    # s rovnakými atribútmi (teda tej istej trasy v tom istom pruhu) je tu
-    # kvôli popiskom: názov sa kreslí pozdĺž línie a na 200-metrovom úseku
-    # sa nezmestí ani slovo. Zlepené línie sú aj menšie.
+    # merged so a name along the line fits
     tile_post_process:
       merge_line_strings:
         min_length: 0
