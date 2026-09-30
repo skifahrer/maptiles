@@ -1,67 +1,16 @@
 #!/usr/bin/env python3
 """
-DMR 5.0 ako JEDEN GeoTIFF vo vzdialenom ZIPe – čítaný cez /vsizip//vsicurl/.
+DMR 5.0 as ONE GeoTIFF in a remote ZIP – read through /vsizip//vsicurl/.
 
-ČO JE V ARCHÍVE (zmerané behom 31184095104, `mode: len plán`):
+The archive holds one continuous 151 GB raster (plus a 46 GB `.ovr`). GDAL reads
+it by HTTP Range, but the ZIP member is deflated, so reading costs as much as
+how FAR into the file the data lies. Hence: ONE pass (the whole country by one
+`gdal_translate -tr`), read FORWARD (cut to disk first, warp from disk),
+overviews when coarse enough, sidecars never hidden, a heartbeat every 30 s,
+and the TIFF header's 16 bytes before GDAL (run 31191478190 hung there).
 
-    dmr5_0/dmr5_jtsk03.tif        151,43 GB   celé Slovensko, 1 m, jeden raster
-    dmr5_0/dmr5_jtsk03.tif.ovr     46,28 GB   prehľadové úrovne (pyramídy)
-    dmr5_0/dmr5_jtsk03.tfw                    world file
-    dmr5_0/dmr5_jtsk03.tif.aux.xml / .xml     metadáta
-    INFO_*.txt, 4× PDF, prehlad_lokalit_*.shp licencie a prehľad lokalít
-
-Čakali sme textové výškové body po blokoch. Nie sú. Je to jeden súvislý
-raster, takže sa nedá deliť po položkách archívu – a celé rozdeľovanie na
-časti po položkách archívu tu nemá čo deliť.
-
-ZATO SA DÁ ČÍTAŤ PRIAMO. GDAL vie `/vsizip//vsicurl/URL/cesta.tif`: ZIP číta
-cez HTTP Range a GeoTIFF je dlaždicovaný, takže si vypýta len tie dlaždice,
-ktoré potrebuje. Žiadne sťahovanie 151 GB na disk, žiadne medzivýsledky.
-
-JEDNA VEC O TOM ALE PLATÍ A URČUJE CELÝ NÁVRH: položka v ZIPe je uložená
-deflate-om (ÚGKK ju tak zabalil), a v deflate prúde sa nedá skočiť dopredu –
-dá sa doň len rozbaliť od začiatku. Cena čítania je preto úmerná tomu, AKO
-ĎALEKO V SÚBORE dáta ležia. Zmerané na napodobenine (44 MB ZIP, dlaždicovaný
-DEFLATE GeoTIFF, HTTP server s Range):
-
-    výrez na začiatku rastra      0,5 MB    1 % archívu
-    výrez na konci rastra        44,1 MB  100 % archívu
-    celý raster 1 m → 5 m        37,8 MB   (s .ovr, 1,1 s)
-    to isté bez .ovr             46,1 MB   (2,7 s)
-
-Z toho plynú pravidlá, podľa ktorých je tento script napísaný:
-
-  1. JEDEN PRECHOD, NIE VIAC. Prevzorkovanie celej krajiny sa robí jedným
-     `gdal_translate -tr`, nie po dlaždiciach – N výrezov by stálo N× cestu
-     od začiatku súboru. Dlaždice 1°×1° sa krájajú až z hotového malého
-     rastra.
-  2. ČÍTAŤ SA MUSÍ DOPREDU. Výrez ide v dvoch krokoch: najprv
-     `gdal_translate -projwin` (číta raster po riadkoch zhora nadol, teda
-     sekvenčne) na disk, až potom `gdalwarp` z disku do WGS84. Warp priamo
-     nad vzdialeným zdrojom si dlaždice pýta v poradí CIEĽOVEJ mriežky,
-     a každý skok späť v deflate prúde znamená rozbaľovanie od začiatku –
-     jeden krok späť môže stáť desiatky GB.
-  3. PYRAMÍDY MIESTO RASTRA, KEĎ TO IDE. Pri cieli aspoň 2× hrubšom než
-     zdroj sa číta z `.ovr` (46 GB) a nie z hlavného rastra (151 GB).
-     Nespoliehame sa na to, že si `.ovr` nájde GDAL sám – vyberáme ho
-     výslovne a je to vidieť v logu.
-  4. SIDECARY SA NESMÚ SCHOVAŤ. `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR`
-     síce šetrí požiadavky, ale skryje `.ovr` aj `.tfw`.
-  5. KAŽDÝCH 30 SEKÚND POVEDZ, ŽE ŽIJEŠ. Hodinový prechod cez 151 GB je
-     inak v logu úplne ticho (GDAL kreslí percentá cez `\\r`, čo sa v logu
-     GitHub Actions neobjaví). Heartbeat vypisuje prenesené bajty zo
-     sieťovky, rýchlosť a odhad zvyšku.
-  6. NAJPRV 16 BAJTOV, POTOM GDAL. Hlavička TIFFu nesie offset adresára
-     dlaždíc (IFD) a ten rozhoduje o všetkom: keď je na začiatku, súbor sa
-     otvorí za sekundu; keď je na konci, GDAL sa k nemu prehryzie len
-     rozbalením celého člena – teda 151 GB ešte pred prvým pixelom. Beh
-     31191478190 sa zasekol presne tu a v logu nebolo nič, z čoho by sa to
-     dalo zistiť. Teraz sa tých 16 bajtov prečíta ako prvé a `gdalinfo` má
-     strop (`--probe-timeout`), aby beh skončil s vysvetlením a nie po
-     šiestich hodinách bez slova.
-
-Použitie:
-    python3 workers/drive/dmr5-raster.py --url=URL --area=cele --grid-m=5 --out=tiles
+Usage:
+    python3 workers/drive/dmr5-raster.py --url=URL --area=whole_country --grid-m=5 --out=tiles
     python3 workers/drive/dmr5-raster.py --url=URL --area=vysoke_tatry --grid-m=1 \\
         --out=out --asset=ugkk-vysoke_tatry.tif
     python3 workers/drive/dmr5-raster.py --url=URL --probe-only
@@ -76,17 +25,17 @@ import sys
 import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-# Priečinok = job, súbor = krok; spoločné veci ležia o úroveň vyššie.
+# a folder is a job, a file a step; shared things live a level up
 _WORKERS = os.path.dirname(_HERE)          # workers/
-_DATA = os.path.join(_WORKERS, "data")     # číselníky (areas, regions, zdroje)
+_DATA = os.path.join(_WORKERS, "data")     # registries (areas, regions, sources)
 
-# KTORÝM RESAMPLINGOM – jedna odpoveď pre celú pipeline, viď `lib/cell.py`.
+# the resampling – one answer for the whole pipeline, see `lib/cell.py`
 sys.path.insert(0, os.path.join(_WORKERS, "lib"))
 from cell import resampling  # noqa: E402
 
 
 def load(name, path):
-    """workers/*.py sa kvôli pomlčke v mene nedajú `import`-núť normálne."""
+    """workers/*.py can't be imported normally because of the dash in the name."""
     if name in sys.modules:
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(name, os.path.join(_HERE, path))
@@ -96,11 +45,8 @@ def load(name, path):
     return mod
 
 
-# ČÍTANIE VZDIALENÉHO RASTRA JE VEDĽA. `dmr5-remote.py` vie otvoriť 151 GB
-# TIFF v cudzom ZIPe cez /vsizip//vsicurl/, spraviť nad ním sondu a nájsť
-# `.tfw` aj `.ovr` sidecary – vrátane oboch ciest cez pyramídy. Tento súbor
-# sa pýta na niečo iné: ktorý kus zeme z toho vyrezať a s akou mriežkou.
-# (Rozdelené preto, že spolu to malo 853 riadkov – pravidlo 5 v CLAUDE.md.)
+# opening and probing the remote raster is in `dmr5-remote.py`; this file asks
+# which piece of land to cut and on what grid
 remote = load("dmr5_remote", "dmr5-remote.py")
 GDAL_ENV, Heartbeat = remote.GDAL_ENV, remote.Heartbeat
 run, run_live, vsi_path = remote.run, remote.run_live, remote.vsi_path
@@ -110,12 +56,8 @@ find_sidecar, ovr_source, ovr_fallback = (remote.find_sidecar, remote.ovr_source
 
 
 def wgs_bbox_to_src(bbox_wgs, wkt_file, log):
-    """(W, S, E, N) vo WGS84 → obálka v projekcii zdroja, cez `gdaltransform`.
-
-    Nie cez pyproj: job má nainštalovaný len GDAL. A nie len rohy – Krovák je
-    kužeľové zobrazenie, takže obdĺžnik vo WGS84 nie je obdĺžnik v S-JTSK
-    a rohy by výrez odrezali.
-    """
+    """(W, S, E, N) in WGS84 → the envelope in the source projection via `gdaltransform`."""
+    # the sides, not just corners: Krovák is conic, a WGS84 rectangle isn't one in S-JTSK
     w, s, e, n = bbox_wgs
     pts, steps = [], 16
     for i in range(steps + 1):
@@ -127,7 +69,7 @@ def wgs_bbox_to_src(bbox_wgs, wkt_file, log):
                         "-t_srs", wkt_file],
                        input=inp, capture_output=True, text=True, env=GDAL_ENV)
     if r.returncode:
-        raise SystemExit(f"::error::gdaltransform zlyhal: {r.stderr[:300]}")
+        raise SystemExit(f"::error::gdaltransform failed: {r.stderr[:300]}")
     xs, ys = [], []
     for line in r.stdout.splitlines():
         f = line.split()
@@ -135,20 +77,14 @@ def wgs_bbox_to_src(bbox_wgs, wkt_file, log):
             xs.append(float(f[0]))
             ys.append(float(f[1]))
     if not xs:
-        raise SystemExit(f"::error::bbox {bbox_wgs} sa nedá prepočítať")
-    log(f"  v projekcii zdroja: {min(xs):.0f},{min(ys):.0f} … "
+        raise SystemExit(f"::error::bbox {bbox_wgs} can't be converted")
+    log(f"  in the source projection: {min(xs):.0f},{min(ys):.0f} … "
         f"{max(xs):.0f},{max(ys):.0f}")
     return min(xs), min(ys), max(xs), max(ys)
 
 
 def clamp_to_raster(box, info, pad_px, log):
-    """Prienik okna s rozsahom rastra.
-
-    Bez toho by `gdal_translate -projwin` presahujúcu časť DOPLNIL nulami –
-    a nula je platná výška, takže by sa to potom prejavilo ako pás mora
-    v mape, nie ako diera. (Presne to sa stalo pri prvom pokuse: minimum
-    výšok spadlo zo 400 na 0.)
-    """
+    """The window intersected with the raster (`-projwin` fills overhang with zeros, i.e. sea)."""
     gt = info["geoTransform"]
     px, py = info["size"]
     rw, rn = gt[0], gt[3]
@@ -159,78 +95,54 @@ def clamp_to_raster(box, info, pad_px, log):
     e = min(box[2] + pad_x, max(rw, re_))
     n = min(box[3] + pad_y, max(rs, rn))
     if w >= e or s >= n:
-        raise SystemExit("::error::Výrez nemá s rastrom spoločný ani jeden "
-                         "pixel – skontroluj `area`.")
+        raise SystemExit("::error::The cut-out shares not one pixel with the "
+                         "raster – check `area`.")
     if (w, s, e, n) != tuple(box):
-        log(f"  orezané na rozsah rastra: {w:.0f},{s:.0f} … {e:.0f},{n:.0f}")
+        log(f"  clipped to the raster: {w:.0f},{s:.0f} … {e:.0f},{n:.0f}")
     return w, s, e, n
 
 
 
 def degrees_per_metre(lat):
-    """Krok mriežky v stupňoch pre daný krok v metroch na tejto šírke."""
+    """The grid step in degrees for a step in metres at this latitude."""
     return (1.0 / (111320 * math.cos(math.radians(lat))), 1.0 / 110540)
 
 
 def whole_country(vsi, grid_m, work, out_dir, log, expect=None):
-    """Celá krajina: JEDEN prechod na hrubšiu mriežku, potom dlaždice.
-
-    Krájať 1° dlaždice priamo zo zdroja by znamenalo prejsť ten deflate prúd
-    toľkokrát, koľko je dlaždíc. Preto sa najprv prevzorkuje (sekvenčne, raz)
-    a až malý výsledok sa krája.
-    """
+    """The whole country: ONE pass to a coarser grid, then tiles from the small result."""
     os.makedirs(work, exist_ok=True)
     small = os.path.join(work, "dmr5-national.tif")
     t0 = time.time()
-    log(f"Prevzorkovanie celej krajiny na {grid_m} m – jeden prechod, "
-        f"toto je tá dlhá časť.")
+    log(f"Resampling the whole country to {grid_m} m – one pass, the long part.")
     if expect:
-        log(f"  čakám ~{expect / 1e9:.0f} GB zo siete")
-    # Z 1 m na 5 m je pomer 5, teda hlboko nad `AVERAGE_RATIO` – priemer tu
-    # má čo priemerovať a je poctivý. Aj tak sa naň pýtame `lib/cell.py`:
-    # keby sa `--grid-m` raz priblížilo k mriežke zdroja, `average` by z nej
-    # spravil mriežku v tieňovaní a nikto by nespozoroval, kedy sa to zlomilo.
+        log(f"  expecting ~{expect / 1e9:.0f} GB from the network")
+    # 1 m → 5 m is well over `AVERAGE_RATIO`, but `lib/cell.py` is asked anyway
     run_live(["gdal_translate", "-tr", str(grid_m), str(grid_m),
               "-r", resampling(grid_m, 1.0), "-of", "GTiff",
               "-co", "COMPRESS=DEFLATE", "-co", "PREDICTOR=3",
               "-co", "TILED=YES", "-co", "BIGTIFF=YES",
               "-co", "NUM_THREADS=ALL_CPUS", vsi, small],
-             label="prevzorkovanie", expect_bytes=expect, watch=small)
+             label="resampling", expect_bytes=expect, watch=small)
     mb = os.path.getsize(small) / 1048576
-    log(f"  hotovo za {(time.time() - t0) / 60:.1f} min, {mb:.0f} MB")
+    log(f"  done in {(time.time() - t0) / 60:.1f} min, {mb:.0f} MB")
 
-    log("Krájanie na dlaždice 1°×1° vo WGS84…")
+    log("Cutting into 1°×1° WGS84 tiles…")
     run_live(["python3", os.path.join(_WORKERS, "dem", "tiles.py"), "--out", out_dir, small])
     return small
 
 
 def area_cut(vsi, bbox_wgs, grid_m, dest, work, log, info, expect=None):
-    """Výrez v DVOCH krokoch – a to poradie je celá pointa.
-
-    1. `gdal_translate -projwin` vyreže okno v pôvodnej projekcii a uloží ho
-       na disk. Číta pritom raster po riadkoch zhora nadol, teda dopredu.
-    2. `gdalwarp` prevedie ten malý miestny súbor do WGS84.
-
-    Prečo nie rovno gdalwarp na vzdialený zdroj: warp si dlaždice pýta v takom
-    poradí, v akom ich potrebuje pre CIEĽOVÚ mriežku, a to nie je poradie,
-    v akom ležia v súbore. Každý skok späť v deflate prúde ale znamená
-    rozbaľovanie od začiatku člena – jeden krok späť môže stáť desiatky GB.
-    Sekvenčné čítanie tú pascu obchádza a warp potom pracuje nad diskom, kde
-    je skákanie zadarmo.
-
-    Cena prvého kroku je daná tým, ako ďaleko v súbore výrez leží: raster sa
-    číta od severu, takže Tatry sú lacnejšie než Slovenský kras. S tým sa
-    nedá spraviť nič, deflate sa preskakovať nedá.
-    """
+    """A cut-out in TWO steps: `-projwin` reads forward to disk, then `gdalwarp` from disk."""
+    # a warp on the remote source asks in target order; each step back in deflate is GBs
     os.makedirs(work, exist_ok=True)
-    native = os.path.join(work, "vyrez-nativ.tif")
+    native = os.path.join(work, "cutout-native.tif")
     wkt_file = os.path.join(work, "src.wkt")
     with open(wkt_file, "w") as f:
         f.write(info["wkt"])
     t0 = time.time()
 
-    log(f"Výrez {bbox_wgs} pri {grid_m} m, krok 1/2: okno v pôvodnej "
-        f"projekcii, čítané sekvenčne…")
+    log(f"Cut-out {bbox_wgs} at {grid_m} m, step 1/2: a window in the source "
+        f"projection, read sequentially…")
     box = wgs_bbox_to_src(bbox_wgs, wkt_file, log)
     bw, bs, be, bn = clamp_to_raster(box, info, 4, log)
     run_live(["gdal_translate",
@@ -238,15 +150,14 @@ def area_cut(vsi, bbox_wgs, grid_m, dest, work, log, info, expect=None):
               "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "PREDICTOR=3",
               "-co", "TILED=YES", "-co", "BIGTIFF=YES",
               "-co", "NUM_THREADS=ALL_CPUS", vsi, native],
-             label="čítanie okna", expect_bytes=expect, watch=native)
-    log(f"  okno: {os.path.getsize(native) / 1048576:.0f} MB, "
+             label="reading the window", expect_bytes=expect, watch=native)
+    log(f"  window: {os.path.getsize(native) / 1048576:.0f} MB, "
         f"{(time.time() - t0) / 60:.1f} min")
 
     dx, dy = degrees_per_metre((bbox_wgs[1] + bbox_wgs[3]) / 2)
-    log(f"Krok 2/2: prevod do WGS84 ({grid_m * dx:.7f}° × {grid_m * dy:.7f}°) "
-        f"– už len z disku, rýchle.")
-    # Okno je už v cieľovej mriežke, mení sa len projekcia – pomer pixel/bunka
-    # je 1 a kernel vyberá `lib/cell.py` (rozpis pri `dmr5-cut.to_wgs84`).
+    log(f"Step 2/2: converting to WGS84 ({grid_m * dx:.7f}° × {grid_m * dy:.7f}°) "
+        f"– from disk only, fast.")
+    # only the projection changes, a 1:1 ratio – `lib/cell.py` picks the kernel
     run_live(["gdalwarp", "-overwrite",
               "-t_srs", "EPSG:4326",
               "-te", *[repr(v) for v in bbox_wgs],
@@ -258,7 +169,7 @@ def area_cut(vsi, bbox_wgs, grid_m, dest, work, log, info, expect=None):
               native, dest])
     os.remove(native)
     mb = os.path.getsize(dest) / 1048576
-    log(f"  hotovo za {(time.time() - t0) / 60:.1f} min, {mb:.0f} MB")
+    log(f"  done in {(time.time() - t0) / 60:.1f} min, {mb:.0f} MB")
     return dest
 
 
@@ -269,12 +180,12 @@ def resolve_area(area, areas_path):
     if "," in key:
         vals = [float(v) for v in key.split(",")]
         if len(vals) != 4:
-            raise SystemExit(f"::error::bbox musí mať 4 čísla: {key}")
+            raise SystemExit(f"::error::a bbox must have 4 numbers: {key}")
         return f"bbox {key}", tuple(vals)
     areas = json.load(open(areas_path))
     if key not in areas:
         known = ", ".join(k for k in areas if not k.startswith("_"))
-        raise SystemExit(f"::error::neznámy výrez „{key}“. Známe: {known}")
+        raise SystemExit(f"::error::unknown cut-out \"{key}\". Known: {known}")
     return areas[key]["name"], tuple(areas[key]["bbox"])
 
 
@@ -282,23 +193,23 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", required=True)
     ap.add_argument("--plan", default="plan.json",
-                    help="z neho sa vyberie najväčší raster v archíve")
-    ap.add_argument("--member", default="", help="cesta v archíve natvrdo")
-    ap.add_argument("--area", default="cele")
+                    help="the largest raster in the archive is picked from it")
+    ap.add_argument("--member", default="", help="a fixed path in the archive")
+    ap.add_argument("--area", default="whole_country")
     ap.add_argument("--areas", default=os.path.join(_DATA, "areas.json"))
     ap.add_argument("--grid-m", type=float, default=5.0)
     ap.add_argument("--out", default="out")
     ap.add_argument("--work", default="raster-work")
-    ap.add_argument("--asset", default="", help="meno súboru pri výreze")
+    ap.add_argument("--asset", default="", help="the file name for a cut-out")
     ap.add_argument("--probe-only", action="store_true",
-                    help="len prečítať hlavičku a skončiť")
+                    help="only read the header and stop")
     ap.add_argument("--no-ovr", action="store_true",
-                    help="nečítať z pyramíd, ani keď to ide")
+                    help="don't read from overviews even when possible")
     ap.add_argument("--debug", action="store_true",
-                    help="CPL_DEBUG=ON – každá požiadavka do logu. Len na "
-                         "krátke behy, pri 151 GB je toho milión riadkov.")
+                    help="CPL_DEBUG=ON – every request to the log. Only for "
+                         "short runs, 151 GB is a million lines.")
     ap.add_argument("--probe-timeout", type=float, default=900,
-                    help="sekundy, koľko sa čaká na otvorenie rastra")
+                    help="seconds to wait for the raster to open")
     ap.add_argument("--summary", default="")
     ap.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT", ""))
     args = ap.parse_args()
@@ -315,52 +226,44 @@ def main(argv=None):
 
     member = pick_member(args.plan, args.member)
     vsi = vsi_path(args.url, member)
-    log(f"Položka v archíve: {member}")
-    log(f"Cesta pre GDAL:    {vsi}")
+    log(f"Archive member: {member}")
+    log(f"Path for GDAL:  {vsi}")
 
-    # ---- lacná diagnostika PRED tým, než sa pustí GDAL ----
-    # 16 bajtov z každého súboru povie, či sa vôbec dá otvoriť rozumne rýchlo.
-    # Beh 31191478190 sa zasekol presne tu a v logu nebolo nič, z čoho by sa
-    # to dalo zistiť.
-    log("Rozloženie rastrov v archíve (16 bajtov z každého):")
+    # cheap diagnostics BEFORE GDAL: 16 bytes of each file tell whether it opens fast
+    log("Raster layout in the archive (16 bytes of each):")
     main_entry = find_sidecar(args.plan, member, "")
     ovr_entry = find_sidecar(args.plan, member, ".ovr")
     lay = tiff_layout(args.url, main_entry, log) if main_entry else None
     lay_ovr = tiff_layout(args.url, ovr_entry, log) if ovr_entry else None
-    for name, l in (("hlavný raster", lay), ("pyramídy", lay_ovr)):
+    for name, l in (("main raster", lay), ("overviews", lay_ovr)):
         if l and l["share"] > 1.0:
-            log(f"::warning::{name}: adresár dlaždíc je až na {l['share']:.0f} % "
-                f"súboru. Člen ZIPu je deflate, takže sa k nemu GDAL dostane "
-                f"len rozbalením všetkého pred ním – otvorenie samo o sebe "
-                f"prečíta ~{l['ifd'] / 1e9:.1f} GB.")
+            log(f"::warning::{name}: the tile directory is at {l['share']:.0f} % "
+                f"of the file. The ZIP member is deflated, so GDAL reaches it "
+                f"only by unpacking all before it – opening alone reads "
+                f"~{l['ifd'] / 1e9:.1f} GB.")
 
-    # Sondu púšťame BEZ hľadania sidecarov. Keby bol drahý niektorý z nich
-    # (napr. `.ovr` so 46 GB), vyzeralo by to ako problém hlavného súboru –
-    # a my ich aj tak otvárame sami, výslovne.
+    # the probe runs WITHOUT sidecars: a costly `.ovr` would look like the main file's fault
     t0 = time.time()
     forced = None
     info = probe(vsi, log, timeout=args.probe_timeout, no_sidecars=True,
                  expect_bytes=main_entry["csize"] if main_entry else None)
     if info is not None:
-        log(f"  otvorené bez sidecarov za {time.time() - t0:.0f} s")
+        log(f"  opened without sidecars in {time.time() - t0:.0f} s")
         gt = info["geoTransform"]
         if gt[:6] == [0.0, 1.0, 0.0, 0.0, 0.0, 1.0] or not info["wkt"]:
-            # Georeferencia nie je v samotnom TIFFe – musí prísť z .tfw
-            # alebo .aux.xml, a tie GDAL nájde len s povoleným readdir.
-            log("Raster nemá georeferenciu v sebe – skúšam znova aj so "
-                "sidecarmi (.tfw / .aux.xml).")
+            # georeferencing isn't in the TIFF – it comes from .tfw or .aux.xml
+            log("The raster has no georeferencing of its own – trying again "
+                "with sidecars (.tfw / .aux.xml).")
             info = probe(vsi, log, timeout=args.probe_timeout)
     if info is None:
-        # Hlavný raster sa neotvoril. Namiesto toho, aby beh skončil naprázdno,
-        # skúsime pyramídy – majú 46 GB namiesto 151 GB. Model s hrubšou
-        # mriežkou je viac než žiadny model.
+        # the main raster didn't open: try the overviews – a coarser model beats none
         forced, expect_fb, info = ovr_fallback(
             args.url, member, args.work, log, args.plan, args.probe_timeout)
         if info is None:
-            log("::error::Raster sa nepodarilo otvoriť ani cez pyramídy. "
-                "Ak je vyššie vidieť, že adresár dlaždíc leží hlboko v súbore, "
-                "je to tá príčina: člen ZIPu je deflate, takže sa GDAL k nemu "
-                "dostane len rozbalením všetkého pred ním.")
+            log("::error::The raster couldn't be opened even through the "
+                "overviews. If the tile directory lies deep in the file (see "
+                "above), that is the cause: the ZIP member is deflated, so GDAL "
+                "reaches it only by unpacking all before it.")
             return 3
     if args.github_output:
         with open(args.github_output, "a") as f:
@@ -370,23 +273,20 @@ def main(argv=None):
             f.write(f"overviews={len(info['overviews'])}\n")
 
     if args.probe_only:
-        log("Len sonda – nič sa nesťahovalo okrem hlavičky.")
+        log("Probe only – nothing downloaded but the header.")
         area_name = None
     else:
         area_name, bbox = resolve_area(args.area, args.areas)
         os.makedirs(args.out, exist_ok=True)
 
-        # Z čoho sa bude čítať – hlavný raster, alebo pyramídy. Pri 151 GB vs
-        # 46 GB je to tá jediná vec, ktorá rozhoduje o dĺžke behu, tak nech
-        # je v logu vidieť, čo sa vybralo a prečo.
+        # main raster or overviews (151 vs 46 GB) decides the run's length – logged
         if forced:
-            # Hlavný raster sa neotvoril, ideme z pyramíd – nie je z čoho
-            # vyberať a jemnejšie než ich mriežka to nepôjde.
+            # the main raster didn't open, overviews it is
             src, expect = forced, expect_fb
             if args.grid_m < info["pixel"][0]:
-                log(f"::warning::Vypýtaná mriežka {args.grid_m} m je jemnejšia "
-                    f"než pyramída ({info['pixel'][0]:g} m) – výsledok bude "
-                    f"interpolovaný, nová informácia v ňom nepribudne.")
+                log(f"::warning::The asked {args.grid_m} m grid is finer than "
+                    f"the overview ({info['pixel'][0]:g} m) – the result is "
+                    f"interpolated, no new information in it.")
         else:
             src, expect = (None, None) if args.no_ovr else ovr_source(
                 args.url, member, info, args.grid_m, args.work, log, args.plan,
@@ -395,35 +295,35 @@ def main(argv=None):
             src = vsi
             main_entry = find_sidecar(args.plan, member, "")
             expect = main_entry["csize"] if main_entry else None
-            log(f"Čítam hlavný raster ({(expect or 0) / 1e9:.2f} GB v archíve).")
+            log(f"Reading the main raster ({(expect or 0) / 1e9:.2f} GB in the archive).")
 
         if bbox is None:
             whole_country(src, args.grid_m, args.work, args.out, log, expect)
         else:
-            asset = args.asset or "ugkk-vyrez.tif"
+            asset = args.asset or "ugkk-cutout.tif"
             area_cut(src, bbox, args.grid_m, os.path.join(args.out, asset),
                      args.work, log, info, expect)
         made = sorted(f for f in os.listdir(args.out) if f.endswith(".tif"))
         total = sum(os.path.getsize(os.path.join(args.out, f)) for f in made)
-        log(f"Hotovo: {len(made)} súborov, {total / 1048576:.0f} MB")
+        log(f"Done: {len(made)} files, {total / 1048576:.0f} MB")
         if args.github_output:
             with open(args.github_output, "a") as f:
                 f.write(f"files={len(made)}\n")
 
     if args.summary:
         with open(args.summary, "w") as f:
-            f.write("## Raster priamo z archívu\n\n")
-            f.write("| vec | hodnota |\n|---|---|\n")
-            f.write(f"| položka | `{member}` |\n")
-            f.write(f"| veľkosť | {info['size'][0]}×{info['size'][1]} px |\n")
-            f.write(f"| mriežka zdroja | {info['pixel'][0]} m |\n")
+            f.write("## Raster straight from the archive\n\n")
+            f.write("| item | value |\n|---|---|\n")
+            f.write(f"| member | `{member}` |\n")
+            f.write(f"| size | {info['size'][0]}×{info['size'][1]} px |\n")
+            f.write(f"| source grid | {info['pixel'][0]} m |\n")
             f.write(f"| CRS | {info['crs']} |\n")
-            f.write(f"| kompresia | {info['compression']} |\n")
-            f.write(f"| dlaždica | {info['block']} |\n")
-            f.write(f"| prehľadové úrovne | {len(info['overviews'])} |\n")
+            f.write(f"| compression | {info['compression']} |\n")
+            f.write(f"| tile | {info['block']} |\n")
+            f.write(f"| overview levels | {len(info['overviews'])} |\n")
             if area_name:
-                f.write(f"| územie | {area_name} |\n")
-                f.write(f"| cieľová mriežka | {args.grid_m} m |\n")
+                f.write(f"| area | {area_name} |\n")
+                f.write(f"| target grid | {args.grid_m} m |\n")
             f.write("\n<details><summary>Log</summary>\n\n```\n"
                     + "\n".join(lines) + "\n```\n\n</details>\n")
     return 0

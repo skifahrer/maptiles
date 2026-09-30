@@ -1,28 +1,16 @@
 #!/usr/bin/env python3
-"""Sklad hotových dát na Google Drive – náhrada za GitHub releasy.
-
-Publikuje sa len na Drive: release má na asset strop 2 GB, ktorý pipeline
-zvonku tvaroval, a hotové dáta v releasoch verejného repozitára vyzerajú ako
-vydanie softvéru, ktorým nie sú. Drive už drží DMR 5.0, cache aj hotové mapy.
+"""The store of finished data on Google Drive – a stand-in for GitHub releases.
 
     gh release view          → --names / --index / --latest
     gh release download      → --get
     gh release upload        → --put
     gh release delete-asset  → --rm
 
-Mená súborov ostávajú tie isté, aké mali assety – meno je sľub o rozsahu.
-Dve podoby DMR 5.0 ostávajú tiež: tie nedržal strop assetu, ale runner
-(1°×1° dlaždica má v metri ~48 GB a voľných je ~60 GB).
-
-Rozloženie je plochá dvojúrovňová vec, nech sa dá prezerať očami:
-`<koreň>/<sklad>/<meno assetu>`. Koreň `fricomaps-sklad` vzniká sám pri prvom
-zápise; inde ho posadí `DRIVE_STORE_FOLDER`.
-
-„Clobber" je najprv nahrať nové, až potom zmazať staré – opačne by po spadnutom
-uploade nebolo ani jedno. Pri čítaní vyhráva najnovší súbor daného mena.
-
-Bez prihlásenia to nefunguje a nesmie to byť tiché: „v sklade nič nie je"
-a „nemám token" by boli na nerozoznanie.
+File names stay as the assets had them – a name promises an extent. The layout
+is `<root>/<store>/<asset name>`; the root appears by itself at the first write,
+`DRIVE_STORE_FOLDER` puts it elsewhere. "Clobber" uploads the new first and only
+then deletes the old; the newest file of a name wins when reading. Without a
+sign-in it fails loudly – "nothing stored" and "no token" must differ.
 
     python3 workers/drive/store.py --check | --list --store=dem-dmr5
     python3 workers/drive/store.py --get --store=dem-dmr5 --dir=dem/tiles \
@@ -40,7 +28,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def load(name, path):
-    """workers/*.py sa kvôli pomlčke v mene nedajú `import`-núť normálne."""
+    """workers/*.py can't be imported normally because of the dash in the name."""
     if name in sys.modules:
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(name, os.path.join(_HERE, path))
@@ -50,59 +38,39 @@ def load(name, path):
     return mod
 
 
-# S Drive hovoria tri hotové súbory a tento si ich požičiava celé – rovnako ako
-# `drive-cache.py`. Napísať sťahovanie po blokoch, priečinky či resumable
-# upload sem druhýkrát by znamenalo druhú pravdu o tom istom.
-drive = load("drive_serve", "serve.py")     # Pool: Range, presmerovania
-auth = load("drive_auth", "auth.py")        # kto som, token, mazanie
-folder = load("drive_folder", "folder.py")  # výpis, priečinky, upload
+# borrowed whole, like `cache.py`, so there is one truth about each
+drive = load("drive_serve", "serve.py")     # Pool: Range, redirects
+auth = load("drive_auth", "auth.py")        # who am I, token, deleting
+folder = load("drive_folder", "folder.py")  # listing, folders, upload
 
-# Priečinok skladu. Prázdne = `STORE_NAME` v koreni My Drive vlastníka tokenu
-# (nájde sa podľa mena, a keď nie je, vyrobí sa). Prebiť sa dá premennou
-# DRIVE_STORE_FOLDER – id aj celý odkaz.
+# empty = `STORE_NAME` in the token owner's My Drive root (found by name or made);
+# DRIVE_STORE_FOLDER overrides it, an id or a whole link
 FOLDER_ID = ""
+# the existing Drive folder's name – renaming it would orphan every store
 STORE_NAME = "fricomaps-sklad"
 
-# Sklady, ktoré pipeline pozná. Zoznam je tu na jednu jedinú vec: keď sa niekto
-# preklepne v mene skladu, `--get` by mu inak povedal „nič tam nie je" a build
-# by ticho počítal odznova. Nový sklad sem treba dopísať.
-#
-# A KEĎ SA TO ZABUDNE, PADÁ TO AŽ PO PRÁCI. `dem-sonny1` tu chýbal od chvíle,
-# čo pribudol zdroj `sonny1`: doplnenie stiahlo z Drive 12 dlaždíc, rozuzlilo
-# skratky, prevedlo ich – a až posledný krok, nahratie do skladu, spadol na
-# tomto zozname. Hotová práca sa zahodila a s ňou aj vrstevnice, skaly
-# a tieňovanie, ktoré na ten sklad čakali (beh 31533988137, štyri padnuté joby).
-# Že zoznam sedí s tým, čo si pipeline pýta, stráži `workers/lint/stores.py`.
+# stores the pipeline knows, so a typo isn't mistaken for an empty store;
+# `workers/lint/stores.py` checks the list against what the pipeline asks for
 KNOWN = {
-    "dem-sonny": "Výškový model – Sonny's LiDAR DTM (1°×1° dlaždice)",
-    "dem-sonny1": "Výškový model – Sonny's LiDAR DTM 1″ (.hgt, krok výšky 1 m)",
-    "dem-dmr35": "Výškový model – ÚGKK DMR 3.5 (otvorené dáta, 10 m)",
-    # `-v2` NIE JE KOZMETIKA. Dlaždice v `dem-dmr5` vznikli čítaním z 4 m
-    # pyramídy priemerom na 5 m (pomer 1,25) a majú v sebe zapečenú mriežku –
-    # bolo ju vidieť ako svetlo-tmavé políčka v tieňovaní a ako zubatosť
-    # vrstevníc s tým istým rastrom. Oprava je vo `workers/drive/dmr5-cut.py`,
-    # lenže meno súboru je `N49E020.tif` a to sa zmeniť nesmie (je to sľub
-    # o rozsahu, pravidlo 2). Podobu teda nesie MENO SKLADU – presne tak, ako
-    # ju pri tieňovaní nesie `-v4` v mene assetu. Bez toho by `check-dem`
-    # našiel staré dlaždice, povedal „model máme" a mapa by ostala zrnitá
-    # pri zelenom builde (pravidlo 8).
-    #
-    # Starý `dem-dmr5` na Drive OSTÁVA – nič ho nemaže. Keď sa `-v2` osvedčí,
-    # dá sa zmazať ručne (`store.py --prune`), je to zrkadlo a vyrobí sa znova.
-    "dem-dmr5": "Výškový model – ÚGKK DMR 5.0, dlaždicová podoba (5 m), pred opravou resamplingu",
-    "dem-dmr5-v2": "Výškový model – ÚGKK DMR 5.0, dlaždicová podoba (5 m)",
-    "dem-ugkk": "Výškový model – ÚGKK DMR 5.0, výrez v plnom 1 m rozlíšení",
-    "dem-terrain": "Výškové (terrarium) dlaždice pre tieňovanie a 3D terén",
-    "dem-rocks": "Skalné plochy počítané zo sklonu výškového modelu",
-    "dem-rocks-img": "Skalné plochy z tmavých miest v tieňovaných dlaždiciach",
-    "dem-slope": "Raster sklonu po častiach (medzivýsledok skál)",
+    "dem-sonny": "Elevation model – Sonny's LiDAR DTM (1°×1° tiles)",
+    "dem-sonny1": "Elevation model – Sonny's LiDAR DTM 1″ (.hgt, 1 m height step)",
+    "dem-dmr35": "Elevation model – ÚGKK DMR 3.5 (open data, 10 m)",
+    # `-v2` carries the resampling fix, since `N49E020.tif` must not be renamed;
+    # the old `dem-dmr5` stays until deleted by hand
+    "dem-dmr5": "Elevation model – ÚGKK DMR 5.0, tiles (5 m), before the resampling fix",
+    "dem-dmr5-v2": "Elevation model – ÚGKK DMR 5.0, tiles (5 m)",
+    "dem-ugkk": "Elevation model – ÚGKK DMR 5.0, a full 1 m cut-out",
+    "dem-terrain": "Terrain (terrarium) tiles for hillshading and 3D terrain",
+    "dem-rocks": "Rock areas computed from the elevation model's slope",
+    "dem-rocks-img": "Rock areas from dark spots in hillshading tiles",
+    "dem-slope": "The slope raster in chunks (a rock intermediate)",
     "results": "Intermediate build results to look at (contours, rocks, trails)",
     # the former name of `results`, pruned until it is empty
     "vysledky": "Intermediate build results, former store",
 }
 
-_ROOT = {}      # id koreňa skladu – zisťuje sa raz za beh
-_STORES = {}    # meno skladu → id priečinka
+_ROOT = {}      # the store root's id – found once a run
+_STORES = {}    # store name → folder id
 
 
 def log(msg):
@@ -113,39 +81,22 @@ def human(n):
     return folder.human(n)
 
 
-# ---------- prihlásenie a priečinky ----------
-
 def creds_or_die(what):
-    """Prihlásenie, alebo pád s návodom.
-
-    Bez tokenu sa nedá ani vypísať priečinok – Drive API anonymné požiadavky
-    neobsluhuje. Tichý „v sklade to nie je" by tu bol ten najdrahší druh
-    omylu: každý beh by počítal všetko odznova a nikde by nebolo vidieť prečo.
-    """
+    """Sign-in, or exit with advice; a silent "not stored" is the costliest mistake."""
     creds = auth.from_env()
     if creds is None:
         raise SystemExit(
-            f"::error::Sklad na Drive potrebuje prihlásenie ({what}), ale "
-            "v prostredí nie je token vlastníka. Doplň secret "
-            "GDRIVE_CREDENTIALS (alebo premennú DRIVE_CLIENT a secrety "
-            "DRIVE_SECRET / DRIVE_REFRESH) a podaj ho jobu cez `env:` – "
-            "vyrobí ich workflow "
-            "„Údržba · prihlásenie Drive“.")
+            f"::error::The Drive store needs a sign-in ({what}), but the "
+            "environment has no owner token. Add the secret GDRIVE_CREDENTIALS "
+            "(or the variable DRIVE_CLIENT and secrets DRIVE_SECRET / "
+            "DRIVE_REFRESH) and pass it to the job through `env:` – the "
+            "workflow \"Maintenance · Drive sign-in\" makes them.")
     return creds
 
 
 def root_id(creds, create=False):
-    """Id koreňového priečinka skladu; `create=True` ho vyrobí, keď nie je.
-
-    `root` je alias na My Drive, ale do dopytu `'<id>' in parents` sa dáva
-    skutočné id – to je jedna lacná otázka a nemusí sa hádať, čo Drive
-    z aliasu urobí.
-
-    ČÍTANIE NIKDY NEVYRÁBA PRIEČINOK. Nie z čistoty, ale preto, že
-    `ensure_folder` pri výrobe niečo vypíše na stdout – a `--names`, `--index`
-    aj `--latest` sa čítajú do premennej v shelli (`ASSET=$(… --latest)`),
-    takže by sa tá hláška stala súčasťou mena súboru.
-    """
+    """The store root folder's id; `create=True` makes it when missing."""
+    # READING NEVER MAKES A FOLDER: making prints to stdout, and `--latest` is read into a variable
     if "id" in _ROOT:
         return _ROOT["id"]
     want = (os.environ.get("DRIVE_STORE_FOLDER") or FOLDER_ID or "").strip()
@@ -161,7 +112,7 @@ def root_id(creds, create=False):
 
 
 def store_id(creds, store, create=False):
-    """Id priečinka skladu, alebo None, keď ešte neexistuje."""
+    """A store's folder id, or None while it doesn't exist."""
     if store in _STORES:
         return _STORES[store]
     root = root_id(creds, create=create)
@@ -175,26 +126,19 @@ def store_id(creds, store, create=False):
 
 
 def known_or_die(store):
-    """Preklep v mene skladu je chyba, nie prázdny sklad."""
+    """A typo in a store name is an error, not an empty store."""
     if store in KNOWN:
         return store
     raise SystemExit(
-        f"::error::Sklad „{store}“ pipeline nepozná. Sú to: "
-        f"{', '.join(sorted(KNOWN))}. Keď má pribudnúť nový, dopíš ho do "
-        f"KNOWN vo workers/drive/store.py – inak by sa preklep v mene "
-        f"neodlíšil od prázdneho skladu a build by ticho počítal odznova.")
+        f"::error::The pipeline doesn't know store \"{store}\". They are: "
+        f"{', '.join(sorted(KNOWN))}. To add one, write it into KNOWN in "
+        f"workers/drive/store.py – otherwise a typo couldn't be told from an "
+        f"empty store and the build would silently compute anew.")
 
-
-# ---------- čo je v sklade ----------
 
 def index(creds, store):
-    """{meno: {id, size, created}} – pri duplikátoch mena vyhráva NAJNOVŠÍ.
-
-    Duplikát vzniká pri „clobberi": nové sa nahrá skôr, než sa staré zmaže
-    (viď rozpis v hlavičke). Keby vyhrával starší, jeden neúspešný beh by
-    vracal staré dáta pod novým menom – presne ten tichý omyl, ktorý sa
-    v mape nájde až o týždeň.
-    """
+    """{name: {id, size, created}} – the NEWEST wins among duplicate names."""
+    # a clobber uploads before deleting; the older winning would return old data
     fid = store_id(creds, store)
     if not fid:
         return {}
@@ -215,88 +159,66 @@ def index(creds, store):
 
 
 def latest(items, prefix="", suffix=""):
-    """Najnovšie meno, ktoré sedí na predponu a príponu.
-
-    Zoradiť sa MUSÍ podľa času nahratia, nie podľa mena: v menách assetov sú
-    prahy a mriežky, takže abecedne by vyhral ten s najväčším číslom, nie ten
-    posledný. (Tak to robilo aj `gh --jq 'sort_by(.createdAt) | last'`.)
-    """
+    """The newest name matching the prefix and suffix – by upload time, not name."""
     hit = [(v["created"], k) for k, v in items.items()
            if k.startswith(prefix) and k.endswith(suffix)]
     return max(hit)[1] if hit else ""
 
 
-# ---------- prenosy ----------
-
 def download(creds, item, dest):
-    """Súbor zo skladu na disk. Sťahovanie po blokoch má hotové `drive-folder`,
-    vrátane `.part` a premenovania – zrušený beh tak nenechá polovičný súbor,
-    ktorý by nabudúce prešiel ako hotový."""
+    """A store file to disk, by blocks with `.part` and a rename (see `folder.py`)."""
     pool = drive.Pool(creds=creds)
     progress = folder.Progress(item["size"])
     t0 = time.time()
     folder.fetch(pool, {"id": item["id"], "name": item["name"],
                         "size": item["size"]}, dest, progress)
     el = max(time.time() - t0, 1e-6)
-    log(f"  stiahnuté {item['name']} ({human(item['size'])}) za {el:.0f} s "
+    log(f"  downloaded {item['name']} ({human(item['size'])}) in {el:.0f} s "
         f"({item['size'] / el / 1e6:.1f} MB/s)")
 
 
 def upload(creds, store, path, name, note="", clobber=True):
-    """Súbor do skladu; rovnaké meno sa prepíše (až po úspešnom nahratí).
-
-    `clobber=False` preskočí hľadanie starej verzie – a s ním jedno vypísanie
-    priečinka. Je to pre `slope-chunks.py`: ten nahráva rádovo stovku častí,
-    ktoré v sklade podľa svojho zoznamu nie sú, takže by sa priečinok vypisoval
-    stokrát pre nič. Cena je, že po neúspešnom sťahovaní môže časť pribudnúť
-    druhýkrát; obsah je ten istý a `index()` berie novšiu, takže je to
-    neškodné.
-    """
+    """A file into a store; the same name is overwritten (only after a good upload)."""
+    # `clobber=False` skips the lookup for `slope-chunks.py`'s hundreds of new chunks
     fid = store_id(creds, store, create=True)
     size = os.path.getsize(path)
-    bolo = index(creds, store).get(name) if clobber else None
-    stare = ([bolo["id"]] + bolo.get("dupes", [])) if bolo else []
+    was = index(creds, store).get(name) if clobber else None
+    old_ids = ([was["id"]] + was.get("dupes", [])) if was else []
     t0 = time.time()
     folder.upload(creds, path, name, fid, note or f"{store}/{name}")
     el = max(time.time() - t0, 1e-6)
-    log(f"  nahraté {name} ({human(size)}) za {el:.0f} s "
+    log(f"  uploaded {name} ({human(size)}) in {el:.0f} s "
         f"({size / el / 1e6:.1f} MB/s)")
-    for old in stare:
+    for old in old_ids:
         auth.api_delete(creds, old)
-    if stare:
-        log(f"  starú verziu ({len(stare)}×) som zmazal")
+    if old_ids:
+        log(f"  deleted the old version ({len(old_ids)}×)")
 
-
-# ---------- príkazy ----------
 
 def do_check(args):
-    """Vie tento beh zo skladu čítať a doň zapisovať? Lacná otázka.
-
-    Vlastný príkaz preto, že odpoveď na ňu sa inak dozvieme až po hodine
-    výpočtu, keď sa má výsledok uložiť – a vtedy je neskoro.
-    """
-    creds = creds_or_die("kontroluje sa prístup")
+    """Can this run read and write the store? Cheap, before an hour of work."""
+    creds = creds_or_die("checking access")
     who = auth.whoami(creds)
     root = root_id(creds)
     if root:
-        log(f"Sklad na Google Drive, priečinok {root}")
+        log(f"Store on Google Drive, folder {root}")
         log(f"  {folder.folder_link(root)}")
     else:
-        log(f"Sklad na Google Drive: priečinok „{STORE_NAME}“ v My Drive ešte "
-            f"nie je – vyrobí sa pri prvom uložení.")
-    log(f"  účet    {who.get('emailAddress', '?')} (údaje z {creds.source})")
+        log(f"Store on Google Drive: folder \"{STORE_NAME}\" isn't in My Drive "
+            f"yet – made at the first save.")
+    log(f"  account {who.get('emailAddress', '?')} (details from {creds.source})")
     write = auth.can_write(creds)
-    log("  rozsah  " + {True: "číta aj zapisuje ✓",
-                        False: "LEN ČÍTANIE – nič sa neuloží",
-                        None: "nedá sa zistiť"}[write])
-    celkom = 0
+    log("  scope   " + {True: "reads and writes ✓",
+                        False: "READ ONLY – nothing will save",
+                        None: "can't be told"}[write])
+    total = 0
     for store in sorted(KNOWN):
         items = index(creds, store)
-        vel = sum(v["size"] for v in items.values())
-        celkom += vel
-        log(f"  {store:<14} {len(items):>5} súborov  {human(vel):>10}"
-            + ("" if store_id(creds, store) else "   (ešte nie je)"))
-    log(f"  {'spolu':<14} {'':>5}           {human(celkom):>10}")
+        size = sum(v["size"] for v in items.values())
+        total += size
+        log(f"  {store:<14} {len(items):>5} files  {human(size):>10}"
+            + ("" if store_id(creds, store) else "   (not yet)"))
+    log(f"  {'total':<14} {'':>5}        {human(total):>10}")
     if write is False:
         log(f"::error::{auth.scope_hint()}")
         return 1
@@ -304,10 +226,10 @@ def do_check(args):
 
 
 def do_list(args):
-    creds = creds_or_die("vypisuje sa sklad")
+    creds = creds_or_die("listing the store")
     items = index(creds, args.store)
-    vel = sum(v["size"] for v in items.values())
-    log(f"Sklad {args.store}: {len(items)} súborov, {human(vel)} "
+    size = sum(v["size"] for v in items.values())
+    log(f"Store {args.store}: {len(items)} files, {human(size)} "
         f"– {KNOWN[args.store]}")
     for name in sorted(items):
         v = items[name]
@@ -316,18 +238,16 @@ def do_list(args):
 
 
 def do_names(args):
-    """Mená, jedno na riadok – to, čo robilo `gh release view --json assets`."""
-    creds = creds_or_die("vypisujú sa mená v sklade")
+    """Names, one a line – what `gh release view --json assets` did."""
+    creds = creds_or_die("listing the store's names")
     for name in sorted(index(creds, args.store)):
         print(name)
     return 0
 
 
 def do_index(args):
-    """`meno:veľkosť` na riadok. Z toho si `check-dem.sh` počíta otlačok
-    obsahu skladu do kľúča cache – meno samo by nestačilo, keby sa ten istý
-    asset doplnil nanovo a bol iný."""
-    creds = creds_or_die("vypisuje sa obsah skladu")
+    """`name:size` a line – `check.sh` fingerprints the store for the cache key."""
+    creds = creds_or_die("listing the store's content")
     items = index(creds, args.store)
     for name in sorted(items):
         print(f"{name}:{items[name]['size']}")
@@ -335,7 +255,7 @@ def do_index(args):
 
 
 def do_latest(args):
-    creds = creds_or_die("hľadá sa najnovší súbor v sklade")
+    creds = creds_or_die("looking for the newest file in the store")
     name = latest(index(creds, args.store), args.prefix, args.suffix)
     if not name:
         return 3
@@ -344,133 +264,115 @@ def do_latest(args):
 
 
 def do_get(args):
-    """Vypýtané mená na disk. Vracia 3, keď sa nezískalo ANI JEDNO.
-
-    `--missing-ok` je pre dlaždice: bbox je obdĺžnik, ale model pokrýva
-    krajinu, takže rohové dlaždice v ňom nikdy nebudú a „chýba jedna, tak
-    spadni" by zhodilo každý build pri hranici.
-    """
-    creds = creds_or_die("sťahuje sa zo skladu")
+    """The asked names to disk. Returns 3 when NOT ONE was got."""
+    # `--missing-ok` is for tiles: the bbox's corners lie outside the country
+    creds = creds_or_die("downloading from the store")
     os.makedirs(args.dir, exist_ok=True)
     items = index(creds, args.store)
     if not items:
-        log(f"::warning::V sklade {args.store} nie je nič "
-            + ("(priečinok ešte neexistuje)." if not store_id(creds, args.store)
+        log(f"::warning::Store {args.store} has nothing "
+            + ("(the folder doesn't exist yet)." if not store_id(creds, args.store)
                else "."))
-    mam, chyba = [], []
+    got, missing = [], []
     for name in args.name:
         dest = os.path.join(args.dir, name)
         if os.path.exists(dest) and os.path.getsize(dest) > 0 and args.skip_local:
-            log(f"  {name} už na disku je – nesťahujem")
-            mam.append(name)
+            log(f"  {name} is on disk already – not downloading")
+            got.append(name)
             continue
         if name not in items:
-            chyba.append(name)
+            missing.append(name)
             continue
         item = dict(items[name], name=name)
         try:
             download(creds, item, dest)
         except (RuntimeError, OSError) as exc:
-            log(f"::warning::{name} sa zo skladu {args.store} nedal stiahnuť "
-                f"({exc}).")
-            chyba.append(name)
+            log(f"::warning::{name} couldn't be downloaded from store "
+                f"{args.store} ({exc}).")
+            missing.append(name)
             continue
-        mam.append(name)
-    if chyba:
-        log(f"  v sklade {args.store} nie je: {' '.join(chyba)}")
-    log(f"Zo skladu {args.store}: {len(mam)} z {len(args.name)} súborov")
-    if not mam:
+        got.append(name)
+    if missing:
+        log(f"  not in store {args.store}: {' '.join(missing)}")
+    log(f"From store {args.store}: {len(got)} of {len(args.name)} files")
+    if not got:
         return 3
-    return 0 if (not chyba or args.missing_ok) else 3
+    return 0 if (not missing or args.missing_ok) else 3
 
 
 def do_put(args):
-    creds = creds_or_die("ukladá sa do skladu")
-    # ROZSAH SA PÝTA PRED NAHRÁVANÍM. Readonly token `files.create` nepustí,
-    # takže by sa gigabajt najprv zbytočne poslal a padlo by to až potom.
+    creds = creds_or_die("saving to the store")
+    # THE SCOPE IS ASKED BEFORE UPLOADING, or a gigabyte is sent for nothing
     if auth.can_write(creds) is False:
-        raise SystemExit(f"::error::Do skladu {args.store} sa nič neuložilo: "
+        raise SystemExit(f"::error::Nothing was saved to store {args.store}: "
                          f"{auth.scope_hint()}")
-    log(f"Sklad {args.store}: ukladám {len(args.file)} súborov")
+    log(f"Store {args.store}: saving {len(args.file)} files")
     for i, path in enumerate(args.file):
         if not os.path.exists(path):
-            raise SystemExit(f"::error::{path} neexistuje – nie je čo uložiť.")
+            raise SystemExit(f"::error::{path} doesn't exist – nothing to save.")
         name = args.name[i] if i < len(args.name) else os.path.basename(path)
         upload(creds, args.store, path, name, args.note)
     return 0
 
 
 def do_rm(args):
-    """Zmaž súbor podľa mena (aj jeho duplikáty).
-
-    Volá to build pri „pregenerovaní": kým starý súbor existuje, ďalší beh by
-    zobral jeho, a beh, ktorý mal počítať nanovo, by o svoju prácu prišiel.
-    """
-    creds = creds_or_die("maže sa zo skladu")
+    """Delete a file by name (duplicates too), so a rebuild doesn't take the old one."""
+    creds = creds_or_die("deleting from the store")
     items = index(creds, args.store)
     n = 0
     for name in args.name:
         v = items.get(name)
         if v is None:
-            log(f"  v sklade {args.store} nebolo: {name}")
+            log(f"  wasn't in store {args.store}: {name}")
             continue
         for fid in [v["id"]] + v.get("dupes", []):
             if args.dry_run:
-                log(f"  zmazal by som: {name} ({human(v['size'])})")
+                log(f"  would delete: {name} ({human(v['size'])})")
             else:
                 auth.api_delete(creds, fid)
-                log(f"  zmazané: {name} ({human(v['size'])})")
+                log(f"  deleted: {name} ({human(v['size'])})")
             n += 1
     return 0
 
 
 def do_prune(args):
-    """Preriedenie jedného skladu podľa veku.
-
-    NIE VŠETKO SA PRERIEĎUJE. Dlaždice výškového modelu sú drahé zrkadlá
-    (jeden stupeň DMR 5.0 je rádovo pol hodiny čítania z Drive) a majú tam
-    ležať, kým ich niekto ručne nezmaže – preto sa sklad zadáva a nemá
-    predvolenú hodnotu. Zmysel to má pri `vysledky`, kde každý beh pridá
-    nový súbor a starý už nikto nechce.
-    """
-    creds = creds_or_die("prerieďuje sa sklad")
+    """Thin one store by age; no default store, DEM tiles are costly mirrors."""
+    creds = creds_or_die("thinning the store")
     items = index(creds, args.store)
-    vel = sum(v["size"] for v in items.values())
-    log(f"Sklad {args.store}: {len(items)} súborov, {human(vel)}")
-    hranica = time.time() - args.keep_days * 86400
-    smeti = [(n, v) for n, v in sorted(items.items())
-             if args.keep_days > 0 and v["created"]
-             and _epoch(v["created"]) < hranica]
-    usetrene = sum(v["size"] for _, v in smeti)
-    log(f"Na zmazanie: {len(smeti)} súborov starších než {args.keep_days:g} "
-        f"dní, {human(usetrene)}")
-    for name, v in smeti:
+    size = sum(v["size"] for v in items.values())
+    log(f"Store {args.store}: {len(items)} files, {human(size)}")
+    limit = time.time() - args.keep_days * 86400
+    doomed = [(n, v) for n, v in sorted(items.items())
+              if args.keep_days > 0 and v["created"]
+              and _epoch(v["created"]) < limit]
+    freed = sum(v["size"] for _, v in doomed)
+    log(f"To delete: {len(doomed)} files older than {args.keep_days:g} "
+        f"days, {human(freed)}")
+    for name, v in doomed:
         log(f"  {v['created'][:19]}  {human(v['size']):>10}  {name}")
     if args.dry_run:
-        log("Len výpis, nič sa nemazalo.")
+        log("Listing only, nothing deleted.")
     else:
-        for _name, v in smeti:
+        for _name, v in doomed:
             for fid in [v["id"]] + v.get("dupes", []):
                 auth.api_delete(creds, fid)
-        log(f"Zmazaných {len(smeti)} súborov, uvoľnené {human(usetrene)}")
+        log(f"Deleted {len(doomed)} files, freed {human(freed)}")
     if args.summary:
         with open(args.summary, "a") as f:
-            f.write(f"### Sklad `{args.store}` na Drive\n\n")
-            f.write("| vec | hodnota |\n|---|--:|\n")
-            f.write(f"| súborov pred | {len(items)} |\n")
-            f.write(f"| veľkosť pred | {human(vel)} |\n")
-            f.write(f"| {'na zmazanie' if args.dry_run else 'zmazaných'} "
-                    f"| {len(smeti)} |\n")
-            f.write(f"| {'uvoľnilo by sa' if args.dry_run else 'uvoľnené'} "
-                    f"| {human(usetrene)} |\n")
-            f.write(f"| ostáva | {human(vel - usetrene)} |\n\n")
+            f.write(f"### Store `{args.store}` on Drive\n\n")
+            f.write("| item | value |\n|---|--:|\n")
+            f.write(f"| files before | {len(items)} |\n")
+            f.write(f"| size before | {human(size)} |\n")
+            f.write(f"| {'to delete' if args.dry_run else 'deleted'} "
+                    f"| {len(doomed)} |\n")
+            f.write(f"| {'would be freed' if args.dry_run else 'freed'} "
+                    f"| {human(freed)} |\n")
+            f.write(f"| left | {human(size - freed)} |\n\n")
     return 0
 
 
 def _epoch(stamp):
-    """RFC 3339 z Drive → sekundy. `timegm`, nie `mktime`: časy z Drive sú
-    v UTC a `mktime` by ich čítal ako miestne – na runneri v UTC by to nebolo
-    vidieť a inde by prerieďovanie mazalo o hodiny vedľa."""
+    """RFC 3339 from Drive → seconds (UTC, hence `timegm`); unknown = leave it."""
     try:
         return calendar.timegm(time.strptime(stamp[:19], "%Y-%m-%dT%H:%M:%S"))
     except ValueError:
@@ -478,9 +380,7 @@ def _epoch(stamp):
 
 
 def lines(values):
-    """`--name` a `--file` sa dajú zadať viackrát AJ ako viac riadkov (alebo
-    medzerami oddelený zoznam) v jednej hodnote – shellové slučky to tak
-    podávajú prirodzenejšie než opakovaným prepínačom."""
+    """`--name` and `--file` repeated AND as lines or a space-split list in one value."""
     out = []
     for v in values or []:
         for line in v.splitlines():
@@ -500,51 +400,51 @@ def main():
     ap.add_argument("--put", action="store_true")
     ap.add_argument("--rm", action="store_true")
     ap.add_argument("--prune", action="store_true")
-    ap.add_argument("--store", default="", help="ktorý sklad (viď KNOWN)")
+    ap.add_argument("--store", default="", help="which store (see KNOWN)")
     ap.add_argument("--name", action="append", default=[],
-                    help="meno súboru v sklade; dá sa opakovať")
+                    help="a file name in the store; repeatable")
     ap.add_argument("--file", action="append", default=[],
-                    help="čo nahrať; dá sa opakovať")
-    ap.add_argument("--dir", default=".", help="kam sťahovať")
-    ap.add_argument("--prefix", default="", help="pri --latest")
-    ap.add_argument("--suffix", default="", help="pri --latest")
-    ap.add_argument("--note", default="", help="popis súboru na Drive")
+                    help="what to upload; repeatable")
+    ap.add_argument("--dir", default=".", help="where to download to")
+    ap.add_argument("--prefix", default="", help="with --latest")
+    ap.add_argument("--suffix", default="", help="with --latest")
+    ap.add_argument("--note", default="", help="the file's description on Drive")
     ap.add_argument("--missing-ok", action="store_true",
-                    help="pri --get: chýbajúce meno je varovanie, nie chyba")
+                    help="with --get: a missing name is a warning, not an error")
     ap.add_argument("--skip-local", action="store_true",
-                    help="pri --get: čo už je na disku, nesťahuj znova")
+                    help="with --get: don't download what is on disk already")
     ap.add_argument("--keep-days", type=float, default=90,
-                    help="pri --prune: čo je staršie, ide preč (0 = nemazať)")
+                    help="with --prune: older goes (0 = never)")
     ap.add_argument("--dry-run", action="store_true",
-                    help="len vypíš, čo by sa stalo")
+                    help="only print what would happen")
     ap.add_argument("--summary", default="",
-                    help="pri --prune: kam dopísať súhrn (GITHUB_STEP_SUMMARY)")
+                    help="with --prune: where to append the summary (GITHUB_STEP_SUMMARY)")
     args = ap.parse_args()
     args.name = lines(args.name)
     args.file = lines(args.file)
 
-    prikazy = [k for k in ("check", "list", "names", "index", "latest",
-                           "get", "put", "rm", "prune") if getattr(args, k)]
-    if len(prikazy) != 1:
-        ap.error("povedz presne jednu vec: --check / --list / --names / "
+    commands = [k for k in ("check", "list", "names", "index", "latest",
+                            "get", "put", "rm", "prune") if getattr(args, k)]
+    if len(commands) != 1:
+        ap.error("say exactly one thing: --check / --list / --names / "
                  "--index / --latest / --get / --put / --rm / --prune")
-    if prikazy[0] != "check":
+    if commands[0] != "check":
         if not args.store:
-            ap.error("--store je povinný")
+            ap.error("--store is required")
         known_or_die(args.store)
     if args.get and not args.name:
-        ap.error("--get potrebuje aspoň jedno --name")
+        ap.error("--get needs at least one --name")
     if args.put and not args.file:
-        ap.error("--put potrebuje aspoň jedno --file")
+        ap.error("--put needs at least one --file")
     if args.rm and not args.name:
-        ap.error("--rm potrebuje aspoň jedno --name")
+        ap.error("--rm needs at least one --name")
 
     try:
         return {"check": do_check, "list": do_list, "names": do_names,
                 "index": do_index, "latest": do_latest, "get": do_get,
-                "put": do_put, "rm": do_rm, "prune": do_prune}[prikazy[0]](args)
+                "put": do_put, "rm": do_rm, "prune": do_prune}[commands[0]](args)
     except auth.AuthError as exc:
-        # Text tých hlášok už nesie, čo s nimi.
+        # those messages already say what to do
         print(f"::error::{exc}")
         return 1
     except RuntimeError as exc:
