@@ -3380,7 +3380,7 @@ export function buildStyle({
         // vyššie zoomy MapLibre dopočíta overzoomom až po MAX_DISPLAY_Z
         maxzoom,
         attribution:
-          '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
+          '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }
     },
     sprite: spriteUrl,
@@ -3416,7 +3416,7 @@ export function buildStyle({
       url: trailsUrl,
       maxzoom: trailsMaxzoom,
       attribution:
-        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     };
   }
   // krajinné prvky mimo schémy: násypy, zárezy, múry, ploty, vedenia,
@@ -3427,7 +3427,7 @@ export function buildStyle({
       url: featuresUrl,
       maxzoom: featuresMaxzoom,
       attribution:
-        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     };
   }
   // body v krajine – druhý výstup toho istého jobu, vlastný .pmtiles kvôli
@@ -3438,7 +3438,7 @@ export function buildStyle({
       url: pointsUrl,
       maxzoom: pointsMaxzoom,
       attribution:
-        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     };
   }
   // dopravná sieť (balík `cesty`): štýl z nej kreslí len obmedzenia na ceste
@@ -3449,7 +3449,7 @@ export function buildStyle({
       url: transportUrl,
       maxzoom: transportMaxzoom,
       attribution:
-        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     };
   }
   // hranice území (balík `hranice`): vrstva `boundary` OpenMapTiles je čiara
@@ -3460,7 +3460,7 @@ export function buildStyle({
       url: boundariesUrl,
       maxzoom: boundariesMaxzoom,
       attribution:
-        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     };
   }
   // vodstvo (balík `vodstvo`): v OpenMapTiles leží meno vody mimo geometrie,
@@ -3471,7 +3471,7 @@ export function buildStyle({
       url: waterUrl,
       maxzoom: waterMaxzoom,
       attribution:
-        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     };
   }
   // sídla: každá budova, aj tá, ktorú OpenMapTiles zlúči alebo zahodí
@@ -3481,7 +3481,7 @@ export function buildStyle({
       url: buildingsUrl,
       maxzoom: buildingsMaxzoom,
       attribution:
-        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> prispievatelia'
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     };
   }
   // raster DEM pre tieňovanie a 3D. Atribúcia ide podľa `demTilesSource` –

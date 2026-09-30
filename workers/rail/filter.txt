@@ -1,14 +1,13 @@
-# predfilter pbf pre `rail.yml` (`osmium tags-filter --expressions`)
-#
-# širší než schéma – opačne to stráži `workers/lint/rail.py`
+# pbf prefilter for `rail.yml` (`osmium tags-filter --expressions`)
+# wider than the schema – `workers/lint/rail.py` guards the other way
 
-# trate, stanice, značky na trati aj plochy nástupíšť
+# lines, stations, trackside signs and platform areas
 nwr/railway
 
-# linky nesú farbu a číslo, ktoré `lines.py` prepíše na koľaje
+# lines carry the colour and number `lines.py` copies onto tracks
 r/route=tram,subway,light_rail,monorail,train,railway,funicular
 
-# lanovky a vleky aj rozostavané, plánované a zrušené
+# aerialways and lifts, also under construction, proposed and gone
 nwr/aerialway
 w/construction:aerialway
 w/proposed:aerialway

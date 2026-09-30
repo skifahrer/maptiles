@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Farbu a číslo linky z `type=route` relácie prepíše na jej koľaje.
+"""Copies line colour and number from `type=route` relations onto their tracks.
 
-Dopočíta aj body, kde sa mení traťová rýchlosť (`rail_speed`, `rail_speed_prev`),
-smer koľaje pri návestidle (`rail_bearing`), ktorým ukazuje jeho šípka,
-a najširší rozchod koľaje v mm (`rail_gauge`).
+Also adds speed change points (`rail_speed`, `rail_speed_prev`), the track bearing
+at a signal (`rail_bearing`) and the widest gauge in mm (`rail_gauge`).
 """
 import argparse
 import math
@@ -12,36 +11,36 @@ from pathlib import Path
 
 import osmium
 
-# linky, ktorých farba patrí na koľaj
-TRASY = {"tram", "subway", "light_rail", "monorail", "train", "railway", "funicular"}
-# mestská linka má na koľaji prednosť pred vlakom, čo po nej ide tiež
-PREDNOST = {"tram": 0, "subway": 0, "light_rail": 0, "monorail": 0, "funicular": 1}
-# trate, na ktorých sa rýchlosť počíta – vlečky a mestské koľaje nie
-RYCHLE = {"rail", "narrow_gauge"}
-# koľaje, po ktorých sa berie smer návestidla
-KOLAJE = RYCHLE | {"light_rail", "subway", "tram", "monorail", "funicular", "preserved"}
-CISLO = re.compile(r"^(\d+(?:\.\d+)?)\s*(mph)?$")
+# lines whose colour belongs on the track
+ROUTES = {"tram", "subway", "light_rail", "monorail", "train", "railway", "funicular"}
+# a city line beats a train on the same track
+PRIORITY = {"tram": 0, "subway": 0, "light_rail": 0, "monorail": 0, "funicular": 1}
+# lines where speed counts – not sidings or city tracks
+FAST = {"rail", "narrow_gauge"}
+# tracks that give a signal its bearing
+TRACKS = FAST | {"light_rail", "subway", "tram", "monorail", "funicular", "preserved"}
+NUMBER = re.compile(r"^(\d+(?:\.\d+)?)\s*(mph)?$")
 
 
-def rychlost(hodnota):
-    """`maxspeed` v km/h ako celé číslo; `80;60` berie prvú, `none` a iné nič."""
-    if not hodnota:
+def speed(value):
+    """`maxspeed` in whole km/h; `80;60` takes the first, `none` and others nothing."""
+    if not value:
         return None
-    zhoda = CISLO.match(hodnota.split(";")[0].strip())
-    if not zhoda:
+    match = NUMBER.match(value.split(";")[0].strip())
+    if not match:
         return None
-    km = float(zhoda.group(1)) * (1.609344 if zhoda.group(2) else 1)
+    km = float(match.group(1)) * (1.609344 if match.group(2) else 1)
     return int(round(km))
 
 
-def rozchod(hodnota):
-    """Najširší rozchod v mm z `gauge`; `1435;1520` je 1520, `standard` nič."""
-    cisla = [int(c) for c in re.findall(r"\d+", hodnota or "")]
-    return max(cisla) if cisla else None
+def gauge(value):
+    """Widest gauge in mm from `gauge`; `1435;1520` is 1520, `standard` nothing."""
+    numbers = [int(c) for c in re.findall(r"\d+", value or "")]
+    return max(numbers) if numbers else None
 
 
-def azimut(a, b):
-    """Zemepisný azimut z `a` do `b` v stupňoch, 0 je sever."""
+def bearing(a, b):
+    """Bearing from `a` to `b` in degrees, 0 is north."""
     f1, f2 = math.radians(a.lat), math.radians(b.lat)
     dl = math.radians(b.lon - a.lon)
     y = math.sin(dl) * math.cos(f2)
@@ -49,114 +48,113 @@ def azimut(a, b):
     return (math.degrees(math.atan2(y, x)) + 360) % 360
 
 
-def zmeny_rychlosti(konce):
-    """Uzol, kde sa stretnú presne dve trate s inou rýchlosťou → (predtým, potom).
+def speed_changes(ends):
+    """Node where exactly two lines of different speed meet → (before, after).
 
-    Keď jedna trať v uzle končí a druhá začína, poradie je v smere ciest; inak sa
-    smer nevie a ide od nižšej k vyššej."""
-    zmeny = {}
-    for uzol, zaznamy in konce.items():
-        if len(zaznamy) != 2:
+    End meeting start follows the way direction; otherwise lower to higher."""
+    changes = {}
+    for node, records in ends.items():
+        if len(records) != 2:
             continue
-        (v1, r1), (v2, r2) = zaznamy
+        (v1, r1), (v2, r2) = records
         if v1 == v2:
             continue
-        if {r1, r2} == {"koniec", "zaciatok"}:
-            pred, po = (v1, v2) if r1 == "koniec" else (v2, v1)
+        if {r1, r2} == {"end", "start"}:
+            before, after = (v1, v2) if r1 == "end" else (v2, v1)
         else:
-            pred, po = min(v1, v2), max(v1, v2)
-        zmeny[uzol] = (pred, po)
-    return zmeny
+            before, after = min(v1, v2), max(v1, v2)
+        changes[node] = (before, after)
+    return changes
 
 
-class Linky(osmium.SimpleHandler):
+class Lines(osmium.SimpleHandler):
     def __init__(self):
         super().__init__()
-        self.farba = {}
-        self.cisla = {}
-        # uzol → [(rýchlosť, "koniec"|"zaciatok")] z koncov hlavných tratí
-        self.konce = {}
-        # návestidlo → smer, ktorým platí; a azimut koľaje pri ňom
-        self.navestidla = {}
-        self.azimut = {}
+        self.colour = {}
+        self.numbers = {}
+        # node → [(speed, "end"|"start")] from main line ends
+        self.ends = {}
+        # signal → the direction it applies to; and the track bearing there
+        self.signals = {}
+        self.bearing = {}
 
     def node(self, n):
         if n.tags.get("railway") == "signal":
-            self.navestidla[n.id] = n.tags.get("railway:signal:direction", "forward")
+            self.signals[n.id] = n.tags.get("railway:signal:direction", "forward")
 
     def way(self, w):
-        druh = w.tags.get("railway")
-        if druh not in KOLAJE:
+        kind = w.tags.get("railway")
+        if kind not in TRACKS:
             return
-        uzly = w.nodes
-        if druh in RYCHLE and "service" not in w.tags and len(uzly) > 1:
-            v = rychlost(w.tags.get("maxspeed"))
+        nodes = w.nodes
+        if kind in FAST and "service" not in w.tags and len(nodes) > 1:
+            v = speed(w.tags.get("maxspeed"))
             if v:
-                self.konce.setdefault(uzly[0].ref, []).append((v, "zaciatok"))
-                self.konce.setdefault(uzly[-1].ref, []).append((v, "koniec"))
-        for i, nd in enumerate(uzly):
-            smer = self.navestidla.get(nd.ref)
-            if smer not in ("forward", "backward") or nd.ref in self.azimut:
+                self.ends.setdefault(nodes[0].ref, []).append((v, "start"))
+                self.ends.setdefault(nodes[-1].ref, []).append((v, "end"))
+        for i, nd in enumerate(nodes):
+            direction = self.signals.get(nd.ref)
+            if direction not in ("forward", "backward") or nd.ref in self.bearing:
                 continue
-            a, b = uzly[max(i - 1, 0)], uzly[min(i + 1, len(uzly) - 1)]
+            a, b = nodes[max(i - 1, 0)], nodes[min(i + 1, len(nodes) - 1)]
             if a.ref == b.ref or not (a.location.valid() and b.location.valid()):
                 continue
-            uhol = azimut(a.location, b.location) + (180 if smer == "backward" else 0)
-            self.azimut[nd.ref] = int(round(uhol)) % 360
+            angle = bearing(a.location, b.location) + (180 if direction == "backward" else 0)
+            self.bearing[nd.ref] = int(round(angle)) % 360
 
     def relation(self, r):
         t = r.tags
-        if t.get("type") != "route" or t.get("route") not in TRASY:
+        if t.get("type") != "route" or t.get("route") not in ROUTES:
             return
-        farba = t.get("colour")
-        cislo = t.get("ref")
-        poradie = PREDNOST.get(t.get("route"), 2)
+        colour = t.get("colour")
+        number = t.get("ref")
+        order = PRIORITY.get(t.get("route"), 2)
         for m in r.members:
             if m.type != "w":
                 continue
-            if farba and poradie < self.farba.get(m.ref, (9, ""))[0]:
-                self.farba[m.ref] = (poradie, farba)
-            if cislo:
-                self.cisla.setdefault(m.ref, set()).add(cislo)
+            if colour and order < self.colour.get(m.ref, (9, ""))[0]:
+                self.colour[m.ref] = (order, colour)
+            if number:
+                self.numbers.setdefault(m.ref, set()).add(number)
 
 
-class Prepis(osmium.SimpleHandler):
-    def __init__(self, linky, zmeny, writer):
+class Rewrite(osmium.SimpleHandler):
+    def __init__(self, lines, changes, writer):
         super().__init__()
-        self.linky = linky
-        self.zmeny = zmeny
+        self.lines = lines
+        self.changes = changes
         self.w = writer
-        self.zmenene = 0
+        self.changed = 0
 
     def node(self, n):
-        zmena = self.zmeny.get(n.id)
-        uhol = self.linky.azimut.get(n.id)
-        if zmena is None and uhol is None:
+        change = self.changes.get(n.id)
+        angle = self.lines.bearing.get(n.id)
+        if change is None and angle is None:
             self.w.add_node(n)
             return
-        tagy = dict(n.tags)
-        if zmena:
-            tagy["rail_speed_prev"], tagy["rail_speed"] = map(str, zmena)
-        if uhol is not None:
-            tagy["rail_bearing"] = str(uhol)
-        self.w.add_node(n.replace(tags=tagy))
+        new_tags = dict(n.tags)
+        if change:
+            new_tags["rail_speed_prev"], new_tags["rail_speed"] = map(str, change)
+        if angle is not None:
+            new_tags["rail_bearing"] = str(angle)
+        self.w.add_node(n.replace(tags=new_tags))
 
     def way(self, w):
-        farba = self.linky.farba.get(w.id)
-        cisla = self.linky.cisla.get(w.id)
-        mm = rozchod(w.tags.get("gauge"))
-        if not farba and not cisla and not mm:
+        colour = self.lines.colour.get(w.id)
+        numbers = self.lines.numbers.get(w.id)
+        mm = gauge(w.tags.get("gauge"))
+        if not colour and not numbers and not mm:
             self.w.add_way(w)
             return
-        tagy = dict(w.tags)
-        if farba and "colour" not in tagy:
-            tagy["colour"] = farba[1]
-        if cisla:
-            tagy["route_ref"] = ";".join(sorted(cisla, key=lambda c: (len(c), c)))
+        new_tags = dict(w.tags)
+        if colour and "colour" not in new_tags:
+            new_tags["colour"] = colour[1]
+        if numbers:
+            new_tags["route_ref"] = ";".join(sorted(numbers, key=lambda c: (len(c), c)))
         if mm:
-            tagy["rail_gauge"] = str(mm)
-        self.w.add_way(w.replace(tags=tagy))
-        self.zmenene += bool(farba or cisla)
+            new_tags["rail_gauge"] = str(mm)
+        self.w.add_way(w.replace(tags=new_tags))
+        self.changed += bool(colour or numbers)
 
     def relation(self, r):
         self.w.add_relation(r)
@@ -168,19 +166,19 @@ def main():
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
 
-    linky = Linky()
-    linky.apply_file(a.pbf, locations=True, idx="flex_mem")
-    zmeny = zmeny_rychlosti(linky.konce)
+    lines = Lines()
+    lines.apply_file(a.pbf, locations=True, idx="flex_mem")
+    changes = speed_changes(lines.ends)
     Path(a.out).unlink(missing_ok=True)
     writer = osmium.SimpleWriter(a.out)
     try:
-        prepis = Prepis(linky, zmeny, writer)
-        prepis.apply_file(a.pbf)
+        rewrite = Rewrite(lines, changes, writer)
+        rewrite.apply_file(a.pbf)
     finally:
         writer.close()
-    print(f"Linky: {prepis.zmenene} koľají dostalo farbu alebo číslo linky")
-    print(f"Rýchlosť sa mení v {len(zmeny)} bodoch, {len(linky.azimut)} návestidiel "
-          f"má smer")
+    print(f"Lines: {rewrite.changed} tracks got a line colour or number")
+    print(f"Speed changes at {len(changes)} points, {len(lines.bearing)} signals "
+          f"have a bearing")
 
 
 if __name__ == "__main__":

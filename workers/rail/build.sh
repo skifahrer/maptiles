@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Železnice a lanovky z OSM → `{región}-rail.pmtiles` a `{región}-rail-routing.pmtiles`.
-#
-# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
-# Podiel na veľkosti stránky berie z `BUDGET_RAIL_PCT`.
+# Railways and aerialways from OSM → `{region}-rail.pmtiles` and `{region}-rail-routing.pmtiles`.
+# Its share of the page size comes from `BUDGET_RAIL_PCT`.
 
 set -euo pipefail
 mkdir -p _site/tiles data steps-out
@@ -20,14 +18,14 @@ osmium tags-filter --overwrite -o data/rail.osm.pbf \
 
 BEFORE=$(stat -c%s data/region.osm.pbf)
 AFTER=$(stat -c%s data/rail.osm.pbf)
-echo "Predfilter: $(du -h data/region.osm.pbf | cut -f1) → $(du -h data/rail.osm.pbf | cut -f1)"
-printf '%s\t%s\t%s\t%s\n' "67" "Predfilter železníc a lanoviek" "$(( $(date +%s) - T_F ))" \
+echo "Prefilter: $(du -h data/region.osm.pbf | cut -f1) → $(du -h data/rail.osm.pbf | cut -f1)"
+printf '%s\t%s\t%s\t%s\n' "67" "Railway and aerialway prefilter" "$(( $(date +%s) - T_F ))" \
   "$(( BEFORE / 1048576 )) MB → $(( AFTER / 1048576 )) MB" \
   >> steps-out/rail.tsv
 
-# prázdny výrez nie je chyba – trať ani lanovka byť nemusí
+# an empty cutout isn't an error – there may be no track at all
 if [ "$AFTER" -lt 2000 ]; then
-  echo "::warning::V tomto území nie je ani jedna koľaj ani lanovka – balík \`zeleznice\` sa nevyrobí."
+  echo "::warning::This area has no track and no aerialway – the \`railways\` package isn't made."
   echo "enabled=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi
@@ -36,11 +34,11 @@ RZ_="$OPT_RAIL_MAXZOOM"
 case "$RZ_" in ''|*[!0-9]*) RZ_=15 ;; esac
 if [ "$RZ_" -gt 16 ]; then RZ_=16; fi
 
-# planetiler zahodí bez slova, čo má min_zoom nad maxzoomom
+# planetiler silently drops what has min_zoom above maxzoom
 TOPZ=$(grep -oE 'min_zoom: [0-9]+' workers/rail/rail.yml \
        | grep -oE '[0-9]+' | sort -n | tail -1)
 if [ "${TOPZ:-0}" -gt "$RZ_" ]; then
-  echo "::error::workers/rail/rail.yml má bloky s min_zoom až ${TOPZ}, ale dlaždice idú po z${RZ_}. Zdvihni rail_maxzoom na ${TOPZ}, alebo tým blokom zníž min_zoom."
+  echo "::error::workers/rail/rail.yml has blocks with min_zoom up to ${TOPZ}, but tiles go to z${RZ_}. Raise rail_maxzoom to ${TOPZ}, or lower min_zoom of those blocks."
   exit 1
 fi
 
@@ -58,14 +56,14 @@ java -Xmx4g -jar planetiler.jar generate-custom \
   --simplify_tolerance_at_max_zoom=0 \
   --min_feature_size_at_max_zoom=0 \
   --force
-printf '%s\t%s\t%s\t%s\n' "68" "Železnice a lanovky → PMTiles" "$(( $(date +%s) - T_PM ))" \
+printf '%s\t%s\t%s\t%s\n' "68" "Railways and aerialways → PMTiles" "$(( $(date +%s) - T_PM ))" \
   "maxzoom $RZ_, $(du -h "$OUT" | cut -f1)" \
   >> steps-out/rail.tsv
 
-# značky krajiny idú s mapou, appka ich nekreslí sama
+# country signs ship with the map, the app doesn't draw them itself
 node workers/rail/signs.mjs --region="$REGION_KEY" --out="_site/tiles/${REGION_KEY}-signs"
 
-# koľajová sieť na navigáciu – ten istý formát ako cestná, vlastný slovník
+# track network for navigation – the road format, its own dictionary
 T_R=$(date +%s)
 ROUT="_site/tiles/${REGION_KEY}-rail-routing.pmtiles"
 python3 workers/routing/tiles.py --pbf=data/rail.osm.pbf --out="$ROUT" \
@@ -74,7 +72,7 @@ python3 workers/routing/tiles.py --pbf=data/rail.osm.pbf --out="$ROUT" \
 ROUTING=false
 if [ -s "$ROUT" ]; then
   ROUTING=true
-  printf '%s\t%s\t%s\t%s\n' "69" "Koľajová sieť na navigáciu" "$(( $(date +%s) - T_R ))" \
+  printf '%s\t%s\t%s\t%s\n' "69" "Track network for navigation" "$(( $(date +%s) - T_R ))" \
     "$(du -h "$ROUT" | cut -f1)" >> steps-out/rail.tsv
 fi
 
@@ -83,7 +81,7 @@ LIMIT_MB="$SIZE_LIMIT_MB"
 case "$LIMIT_MB" in ''|*[!0-9]*) LIMIT_MB=900 ;; esac
 RBUDGET_MB=$(( LIMIT_MB * BUDGET_RAIL_PCT / 100 ))
 if [ "$MB" -gt "$RBUDGET_MB" ]; then
-  echo "::warning::Železnice majú ${MB} MB, čo je nad podielom ${RBUDGET_MB} MB z rozpočtu stránky. Zníž rail_maxzoom alebo zdvihni BUDGET_RAIL_PCT."
+  echo "::warning::Railways take ${MB} MB, above their ${RBUDGET_MB} MB share of the page budget. Lower rail_maxzoom or raise BUDGET_RAIL_PCT."
 fi
 
 echo "enabled=true" >> "$GITHUB_OUTPUT"

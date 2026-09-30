@@ -157,7 +157,7 @@ jq -n \
     glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
     styles: $styles,
     default_style: ("styles/" + $region + "-svetla.json"),
-    attribution: "© OpenStreetMap prispievatelia, Geofabrik, Natural Earth",
+    attribution: "© OpenStreetMap contributors, Geofabrik, Natural Earth",
     regions: {
       ($region): {
         name: $name,

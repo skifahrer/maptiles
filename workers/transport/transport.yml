@@ -40,7 +40,7 @@ schema_name: FricoMaps dopravná sieť
 schema_description: >-
   Všetko, po čom sa dá cestovať – cesty od diaľnice po schody, trajekty
   a lanovky, s menom, číslom, povrchom a prístupom
-attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 
 sources:
   osm:

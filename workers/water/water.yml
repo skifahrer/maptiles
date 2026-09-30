@@ -24,7 +24,7 @@ schema_name: FricoMaps vodstvo
 schema_description: >-
   Rieky, potoky, kanály, jazerá, priehrady, rybníky, zálivy a pobrežná čiara
   z OSM, každý prvok aj s menom
-attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 
 sources:
   osm:

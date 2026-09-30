@@ -26,7 +26,7 @@ schema_name: FricoMaps hranice území
 schema_description: >-
   Hranice štátu, kraja, okresu a obce ako plochy aj ako čiary, s menom
   a úrovňou územia, a k tomu body sídel, z ktorých sa tie mená kreslia
-attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 
 sources:
   osm:

@@ -22,7 +22,7 @@
 # trasa v dlaždiciach.
 schema_name: FricoMaps značené trasy
 schema_description: Turistické chodníky, cyklotrasy, bežky a jazdecké trasy z OSM relácií
-attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 
 sources:
   trails:
