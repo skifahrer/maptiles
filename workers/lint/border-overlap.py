@@ -1,125 +1,99 @@
 #!/usr/bin/env python3
-"""Hranica regiónu: presná z OSM, bez presahu – a uložené vrstvy to musia niesť.
-
-`.poly` z osm.fr je okolo hranice rozšírený o 2–4 km a `BORDER_BUFFER_M` ho
-ešte nafukoval, takže mapa siahala kilometre do susedného kraja. Teraz sa
-hranica číta presne z OSM relácie a buffer je 0.
-
-  1. `BORDER_BUFFER_M` je stále na jednom mieste (`plan/area.py`);
-  2. meno uloženej vrstvy to číslo nesie – inak beh stiahne vrstvu orezanú
-     podľa starej hranice a tvrdí, že je hotová;
-  3. `plan/pbf.sh` si hranicu pýta z PBF (`--from-pbf`), inak spadne
-     `region-poly.py` na náhradný `.poly`;
-  4. `boundary.py` vie hranicu pretnúť so štátom – to drží mapu vnútri
-     republiky aj pri pokazenej relácii kraja;
-  5. šev so susedmi sa meria obojstranne: kým sa merala len medzera,
-     prekryv 2–4 km vychádzal ako „šev zavretý ✓".
-"""
+"""Region border: exact from OSM, no overlap – and stored layers must carry it."""
 import re
 import sys
 
-# Súbor → premenná, v ktorej sa skladá meno assetu v sklade.
-SUBORY = {
+# file → variable that builds the store asset name
+FILES = {
     "workers/terrain/build.sh": "asset_name",
-    # `rocks.sh` je DRUHÁ POLOVICA `contours-rocks/build.sh` (ten prerástol
-    # 800 riadkov, tak sa rozdelil a číta sa cez `.`) – meno assetu so skalami
-    # sa skladá tam, takže sa tam aj kontroluje.
+    # the rock asset name is built in the second half of `contours-rocks/build.sh`
     "workers/contours-rocks/rocks.sh": "ROCK_ASSET",
 }
-ZDROJ = "workers/plan/area.py"
+SOURCE = "workers/plan/area.py"
 POLY = "workers/plan/region-poly.py"
-HRANICA = "workers/plan/boundary.py"
+BORDER = "workers/plan/boundary.py"
 PBF = "workers/plan/pbf.sh"
-SEV = "workers/plan/seam.py"
+SEAM = "workers/plan/seam.py"
 
 bad = []
 
 
-def cti(path):
+def read(path):
     with open(path, encoding="utf-8") as f:
         return f.read()
 
 
-# ---------- 1. jedno miesto pre `BORDER_BUFFER_M` ----------
-text = cti(ZDROJ)
+text = read(SOURCE)
 if not re.search(r"^BORDER_BUFFER_M\s*=\s*\d+", text, re.M):
-    print(f"::error file={ZDROJ}::`BORDER_BUFFER_M` tu nie je – presah za "
-          f"hranicu regiónu má byť definovaný na JEDNOM mieste a všetci ho "
-          f"majú brať odtiaľto. Keď sa presunul, uprav aj túto kontrolu.")
+    print(f"::error file={SOURCE}::`BORDER_BUFFER_M` isn't here – the overlap "
+          f"beyond the region border must be defined in ONE place and taken "
+          f"from here by everyone. If it moved, update this check too.")
     sys.exit(1)
 
-# ---------- 2. meno uloženej vrstvy to číslo nesie ----------
-for path, premenna in SUBORY.items():
-    text = cti(path)
-    # Meno assetu sa skladá z premennej, ktorá vznikla z `BORDER_BUFFER_M`
-    # (`area.py` sa `import`-ne jednoriadkovým `python3 -c`). Kontroluje sa
-    # oboje: že si to číslo súbor pýta a že sa naozaj dostalo do mena.
-    # Riadky, kde sa meno skladá: `ROCK_ASSET="…"` aj `asset_name() { … }`
-    # (funkcia, teda bez `=`), plus `sed`, ktorý sklad prehľadáva.
-    riadky = [r for r in text.splitlines()
-              if premenna in r and not r.lstrip().startswith("#")]
-    meno = "\n".join(riadky)
-    pyta = "BORDER_BUFFER_M" in text
-    v_mene = re.search(r"-o\$\{?[A-Za-z_][A-Za-z0-9_]*\}?", meno) is not None
-    if not pyta or not v_mene:
+for path, variable in FILES.items():
+    text = read(path)
+    # both `ROCK_ASSET="…"` and `asset_name() { … }` lines, plus the store `sed`
+    lines = [r for r in text.splitlines()
+             if variable in r and not r.lstrip().startswith("#")]
+    name = "\n".join(lines)
+    asks = "BORDER_BUFFER_M" in text
+    in_name = re.search(r"-o\$\{?[A-Za-z_][A-Za-z0-9_]*\}?", name) is not None
+    if not asks or not in_name:
         bad.append(
-            f"::error file={path}::Meno uloženej vrstvy (`{premenna}`) "
-            f"nenesie presah za hranicu kraja "
-            f"(`BORDER_BUFFER_M` z {ZDROJ} ako `-o…`). Bez neho sklad po "
-            f"zmene presahu vráti vrstvu orezanú po starom, beh ju vydá za "
-            f"hotovú a v mape ostane pás, kde je mapa a pod ňou nie je nič.")
+            f"::error file={path}::The stored layer name (`{variable}`) "
+            f"doesn't carry the overlap beyond the region border "
+            f"(`BORDER_BUFFER_M` from {SOURCE} as `-o…`). Without it, after "
+            f"a change of the overlap the store returns a layer cut the old "
+            f"way, the run passes it as done and the map keeps a strip with "
+            f"nothing under it.")
     else:
-        print(f"{path}: `{premenna}` nesie presah za hranicu ✓")
+        print(f"{path}: `{variable}` carries the overlap beyond the border ✓")
 
-# ---------- 3. hranica sa naozaj číta z PBF ----------
-pbf = cti(PBF)
-kod = "\n".join(r for r in pbf.splitlines() if not r.lstrip().startswith("#"))
-if "region-poly.py" not in kod or "--from-pbf=" not in kod:
+pbf = read(PBF)
+code = "\n".join(r for r in pbf.splitlines() if not r.lstrip().startswith("#"))
+if "region-poly.py" not in code or "--from-pbf=" not in code:
     bad.append(
-        f"::error file={PBF}::Hranica regiónu sa nepýta z PBF "
-        f"(`region-poly.py --from-pbf=…`). Bez toho sa spadne na náhradný "
-        f"`.poly` z osm.fr, ktorý je okolo hranice rozšírený – mapa vznikne, "
-        f"bude o 2 – 4 km väčšia než kraj a nikto to nezistí (pravidlo 8).")
+        f"::error file={PBF}::The region border isn't read from the PBF "
+        f"(`region-poly.py --from-pbf=…`). Without it osm.fr's fallback "
+        f"`.poly` is used, widened around the border – the map comes out "
+        f"2 – 4 km larger than the region and nobody notices (rule 8).")
 else:
-    print(f"{PBF}: hranica sa číta z PBF (`--from-pbf`) ✓")
+    print(f"{PBF}: the border is read from the PBF (`--from-pbf`) ✓")
 
-# ---------- 4. `boundary.py` vie čítať aj pretínať ----------
-hranica = cti(HRANICA)
-for meno, preco in (
-        ("def hranice_z_pbf",
-         "z PBF sa nemá ako prečítať relácia hranice"),
+border = read(BORDER)
+for name, why in (
+        ("def borders_from_pbf",
+         "there is no way to read the border relation from the PBF"),
         ("ST_Intersection",
-         "kraj sa nepretne so štátom, takže pokazená relácia kraja pretiahne "
-         "mapu za štátnu hranicu")):
-    if meno not in hranica:
-        bad.append(f"::error file={HRANICA}::`{meno}` tu nie je – {preco}.")
-if "ST_Buffer" in cti(POLY):
+         "the region isn't intersected with the state, so a broken region "
+         "relation drags the map beyond the state border")):
+    if name not in border:
+        bad.append(f"::error file={BORDER}::`{name}` isn't here – {why}.")
+if "ST_Buffer" in read(POLY):
     bad.append(
-        f"::error file={POLY}::Polygón kraja sa zase NAFUKUJE (`ST_Buffer`). "
-        f"Presah za hranicu bol náhrada za nepresný `.poly` z osm.fr; odkedy "
-        f"je hranica presná z OSM, robí už len mapu a vrstvy z výškového "
-        f"modelu kilometre vnútri susedného kraja a za štátnou hranicou.")
+        f"::error file={POLY}::The region polygon is BUFFERED again (`ST_Buffer`). "
+        f"The overlap stood in for osm.fr's imprecise `.poly`; with the exact "
+        f"OSM border it only pushes the map and elevation layers kilometres "
+        f"into the neighbouring region and beyond the state border.")
 
-# ---------- 5. šev sa meria, a meria sa oboje ----------
-poly = cti(POLY)
-if "seam" not in poly or "zmeraj_sev" not in poly:
+poly = read(POLY)
+if "seam" not in poly or "measure_seam" not in poly:
     bad.append(
-        f"::error file={POLY}::Šev so susedmi sa už nemeria "
-        f"(`seam.zmeraj_sev`). Je to jediné, čo o dvoch susedných mapách "
-        f"povie, či na seba nadväzujú – bez merania sa o medzere medzi nimi "
-        f"nedozvie nikto, kým ju niekto neuvidí v teréne.")
+        f"::error file={POLY}::The seam with the neighbours is no longer measured "
+        f"(`seam.measure_seam`). It is the only thing that tells whether two "
+        f"neighbouring maps join – without it nobody learns of a gap until "
+        f"someone sees it in the field.")
 else:
-    print(f"{POLY}: šev so susedmi sa meria ✓")
+    print(f"{POLY}: the seam with the neighbours is measured ✓")
 
-sev = cti(SEV)
-if '"prekryv_m"' not in sev or '"medzera_m"' not in sev:
+seam = read(SEAM)
+if '"overlap_m"' not in seam or '"gap_m"' not in seam:
     bad.append(
-        f"::error file={SEV}::Meranie švu nedáva obe čísla (`medzera_m` "
-        f"a `prekryv_m`). Kým sa merala len medzera, vychádzal prekryv "
-        f"2 – 4 km do susedného kraja ako „šev zavretý“ – a práve kvôli "
-        f"nemu sa hranica menila.")
+        f"::error file={SEAM}::Seam measurement doesn't give both numbers "
+        f"(`gap_m` and `overlap_m`). While only the gap was measured, a 2 – 4 km "
+        f"overlap into the neighbouring region read as “seam closed”.")
 else:
-    print(f"{SEV}: meria sa medzera aj prekryv ✓")
+    print(f"{SEAM}: both gap and overlap are measured ✓")
 
 for m in bad:
     print(m)

@@ -1,32 +1,7 @@
 #!/usr/bin/env python3
-"""
-Koľko plôch Planetiler z tohto PBF zahodí CELÝCH – a ktoré to sú.
+"""How many areas Planetiler drops WHOLE from this PBF (a member way is missing) – and which.
 
-PREČO TO EXISTUJE. Viacpolygónová plocha (`type=multipolygon` alebo
-`type=boundary`) je v OSM relácia a jej tvar skladajú členské cesty. Keď
-v súbore niektorá z nich CHÝBA, Planetiler prstence nezavrie a objekt zahodí
-CELÝ – nie tú časť, čo vytŕča, ale celý. V mape tým zmizne CHKO aj s tou
-polovicou, ktorá v kraji leží, a nie je to na čom spozorovať: build je zelený,
-dlaždice vzniknú, len je v nich o les menej. Presne toto sa dialo, kým sa kraj
-sťahoval ako hotový `{kraj}-latest.osm.pbf` z osm.fr (rozpis v hlavičke
-`workers/plan/pbf.sh`).
-
-Odkedy sa kraj reže z rodičovského extraktu, ich má byť pár – a musí byť
-VIDIEŤ koľko, lebo tento druh chyby sa inak neohlási. Číslo ide do logu aj do
-súhrnu behu; keď medzi obeťami je POMENOVANÁ plocha, píše sa `::warning::` aj
-s menom, nech sa dá porovnať s mapou.
-
-NIE JE TO TVRDÁ CHYBA a je to zámer: na hranici so zahraničím ostanú plochy,
-ktorých členovia nie sú v slovenskom extrakte vôbec (Dunaj, Nationalpark
-Donau-Auen) a doplniť by ich vedel až extrakt Európy. Pád na nich by znamenal,
-že sa Bratislavský kraj nedá postaviť.
-
-ČÍTA SA IBA `osmium`, BEZ pyosmium: dve volania, spolu ~1 s na 37 MB PBF
-(namerané). `tags-filter -R` vytiahne samotné relácie (204 kB) a `cat -t way`
-dá zoznam id ciest, ktoré v súbore SÚ. Doinštalovať kvôli tomuto knižnicu do
-jobu na kritickej ceste by sa nezaplatilo.
-
-Použitie:
+Usage:
     python3 workers/plan/pbf-areas.py data/region.osm.pbf
     python3 workers/plan/pbf-areas.py data/region.osm.pbf --summary=$GITHUB_STEP_SUMMARY
 """
@@ -36,11 +11,9 @@ import subprocess
 import sys
 import tempfile
 
-# Čím je plocha plochou NA MAPE. Relácií `type=boundary` sú stovky (kataster,
-# farnosti, štatistické oblasti) a tie v mape aj tak nie sú – zaujímajú nás
-# tie, ktoré kreslí štýl: krajinná pokrývka, voda a ochrana prírody.
+# only areas the style draws; hundreds of `type=boundary` relations never show
 AREA_KEYS = ("landuse", "natural", "leisure", "boundary", "waterway", "place")
-VIDITELNE = {
+VISIBLE = {
     "forest", "wood", "scrub", "heath", "grass", "grassland", "meadow",
     "farmland", "orchard", "vineyard", "water", "wetland", "bay", "reservoir",
     "park", "garden", "nature_reserve", "protected_area", "national_park",
@@ -51,44 +24,44 @@ _ESC = re.compile(r"%([0-9a-fA-F]+)%")
 
 
 def unesc(text):
-    """OPL escapuje medzeru, čiarku a spol. ako `%20%` – späť na znak."""
+    """OPL escapes space, comma etc. as `%20%` – back to the character."""
     return _ESC.sub(lambda m: chr(int(m.group(1), 16)), text)
 
 
-def opl_fields(riadok):
-    """Riadok OPL → `{písmeno: zvyšok}`. Medzery v hodnotách sú escapované."""
+def opl_fields(line):
+    """OPL line → `{letter: rest}`; spaces in values are escaped."""
     out = {}
-    for pole in riadok.split(" "):
-        if pole:
-            out[pole[0]] = pole[1:]
+    for field in line.split(" "):
+        if field:
+            out[field[0]] = field[1:]
     return out
 
 
-def tags(pole):
+def tags(field):
     out = {}
-    if not pole:
+    if not field:
         return out
-    for kus in pole.split(","):
-        k, _, v = kus.partition("=")
+    for part in field.split(","):
+        k, _, v = part.partition("=")
         out[unesc(k)] = unesc(v)
     return out
 
 
 def way_ids(pbf):
-    """Id ciest, ktoré v súbore NAOZAJ sú."""
+    """Ids of the ways really in the file."""
     ids = set()
     p = subprocess.Popen(["osmium", "cat", "-t", "way", "-f", "opl", pbf],
                          stdout=subprocess.PIPE, text=True)
-    for riadok in p.stdout:
-        medzera = riadok.find(" ")
-        ids.add(int(riadok[1:medzera if medzera > 0 else None]))
+    for line in p.stdout:
+        space = line.find(" ")
+        ids.add(int(line[1:space if space > 0 else None]))
     if p.wait() != 0:
-        raise SystemExit(f"::error::`osmium cat` nad {pbf} zlyhal.")
+        raise SystemExit(f"::error::`osmium cat` on {pbf} failed.")
     return ids
 
 
-def rozbite(pbf):
-    """`[(chýba, členov, id, druh, meno)]` pre plochy, ktoré Planetiler zahodí."""
+def broken(pbf):
+    """`[(missing, members, id, kind, name)]` for areas Planetiler drops."""
     with tempfile.NamedTemporaryFile(suffix=".osm.pbf") as tmp:
         subprocess.run(
             ["osmium", "tags-filter", "-R", "--overwrite", "-o", tmp.name, pbf,
@@ -97,65 +70,66 @@ def rozbite(pbf):
         opl = subprocess.run(["osmium", "cat", "-f", "opl", tmp.name],
                              check=True, capture_output=True, text=True).stdout
 
-    su = way_ids(pbf)
-    von = []
-    for riadok in opl.splitlines():
-        if not riadok.startswith("r"):
+    present = way_ids(pbf)
+    out = []
+    for line in opl.splitlines():
+        if not line.startswith("r"):
             continue
-        f = opl_fields(riadok)
+        f = opl_fields(line)
         t = tags(f.get("T", ""))
         if t.get("type") not in ("multipolygon", "boundary"):
             continue
-        druh = next((t[k] for k in AREA_KEYS if k in t), "")
-        if druh not in VIDITELNE:
+        kind = next((t[k] for k in AREA_KEYS if k in t), "")
+        if kind not in VISIBLE:
             continue
-        cesty = [int(m[1:].split("@")[0]) for m in f.get("M", "").split(",")
-                 if m.startswith("w")]
-        if not cesty:
+        ways = [int(m[1:].split("@")[0]) for m in f.get("M", "").split(",")
+                if m.startswith("w")]
+        if not ways:
             continue
-        chyba = [i for i in cesty if i not in su]
-        if chyba:
-            von.append((len(chyba), len(cesty), riadok.split(" ")[0],
-                        druh, t.get("name", "")))
-    von.sort(reverse=True)
-    return von
+        missing = [i for i in ways if i not in present]
+        if missing:
+            out.append((len(missing), len(ways), line.split(" ")[0],
+                        kind, t.get("name", "")))
+    out.sort(reverse=True)
+    return out
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pbf")
-    ap.add_argument("--summary", default="", help="kam pripísať riadok do súhrnu behu")
-    ap.add_argument("--top", type=int, default=10, help="koľko obetí vypísať")
+    ap.add_argument("--summary", default="", help="where to append a line to the run summary")
+    ap.add_argument("--top", type=int, default=10, help="how many victims to list")
     args = ap.parse_args()
 
-    von = rozbite(args.pbf)
-    pomenovane = [v for v in von if v[4]]
+    # not a hard error: areas across the state border can't be completed here
+    dropped = broken(args.pbf)
+    named = [v for v in dropped if v[4]]
 
-    if not von:
-        print("Plochy, ktoré by Planetiler zahodil celé: ŽIADNE ✓")
+    if not dropped:
+        print("Areas Planetiler would drop whole: NONE ✓")
     else:
-        print(f"Plochy, ktoré Planetiler zahodí CELÉ (chýba im člen): {len(von)}")
-        for chyba, clenov, rid, druh, meno in von[:args.top]:
-            print(f"  {rid:<12} {druh:16} chýba {chyba:4}/{clenov:<5} "
-                  f"{meno or '(bez mena)'}")
-        if len(von) > args.top:
-            print(f"  … a ďalších {len(von) - args.top}")
+        print(f"Areas Planetiler drops WHOLE (a member is missing): {len(dropped)}")
+        for missing, members, rid, kind, name in dropped[:args.top]:
+            print(f"  {rid:<12} {kind:16} missing {missing:4}/{members:<5} "
+                  f"{name or '(no name)'}")
+        if len(dropped) > args.top:
+            print(f"  … and {len(dropped) - args.top} more")
 
-    if pomenovane:
-        mena = ", ".join(m for *_, m in pomenovane[:5] if m)
-        print(f"::warning::V mape nebudú tieto plochy, a to CELÉ – nemajú "
-              f"v PBF všetkých členov, takže ich Planetiler zahodí aj s tou "
-              f"časťou, ktorá v mape leží (pomenovaných {len(pomenovane)}): "
-              f"{mena}. Čakané sú tie, ktorých členovia nie sú ani "
-              f"v rodičovskom extrakte, teda presahujúce za hranicu ŠTÁTU "
-              f"(doplnil by ich až extrakt Európy). Čokoľvek iné znamená, že "
-              f"rez v `workers/plan/pbf.sh` nedopĺňa členov – skontroluj "
+    if named:
+        names = ", ".join(m for *_, m in named[:5] if m)
+        print(f"::warning::These areas will be missing from the map, WHOLE – "
+              f"they lack members in the PBF, so Planetiler drops them with "
+              f"the part that lies in the map ({len(named)} named): "
+              f"{names}. Expected are those whose members aren't even in the "
+              f"parent extract, i.e. reaching beyond the STATE border (only a "
+              f"Europe extract would complete them). Anything else means the "
+              f"cut in `workers/plan/pbf.sh` doesn't complete members – check "
               f"`-s smart -S types=multipolygon,boundary`.")
 
     if args.summary:
         with open(args.summary, "a", encoding="utf-8") as f:
-            f.write(f"\n**Plochy zahodené pre chýbajúcich členov:** {len(von)}"
-                    f" (pomenovaných {len(pomenovane)})\n")
+            f.write(f"\n**Areas dropped for missing members:** {len(dropped)}"
+                    f" ({len(named)} named)\n")
     return 0
 
 
