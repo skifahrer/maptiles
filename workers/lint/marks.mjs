@@ -1,24 +1,21 @@
 #!/usr/bin/env node
 /**
- * Kontrola turistických a cyklistických značiek pozdĺž trás.
- * Volá ju `Kontrola · lint workflowov`.
+ * Checks hiking and cycling waymarks along trails. Run by `Check · workflow lint`.
  *
- * Meno obrázka značky sa skladá až z dát: `trails/tags.py` napíše tvar,
- * podklad a farbu, štýl z nich `concat`-om zloží meno a `assets/marks.mjs`
- * ho musí mať v sprite. Tri miesta – rozídené znamená, že MapLibre neznámy
- * obrázok ticho preskočí a po trase nie je nič.
+ * A mark's image name is assembled from data: `trails/tags.py` writes shape,
+ * background and colour, the style `concat`s a name from them and
+ * `assets/marks.mjs` must have it in the sprite. Three places – drifted, MapLibre
+ * quietly skips the unknown image and the trail shows nothing.
  *
- *   1. každý tvar z `OSMC_SHAPES` kreslí `poc/web/marks.js`;
- *   2. dvojice podklad × farba (`MARK_FACES`) sú na oboch stranách tie isté;
- *   3. farba pásu sa nerovná podkladu (taká značka je prázdny štvorec);
- *   4. meno, ktoré skladá štýl, je to isté ako `markImage()`;
- *   5. atribúty sú v schéme dlaždíc;
- *   6. vrstva značiek je v štýle pre každý druh trasy a ikonka druhu sa
- *      kreslí len tam, kde značka nie je;
- *   7. značky dvoch trás sa stavajú nad seba – bez posunu podľa `side` a
- *      `off` padnú na to isté miesto a kolízia nechá vždy tú istú;
- *   8. značky sa naozaj upečú a žiadna nie je `sdf` (SDF by z troch farieb
- *      spravil jednu).
+ *   1. every `OSMC_SHAPES` shape is drawn by `poc/web/marks.js`;
+ *   2. background × colour pairs (`MARK_FACES`) match on both sides;
+ *   3. the stripe colour differs from the background (else an empty square);
+ *   4. the name the style assembles equals `markImage()`;
+ *   5. the attributes are in the tile schema;
+ *   6. every trail type has a mark layer and the type icon draws only without a mark;
+ *   7. two trails' marks stack – without `side` and `off` offsets they land on one
+ *      spot and collision always keeps the same one;
+ *   8. marks really bake and none is `sdf` (SDF would make one colour of three).
  *
  *   node workers/lint/marks.mjs
  */
@@ -50,89 +47,89 @@ const TAGS = join(ROOT, "workers", "trails", "tags.py");
 const SCHEMA = join(ROOT, "workers", "trails", "trails.yml");
 
 let bad = 0;
-const chyba = (subor, text) => {
-  console.log(`::error file=${subor}::${text}`);
+const error = (file, text) => {
+  console.log(`::error file=${file}::${text}`);
   bad += 1;
 };
 
 const py = readFileSync(TAGS, "utf8");
 
-// ---------- 1. tvary, ktoré vedia dáta poslať ----------
+// 1. the shapes the data can send
 const shapesBlock = py.match(/OSMC_SHAPES\s*=\s*\{([\s\S]*?)\n\}/);
 if (!shapesBlock) {
-  chyba("workers/trails/tags.py", "`OSMC_SHAPES` sa nenašlo – bez neho sa nedá overiť, aké tvary idú do dlaždíc.");
+  error("workers/trails/tags.py", "`OSMC_SHAPES` not found – without it the shapes going into tiles can't be checked.");
 } else {
-  const tvary = new Set(
+  const shapes = new Set(
     [...shapesBlock[1].matchAll(/"[a-z_]+"\s*:\s*"([a-z_]+)"/g)].map((m) => m[1])
   );
-  if (!tvary.size) {
-    chyba("workers/trails/tags.py", "`OSMC_SHAPES` je prázdne – žiadna trasa by nedostala značku.");
+  if (!shapes.size) {
+    error("workers/trails/tags.py", "`OSMC_SHAPES` is empty – no trail would get a mark.");
   }
-  for (const tvar of tvary) {
-    if (!MARK_SHAPE_IDS.includes(tvar)) {
-      chyba(
+  for (const shape of shapes) {
+    if (!MARK_SHAPE_IDS.includes(shape)) {
+      error(
         "workers/trails/tags.py",
-        `\`OSMC_SHAPES\` posiela do dlaždíc tvar "${tvar}", ktorý poc/web/marks.js ` +
-          `nekreslí (kreslí: ${MARK_SHAPE_IDS.join(", ")}). Obrázok v sprite nebude ` +
-          `a po trase nebude ani značka – MapLibre to ticho preskočí.`
+        `\`OSMC_SHAPES\` sends shape "${shape}" into tiles, which poc/web/marks.js ` +
+          `doesn't draw (it draws: ${MARK_SHAPE_IDS.join(", ")}). The sprite won't have ` +
+          `the image and the trail no mark – MapLibre quietly skips it.`
       );
     }
   }
 }
 
-// ---------- 2. + 3. dvojice podklad × farba ----------
+// 2. + 3. background × colour pairs
 const facesBlock = py.match(/MARK_FACES\s*=\s*\{([\s\S]*?)\n\}/);
 const jsFaces = new Set(MARK_FACES.map(([bg, fg]) => `${bg}-${fg}`));
 if (!facesBlock) {
-  chyba("workers/trails/tags.py", "`MARK_FACES` sa nenašlo – nedá sa overiť, aké dvojice idú do dlaždíc.");
+  error("workers/trails/tags.py", "`MARK_FACES` not found – the pairs going into tiles can't be checked.");
 } else {
   const pyFaces = new Set(
     [...facesBlock[1].matchAll(/\("([a-z]+)",\s*"([a-z]+)"\)/g)].map((m) => `${m[1]}-${m[2]}`)
   );
   for (const face of pyFaces) {
     if (!jsFaces.has(face)) {
-      chyba(
+      error(
         "workers/trails/tags.py",
-        `dvojica podklad-farba "${face}" je v dátach, ale marks.js ju nepečie – ` +
-          `taká trasa ostane v mape bez značky.`
+        `background-colour pair "${face}" is in the data, but marks.js doesn't bake ` +
+          `it – such a trail stays without a mark in the map.`
       );
     }
   }
   for (const face of jsFaces) {
     if (!pyFaces.has(face)) {
-      chyba(
+      error(
         "poc/web/marks.js",
-        `dvojica "${face}" sa pečie do spritu, ale tags.py ju nikdy nenapíše – ` +
-          `je to obrázok navyše. Buď ju do MARK_FACES v tags.py doplň, alebo ju odtiaľto zmaž.`
+        `pair "${face}" is baked into the sprite, but tags.py never writes it – ` +
+          `a spare image. Either add it to MARK_FACES in tags.py or delete it here.`
       );
     }
   }
 }
 for (const [bg, fg] of MARK_FACES) {
   if (bg === fg) {
-    chyba("poc/web/marks.js", `dvojica "${bg}-${fg}" má pás vo farbe podkladu – z takej značky je prázdny štvorec.`);
+    error("poc/web/marks.js", `pair "${bg}-${fg}" has the stripe in the background colour – such a mark is an empty square.`);
   }
-  for (const [meno, farba] of [["podklad", bg], ["farba", fg]]) {
-    if (!MARK_COLOURS[farba]) {
-      chyba("poc/web/marks.js", `dvojica "${bg}-${fg}": ${meno} "${farba}" nie je v MARK_COLOURS.`);
+  for (const [role, colour] of [["background", bg], ["colour", fg]]) {
+    if (!MARK_COLOURS[colour]) {
+      error("poc/web/marks.js", `pair "${bg}-${fg}": ${role} "${colour}" isn't in MARK_COLOURS.`);
     }
   }
 }
 
-// ---------- 5. atribúty v schéme dlaždíc ----------
+// 5. attributes in the tile schema
 const yml = readFileSync(SCHEMA, "utf8");
 for (const key of ["mark", "mark_bg", "mark_fg"]) {
   if (!new RegExp(`- key: ${key}\\s`).test(yml)) {
-    chyba(
+    error(
       "workers/trails/trails.yml",
-      `atribút \`${key}\` nie je v schéme dlaždíc – štýl by z neho čítal prázdno ` +
-        `a meno obrázka by bolo nezmyselné. Trasy by ostali bez značiek.`
+      `attribute \`${key}\` isn't in the tile schema – the style would read nothing ` +
+        `from it and the image name would be nonsense. Trails would have no marks.`
     );
   }
 }
 
-// ---------- 4., 6., 7. čo z toho spraví štýl ----------
-/** Vyhodnotí `["concat", …]` nad jedným prvkom – toľko z výrazov stačí. */
+// 4., 6., 7. what the style makes of it
+/** Evaluates `["concat", …]` over one feature – that much of expressions will do. */
 function evalConcat(expr, props) {
   if (typeof expr === "string") return expr;
   if (!Array.isArray(expr)) return String(expr);
@@ -149,115 +146,107 @@ const style = buildStyle({
   trailsUrl: "pmtiles://x/trails.pmtiles",
   icons: markImages().map((m) => m.name)
 });
-const poradie = new Map(style.layers.map((l, i) => [l.id, i]));
-const rozostupy = new Map();
+const order = new Map(style.layers.map((l, i) => [l.id, i]));
+const spacings = new Map();
 for (const t of TRAIL_TYPES) {
   const mark = style.layers.find((l) => l.id === `trail-${t.id}-mark`);
   if (!mark) {
-    chyba(
+    error(
       "poc/web/themes.js",
-      `vrstva \`trail-${t.id}-mark\` v štýle nie je, hoci značky v sprite sú – ` +
-        `trasy tohto druhu by ostali bez značenia.`
+      `layer \`trail-${t.id}-mark\` isn't in the style though the sprite has marks – ` +
+        `trails of this type would stay unmarked.`
     );
     continue;
   }
-  const meno = evalConcat(mark.layout["icon-image"], {
+  const name = evalConcat(mark.layout["icon-image"], {
     mark_bg: "white",
     mark_fg: "red",
     mark: "bar"
   });
-  if (meno !== markImage("white", "red", "bar")) {
-    chyba(
+  if (name !== markImage("white", "red", "bar")) {
+    error(
       "poc/web/themes.js",
-      `\`trail-${t.id}-mark\` skladá meno obrázka ako "${meno}", ale marks.js ho ` +
-        `pečie ako "${markImage("white", "red", "bar")}". Sú to dve cesty k jednému ` +
-        `menu a rozídené znamenajú prázdno v mape.`
+      `\`trail-${t.id}-mark\` assembles the image name as "${name}", but marks.js ` +
+        `bakes it as "${markImage("white", "red", "bar")}". Two paths to one name – ` +
+        `drifted, they mean emptiness in the map.`
     );
   }
-  // Posun podľa pruhu – bez neho si značky sadnú na seba a kolízia nechá
-  // jednu. Kontroluje sa, že sa `off` aj `side` naozaj čítajú a že sa dvojice
-  // `(side, off)` posúvajú KAŽDÁ INAM (dva rovnaké posuny = pôvodná chyba).
+  // a lane offset reads `off` and `side`, and every `(side, off)` pair shifts ELSEWHERE
   const offset = JSON.stringify(mark.layout["icon-offset"] || null);
-  for (const kluc of ["side", "off"]) {
-    if (!offset.includes(`"${kluc}"`)) {
-      chyba(
+  for (const key of ["side", "off"]) {
+    if (!offset.includes(`"${key}"`)) {
+      error(
         "poc/web/themes.js",
-        `\`trail-${t.id}-mark\` nečíta pri posune značky \`${kluc}\`. Trasy na tej ` +
-          `istej ceste majú tú istú geometriu, takže by značky padli na jedno miesto ` +
-          `a kolízia by nechala jednu – ostatné by v mape neboli vôbec.`
+        `\`trail-${t.id}-mark\` doesn't read \`${key}\` when offsetting the mark. ` +
+          `Trails on one road share the geometry, so marks would land on one spot ` +
+          `and collision would keep one – the rest wouldn't be in the map at all.`
       );
       break;
     }
   }
-  const posuny = new Set();
+  const offsets = new Set();
   for (const side of [1, -1]) {
     for (let off = 0; off <= TRAIL_MARK_STACK_MAX; off += 1) {
       const y = -side * (TRAIL_MARK_STACK.base + TRAIL_MARK_STACK.step * off);
-      const kluc = `${side}:${off}`;
-      if (posuny.has(String(y))) {
-        chyba(
+      const key = `${side}:${off}`;
+      if (offsets.has(String(y))) {
+        error(
           "poc/web/themes.js",
-          `posun značky pre pruh ${kluc} je ten istý ako pre iný pruh (y = ${y}) – ` +
-            `dve trasy by mali značku na jednom mieste.`
+          `the mark offset for lane ${key} equals another lane's (y = ${y}) – ` +
+            `two trails would have their mark in one place.`
         );
       }
-      posuny.add(String(y));
+      offsets.add(String(y));
     }
   }
-  rozostupy.set(offset, t.id);
+  spacings.set(offset, t.id);
 
-  // STĹPIK STOJÍ TESNE, TAKŽE SA MUSÍ KRESLIŤ BEZ OHĽADU NA KOLÍZIE.
-  // Kolízny obdĺžnik je CELÝ obrázok (`MARK_IMAGE`, teda aj priehľadný okraj)
-  // plus `icon-padding` na každej strane. Keď je krok stĺpika menší, susedné
-  // značky si obdĺžniky prekryjú a MapLibre všetky okrem prvej ZAHODÍ – v mape
-  // by z troch trás na chodníku bola jedna a nikto by nepovedal nič.
-  const tesne = TRAIL_MARK_STACK.step < MARK_IMAGE + 2 * TRAIL_MARK_PADDING;
-  if (tesne && mark.layout["icon-allow-overlap"] !== true) {
-    chyba(
+  // a tight stack must ignore collisions: the box is the WHOLE image plus padding
+  const tight = TRAIL_MARK_STACK.step < MARK_IMAGE + 2 * TRAIL_MARK_PADDING;
+  if (tight && mark.layout["icon-allow-overlap"] !== true) {
+    error(
       "poc/web/themes.js",
-      `\`trail-${t.id}-mark\` má krok stĺpika ${TRAIL_MARK_STACK.step} px, ale ` +
-        `kolízny obdĺžnik značky je ${MARK_IMAGE + 2 * TRAIL_MARK_PADDING} px ` +
-        `(obrázok ${MARK_IMAGE} + 2 × padding ${TRAIL_MARK_PADDING}) – bez ` +
-        `\`icon-allow-overlap\` by v stĺpiku ostala len prvá značka.`
+      `\`trail-${t.id}-mark\` has a ${TRAIL_MARK_STACK.step} px stack step, but ` +
+        `the mark's collision box is ${MARK_IMAGE + 2 * TRAIL_MARK_PADDING} px ` +
+        `(image ${MARK_IMAGE} + 2 × padding ${TRAIL_MARK_PADDING}) – without ` +
+        `\`icon-allow-overlap\` only the first mark of the stack would stay.`
     );
   }
 
-  // Ikonka druhu trasy je NÁHRADA za značku, nie druhý symbol.
+  // the trail type icon REPLACES the mark, it isn't a second symbol
   const icon = style.layers.find((l) => l.id === `trail-${t.id}-icon`);
-  // A to isté pri ikonke druhu trasy: stojí v tom istom stĺpiku (`off`/`side`
-  // sa číslujú raz na cestu), takže bez `icon-allow-overlap` by z nej ostala
-  // tiež len prvá priečka.
+  // the type icon stands in the same stack, so it needs `icon-allow-overlap` too
   if (icon && JSON.stringify(icon.layout["icon-offset"] || null).includes('"off"')
       && icon.layout["icon-allow-overlap"] !== true) {
-    chyba(
+    error(
       "poc/web/themes.js",
-      `\`trail-${t.id}-icon\` sa posúva podľa pruhu, ale kreslí sa s ohľadom na ` +
-        `kolízie – z ikoniek viacerých trás na jednej ceste by ostala jedna.`
+      `\`trail-${t.id}-icon\` shifts by lane but draws with collisions – of the ` +
+        `icons of several trails on one road only one would stay.`
     );
   }
   if (icon && !JSON.stringify(icon.filter).includes('["!",["has","mark"]]')) {
-    chyba(
+    error(
       "poc/web/themes.js",
-      `\`trail-${t.id}-icon\` sa kreslí aj tam, kde má trasa značku – na jednej ` +
-        `čiare by boli dva symboly naraz a brali by si miesto navzájom.`
+      `\`trail-${t.id}-icon\` draws where the trail has a mark too – one line ` +
+        `would carry two symbols fighting for space.`
     );
   }
-  const label = poradie.get(`trail-${t.id}-label`);
-  if (label != null && poradie.get(`trail-${t.id}-mark`) > label) {
-    chyba(
+  const label = order.get(`trail-${t.id}-label`);
+  if (label != null && order.get(`trail-${t.id}-mark`) > label) {
+    error(
       "poc/web/themes.js",
-      `\`trail-${t.id}-mark\` je až za popiskami trasy. MapLibre umiestňuje symboly ` +
-        `v poradí vrstiev, takže by názov trasy bral miesto značke – a značka je to, ` +
-        `podľa čoho sa ide v teréne.`
+      `\`trail-${t.id}-mark\` comes after the trail labels. MapLibre places symbols ` +
+        `in layer order, so the trail name would take the mark's place – and the mark ` +
+        `is what one follows in the field.`
     );
   }
 }
 
-// ---------- 8. značky sa naozaj upečú ----------
+// 8. marks really bake
 const dir = mkdtempSync(join(tmpdir(), "marks-lint-"));
 try {
   const base = join(dir, "sprite");
-  // Najmenší možný sprite: jeden štvorček, aby bolo čo preskladávať.
+  // the smallest sprite: one square, so there's something to repack
   writeFileSync(`${base}.png`, encodePng({ width: 4, height: 4, data: Buffer.alloc(64, 255) }));
   writeFileSync(
     `${base}.json`,
@@ -268,33 +257,33 @@ try {
     cwd: ROOT
   });
   const index = JSON.parse(readFileSync(`${base}.json`, "utf8"));
-  let chybajucich = 0;
+  let missing = 0;
   for (const { name } of markImages()) {
     const e = index[name];
     if (!e) {
-      chybajucich += 1;
-      if (chybajucich <= 3) {
-        chyba("workers/assets/marks.mjs", `značka "${name}" sa do spritu nedopiekla.`);
+      missing += 1;
+      if (missing <= 3) {
+        error("workers/assets/marks.mjs", `mark "${name}" didn't bake into the sprite.`);
       }
       continue;
     }
     if (e.sdf) {
-      chyba(
+      error(
         "workers/assets/marks.mjs",
-        `značka "${name}" je označená ako \`sdf\` – vzdialenostné pole nesie jednu ` +
-          `farbu, kým značka má tri (podklad, pás, lem).`
+        `mark "${name}" is marked \`sdf\` – a distance field carries one colour, ` +
+          `while a mark has three (background, stripe, rim).`
       );
     }
   }
-  if (chybajucich > 3) {
-    chyba("workers/assets/marks.mjs", `… a ďalších ${chybajucich - 3} značiek chýba.`);
+  if (missing > 3) {
+    error("workers/assets/marks.mjs", `… and ${missing - 3} more marks are missing.`);
   }
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
 
 console.log(
-  `značky trás: ${bad} chýb (${MARK_SHAPE_IDS.length} tvarov × ${MARK_FACES.length} dvojíc ` +
-    `= ${markImages().length} obrázkov, ${TRAIL_TYPES.length} druhov trás)`
+  `trail marks: ${bad} errors (${MARK_SHAPE_IDS.length} shapes × ${MARK_FACES.length} pairs ` +
+    `= ${markImages().length} images, ${TRAIL_TYPES.length} trail types)`
 );
 process.exit(bad ? 1 : 0);

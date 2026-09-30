@@ -1,31 +1,23 @@
 #!/usr/bin/env node
 /**
- * Kontrola ŠTÍTKOV S ČÍSLOM CESTY („D1", „R1", „I/18").
- * Volá ju `Kontrola · lint workflowov`.
+ * Checks ROAD NUMBER SHIELDS (“D1”, “R1”, “I/18”). Run by `Check · workflow lint`.
  *
- * TRI TICHÉ VECI – žiadna z nich nič nezhodí a všetky sa prejavia až v mape:
+ * THREE QUIET THINGS – none fails anything and all show only in the map:
  *
- * 1. **Štítok, ktorý sa nemá o čo oprieť.** `SHIELD_DEFS` v `themes.js`
- *    hovorí, ktorý obrázok zo spritu si vrstva vypýta. Keď sa ten obrázok
- *    premenuje (alebo ho `poc/web/shields.js` prestane kresliť), štýl
- *    NESPADNE – `hasIcon` ho ticho nechá bez podkladu a číslo sa nakreslí len
- *    s halom. Vyzerá to ako „tak to je navrhnuté", nie ako chyba.
+ * 1. **A shield with nothing to lean on.** `SHIELD_DEFS` in `themes.js` says which
+ *    sprite image a layer asks for. When that image is renamed (or
+ *    `poc/web/shields.js` stops drawing it) the style DOESN'T FAIL – `hasIcon`
+ *    quietly leaves it without a background and the number draws with a halo only.
  *
- * 2. **Stratené rozťahovacie pásma – a SDF, ktoré sa vrátilo.** Štítok je
- *    HOTOVÝ FAREBNÝ obrázok (dva rovnako hrubé prstence sa jedným
- *    `icon-halo` spraviť nedajú), takže deväťdielne naťahovanie na ňom
- *    funguje správne a musí tam byť – bez neho je z dlhého čísla kapsula.
- *    Naopak `sdf: true` sa vrátiť NESMIE: na vzdialenostnom poli to isté
- *    naťahovanie pole rozladí a obrys pretrhne, a v mape z toho bol
- *    rozmazaný KRÍŽ (namerané 89 × 85 px proti správnym ~20 × 14 px).
- *    Ani jedno nič nezhodí. Rozpis je v hlavičke `poc/web/shields.js`.
+ * 2. **Lost stretch bands – and SDF come back.** A shield is a FINISHED COLOUR image,
+ *    so nine-slice stretching works on it and must be there – without it a long
+ *    number becomes a capsule. `sdf: true` must NOT return: stretching a distance
+ *    field breaks the outline into a blurry CROSS. See `poc/web/shields.js`.
  *
- * 3. **Štítok pod menom ulice.** MapLibre umiestňuje popisky v poradí vrstiev
- *    a kto je skôr, berie si miesto prvý. Keby `road-shield-*` skončili ZA
- *    `road-name`, na hustej sieti by čísla ciest mizli v prospech mien ulíc –
- *    a práve číslo je to, čo človek na mape hľadá.
+ * 3. **A shield under a street name.** MapLibre places labels in layer order, first
+ *    come first served. With `road-shield-*` AFTER `road-name`, road numbers would
+ *    vanish on dense networks in favour of street names.
  *
- * Použitie:
  *   node workers/lint/shields.mjs
  */
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
@@ -38,45 +30,43 @@ import { SHIELD_SHAPE_IDS, SHIELD_SHAPES, SHIELD_RING } from "../../poc/web/shie
 import { encodePng } from "../lib/png.mjs";
 
 let bad = 0;
-const chyba = (subor, text) => {
-  console.log(`::error file=${subor}::${text}`);
+const error = (file, text) => {
+  console.log(`::error file=${file}::${text}`);
   bad += 1;
 };
 
-// 1. každý štítok má svoj obrázok
+// 1. every shield has its image
 for (const [id, , , , , shapeId] of SHIELD_DEFS) {
   if (!SHIELD_SHAPE_IDS.includes(shapeId)) {
-    chyba(
+    error(
       "poc/web/themes.js",
-      `\`road-shield-${id}\` si pýta obrázok "${shapeId}", ktorý ` +
-        `poc/web/shields.js nekreslí (kreslí: ${SHIELD_SHAPE_IDS.join(", ")}). ` +
-        `Štýl kvôli tomu nespadne – číslo cesty ostane bez podkladu.`
+      `\`road-shield-${id}\` asks for image "${shapeId}", which ` +
+        `poc/web/shields.js doesn't draw (it draws: ${SHIELD_SHAPE_IDS.join(", ")}). ` +
+        `The style won't fail – the road number stays without a background.`
     );
   }
 }
 
-// 1b. zaoblené je aj vnútorné pole
-// Pásma vznikajú odsadením dovnútra a polomer sa pri tom zmenšuje o to isté;
-// pri nule alebo menej má vnútro ostré rohy, hoci vonkajší tvar je zaoblený.
+// 1b. the inner field is rounded too – insetting shrinks the radius by the same amount
 for (const shape of SHIELD_SHAPES) {
-  const vnutro = shape.radius - 2 * SHIELD_RING;
-  if (vnutro <= 0) {
-    chyba(
+  const inner = shape.radius - 2 * SHIELD_RING;
+  if (inner <= 0) {
+    error(
       "poc/web/shields.js",
-      `tvar "${shape.id}" má polomer ${shape.radius} px a prstenec ` +
-        `${SHIELD_RING} px, takže vnútornému poľu ostane ${vnutro.toFixed(1)} px ` +
-        `– bude mať OSTRÉ rohy, hoci vonkajší tvar je zaoblený. Zaoblené majú ` +
-        `byť všetky tri tvary: polomer musí byť väčší než 2 × prstenec ` +
-        `(teda nad ${(2 * SHIELD_RING).toFixed(1)} px).`
+      `shape "${shape.id}" has a ${shape.radius} px radius and a ` +
+        `${SHIELD_RING} px ring, leaving the inner field ${inner.toFixed(1)} px ` +
+        `– it will have SHARP corners though the outer shape is round. All three ` +
+        `shapes must be round: the radius must exceed 2 × the ring ` +
+        `(so above ${(2 * SHIELD_RING).toFixed(1)} px).`
     );
   }
 }
 
-// 2. rozťahovacie pásma prežijú preskladanie spritu – na naozaj vyrobenom sprite
+// 2. stretch bands survive sprite repacking – on a really made sprite
 const dir = mkdtempSync(join(tmpdir(), "shields-lint-"));
 try {
   const base = join(dir, "sprite");
-  // najmenší možný sprite: jeden biely štvorček
+  // the smallest sprite: one white square
   writeFileSync(
     `${base}.png`,
     encodePng({ width: 4, height: 4, data: Buffer.alloc(4 * 4 * 4, 255) })
@@ -87,35 +77,35 @@ try {
   );
 
   execFileSync("node", ["workers/assets/shields.mjs", `--sprite=${base}`], { stdio: "pipe" });
-  const poStitkoch = JSON.parse(readFileSync(`${base}.json`, "utf8"));
-  const mena = [];
+  const afterShields = JSON.parse(readFileSync(`${base}.json`, "utf8"));
+  const names = [];
   for (const shape of SHIELD_SHAPES) {
     for (const [id] of SHIELD_DEFS) {
-      for (const tema of Object.keys(THEMES)) mena.push(`${shape.id}-${id}-${tema}`);
+      for (const theme2 of Object.keys(THEMES)) names.push(`${shape.id}-${id}-${theme2}`);
     }
   }
-  for (const meno of mena) {
-    const e = poStitkoch[meno];
+  for (const name of names) {
+    const e = afterShields[name];
     if (!e) {
-      chyba("workers/assets/shields.mjs", `štítok "${meno}" sa do spritu nedopiekol.`);
+      error("workers/assets/shields.mjs", `shield "${name}" didn't bake into the sprite.`);
       continue;
     }
-    for (const kluc of ["stretchX", "stretchY", "content"]) {
-      if (!e[kluc]) {
-        chyba("workers/assets/shields.mjs",
-          `štítok "${meno}" nemá v indexe \`${kluc}\` – bez rozťahovacích ` +
-          `pásem sa obrázok škáluje celý aj s rohmi a z dlhého čísla je kapsula.`);
+    for (const key of ["stretchX", "stretchY", "content"]) {
+      if (!e[key]) {
+        error("workers/assets/shields.mjs",
+          `shield "${name}" has no \`${key}\` in the index – without stretch ` +
+          `bands the image scales whole with its corners and a long number becomes a capsule.`);
       }
     }
     if (e.sdf) {
-      chyba("workers/assets/shields.mjs",
-        `štítok "${meno}" je označený ako \`sdf\` – naťahovanie vtedy rozladí ` +
-        `vzdialenostné pole a v mape je zo štítka rozmazaný kríž. Obrázok je ` +
-        `farebný, SDF tam nepatrí.`);
+      error("workers/assets/shields.mjs",
+        `shield "${name}" is marked \`sdf\` – stretching then breaks the distance ` +
+        `field and the shield becomes a blurry cross in the map. The image is ` +
+        `coloured; SDF doesn't belong there.`);
     }
   }
 
-  // a to isté po preskladaní, ktoré robí dopekanie vzorov
+  // and the same after the repack pattern baking does
   const styles = join(dir, "styles");
   execFileSync("mkdir", ["-p", styles]);
   writeFileSync(
@@ -126,16 +116,16 @@ try {
   );
   execFileSync("node", ["workers/styles/patterns.mjs", `--sprite=${base}`, `--styles=${styles}`],
     { stdio: "pipe" });
-  const poVzoroch = JSON.parse(readFileSync(`${base}.json`, "utf8"));
-  for (const meno of mena) {
-    const pred = poStitkoch[meno] || {};
-    const po = poVzoroch[meno] || {};
-    for (const kluc of ["stretchX", "stretchY", "content", "sdf"]) {
-      if (JSON.stringify(pred[kluc]) !== JSON.stringify(po[kluc])) {
-        chyba("workers/styles/patterns.mjs",
-          `preskladanie spritu stratilo \`${kluc}\` štítka "${meno}" ` +
-          `(${JSON.stringify(pred[kluc])} → ${JSON.stringify(po[kluc])}). ` +
-          `Sprite aj štýl ostanú platné, len bude štítok pokrivený.`);
+  const afterPatterns = JSON.parse(readFileSync(`${base}.json`, "utf8"));
+  for (const name of names) {
+    const before = afterShields[name] || {};
+    const after = afterPatterns[name] || {};
+    for (const key of ["stretchX", "stretchY", "content", "sdf"]) {
+      if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
+        error("workers/styles/patterns.mjs",
+          `repacking the sprite lost \`${key}\` of shield "${name}" ` +
+          `(${JSON.stringify(before[key])} → ${JSON.stringify(after[key])}). ` +
+          `Sprite and style stay valid, the shield is just distorted.`);
       }
     }
   }
@@ -143,8 +133,8 @@ try {
   rmSync(dir, { recursive: true, force: true });
 }
 
-// 3. štítok je nad menom ulice
-let skusok = 0;
+// 3. the shield is above the street name
+let checks = 0;
 for (const theme of Object.keys(THEMES)) {
   for (const mapType of MAP_TYPE_IDS) {
     const style = buildStyle({
@@ -153,39 +143,37 @@ for (const theme of Object.keys(THEMES)) {
       tilesUrl: "pmtiles://x/t.pmtiles",
       spriteUrl: "https://x/sprite",
       glyphsUrl: "https://x/{fontstack}/{range}.pbf",
-      // mená sú tvar × trieda × téma – štítok je pečený obrázok, nie SDF
-      icons: SHIELD_SHAPE_IDS.flatMap((tvar) =>
-        SHIELD_DEFS.flatMap(([id]) => Object.keys(THEMES).map((t) => `${tvar}-${id}-${t}`)))
+      // names are shape × class × theme – a shield is a baked image, not SDF
+      icons: SHIELD_SHAPE_IDS.flatMap((shape2) =>
+        SHIELD_DEFS.flatMap(([id]) => Object.keys(THEMES).map((t) => `${shape2}-${id}-${t}`)))
     });
-    const poradie = new Map(style.layers.map((l, i) => [l.id, i]));
-    const meno = poradie.get("road-name");
+    const order = new Map(style.layers.map((l, i) => [l.id, i]));
+    const name = order.get("road-name");
     for (const [id] of SHIELD_DEFS) {
-      const stitok = poradie.get(`road-shield-${id}`);
-      skusok += 1;
-      if (stitok == null) {
-        chyba("poc/web/themes.js", `vrstva \`road-shield-${id}\` v štýle (${theme} × ${mapType}) nie je.`);
-      } else if (meno != null && stitok > meno) {
-        chyba("poc/web/themes.js",
-          `\`road-shield-${id}\` je v štýle (${theme} × ${mapType}) AŽ ZA \`road-name\`. ` +
-          `MapLibre umiestňuje popisky v poradí vrstiev, takže by na hustej sieti ` +
-          `vyhrávalo meno ulice a číslo cesty by mizlo.`);
+      const shieldAt = order.get(`road-shield-${id}`);
+      checks += 1;
+      if (shieldAt == null) {
+        error("poc/web/themes.js", `layer \`road-shield-${id}\` isn't in the style (${theme} × ${mapType}).`);
+      } else if (name != null && shieldAt > name) {
+        error("poc/web/themes.js",
+          `\`road-shield-${id}\` comes AFTER \`road-name\` in the style (${theme} × ${mapType}). ` +
+          `MapLibre places labels in layer order, so on a dense network the street ` +
+          `name would win and the road number vanish.`);
       }
     }
-    // štítok musí obrázok použiť, keď v sprite je
+    // the shield must use its image when the sprite has it
     for (const [id] of SHIELD_DEFS) {
       const l = style.layers.find((x) => x.id === `road-shield-${id}`);
       if (l && !(l.layout || {})["icon-image"]) {
-        chyba("poc/web/themes.js",
-          `\`road-shield-${id}\` nekreslí podklad ani vtedy, keď je štítok v sprite.`);
+        error("poc/web/themes.js",
+          `\`road-shield-${id}\` draws no background even when the shield is in the sprite.`);
       }
     }
   }
 }
 
-// 4. tvar prepnutý v developer móde má svoj obrázok
-// V prehliadači sa mení len meno obrázka, sprite sa neprebuildováva – v sprite
-// musí byť každý tvar pre každú triedu aj tému.
-const upecene = new Set(
+// 4. a shape switched in developer mode has its image – every shape per class and theme
+const baked = new Set(
   SHIELD_SHAPES.flatMap((shape) =>
     SHIELD_DEFS.flatMap(([id]) => Object.keys(THEMES).map((t) => `${shape.id}-${id}-${t}`))
   )
@@ -197,24 +185,24 @@ for (const theme of Object.keys(THEMES)) {
       tilesUrl: "pmtiles://x/t.pmtiles",
       spriteUrl: "https://x/sprite",
       glyphsUrl: "https://x/{fontstack}/{range}.pbf",
-      icons: [...upecene],
+      icons: [...baked],
       overrides: {
         shields: Object.fromEntries(SHIELD_DEFS.map(([id]) => [id, { shape: shape.id }]))
       }
     });
     for (const [id] of SHIELD_DEFS) {
       const l = style.layers.find((x) => x.id === `road-shield-${id}`);
-      const meno = (l?.layout || {})["icon-image"];
-      if (!meno) {
-        chyba(
+      const name = (l?.layout || {})["icon-image"];
+      if (!name) {
+        error(
           "poc/web/themes.js",
-          `štítok "${id}" po prepnutí tvaru na "${shape.id}" (${theme}) stratil podklad – ` +
-            `developer mode ponúka tvar, ktorý sa do spritu nepečie.`
+          `shield "${id}" lost its background after switching to shape "${shape.id}" (${theme}) – ` +
+            `developer mode offers a shape that isn't baked into the sprite.`
         );
-      } else if (!upecene.has(meno)) {
-        chyba(
+      } else if (!baked.has(name)) {
+        error(
           "workers/assets/shields.mjs",
-          `štítok "${id}" si po prepnutí tvaru pýta obrázok "${meno}", ktorý sa nepečie.`
+          `shield "${id}" asks for image "${name}" after switching shape, which isn't baked.`
         );
       }
     }
@@ -222,7 +210,7 @@ for (const theme of Object.keys(THEMES)) {
 }
 
 console.log(
-  `štítky ciest: ${bad} chýb (${SHIELD_DEFS.length} tried, ${SHIELD_SHAPES.length} tvarov, ` +
-    `${skusok} kontrol poradia)`
+  `road shields: ${bad} errors (${SHIELD_DEFS.length} classes, ${SHIELD_SHAPES.length} shapes, ` +
+    `${checks} order checks)`
 );
 process.exit(bad ? 1 : 0);

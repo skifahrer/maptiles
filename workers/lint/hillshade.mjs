@@ -1,21 +1,19 @@
 #!/usr/bin/env node
 /**
- * Tieňovanie reliéfu: koľko z mapy pod sebou prekryje. Volá to
- * `Kontrola · lint workflowov`.
+ * Hillshading: how much of the map beneath it covers. Run by `Check · workflow lint`.
  *
- * `hillshade` nie je filter, je to prekryvná vrstva – krytie je `sin` zo
- * sklonu natiahnutý prevýšením, takže nad ~20° je 0,97–1,0 a pod tieňovaním
- * nie je vidieť mapu, ale samotnú farbu tieňovania. Tak bola z lesa na
- * privrátenom svahu biela plocha. Štýl je pritom platný a mapa vyzerá „len
- * veľmi kontrastne", takže to chytí jedine dopočítanie toho istého shadera.
+ * `hillshade` isn't a filter but an overlay – coverage is the `sin` of the slope
+ * stretched by exaggeration, so above ~20° it's 0.97–1.0 and under the shading one
+ * sees the shading colour, not the map. The style stays valid, so only recomputing
+ * the same shader catches it.
  *
- *   1. privrátený svah nesmie byť prekrytý viac než {@link LIT_MAX},
- *   2. odvrátený viac než {@link SHADOW_MAX},
- *   3. rozdiel krytia medzi stranami aspoň {@link RELIEF_MIN},
- *   4. svetlo nesmie svietiť takmer od severu ({@link NORTH_GAP}) a musí byť
- *      napísané v štýle – predvolená hodnota MapLibre je práve tá zlá.
+ *   1. a lit slope isn't covered more than {@link LIT_MAX},
+ *   2. a shaded one more than {@link SHADOW_MAX},
+ *   3. the coverage difference between sides is at least {@link RELIEF_MIN},
+ *   4. the light doesn't shine almost from the north ({@link NORTH_GAP}) and is
+ *      written in the style – MapLibre's default is exactly the bad one.
  *
- * Počíta sa každá téma × typ mapy a každý zlom krivky prevýšenia zvlášť.
+ * Every theme × map type and every exaggeration curve break is computed.
  *
  *   node workers/lint/hillshade.mjs
  */
@@ -24,40 +22,40 @@ import { MAP_TYPE_IDS } from "../../poc/web/map-types.js";
 
 const PI = Math.PI;
 
-/** Strop krytia na strane privrátenej k svetlu (les musí ostať zelený). */
+/** Coverage cap on the lit side (a forest must stay green). */
 const LIT_MAX = 0.55;
-/** Strop krytia na odvrátenej strane (tmavý svah, ale ešte s obsahom). */
+/** Coverage cap on the shaded side (a dark slope, still with content). */
 const SHADOW_MAX = 0.85;
-/** Rozdiel krytia medzi stranami, pod ktorým už reliéf nie je vidieť. */
+/** The coverage difference between sides below which relief vanishes. */
 const RELIEF_MIN = 0.25;
-/** O koľko stupňov musí byť svetlo od severu. */
+/** How many degrees the light must be from north. */
 const NORTH_GAP = 40;
-/** Na akom svahu sa to meria – bežný horský svah, nie extrém. */
+/** The slope measured – an ordinary mountain slope, not an extreme. */
 const SLOPE_DEG = 30;
-/** Kde: zemepisná šírka Slovenska a najvyšší zoom výškových dlaždíc. */
+/** Where: Slovakia's latitude and the highest elevation tile zoom. */
 const LAT = 49;
 const ZOOM = 15;
 
-/** `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` → `[r, g, b, a]` v 0–1. */
+/** `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` → `[r, g, b, a]` in 0–1. */
 function parseColor(raw) {
   let s = String(raw).trim().toLowerCase();
   const short = /^#([0-9a-f]{3,4})$/.exec(s);
   if (short) s = `#${[...short[1]].map((c) => c + c).join("")}`;
   const m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/.exec(s);
-  if (!m) throw new Error(`neznámy zápis farby: ${raw}`);
+  if (!m) throw new Error(`unknown colour notation: ${raw}`);
   const ch = (i) => parseInt(m[1].slice(i * 2, i * 2 + 2), 16) / 255;
   return [ch(0), ch(1), ch(2), m[2] ? parseInt(m[2], 16) / 255 : 1];
 }
 
 /**
- * Krytie tieňovania na svahu – prepísané z `hillshade.fragment.glsl`
- * (maplibre-gl-js v4.7.1) a z prípravného passu pred ním. `shade` je 1 na
- * strane privrátenej k svetlu a 0 na odvrátenej.
+ * Hillshade coverage on a slope – ported from `hillshade.fragment.glsl`
+ * (maplibre-gl-js v4.7.1) and its prepare pass. `shade` is 1 on the lit side
+ * and 0 on the shaded one.
  *
- * Prípravný pass robí z výšok gradient: sobel po 3×3 delený
- * `pow(2, exaggeration + (19.2562 - zoom))`, takže pre svah θ na šírke `lat`
- * vyjde `deriv = 8 · (m/px) · tan θ / 2^…`. Hlavný pass ho premení na uhol,
- * natiahne prevýšením a z `sin` toho uhla spraví krytie.
+ * The prepare pass makes a gradient: a 3×3 sobel divided by
+ * `pow(2, exaggeration + (19.2562 - zoom))`, so slope θ at `lat` gives
+ * `deriv = 8 · (m/px) · tan θ / 2^…`. The main pass turns it into an angle,
+ * stretches it by exaggeration and takes coverage from its `sin`.
  */
 function coverage({ slopeDeg, shade, exaggeration, shadowA, highlightA, accentA }) {
   const exag = ZOOM < 2 ? 0.4 : ZOOM < 4.5 ? 0.35 : 0.3;
@@ -76,15 +74,15 @@ function coverage({ slopeDeg, shade, exaggeration, shadowA, highlightA, accentA 
   const k = Math.min(Math.max(exaggeration * 2, 0), 1);
   const shadeA = (shadowA + (highlightA - shadowA) * shade) * Math.sin(scaled) * k;
   const accA = (1 - Math.cos(scaled)) * accentA * k;
-  // `fragColor = accent * (1 - shade.a) + shade` – tá istá skladačka.
+  // `fragColor = accent * (1 - shade.a) + shade` – the same composition
   return accA * (1 - shadeA) + shadeA;
 }
 
-/** Zlomy krivky prevýšenia: `["interpolate", …, z, v, z, v]` aj holé číslo. */
+/** Exaggeration curve breaks: `["interpolate", …, z, v, z, v]` or a plain number. */
 function exaggerationStops(value) {
   if (typeof value === "number") return [value];
   if (!Array.isArray(value) || value[0] !== "interpolate")
-    throw new Error(`neznámy zápis prevýšenia: ${JSON.stringify(value)}`);
+    throw new Error(`unknown exaggeration notation: ${JSON.stringify(value)}`);
   const out = [];
   for (let i = 4; i < value.length; i += 2) out.push(value[i]);
   return out;
@@ -106,36 +104,36 @@ for (const theme of Object.keys(THEMES)) {
     });
     const layer = style.layers.find((l) => l.type === "hillshade");
     if (!layer) {
-      problems.push(`${theme}/${mapType}: štýl so zapnutým tieňovaním nemá vrstvu \`hillshade\``);
+      problems.push(`${theme}/${mapType}: a style with hillshading on has no \`hillshade\` layer`);
       continue;
     }
     const where = `${theme}/${mapType}`;
     const paint = layer.paint || {};
 
-    // 4. odkiaľ svieti
+    // 4. where the light comes from
     const dir = paint["hillshade-illumination-direction"];
     if (typeof dir !== "number") {
       problems.push(
-        `${where}: \`hillshade-illumination-direction\` v štýle chýba – ` +
-          "MapLibre dosadí 335°, čo je 25° od severu a severné svahy dostanú " +
-          "plné svetlo. Napíš smer do štýlu (konvencia je 315°, od SZ)."
+        `${where}: \`hillshade-illumination-direction\` is missing from the style – ` +
+          "MapLibre uses 335°, 25° from north, and north slopes get full light. " +
+          "Write the direction into the style (the convention is 315°, from NW)."
       );
     } else {
       const deg = (((dir % 360) + 360) % 360);
       const fromNorth = Math.min(deg, 360 - deg);
       if (fromNorth < NORTH_GAP)
         problems.push(
-          `${where}: svetlo svieti ${fromNorth.toFixed(0)}° od severu ` +
-            `(smer ${dir}°) – severné svahy tým dostanú plné svetlo. ` +
-            `Nechaj aspoň ${NORTH_GAP}° (konvencia je 315°, od SZ).`
+          `${where}: the light shines ${fromNorth.toFixed(0)}° from north ` +
+            `(direction ${dir}°) – north slopes get full light. ` +
+            `Keep at least ${NORTH_GAP}° (the convention is 315°, from NW).`
         );
     }
     if (paint["hillshade-illumination-anchor"] !== "map")
       problems.push(
-        `${where}: \`hillshade-illumination-anchor\` má byť "map". Pri ` +
-          '"viewport" (predvolené) je svetlo priviazané k obrazovke, takže sa ' +
-          "otočením mapy prelieva na druhú stranu hrebeňa a to isté údolie " +
-          "raz vyzerá ako údolie a raz ako chrbát."
+        `${where}: \`hillshade-illumination-anchor\` should be "map". With ` +
+          '"viewport" (the default) the light is tied to the screen, so rotating ' +
+          "the map spills it over the ridge and a valley sometimes looks like a " +
+          "valley and sometimes like a ridge."
       );
 
     const [, , , shadowA] = parseColor(paint["hillshade-shadow-color"]);
@@ -147,43 +145,43 @@ for (const theme of Object.keys(THEMES)) {
         coverage({ slopeDeg: SLOPE_DEG, shade, exaggeration, shadowA, highlightA, accentA });
       const lit = at(1);
       const dark = at(0);
-      const tag = `${where}, prevýšenie ${exaggeration}`;
+      const tag = `${where}, exaggeration ${exaggeration}`;
       checks += 1;
 
-      // 1. privrátená strana
+      // 1. the lit side
       if (lit > LIT_MAX)
         problems.push(
-          `${tag}: svah ${SLOPE_DEG}° privrátený k svetlu je prekrytý na ` +
-            `${(lit * 100).toFixed(0)} % (strop ${(LIT_MAX * 100).toFixed(0)} %) – ` +
-            `z lesa pod ním je plocha vo farbe \`hillHighlight\` ` +
-            `(${paint["hillshade-highlight-color"]}). Daj tej farbe alfu.`
+          `${tag}: a ${SLOPE_DEG}° slope facing the light is covered ` +
+            `${(lit * 100).toFixed(0)} % (cap ${(LIT_MAX * 100).toFixed(0)} %) – ` +
+            `the forest under it becomes an area of \`hillHighlight\` ` +
+            `(${paint["hillshade-highlight-color"]}). Give that colour alpha.`
         );
-      // 2. odvrátená strana
+      // 2. the shaded side
       if (dark > SHADOW_MAX)
         problems.push(
-          `${tag}: svah ${SLOPE_DEG}° odvrátený od svetla je prekrytý na ` +
-            `${(dark * 100).toFixed(0)} % (strop ${(SHADOW_MAX * 100).toFixed(0)} %) – ` +
-            `pod tieňom nie je vidieť ani les, ani cestu, ani vrstevnicu. ` +
-            `Daj alfu \`hillShadow\` (${paint["hillshade-shadow-color"]}).`
+          `${tag}: a ${SLOPE_DEG}° slope facing away is covered ` +
+            `${(dark * 100).toFixed(0)} % (cap ${(SHADOW_MAX * 100).toFixed(0)} %) – ` +
+            `no forest, road or contour shows under the shadow. ` +
+            `Give \`hillShadow\` alpha (${paint["hillshade-shadow-color"]}).`
         );
-      // 3. a reliéf musí ostať vidieť
+      // 3. and the relief must stay visible
       if (Math.abs(dark - lit) < RELIEF_MIN)
         problems.push(
-          `${tag}: medzi privrátenou (${(lit * 100).toFixed(0)} %) a odvrátenou ` +
-            `(${(dark * 100).toFixed(0)} %) stranou je rozdiel len ` +
-            `${(Math.abs(dark - lit) * 100).toFixed(0)} % – reliéf sa tým ` +
-            `stráca. Priehľadnosť sa dá uberať len po ${(RELIEF_MIN * 100).toFixed(0)} %.`
+          `${tag}: the lit (${(lit * 100).toFixed(0)} %) and shaded ` +
+            `(${(dark * 100).toFixed(0)} %) sides differ only by ` +
+            `${(Math.abs(dark - lit) * 100).toFixed(0)} % – the relief fades. ` +
+            `Transparency can only go down to ${(RELIEF_MIN * 100).toFixed(0)} %.`
         );
     }
   }
 }
 
 if (problems.length) {
-  console.error(`tieňovanie reliéfu: ${problems.length} chýb\n`);
+  console.error(`hillshading: ${problems.length} errors\n`);
   for (const p of problems) console.error(`  ✗ ${p}`);
   process.exit(1);
 }
 console.log(
-  `tieňovanie reliéfu: 0 chýb (${checks} meraní krytia na svahu ${SLOPE_DEG}°, ` +
-    `${Object.keys(THEMES).length} tém × ${MAP_TYPE_IDS.length} typov mapy)`
+  `hillshading: 0 errors (${checks} coverage measurements on a ${SLOPE_DEG}° slope, ` +
+    `${Object.keys(THEMES).length} themes × ${MAP_TYPE_IDS.length} map types)`
 );

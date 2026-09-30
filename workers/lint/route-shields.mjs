@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Kontrola ŠTÍTKOV PODĽA SIETE („D1", „E 75", chorvátske „A1").
- * Volá ju `Kontrola · lint workflowov`.
+ * Checks SHIELDS BY NETWORK (“D1”, “E 75”, Croatian “A1”).
+ * Run by `Check · workflow lint`.
  *
- * Štyri tiché veci – ani jedna nič nezhodí a všetky sa prejavia až v mape:
- * sieť bez obrázka ticho spadne na klasický štítok, stratené `stretchX` spraví
- * z dlhého čísla kapsulu, `sdf: true` z neho spraví rozmazaný kríž a chýbajúca
- * záloha v `match` nechá neznámu sieť úplne bez podkladu.
+ * Four quiet things – none fails anything and all show only in the map: a network
+ * without an image falls back to the classic shield, a lost `stretchX` makes a long
+ * number a capsule, `sdf: true` makes it a blurry cross and a missing `match`
+ * fallback leaves an unknown network without a background.
  *
  *   node workers/lint/route-shields.mjs
  */
@@ -27,58 +27,58 @@ import { AMERICANA_NETWORKS } from "../../poc/web/route-shield-americana.js";
 import { encodePng } from "../lib/png.mjs";
 
 let bad = 0;
-const chyba = (subor, text) => {
-  console.log(`::error file=${subor}::${text}`);
+const error = (file, text) => {
+  console.log(`::error file=${file}::${text}`);
   bad += 1;
 };
 
-// 1. každý recept sa dá nakresliť: tvar, farby a obrys, ktorý sa uzavrie
+// 1. every recipe can be drawn: shape, colours and a closing outline
 const HEX = /^#[0-9a-f]{6}$/i;
 for (const { name, def } of routeShieldRecipes()) {
   for (const key of ["fill", "text"]) {
     if (!HEX.test(def[key] || "")) {
-      chyba("poc/web/route-shield-americana.js",
-        `štítok "${name}" má \`${key}\` = "${def[key]}", čo nie je #rrggbb ` +
-        `– importér pozná len mená "white" a "black".`);
+      error("poc/web/route-shield-americana.js",
+        `shield "${name}" has \`${key}\` = "${def[key]}", which isn't #rrggbb ` +
+        `– the importer only knows the names "white" and "black".`);
     }
   }
   if (def.stroke && !HEX.test(def.stroke)) {
-    chyba("poc/web/route-shield-americana.js",
-      `štítok "${name}" má \`stroke\` = "${def.stroke}", čo nie je #rrggbb.`);
+    error("poc/web/route-shield-americana.js",
+      `shield "${name}" has \`stroke\` = "${def.stroke}", which isn't #rrggbb.`);
   }
   const pts = outline(def, 1);
   if (!pts || pts.length < 3) {
-    chyba("poc/web/route-shield-shapes.js",
-      `tvar "${def.shape}" sa nekreslí – štítok "${name}" by ostal prázdny.`);
+    error("poc/web/route-shield-shapes.js",
+      `shape "${def.shape}" doesn't draw – shield "${name}" would stay empty.`);
     continue;
   }
-  const sirka = blankWidth(def);
-  const mimo = pts.some(([x, y]) => x < -0.01 || y < -0.01 || x > sirka + 0.01);
-  if (mimo) {
-    chyba("poc/web/route-shield-shapes.js",
-      `obrys štítka "${name}" (tvar ${def.shape}) vychádza mimo obrázka ` +
-      `– v mape by bol orezaný.`);
+  const width = blankWidth(def);
+  const outside = pts.some(([x, y]) => x < -0.01 || y < -0.01 || x > width + 0.01);
+  if (outside) {
+    error("poc/web/route-shield-shapes.js",
+      `the outline of shield "${name}" (shape ${def.shape}) leaves the image ` +
+      `– it would be clipped in the map.`);
   }
 }
 
-// 1b. každá sieť ukazuje na recept, ktorý existuje
+// 1b. every network points at an existing recipe
 for (const network of ROUTE_SHIELD_NETWORKS) {
   if (!routeShieldDef(network)) {
-    chyba("poc/web/route-shield-defs.js",
-      `sieť "${network}" nemá recept – štýl by si pýtal obrázok, ktorý nie je.`);
+    error("poc/web/route-shield-defs.js",
+      `network "${network}" has no recipe – the style would ask for a missing image.`);
   }
 }
 
-// 1c. vlastné siete nie sú tiché prepísanie americkej tabuľky
+// 1c. own networks don't quietly override the Americana table
 for (const network of Object.keys(EXTRA_SHIELDS)) {
   if (AMERICANA_NETWORKS[network] !== undefined) {
-    chyba("poc/web/route-shield-defs.js",
-      `sieť "${network}" je aj v generovanej tabuľke – vlastná ju ticho prebíja. ` +
-      `Buď ju z \`EXTRA_SHIELDS\` vyhoď, alebo si to obhaj poznámkou.`);
+    error("poc/web/route-shield-defs.js",
+      `network "${network}" is in the generated table too – ours quietly overrides it. ` +
+      `Either drop it from \`EXTRA_SHIELDS\` or justify it with a note.`);
   }
 }
 
-// 2. obrázky sa naozaj dopečú a prežijú preskladanie spritu
+// 2. images really bake and survive sprite repacking
 const dir = mkdtempSync(join(tmpdir(), "route-shields-lint-"));
 try {
   const base = join(dir, "sprite");
@@ -94,11 +94,11 @@ try {
   const index = JSON.parse(readFileSync(`${base}.json`, "utf8"));
 
   for (const network of ROUTE_SHIELD_NETWORKS) {
-    const meno = routeShieldName(network);
-    if (!index[meno]) {
-      chyba("workers/assets/route-shields.mjs",
-        `sieť "${network}" si pýta obrázok "${meno}", ktorý sa do spritu ` +
-        `nedopiekol – štýl ju ticho nakreslí klasickým štítkom podľa triedy.`);
+    const name = routeShieldName(network);
+    if (!index[name]) {
+      error("workers/assets/route-shields.mjs",
+        `network "${network}" asks for image "${name}", which didn't bake into ` +
+        `the sprite – the style quietly draws the classic class shield.`);
     }
   }
 
@@ -106,22 +106,22 @@ try {
     const e = index[name];
     if (!e) continue;
     if (e.sdf) {
-      chyba("workers/assets/route-shields.mjs",
-        `štítok "${name}" je označený ako \`sdf\` – obrázok je farebný, ` +
-        `vzdialenostné pole tam nepatrí a v mape je z neho rozmazaný kríž.`);
+      error("workers/assets/route-shields.mjs",
+        `shield "${name}" is marked \`sdf\` – the image is coloured, a distance ` +
+        `field doesn't belong there and it becomes a blurry cross in the map.`);
     }
-    // tvar s hrotom rovnú časť hrany nemá, ten sa škáluje celý
+    // a pointed shape has no straight edge part, so it scales whole
     if (!stretchable(def)) continue;
-    for (const kluc of ["stretchX", "stretchY", "content"]) {
-      if (!e[kluc]) {
-        chyba("workers/assets/route-shields.mjs",
-          `štítok "${name}" nemá v indexe \`${kluc}\` – bez rozťahovacích ` +
-          `pásem sa obrázok škáluje aj s rohmi a z dlhého čísla je kapsula.`);
+    for (const key of ["stretchX", "stretchY", "content"]) {
+      if (!e[key]) {
+        error("workers/assets/route-shields.mjs",
+          `shield "${name}" has no \`${key}\` in the index – without stretch ` +
+          `bands the image scales with its corners and a long number becomes a capsule.`);
       }
     }
   }
 
-  // 3. záloha: `match` musí končiť klasickým štítkom podľa triedy
+  // 3. fallback: `match` must end with the classic class shield
   const icons = [...Object.keys(index), "shield-motorway-svetla", "shield-primary-svetla",
                  "shield-secondary-svetla", "shield-euro-svetla"];
   const style = buildStyle({
@@ -131,34 +131,34 @@ try {
     glyphsUrl: "g/{fontstack}/{range}",
     icons
   });
-  // posledná vetva `match`-u je záloha – tú hľadá aj aplikácia
-  const zaloha = (hodnota) => {
-    if (!Array.isArray(hodnota) || hodnota[0] !== "let") return hodnota;
-    const telo = hodnota[hodnota.length - 1];
-    if (!Array.isArray(telo) || telo[0] !== "match") return null;
-    return telo[telo.length - 1];
+  // the last `match` branch is the fallback – the app looks for it too
+  const fallback = (value) => {
+    if (!Array.isArray(value) || value[0] !== "let") return value;
+    const body = value[value.length - 1];
+    if (!Array.isArray(body) || body[0] !== "match") return null;
+    return body[body.length - 1];
   };
 
   for (const [id, , , , , , textKey] of SHIELD_DEFS) {
-    const vrstva = style.layers.find((l) => l.id === `road-shield-${id}`);
-    if (!vrstva) {
-      chyba("poc/web/themes.js", `vrstva "road-shield-${id}" v štýle nie je.`);
+    const layer = style.layers.find((l) => l.id === `road-shield-${id}`);
+    if (!layer) {
+      error("poc/web/themes.js", `layer "road-shield-${id}" isn't in the style.`);
       continue;
     }
-    if (zaloha(vrstva.layout["icon-image"]) !== `shield-${id}-svetla`) {
-      chyba("poc/web/themes.js",
-        `"road-shield-${id}" nemá na konci \`match\`-u klasický štítok ako zálohu ` +
-        `– cesta v sieti, ktorú tabuľka nepozná, by ostala bez podkladu a ` +
-        `aplikácia by sa nemala ako prepnúť späť.`);
+    if (fallback(layer.layout["icon-image"]) !== `shield-${id}-svetla`) {
+      error("poc/web/themes.js",
+        `"road-shield-${id}" doesn't end its \`match\` with the classic shield as a ` +
+        `fallback – a road in a network the table doesn't know would have no ` +
+        `background and the app couldn't switch back.`);
     }
-    if (zaloha(vrstva.paint["text-color"]) !== THEMES.svetla[textKey]) {
-      chyba("poc/web/themes.js",
-        `"road-shield-${id}" nemá na konci \`match\`-u farbu čísla zo štýlu ako zálohu.`);
+    if (fallback(layer.paint["text-color"]) !== THEMES.svetla[textKey]) {
+      error("poc/web/themes.js",
+        `"road-shield-${id}" doesn't end its \`match\` with the style's number colour as a fallback.`);
     }
   }
 
-  // 4. vypnuté štítky podľa siete = presne to, čo bolo predtým
-  const vypnute = buildStyle({
+  // 4. shields by network off = exactly what was there before
+  const off = buildStyle({
     theme: "svetla",
     tilesUrl: "pmtiles://t",
     spriteUrl: "http://s",
@@ -167,25 +167,25 @@ try {
     overrides: { routeShields: false }
   });
   for (const [id] of SHIELD_DEFS) {
-    const obrazok = vypnute.layers.find((l) => l.id === `road-shield-${id}`)?.layout["icon-image"];
-    if (obrazok !== `shield-${id}-svetla`) {
-      chyba("poc/web/themes.js",
-        `s vypnutými štítkami podľa siete kreslí "road-shield-${id}" ` +
-        `"${JSON.stringify(obrazok)}" namiesto klasického "shield-${id}-svetla".`);
+    const image = off.layers.find((l) => l.id === `road-shield-${id}`)?.layout["icon-image"];
+    if (image !== `shield-${id}-svetla`) {
+      error("poc/web/themes.js",
+        `with shields by network off "road-shield-${id}" draws ` +
+        `"${JSON.stringify(image)}" instead of the classic "shield-${id}-svetla".`);
     }
   }
 
   if (!routeShieldDef(EURO_NETWORK)) {
-    chyba("poc/web/route-shield-defs.js",
-      `európska cesta ("${EURO_NETWORK}") vlastný štítok nemá, hoci vrstva pre ňu je.`);
+    error("poc/web/route-shield-defs.js",
+      `the European road ("${EURO_NETWORK}") has no shield of its own, though its layer exists.`);
   }
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
 
 if (bad) {
-  console.log(`::error::Štítky podľa siete: ${bad} ${bad === 1 ? "chyba" : "chýb"}.`);
+  console.log(`::error::Shields by network: ${bad} ${bad === 1 ? "error" : "errors"}.`);
   process.exit(1);
 }
-console.log(`✓ Štítky podľa siete: ${ROUTE_SHIELD_NETWORKS.length} sietí, ` +
-  `${routeShieldRecipes().length} obrázkov, záloha na mieste.`);
+console.log(`✓ Shields by network: ${ROUTE_SHIELD_NETWORKS.length} networks, ` +
+  `${routeShieldRecipes().length} images, fallback in place.`);
