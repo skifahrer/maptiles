@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
-# Kľúč cache článkov na stdout (`prefix=…`, `key=…`).
-#
-# Do kľúča ide všetko, čo mení obsah balíka. Na konci je číslo behu, lebo
-# existujúci kľúč sa neprepisuje – predpona vyberie najnovší.
-#
-# Z prostredia: REGION COUNTRY LANGS RUN_ID
+# Article cache key on stdout (`prefix=…`, `key=…`); the run id last, the prefix picks the newest.
+# From env: REGION COUNTRY LANGS RUN_ID
 set -euo pipefail
-# `text` ostáva v kľúči, aby staré cache sadli
+# `text` stays in the key so old caches still match
 S=$(printf '%s|%s|%s|%s' "$REGION" "${COUNTRY:-}" "${LANGS:-}" text \
     | tr -c 'a-zA-Z0-9._-' '_')
 echo "prefix=wiki-v2-$S-"

@@ -1,4 +1,4 @@
-name: Navigácia · poradie uzlov
+name: Routing · node order
 
 # PORADIE UZLOV PRE CCH nad celým stavaným územím – jediná drahá časť, ktorá
 # do telefónu nepatrí (rozpis v `docs/navigation.md` §11).

@@ -1,4 +1,4 @@
-name: Mapa · železnice
+name: Map · railways
 
 # železnice z OSM do vlastného `.pmtiles` aj s koľajovou sieťou na navigáciu –
 # balík `zeleznice`; samostatný súbor, lebo `build-map-region.yml` má strop 128 KiB

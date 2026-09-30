@@ -1,4 +1,4 @@
-name: Navigácia · krížová kontrola
+name: Routing · cross-check
 
 # VONKAJŠÍ NÁZOR NA MOTOR V TELEFÓNE. Nad tým istým PBF kraja sa postaví
 # archív pre appku (`<kraj>-routing.pmtiles`) aj graf Valhally, a Valhalla

@@ -1,4 +1,4 @@
-name: Mapa · sídla
+name: Map · settlements
 
 # sídla z OSM do vlastného `.pmtiles`: budovy s výmerou a menom, mená sídiel –
 # balík `sidla`. Samostatný súbor, lebo `build-map-region.yml` je pri strope.

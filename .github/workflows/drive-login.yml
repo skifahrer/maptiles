@@ -1,4 +1,4 @@
-name: Údržba · prihlásenie Drive
+name: Maintenance · Drive sign-in
 
 # Vyrobí refresh token vlastníka dát na Google Drive a uloží ho priamo do
 # secretu. Spúšťa sa raz – potom už len keby účet prístup odvolal.

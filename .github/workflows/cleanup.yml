@@ -1,4 +1,4 @@
-name: Údržba · týždenné upratovanie
+name: Maintenance · weekly cleanup
 
 # Jediný upratovací workflow: raz za týždeň zmaže to, čo po behoch ostalo.
 # Dva joby (`github` a `drive`), lebo sa líšia právami aj tým, čo ich vie zhodiť.

@@ -1,4 +1,4 @@
-name: Mapa · Build navigácia
+name: Map · Build routing
 
 # NAVIGAČNÝ GRAF (Valhalla) – to, po čom sa dá viesť trasa. Z dlaždice sa
 # routovať nedá: je to kreslený obraz s orezanou geometriou a bez odbočovacích

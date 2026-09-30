@@ -1,4 +1,4 @@
-name: Mapa · smerovacia sieť kraja
+name: Map · region routing network
 
 # SMEROVACIA SIEŤ JEDNÉHO KRAJA – `<kraj>-routing.pmtiles`. Ide v základnej
 # mape (časť `navigacia`) aj v balíku `cesty`; vlastný balík nemá.

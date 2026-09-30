@@ -1,4 +1,4 @@
-name: Mapa · hranice území
+name: Map · boundaries
 
 # HRANICE ÚZEMÍ A ICH NÁZVY z OSM do vlastného `.pmtiles`: štát, kraj, okres
 # a obec ako plochy aj čiary, s menom a úrovňou, plus body sídel. Vrstva
