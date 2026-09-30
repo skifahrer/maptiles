@@ -359,7 +359,7 @@ function applyStyle(manifest) {
       : "") +
     (hasOverrides(overrides) ? "Štýl s vlastnými úpravami (developer mode)<br>" : "") +
     `Vygenerované: ${new Date(manifest.built_at).toLocaleString("sk-SK")}<br>` +
-    `© OpenStreetMap prispievatelia`;
+    `© OpenStreetMap contributors`;
 
   if (!map) {
     const [w, s, e, n] = region.bbox;

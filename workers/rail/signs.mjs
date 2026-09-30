@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Značky krajiny pri trati a na ceste → sprite `{región}-signs` vedľa dlaždíc železníc.
+ * A country's trackside and road signs → sprite `{region}-signs` beside the railway tiles.
  *
  *   node workers/rail/signs.mjs --region=bratislavsky --out=_site/tiles/bratislavsky-signs
  */
@@ -8,161 +8,161 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { encodePng, packShelves } from "../lib/png.mjs";
-import { farba, kruh, nakresli, obdlznik, obluk, zaoblenyObdlznik } from "../lib/kresba.mjs";
+import { arc, circle, color, draw, rect, roundedRect } from "../lib/draw.mjs";
 
-const INK = farba("#000000");
-const STOZIAR = farba("#808080");
-const BIELA = farba("#FFFFFF");
-const ZLTA = "#FFD000";
-const CERVENA = "#E30513";
-const ZELENA = "#00D933";
-const MODRA = "#1F6BFF";
-const MODRA_TABULA = farba("#004D9E");
+const INK = color("#000000");
+const MAST = color("#808080");
+const WHITE = color("#FFFFFF");
+const YELLOW = "#FFD000";
+const RED = "#E30513";
+const GREEN = "#00D933";
+const BLUE = "#1F6BFF";
+const BLUE_BOARD = color("#004D9E");
 
-const vypln = (poly, f) => ({ vypln: poly, farba: f });
-const tah = (body, sirka, f, zavreta = false) => ({ tah: body, sirka, farba: f, zavreta });
-// biely lem, aby značka bola vidno aj na tmavej mape
-const lem = (...polys) => polys.map((p) => tah(p, 2.4, BIELA, true));
-const lampa = (x, y, r, f) => vypln(kruh(x, y, r, 24), f);
+const fill = (poly, c) => ({ fill: poly, color: c });
+const stroke = (pts, width, c, closed = false) => ({ stroke: pts, width, color: c, closed });
+// white rim, so the sign shows on a dark map too
+const rim = (...polys) => polys.map((p) => stroke(p, 2.4, WHITE, true));
+const lamp = (x, y, r, c) => fill(circle(x, y, r, 24), c);
 
-function hlava(lampy, svieti) {
-  const krok = 3.8;
-  const vyska = krok * lampy.length + 2.4;
-  const telo = zaoblenyObdlznik(7, 1, 8, vyska, 4);
-  const stlp = obdlznik(10.1, 1 + vyska, 1.8, 20.5 - vyska);
-  return [...lem(telo, stlp), vypln(stlp, STOZIAR), vypln(telo, INK),
-    ...lampy.map((hex, i) => lampa(11, 2.2 + krok * (i + 0.5), 1.5,
-      farba(hex, i === svieti ? 1 : 0.18)))];
+function head(lamps, lit) {
+  const step = 3.8;
+  const height = step * lamps.length + 2.4;
+  const body = roundedRect(7, 1, 8, height, 4);
+  const post = rect(10.1, 1 + height, 1.8, 20.5 - height);
+  return [...rim(body, post), fill(post, MAST), fill(body, INK),
+    ...lamps.map((hex, i) => lamp(11, 2.2 + step * (i + 0.5), 1.5,
+      color(hex, i === lit ? 1 : 0.18)))];
 }
 
-function trpaslik() {
-  const skrina = zaoblenyObdlznik(3, 8, 16, 9, 4.5);
-  const noha = obdlznik(6, 17, 10, 2.5);
-  return [...lem(skrina, noha), vypln(noha, STOZIAR), vypln(skrina, INK),
-    lampa(7.5, 12.5, 2.2, farba("#FFFFFF", 0.3)), lampa(14.5, 12.5, 2.2, farba(MODRA))];
+function dwarf() {
+  const box = roundedRect(3, 8, 16, 9, 4.5);
+  const foot = rect(6, 17, 10, 2.5);
+  return [...rim(box, foot), fill(foot, MAST), fill(box, INK),
+    lamp(7.5, 12.5, 2.2, color("#FFFFFF", 0.3)), lamp(14.5, 12.5, 2.2, color(BLUE))];
 }
 
-function priecestnik() {
-  const telo = zaoblenyObdlznik(5, 1, 12, 12, 3);
-  const stlp = obdlznik(9.8, 13, 2.4, 8.5);
-  const pasy = [14.5, 17.9, 21.3].map((y) => vypln(obdlznik(9.8, y, 2.4, 1.7), BIELA));
-  return [...lem(telo, stlp), vypln(telo, INK), vypln(stlp, INK), ...pasy,
-    lampa(11, 4.6, 2, BIELA), lampa(8.2, 9.4, 1.7, farba(ZLTA, 0.35)),
-    lampa(13.8, 9.4, 1.7, farba(ZLTA, 0.35))];
+function crossingSignal() {
+  const body = roundedRect(5, 1, 12, 12, 3);
+  const post = rect(9.8, 13, 2.4, 8.5);
+  const stripes = [14.5, 17.9, 21.3].map((y) => fill(rect(9.8, y, 2.4, 1.7), WHITE));
+  return [...rim(body, post), fill(body, INK), fill(post, INK), ...stripes,
+    lamp(11, 4.6, 2, WHITE), lamp(8.2, 9.4, 1.7, color(YELLOW, 0.35)),
+    lamp(13.8, 9.4, 1.7, color(YELLOW, 0.35))];
 }
 
-function rychlostnik() {
-  const tabula = obdlznik(4, 1.5, 14, 19);
-  return [...lem(tabula), vypln(tabula, BIELA), tah(tabula, 1.4, INK, true)];
+function speedBoard() {
+  const board = rect(4, 1.5, 14, 19);
+  return [...rim(board), fill(board, WHITE), stroke(board, 1.4, INK, true)];
 }
 
-function predzvestnik() {
-  const trojuholnik = [[1.5, 2], [20.5, 2], [11, 20.5]];
-  return [tah(trojuholnik, 3.4, BIELA, true), vypln(trojuholnik, farba(ZLTA)),
-    tah(trojuholnik, 1.4, INK, true)];
+function speedWarning() {
+  const triangle = [[1.5, 2], [20.5, 2], [11, 20.5]];
+  return [stroke(triangle, 3.4, WHITE, true), fill(triangle, color(YELLOW)),
+    stroke(triangle, 1.4, INK, true)];
 }
 
-function vypnitePrud() {
-  const stvorec = [[11, 1], [21, 11], [11, 21], [1, 11]];
-  return [...lem(stvorec), vypln(stvorec, MODRA_TABULA), tah(stvorec, 1.2, BIELA, true),
-    tah([[7.5, 6.5], [7.5, 12.5]], 1.8, BIELA), tah([[14.5, 6.5], [14.5, 12.5]], 1.8, BIELA),
-    tah(obluk(11, 12.5, 3.5, 111.6, 180, 10), 1.8, BIELA),
-    tah(obluk(11, 12.5, 3.5, 0, 68.4, 10), 1.8, BIELA)];
+function powerOff() {
+  const square = [[11, 1], [21, 11], [11, 21], [1, 11]];
+  return [...rim(square), fill(square, BLUE_BOARD), stroke(square, 1.2, WHITE, true),
+    stroke([[7.5, 6.5], [7.5, 12.5]], 1.8, WHITE), stroke([[14.5, 6.5], [14.5, 12.5]], 1.8, WHITE),
+    stroke(arc(11, 12.5, 3.5, 111.6, 180, 10), 1.8, WHITE),
+    stroke(arc(11, 12.5, 3.5, 0, 68.4, 10), 1.8, WHITE)];
 }
 
-function piskajte() {
-  const stlp = obdlznik(8, 1.5, 6, 19);
-  const pasy = [1.5, 9.1, 16.7].map((y) => vypln(obdlznik(8, y, 6, 3.8), farba(CERVENA)));
-  return [...lem(stlp), vypln(stlp, BIELA), ...pasy, tah(stlp, 0.8, INK, true)];
+function whistle() {
+  const post = rect(8, 1.5, 6, 19);
+  const stripes = [1.5, 9.1, 16.7].map((y) => fill(rect(8, y, 6, 3.8), color(RED)));
+  return [...rim(post), fill(post, WHITE), ...stripes, stroke(post, 0.8, INK, true)];
 }
 
-function koniecNastupista() {
-  const tabula = obdlznik(2, 4, 18, 14);
-  return [...lem(tabula), vypln(tabula, BIELA), tah(tabula, 1, INK, true),
-    tah(obdlznik(5, 7, 12, 8), 2.2, INK, true)];
+function platformEnd() {
+  const board = rect(2, 4, 18, 14);
+  return [...rim(board), fill(board, WHITE), stroke(board, 1, INK, true),
+    stroke(rect(5, 7, 12, 8), 2.2, INK, true)];
 }
 
-function obmedzenieRychlosti(strana, podiel) {
-  const r = strana / 2;
-  const pas = strana * podiel;
-  return [vypln(kruh(r, r, r, 96), farba(CERVENA)), vypln(kruh(r, r, r - pas, 96), BIELA)];
+function speedLimit(side, share) {
+  const r = side / 2;
+  const band = side * share;
+  return [fill(circle(r, r, r, 96), color(RED)), fill(circle(r, r, r - band, 96), WHITE)];
 }
 
-/** Plocha na číslo v bodoch: `[x, y, šírka, výška]`. */
-const cislo = (x, y, w, h, cifry) => ({ obsah: [x, y, x + w, y + h], cifry });
+/** Area for the number in points: `[x, y, width, height]`. */
+const number = (x, y, w, h, figures) => ({ content: [x, y, x + w, y + h], figures });
 
-const ZNACKY_SK = () => {
-  const strana = 44;
-  const pas = strana * 0.1;
-  const dnu = pas * 1.35;
-  const vnutro = strana - 2 * dnu;
+const SIGNS_SK = () => {
+  const side = 44;
+  const band = side * 0.1;
+  const inset = band * 1.35;
+  const inner = side - 2 * inset;
   return {
-    "rail.signal": { kresba: hlava([ZLTA, ZELENA, CERVENA, "#FFFFFF"], 2) },
-    "rail.combinedSignal": { kresba: hlava([ZLTA, ZELENA, CERVENA, "#FFFFFF"], 0) },
-    "rail.distantSignal": { kresba: hlava([ZLTA, ZELENA], 0) },
-    "rail.shuntingSignal": { kresba: trpaslik() },
-    "rail.crossingSignal": { kresba: priecestnik() },
-    // rýchlostník aj predzvestník ukazujú desiatky km/h
-    "rail.speedLimit": { kresba: rychlostnik(), ...cislo(5.5, 3.5, 11, 15, "tens") },
-    "rail.speedLimitDistant": { kresba: predzvestnik(), ...cislo(6.5, 3.5, 9, 9, "tens") },
-    "rail.electricity": { kresba: vypnitePrud() },
-    "rail.whistle": { kresba: piskajte() },
-    "rail.stopPosition": { kresba: koniecNastupista() },
+    "rail.signal": { art: head([YELLOW, GREEN, RED, "#FFFFFF"], 2) },
+    "rail.combinedSignal": { art: head([YELLOW, GREEN, RED, "#FFFFFF"], 0) },
+    "rail.distantSignal": { art: head([YELLOW, GREEN], 0) },
+    "rail.shuntingSignal": { art: dwarf() },
+    "rail.crossingSignal": { art: crossingSignal() },
+    // speed boards show tens of km/h
+    "rail.speedLimit": { art: speedBoard(), ...number(5.5, 3.5, 11, 15, "tens") },
+    "rail.speedLimitDistant": { art: speedWarning(), ...number(6.5, 3.5, 9, 9, "tens") },
+    "rail.electricity": { art: powerOff() },
+    "rail.whistle": { art: whistle() },
+    "rail.stopPosition": { art: platformEnd() },
     "road.speedLimit": {
-      strana,
-      kresba: obmedzenieRychlosti(strana, 0.1),
-      ...cislo(dnu, dnu + vnutro * 0.12, vnutro, vnutro * 0.76, "whole")
+      side,
+      art: speedLimit(side, 0.1),
+      ...number(inset, inset + inner * 0.12, inner, inner * 0.76, "whole")
     }
   };
 };
 
-export const SADY = { sk: ZNACKY_SK };
+export const SETS = { sk: SIGNS_SK };
 
-/** Obrázky sady pri danom pixelRatio, s menom `sk.rail.signal`. */
-export function obrazky(krajina, pomer) {
-  return Object.entries(SADY[krajina]()).map(([meno, z]) => {
-    const strana = z.strana || 22;
-    const entry = { pixelRatio: pomer };
-    if (z.obsah) {
-      entry.content = z.obsah.map((v) => Math.round(v * pomer));
-      entry.figures = z.cifry;
+/** The set's images at a pixelRatio, named like `sk.rail.signal`. */
+export function images(country, ratio) {
+  return Object.entries(SETS[country]()).map(([name, z]) => {
+    const side = z.side || 22;
+    const entry = { pixelRatio: ratio };
+    if (z.content) {
+      entry.content = z.content.map((v) => Math.round(v * ratio));
+      entry.figures = z.figures;
     }
-    return { name: `${krajina}.${meno}`, image: nakresli(strana, strana, z.kresba, pomer), entry };
+    return { name: `${country}.${name}`, image: draw(side, side, z.art, ratio), entry };
   });
 }
 
-export function zapis(krajina, zaklad) {
-  for (const [pripona, pomer] of [["", 1], ["@2x", 2]]) {
-    const boxy = obrazky(krajina, pomer).map((o) => ({ ...o, width: o.image.width, height: o.image.height }));
-    const atlas = packShelves(boxy, 256 * pomer);
+export function write(country, base) {
+  for (const [suffix, ratio] of [["", 1], ["@2x", 2]]) {
+    const boxes = images(country, ratio).map((o) => ({ ...o, width: o.image.width, height: o.image.height }));
+    const atlas = packShelves(boxes, 256 * ratio);
     const data = Buffer.alloc(atlas.width * atlas.height * 4);
     const index = {};
-    for (const b of boxy) {
+    for (const b of boxes) {
       for (let y = 0; y < b.height; y++) {
         data.set(b.image.data.subarray(y * b.width * 4, (y + 1) * b.width * 4),
           ((b.y + y) * atlas.width + b.x) * 4);
       }
       index[b.name] = { x: b.x, y: b.y, width: b.width, height: b.height, ...b.entry };
     }
-    writeFileSync(`${zaklad}${pripona}.png`, encodePng({ width: atlas.width, height: atlas.height, data }));
-    writeFileSync(`${zaklad}${pripona}.json`, JSON.stringify(index, null, 1) + "\n");
+    writeFileSync(`${base}${suffix}.png`, encodePng({ width: atlas.width, height: atlas.height, data }));
+    writeFileSync(`${base}${suffix}.json`, JSON.stringify(index, null, 1) + "\n");
   }
 }
 
-const citaj = (meno) => JSON.parse(readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "..", "data", meno), "utf8"));
+const readData = (name) => JSON.parse(readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "..", "data", name), "utf8"));
 
-/** ISO kód krajiny regiónu, malými písmenami; kraj ho berie od krajiny, výsek podľa polohy. */
-export function krajinaRegionu(kluc, regiony = citaj("regions.json"), vyseky = citaj("areas.json")) {
-  const holy = kluc.replace(/_test[\d.]+km2$/, "");
-  const r = regiony[holy];
-  if (r) return (r.iso || (regiony[r.country] || {}).iso || "").toLowerCase();
-  const box = (vyseky[holy] || {}).bbox;
+/** The region's lower-case ISO country code; a region takes its country's, an area by position. */
+export function regionCountry(key, regions = readData("regions.json"), areas = readData("areas.json")) {
+  const bare = key.replace(/_test[\d.]+km2$/, "");
+  const r = regions[bare];
+  if (r) return (r.iso || (regions[r.country] || {}).iso || "").toLowerCase();
+  const box = (areas[bare] || {}).bbox;
   if (!box) return "";
   const [x, y] = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
-  const krajina = Object.values(regiony).find(({ iso, bbox: b }) =>
+  const country = Object.values(regions).find(({ iso, bbox: b }) =>
     iso && b && x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3]);
-  return (krajina?.iso || "").toLowerCase();
+  return (country?.iso || "").toLowerCase();
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -171,14 +171,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     return [k, v.join("=")];
   }));
   if (!args.region || !args.out) {
-    console.error("Použitie: node workers/rail/signs.mjs --region=<kľúč> --out=<základ>");
+    console.error("Usage: node workers/rail/signs.mjs --region=<key> --out=<base>");
     process.exit(2);
   }
-  const krajina = krajinaRegionu(args.region);
-  if (!SADY[krajina]) {
-    console.log(`Krajina „${krajina || "?"}" vlastné značky nemá – appka kreslí predvolené.`);
+  const country = regionCountry(args.region);
+  if (!SETS[country]) {
+    console.log(`Country “${country || "?"}” has no signs of its own – the app draws the defaults.`);
     process.exit(0);
   }
-  zapis(krajina, args.out);
-  console.log(`Značky ${krajina} → ${args.out}.json/.png (+@2x)`);
+  write(country, args.out);
+  console.log(`Signs ${country} → ${args.out}.json/.png (+@2x)`);
 }

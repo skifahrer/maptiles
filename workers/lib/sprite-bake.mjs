@@ -1,39 +1,28 @@
 /**
- * Dopečenie vlastných obrázkov do hotového spritu.
- *
- * Sprite vyrobí `assets/sprite.mjs` z cudzej sady. Štítky ciest, značky trás
- * a vzory výplní si kreslíme sami a v žiadnej sade byť nemôžu; všetky tri
- * rozoberú atlas, pridajú svoje a preskladajú ho späť. Kým to bol trikrát ten
- * istý kus kódu, líšil sa – a rozdiel bol tichý: v jednej kópii sa
- * neprenášali `stretchX`/`stretchY`/`content`, takže z dlhého čísla na štítku
- * vyšla kapsula.
- *
- * Volajúci povie dve veci: ktoré mená v atlase sú jeho (tie sa zahodia
- * a nakreslia znova, nech pri behu nad spritom z cache nepribúdajú kópie)
- * a čo pridať.
+ * Bakes our own images into a finished sprite; `mine` names are redrawn, not duplicated.
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { decodePng, encodePng, packShelves } from "./png.mjs";
 
 /**
  * @param {object} opts
- * @param {string} opts.spriteBase  cesta bez prípony (`_site/sprites/osm-liberty`)
- * @param {(name: string) => boolean} opts.mine  patrí toto meno v atlase nám?
+ * @param {string} opts.spriteBase  path without extension (`_site/sprites/osm-liberty`)
+ * @param {(name: string) => boolean} opts.mine  is this atlas name ours?
  * @param {(pixelRatio: number) => Array<{name:string,
  *          image:{width:number,height:number,data:Uint8Array},
- *          entry?:object}>} opts.make  čo pridať do varianty s týmto ratiom
- * @param {string} [opts.co]  čo sa pečie – ide do hlášky („štítkov ciest")
- * @returns {boolean} podarilo sa aspoň variant 1× (bez neho je to chyba)
+ *          entry?:object}>} opts.make  what to add to the variant with this ratio
+ * @param {string} [opts.what]  what is baked – goes into the message ("road shields")
+ * @returns {boolean} at least the 1× variant worked (without it, an error)
  */
-export function bakeIntoSprite({ spriteBase, mine, make, co = "obrázkov" }) {
-  const ok = addTo(spriteBase, mine, make, co, "", 1);
+export function bakeIntoSprite({ spriteBase, mine, make, what = "images" }) {
+  const ok = addTo(spriteBase, mine, make, what, "", 1);
   if (!ok) return false;
-  // @2x je voliteľné – bez neho je mapa na retine len mäkšia.
-  addTo(spriteBase, mine, make, co, "@2x", 2);
+  // @2x is optional – without it the map is only softer on retina
+  addTo(spriteBase, mine, make, what, "@2x", 2);
   return true;
 }
 
-function addTo(spriteBase, mine, make, co, suffix, pixelRatio) {
+function addTo(spriteBase, mine, make, what, suffix, pixelRatio) {
   const jsonPath = `${spriteBase}${suffix}.json`;
   const pngPath = `${spriteBase}${suffix}.png`;
   if (!existsSync(jsonPath) || !existsSync(pngPath)) return false;
@@ -41,7 +30,7 @@ function addTo(spriteBase, mine, make, co, suffix, pixelRatio) {
   const index = JSON.parse(readFileSync(jsonPath, "utf8"));
   const atlas = decodePng(readFileSync(pngPath));
 
-  // Existujúce obrázky sa z atlasu vyberú, aby sa dal preskladať aj s novými.
+  // existing images are taken out, so the atlas can be repacked with the new ones
   const boxes = [];
   for (const [name, e] of Object.entries(index)) {
     if (mine(name)) continue;
@@ -55,8 +44,8 @@ function addTo(spriteBase, mine, make, co, suffix, pixelRatio) {
     boxes.push({ name, width: e.width, height: e.height, data, entry: e });
   }
 
-  const nove = make(pixelRatio);
-  for (const { name, image, entry } of nove) {
+  const added = make(pixelRatio);
+  for (const { name, image, entry } of added) {
     boxes.push({
       name,
       width: image.width,
@@ -85,11 +74,7 @@ function addTo(spriteBase, mine, make, co, suffix, pixelRatio) {
       height: box.height,
       pixelRatio: box.entry.pixelRatio || 1,
       ...(box.entry.sdf ? { sdf: true } : {}),
-      // ROZŤAHOVACIE PÁSMA SA MUSIA PRENIESŤ. Preskladanie atlasu mení len to,
-      // KDE obrázok leží – čo o sebe hovorí, ostáva jeho. Štítok cesty
-      // (`workers/assets/shields.mjs`) sa bez `stretchX`/`stretchY`/`content`
-      // natiahne celý aj s rohmi a z obdĺžnika je pri dlhom čísle rozmazaná
-      // kapsula; nič pri tom nespadne, lebo štýl aj sprite sú ďalej platné.
+      // stretch bands must carry over, or a long shield number turns into a capsule
       ...(box.entry.stretchX ? { stretchX: box.entry.stretchX } : {}),
       ...(box.entry.stretchY ? { stretchY: box.entry.stretchY } : {}),
       ...(box.entry.content ? { content: box.entry.content } : {})
@@ -99,7 +84,7 @@ function addTo(spriteBase, mine, make, co, suffix, pixelRatio) {
   writeFileSync(pngPath, encodePng({ ...packed, data: out }));
   writeFileSync(jsonPath, JSON.stringify(outIndex));
   console.log(
-    `✓ ${jsonPath}: ${boxes.length} obrázkov (z toho ${nove.length} ${co}), ` +
+    `✓ ${jsonPath}: ${boxes.length} images (${added.length} of them ${what}), ` +
       `atlas ${packed.width}×${packed.height}`
   );
   return true;

@@ -1,26 +1,12 @@
 #!/usr/bin/env python3
-"""PRESNÁ hranica kraja a štátu – z OSM dát, nie z rozšíreného `.poly` osm.fr.
+"""Exact region and state border from OSM data, not from osm.fr's widened `.poly`.
 
-`.poly` z osm.fr má body zaokrúhlené na mriežku 0,005° (≈ 550 m) a osm.fr si
-polygón okolo hranice sám rozširuje – susedné kraje sa v ňom prekrývajú o 2–4 km.
+Usage as a module (called by `region-poly.py`):
+    borders = boundary.borders_from_pbf("data/region.osm.pbf")
+    rings, state = boundary.prepare(boundary.pick(borders, "Prešovský kraj", 4),
+                                    boundary.pick(borders, "Slovensko", 2))
 
-Tu sa hranica berie priamo z OSM relácie (`boundary=administrative` +
-`admin_level`), teda z tých istých dát, z akých je mapa. Kraj (4) sa ešte
-pretne so štátom (2) – čo v OSM vytŕča za štátnu hranicu, nemá byť v mape kraja.
-
-Číta sa z PBF, ktoré si beh aj tak sťahuje: ďalší server by bol druhá pravda
-o hranici. `osmium extract -s smart -S types=multipolygon,boundary` dopĺňa
-členov hraničných relácií, takže v rezanom PBF sú hranice celé.
-
-Z relácie robí polygón `osmium export` sám (skladá plochy z `type=multipolygon`
-aj `type=boundary`); filtruje sa pred ním, nech sa neskladajú hranice obcí.
-
-Použitie ako modul (volá ho `region-poly.py`):
-    hranice = boundary.hranice_z_pbf("data/region.osm.pbf")
-    rings, stav = boundary.uprav(boundary.vyber(hranice, "Prešovský kraj", 4),
-                                 boundary.vyber(hranice, "Slovensko", 2))
-
-Alebo z príkazového riadka:
+Or from the command line:
     python3 workers/plan/boundary.py --pbf=data/region.osm.pbf
 """
 import json
@@ -29,17 +15,13 @@ import subprocess
 import sys
 import tempfile
 
-# štát (2) a kraj (4) – nič iné táto pipeline nereže a hranice obcí sú tisíce
-# plôch, ktoré by nikto nepoužil
+# state and region only – municipal borders are thousands of unused areas
 ADMIN_LEVELS = (2, 4)
 
-# o koľko metrov sa hranica smie odchýliť pri zjednodušení pred rezom.
-# `osmium extract --polygon` testuje každý uzol proti každej úsečke, takže
-# presná hranica by rez z rodiča predĺžila rádovo osemnásobne. Pri 10 m je
-# stále o dva rády presnejšia než mriežka osm.fr.
-OREZ_TOLERANCIA_M = 10
+# `osmium extract --polygon` is ~8× slower on the unsimplified border
+CUT_TOLERANCE_M = 10
 
-# keď sa `osmium` zasekne, má to spadnúť a nie držať job do stropu 360 minút
+# a stuck `osmium` must fail, not hold the job to its 360 minute cap
 TIMEOUT_S = 1800
 
 
@@ -47,12 +29,9 @@ def log(msg):
     print(msg, flush=True)
 
 
-# ---------- geometria: GeoJSON ↔ prstence ----------
-# Jedna odpoveď pre celý priečinok `plan/`. (`workers/lib/region-mask.py` má
-# vlastnú kópiu – je v inom priečinku a má v mene pomlčku.)
-
+# `workers/lib/region-mask.py` keeps its own copy – other folder, dash in name
 def rings_from_geojson(data):
-    """GeoJSON dict (Polygon/MultiPolygon) → `[(prstenec, je_diera)]`."""
+    """GeoJSON dict (Polygon/MultiPolygon) → `[(ring, is_hole)]`."""
     out = []
     for feat in data.get("features") or []:
         geom = feat.get("geometry") or {}
@@ -67,12 +46,7 @@ def rings_from_geojson(data):
 
 
 def geojson_from_rings(rings):
-    """Prstence → GeoJSON. Diery idú k poslednému vonkajšiemu prstencu.
-
-    Je to zjednodušenie: `.poly` neurčuje, ku ktorému obrysu diera patrí.
-    Pri `-cutline` by diera v nesprávnom polygóne nič nepokazila – gdalwarp
-    berie úniu, takže by len nebola dierou.
-    """
+    """Rings → GeoJSON; holes go to the last outer ring (`.poly` doesn't say which)."""
     polys, holes = [], []
     for ring, hole in rings:
         closed = ring if ring[0] == ring[-1] else ring + [ring[0]]
@@ -89,85 +63,69 @@ def geojson_from_rings(rings):
             "features": [{"type": "Feature", "properties": {}, "geometry": geom}]}
 
 
-def ogr2ogr(args, popis, dopad):
-    """`ogr2ogr` s danými argumentmi. `True` = prešiel.
-
-    `dopad` je veta o tom, čo sa nestane, keď to nevyjde – volajúci ju vie
-    povedať presnejšie než tento súbor.
-    """
+def ogr2ogr(args, what, impact):
+    """`ogr2ogr` with the given args; `impact` says what is lost when it fails."""
     try:
         subprocess.run(["ogr2ogr", *args], check=True,
                        capture_output=True, text=True, timeout=TIMEOUT_S)
         return True
     except FileNotFoundError:
-        log(f"::warning::{popis} sa nepodarilo – `ogr2ogr` tu nie je. {dopad} "
-            f"Doplň `gdal-bin` (a `libsqlite3-mod-spatialite`) do jobu.")
+        log(f"::warning::{what} failed – `ogr2ogr` isn't here. {impact} "
+            f"Add `gdal-bin` (and `libsqlite3-mod-spatialite`) to the job.")
         return False
     except subprocess.TimeoutExpired:
-        log(f"::warning::{popis} sa nedokončilo do {TIMEOUT_S} s. {dopad}")
+        log(f"::warning::{what} didn't finish within {TIMEOUT_S} s. {impact}")
         return False
     except subprocess.CalledProcessError as exc:
-        log(f"::warning::{popis} zlyhalo: {(exc.stderr or '').strip()[-500:]}. "
-            f"{dopad}")
+        log(f"::warning::{what} failed: {(exc.stderr or '').strip()[-500:]}. "
+            f"{impact}")
         return False
 
 
-def _osmium(args, popis):
-    """`osmium` s danými argumentmi. `True` = prešiel."""
+def _osmium(args, what):
+    """`osmium` with the given args. `True` = it passed."""
     try:
         subprocess.run(["osmium", *args], check=True,
                        capture_output=True, text=True, timeout=TIMEOUT_S)
         return True
     except FileNotFoundError:
-        log(f"::warning::{popis} sa nepodarilo – `osmium` tu nie je.")
+        log(f"::warning::{what} failed – `osmium` isn't here.")
         return False
     except subprocess.TimeoutExpired:
-        log(f"::warning::{popis} sa nedokončilo do {TIMEOUT_S} s.")
+        log(f"::warning::{what} didn't finish within {TIMEOUT_S} s.")
         return False
     except subprocess.CalledProcessError as exc:
-        log(f"::warning::{popis} zlyhalo: {(exc.stderr or '').strip()[-500:]}")
+        log(f"::warning::{what} failed: {(exc.stderr or '').strip()[-500:]}")
         return False
 
 
-def hranice_z_pbf(pbf, levels=ADMIN_LEVELS):
-    """PBF → `[{"name", "names", "admin_level", "rings"}]` hraníc.
-
-    Dva kroky `osmium`: `tags-filter r/admin_level=…` nechá len hraničné
-    relácie (bez neho by sa skladali aj hranice obcí) a `export
-    --geometry-types=polygon` z nich poskladá plochy.
-
-    Prázdny zoznam znamená „nedá sa", nie „hranica neexistuje" – volajúci má
-    náhradné riešenie a musí ho ohlásiť.
-    """
+def borders_from_pbf(pbf, levels=ADMIN_LEVELS):
+    """PBF → `[{"name", "names", "admin_level", "rings"}]`; empty means "can't", not "none"."""
     if not pbf or not os.path.exists(pbf):
-        log(f"::warning::Hranice sa nedajú prečítať – {pbf} nie je.")
+        log(f"::warning::Borders can't be read – {pbf} doesn't exist.")
         return []
-    vyrazy = [f"r/admin_level={lvl}" for lvl in levels]
+    filters = [f"r/admin_level={lvl}" for lvl in levels]
     with tempfile.TemporaryDirectory() as tmp:
         admin = os.path.join(tmp, "admin.osm.pbf")
         geo = os.path.join(tmp, "admin.geojsonseq")
         if not _osmium(["tags-filter", "--overwrite", "-o", admin, pbf,
-                        *vyrazy], "Výber hraničných relácií z PBF"):
+                        *filters], "Picking border relations from the PBF"):
             return []
-        # `--geometry-types=polygon`: relácie sa majú poskladať na plochy,
-        # nie vypadnúť ako zväzok čiar
+        # relations must become areas, not a bundle of lines
         if not _osmium(["export", "--overwrite", "-f", "geojsonseq",
                         "--geometry-types=polygon", "-o", geo, admin],
-                       "Skladanie hraníc z relácií (`osmium export`)"):
+                       "Assembling borders from relations (`osmium export`)"):
             return []
-        return _citaj_geojsonseq(geo)
+        return _read_geojsonseq(geo)
 
 
-def _citaj_geojsonseq(cesta):
-    """GeoJSON Text Sequence → zoznam hraníc.
-
-    Oddeľovač záznamov (RS, 0x1E) sa odstreľuje, nie predpokladá: `osmium
-    export` ho pred každý riadok píše a riadok s ním by sa nedal prečítať.
-    """
-    hranice = []
+def _read_geojsonseq(path):
+    """GeoJSON Text Sequence → list of borders."""
+    borders = []
     try:
-        with open(cesta, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for raw in f:
+                # `osmium export` writes RS (0x1E) before every line
                 line = raw.strip().lstrip("\x1e").strip()
                 if not line:
                     continue
@@ -187,40 +145,35 @@ def _citaj_geojsonseq(cesta):
                     lvl = int(str(props.get("admin_level") or "").strip())
                 except ValueError:
                     continue
-                # meno sa hľadá vo viacerých kľúčoch: v OSM je slovenské meno
-                # raz v `name`, raz v `name:sk` (pri štátoch aj `int_name`)
+                # the local name sits in `name` or `name:sk`, states also `int_name`
                 names = {str(props.get(k)) for k in
                          ("name", "name:sk", "int_name", "official_name")
                          if props.get(k)}
-                hranice.append({"name": str(props.get("name") or ""),
+                borders.append({"name": str(props.get("name") or ""),
                                 "names": names,
                                 "admin_level": lvl,
                                 "rings": rings})
     except OSError as exc:
-        log(f"::warning::Poskladané hranice sa nedajú prečítať ({exc}).")
+        log(f"::warning::Assembled borders can't be read ({exc}).")
         return []
-    return hranice
+    return borders
 
 
-def vyber(hranice, name, admin_level):
-    """Hranica daného mena a úrovne → prstence, alebo `None`.
-
-    Pri viacerých zhodách sa berie tá najväčšia: relácia, po ktorej sa volá
-    kraj, je z nich vždy tá s celou plochou.
-    """
-    hladane = (name or "").strip()
-    if not hladane:
+def pick(borders, name, admin_level):
+    """Rings of the border of that name and level (the largest match), or `None`."""
+    wanted = (name or "").strip()
+    if not wanted:
         return None
-    zhody = [h for h in hranice
-             if h["admin_level"] == admin_level
-             and (hladane == h["name"] or hladane in h["names"])]
-    if not zhody:
+    matches = [h for h in borders
+               if h["admin_level"] == admin_level
+               and (wanted == h["name"] or wanted in h["names"])]
+    if not matches:
         return None
-    return max(zhody, key=lambda h: _plocha(h["rings"]))["rings"]
+    return max(matches, key=lambda h: _area(h["rings"]))["rings"]
 
 
-def _plocha(rings):
-    """Plocha prstencov v stupňoch² – len na porovnanie dvoch zhôd."""
+def _area(rings):
+    """Area of rings in degrees² – only to compare two matches."""
     total = 0.0
     for ring, hole in rings:
         s = 0.0
@@ -232,114 +185,92 @@ def _plocha(rings):
     return total
 
 
-def uprav(rings, orez=None, tolerancia_m=OREZ_TOLERANCIA_M, popis="štátom"):
-    """Hranica na orez: prienik so `orez` a zjednodušenie. `(rings, stav)`.
-
-    Oboje v jednom `ogr2ogr`, lebo je to jedna otázka („čím sa reže").
-
-    Prienik so štátom: hranica kraja a štátu je v OSM tá istá čiara všade, kde
-    kraj leží na okraji republiky – ale relácia sa dá pokaziť a chýbajúca cesta
-    v prstenci hranicu roztiahne na susedný štát. Prienik z toho robí nemožnosť.
-
-    Zjednodušenie: `osmium extract --polygon` testuje každý uzol proti každej
-    úsečke, takže by sa rez predĺžil rádovo osemnásobne (22 284 bodov proti
-    7 189 po Douglas–Peuckerovi na 10 m). Pri 10 m je hranica stále o dva rády
-    presnejšia než mriežka osm.fr a hlboko pod tým, čo v mape vidno.
-
-    `ST_SimplifyPreserveTopology`, a nie vlastný Douglas–Peucker: prstenec sa
-    zjednodušením dá pretnúť sám so sebou a taký polygón `osmium` neprijme.
-
-    Dvaja susedia zjednodušujú spoločnú čiaru každý vo svojom prstenci, takže
-    sa výsledky môžu líšiť najviac o dve tolerancie – meria to `seam.py`.
-
-    Zlyhanie nie je chyba behu: vráti sa pôvodná hranica a `stav` povie, čo sa
-    nestalo – rez bude len pomalší.
-    """
-    stav = {"orezane": False, "zjednodusene": False}
+def prepare(rings, clip=None, tolerance_m=CUT_TOLERANCE_M, what="the state"):
+    """Border for cutting: intersected with `clip` and simplified. `(rings, state)`."""
+    state = {"clipped": False, "simplified": False}
     if not rings:
-        return rings, stav
+        return rings, state
     a = geojson_from_rings(rings)
     if not a:
-        return rings, stav
-    b = geojson_from_rings(orez) if orez else None
-    # tolerancia je v stupňoch, lebo geometria je v stupňoch; pre toleranciu
-    # stačí jedno číslo – rozdiel je pár metrov na desiatich
-    tol = (tolerancia_m or 0) / 111320.0
+        return rings, state
+    b = geojson_from_rings(clip) if clip else None
+    # degrees, since the geometry is in degrees
+    tol = (tolerance_m or 0) / 111320.0
     geom_sql = "a.geom"
-    zdroje = "a"
+    sources = "a"
     if b:
         geom_sql = "ST_Intersection(a.geom, b.geom)"
-        zdroje = "a, b"
+        sources = "a, b"
     if tol > 0:
+        # a self-intersecting ring is refused by `osmium`, so topology-preserving
         geom_sql = f"ST_SimplifyPreserveTopology({geom_sql}, {tol:.8f})"
     with tempfile.TemporaryDirectory() as tmp:
         fa = os.path.join(tmp, "a.geojson")
         fb = os.path.join(tmp, "b.geojson")
-        gpkg = os.path.join(tmp, "obe.gpkg")
-        out = os.path.join(tmp, "orez.geojson")
+        gpkg = os.path.join(tmp, "both.gpkg")
+        out = os.path.join(tmp, "cut.geojson")
         with open(fa, "w") as f:
             json.dump(a, f)
-        popis_op = "Hranica na orez"
-        dopad = ("Reže sa presnou hranicou z relácie – je to správne územie, "
-                 "len rez z rodiča potrvá dlhšie"
-                 + (" a kraj sa nepretne so štátom." if b else "."))
+        step = "Border for cutting"
+        impact = ("The exact relation border is used – the right area, "
+                  "only the cut from the parent takes longer"
+                  + (" and the region isn't intersected with the state." if b else "."))
         if not ogr2ogr(["-f", "GPKG", "-nln", "a", "-lco", "GEOMETRY_NAME=geom",
-                        gpkg, fa], popis_op + " (zápis hranice)", dopad):
-            return rings, stav
+                        gpkg, fa], step + " (writing the border)", impact):
+            return rings, state
         if b:
             with open(fb, "w") as f:
                 json.dump(b, f)
             if not ogr2ogr(["-f", "GPKG", "-update", "-nln", "b",
                             "-lco", "GEOMETRY_NAME=geom", gpkg, fb],
-                           popis_op + f" (zápis hranice {popis})", dopad):
-                return rings, stav
+                           step + f" (writing the border of {what})", impact):
+                return rings, state
         if not ogr2ogr(["-f", "GeoJSON", "-dialect", "SQLITE", "-sql",
-                        f"SELECT {geom_sql} AS geom FROM {zdroje}",
-                        out, gpkg], popis_op + " (SQL)", dopad):
-            return rings, stav
+                        f"SELECT {geom_sql} AS geom FROM {sources}",
+                        out, gpkg], step + " (SQL)", impact):
+            return rings, state
         try:
             with open(out) as f:
-                upravene = rings_from_geojson(json.load(f))
+                prepared = rings_from_geojson(json.load(f))
         except (OSError, ValueError) as exc:
-            log(f"::warning::{popis_op}: výstup sa nedal prečítať ({exc}). "
-                f"{dopad}")
-            return rings, stav
-    if not upravene:
-        log(f"::warning::{popis_op} vyšiel prázdny – reže sa presnou hranicou "
-            f"z relácie.")
-        return rings, stav
-    stav["orezane"] = bool(b)
-    stav["zjednodusene"] = tol > 0
-    return upravene, stav
+            log(f"::warning::{step}: the output can't be read ({exc}). "
+                f"{impact}")
+            return rings, state
+    if not prepared:
+        log(f"::warning::{step} came out empty – cutting by the exact "
+            f"relation border.")
+        return rings, state
+    state["clipped"] = bool(b)
+    state["simplified"] = tol > 0
+    return prepared, state
 
 
 def _cli():
     import argparse
 
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
-    ap.add_argument("--pbf", required=True, help="OSM PBF, z ktorého sa číta")
-    ap.add_argument("--name", default="", help="meno hranice (`osm_name`)")
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--pbf", required=True, help="OSM PBF to read")
+    ap.add_argument("--name", default="", help="border name (`osm_name`)")
     ap.add_argument("--level", type=int, default=0, help="admin_level")
-    ap.add_argument("--out", default="", help="kam zapísať GeoJSON")
+    ap.add_argument("--out", default="", help="where to write GeoJSON")
     args = ap.parse_args()
 
-    hranice = hranice_z_pbf(args.pbf)
-    if not hranice:
-        print("V PBF sa nenašla ani jedna administratívna hranica.",
-              file=sys.stderr)
+    borders = borders_from_pbf(args.pbf)
+    if not borders:
+        print("No administrative border found in the PBF.", file=sys.stderr)
         return 1
     if not args.name:
-        for h in sorted(hranice, key=lambda h: (h["admin_level"], h["name"])):
+        for h in sorted(borders, key=lambda h: (h["admin_level"], h["name"])):
             print(f"  admin_level={h['admin_level']:<3} {h['name']} "
-                  f"({sum(len(r) for r, _ in h['rings'])} bodov)")
+                  f"({sum(len(r) for r, _ in h['rings'])} points)")
         return 0
-    rings = vyber(hranice, args.name, args.level)
+    rings = pick(borders, args.name, args.level)
     if not rings:
-        print(f"Hranica „{args.name}“ (admin_level={args.level}) v PBF nie je.",
+        print(f"Border “{args.name}” (admin_level={args.level}) isn't in the PBF.",
               file=sys.stderr)
         return 1
-    print(f"{args.name}: {len(rings)} prstencov, "
-          f"{sum(len(r) for r, _ in rings)} bodov")
+    print(f"{args.name}: {len(rings)} rings, "
+          f"{sum(len(r) for r, _ in rings)} points")
     if args.out:
         with open(args.out, "w") as f:
             json.dump(geojson_from_rings(rings), f)

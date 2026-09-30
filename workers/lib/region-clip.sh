@@ -1,25 +1,6 @@
 #!/usr/bin/env bash
-# Čím sa Planetileru povie „drž sa regiónu": `--polygon`, ALEBO `--bounds`.
-#
-# Spoločný súbor, lebo dlaždice z regionálneho PBF robia tri joby (`tiles`,
-# `trails`, `features`) a orez musí byť vo všetkých rovnaký.
-#
-# Planetiler si rozsah berie z obdĺžnika bboxu, nie z tvaru regiónu – bbox
-# Prešovského kraja je takmer dvojnásobok jeho plochy, takže mapa pokračovala
-# do Poľska. Za hranicou je len riedky lem OSM z nášho PBF, nie celosvetové
-# vodstvo ani Natural Earth (tie končia na nízkych zoomoch).
-#
-# `--bounds` a `--polygon` naraz nedávaj: `tileExtents` sa počíta už
-# v konštruktore, takže polygón je v logu vidieť a neoreže nič. Namerané na
-# Monaku (maxzoom 15): bez orezu 27 dlaždíc, `--polygon` 17, oba naraz 27.
-# `--bounds` sa preto dáva len vtedy, keď polygón nie je – ako poistka pre PBF
-# s nepresnou hlavičkou.
-#
-# Je to hrubý orez, po celé dlaždice (na z14 ~1,5 km); presnú hranicu dokreslí
-# maska v štýle. Vypínač `region_clip=false` orez preskočí a dá `--bounds` –
-# mapa vyzerá rovnako, ale v stiahnutých dlaždiciach sa vezie územie za
-# hranicou (Bratislavský kraj: +26 % dlaždíc, +0,7 % bajtov). Kým je vypnutý,
-# hovorí to `::warning::` v každom behu.
+# How Planetiler is told "stay in the region": `--polygon` OR `--bounds`, never both.
+# Both at once: `tileExtents` is computed in the constructor, so the polygon cuts nothing.
 #
 #   mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
 #   java -jar planetiler.jar … "${CLIP[@]}"
@@ -27,12 +8,10 @@ set -euo pipefail
 
 BBOX="${1:-}"
 POLY="${2:-data/region.poly}"
-# predvolene zapnutý: vypnúť orez sa má dať len tak, že to niekto napíše
+# on by default: turning the cut off must be written down
 CLIP_ON="${OPT_REGION_CLIP:-true}"
 
-# to isté okno, aké dostanú vrstvy z DEM (`plan/area.py::pad_bbox`,
-# `BORDER_BUFFER_M` dnes 0). Platí len v tejto vetve – keď sa `--polygon`
-# používa, Planetiler si okno spočíta z neho a `--bounds` sa nedáva vôbec.
+# the same window the DEM layers get (`plan/area.py::pad_bbox`)
 pad_bbox() {
   python3 - "$1" <<'PY'
 import sys
@@ -43,15 +22,15 @@ print(f"{w},{s},{e},{n}")
 PY
 }
 
-# argumenty na stdout (volajúci si ich načíta), vysvetlenie do logu
+# arguments to stdout (the caller reads them), explanation to the log
 if [ -s "$POLY" ] && [ "$CLIP_ON" != 'true' ]; then
   if [ -n "$BBOX" ]; then echo "--bounds=$(pad_bbox "$BBOX")"; fi
-  echo "::warning::Orez na región je vypnutý (\`region_clip=false\`), takže sa dlaždice vyrobia na celom obdĺžniku bboxu – na Bratislavskom kraji je to o 26 % dlaždíc a 0,7 % bajtov viac a je v nich lem dát cez hranicu kraja. V mape to nevidno, lebo hranicu dokresľuje maska v štýle. Späť to zapneš \`region_clip=true\` v inpute \`options\`." >&2
+  echo "::warning::Cutting to the region is off (\`region_clip=false\`), so tiles are made on the whole bbox rectangle – in the Bratislava region that is 26 % more tiles and 0.7 % more bytes, carrying a fringe of data beyond the region border. The map doesn't show it, since the style mask draws the border. Turn it back on with \`region_clip=true\` in the \`options\` input." >&2
 elif [ -s "$POLY" ]; then
   echo "--polygon=$POLY"
-  echo "Orez na región: $POLY – dlaždice mimo regiónu sa nevyrobia. (\`--bounds\` sa zámerne NEPRIDÁVA, tichý vypínač polygónu – viď hlavičku skriptu.)" >&2
+  echo "Cut to region: $POLY – tiles outside the region aren't made. (\`--bounds\` is deliberately NOT added, it silently disables the polygon.)" >&2
 else
-  # (`set -e`: `[ … ] && echo` by pri prázdnom bboxe zhodilo skript)
+  # `set -e`: `[ … ] && echo` would kill the script on an empty bbox
   if [ -n "$BBOX" ]; then echo "--bounds=$BBOX"; fi
-  echo "::warning::Polygón regiónu ($POLY) nie je, takže sa dlaždice vyrobia na CELOM obdĺžniku bboxu – mapa bude siahať aj za región (vodstvo a Natural Earth kreslí Planetiler všade). Zvyčajne to znamená, že sa v jobe \`plan\` nestiahol \`.poly\`; skús beh zopakovať." >&2
+  echo "::warning::The region polygon ($POLY) is missing, so tiles are made on the WHOLE bbox rectangle – the map reaches beyond the region (Planetiler draws water and Natural Earth everywhere). Usually the \`plan\` job didn't get the \`.poly\`; try the run again." >&2
 fi

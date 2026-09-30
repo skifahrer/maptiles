@@ -1,17 +1,6 @@
 #!/usr/bin/env node
 /**
- * Dopečie do spritu vlastné ikony z úprav developer módu.
- *
- * Vlastná ikona leží priamo v `poc/web/style-overrides.json` ako PNG v `data:`
- * adrese, nie ako odkaz na cudzí server – takže ju mapa má aj bez internetu
- * a tento skript ju len dekóduje a vloží do atlasu (SVG rasterizoval
- * prehliadač už pri nahratí).
- *
- * Beží po `sprite.mjs`, `shields.mjs` a `marks.mjs`; preskladanie robí
- * `lib/sprite-bake.mjs`.
- *
- * Bez `sdf`: je to hotový farebný obrázok, takže `icon-color` na ňom neplatí –
- * kto chce inú farbu, nahrá iný obrázok.
+ * Bakes custom icons from developer-mode overrides (PNG `data:` URLs) into the sprite, not SDF.
  *
  *   node workers/assets/custom-icons.mjs --sprite=_site/sprites/osm-liberty
  */
@@ -29,7 +18,7 @@ const args = Object.fromEntries(
 
 const spriteBase = args.sprite;
 if (!spriteBase) {
-  console.error("Použitie: node workers/assets/custom-icons.mjs --sprite=<base>");
+  console.error("Usage: node workers/assets/custom-icons.mjs --sprite=<base>");
   process.exit(2);
 }
 const overridesPath = args.overrides || "poc/web/style-overrides.json";
@@ -39,49 +28,47 @@ if (existsSync(overridesPath)) {
   try {
     raw = JSON.parse(readFileSync(overridesPath, "utf8"));
   } catch (err) {
-    console.error(`::error::${overridesPath} sa nedá prečítať: ${err.message}`);
+    console.error(`::error::${overridesPath} can't be read: ${err.message}`);
     process.exit(1);
   }
 }
 const { overrides, problems } = normalizeOverrides(raw);
 for (const p of problems) console.log(`::warning::${p}`);
 
-const IKONY = [];
-for (const ikona of overrides.customIcons) {
-  const base64 = ikona.png.slice(ikona.png.indexOf(",") + 1);
+const ICONS = [];
+for (const icon of overrides.customIcons) {
+  const base64 = icon.png.slice(icon.png.indexOf(",") + 1);
   let img;
   try {
     img = decodePng(Buffer.from(base64, "base64"));
   } catch (err) {
-    // Nedekódovateľná ikona nesmie zhodiť sprite – ale ani ticho zmiznúť:
-    // vrstva, ktorá ju používa, ostane bez obrázka a to je vidieť len v mape.
-    console.log(`::warning::Vlastná ikona "${ikona.name}" nie je čitateľné PNG (${err.message}) – vynechávam.`);
+    // mustn't fail the sprite, nor vanish silently
+    console.log(`::warning::Custom icon "${icon.name}" isn't a readable PNG (${err.message}) – skipping.`);
     continue;
   }
-  IKONY.push({ name: ikona.name, image: img, pixelRatio: ikona.pixelRatio || 1 });
+  ICONS.push({ name: icon.name, image: img, pixelRatio: icon.pixelRatio || 1 });
 }
 
-if (!IKONY.length) {
-  console.log("Žiadne vlastné ikony – sprite zostáva bez zmeny.");
+if (!ICONS.length) {
+  console.log("No custom icons – the sprite stays unchanged.");
   process.exit(0);
 }
 
 const ok = bakeIntoSprite({
   spriteBase,
-  co: "vlastných ikon",
+  what: "custom icons",
   mine: (name) => name.startsWith(CUSTOM_ICON_PREFIX),
   make: () =>
-    IKONY.map(({ name, image, pixelRatio }) => ({
+    ICONS.map(({ name, image, pixelRatio }) => ({
       name,
       image,
-      // `pixelRatio` obrázka je jeho vlastný – prehliadač ho ukladá v @2x,
-      // takže by sa pri ratio 1 kreslil dvojnásobne veľký.
+      // the browser stores it at @2x, so it keeps its own ratio
       entry: { pixelRatio }
     }))
 });
 
 if (!ok) {
-  console.error(`::error::Sprite ${spriteBase}.json/.png neexistuje`);
+  console.error(`::error::Sprite ${spriteBase}.json/.png doesn't exist`);
   process.exit(1);
 }
-console.log(`Vlastné ikony: ${IKONY.map((i) => i.name).join(", ")}`);
+console.log(`Custom icons: ${ICONS.map((i) => i.name).join(", ")}`);

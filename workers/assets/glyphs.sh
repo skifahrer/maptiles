@@ -1,55 +1,29 @@
 #!/usr/bin/env bash
-# Glyfy (fonty) k sebe na Pages, nech mapa nezávisí od cudzej služby.
-#
-# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
-#
-# Keď sa balík nestiahne, mapa pôjde ďalej a štýl siahne na
-# `fonts.openmaptiles.org`. Mená adresárov v balíku sa môžu líšiť, tak sa
-# fontstacky vyberajú postupne: presne to, čo štýl chce → čokoľvek „Noto
-# Sans" → všetko. `GLYPHS_ZIP` si berie z env workflowu.
+# Glyphs (fonts) onto Pages ourselves, so the map doesn't depend on a foreign service.
+# Without the bundle the style falls back to `fonts.openmaptiles.org`. `GLYPHS_ZIP` comes from env.
 
 set -euo pipefail
 
-# rozsahy znakov, ktoré v balíku ostanú.
-#
-# Fontstack je 256 súborov po 256 znakoch, teda celý unicode – tri stacky sú
-# 61,2 MB v ZIPe a fonty sú v každom regióne tie isté, takže to bola konštanta
-# v každom balíku (47 % `bratislavsky.zip`). Po orezaní ostane 1,7 MB.
-#
-# Mená sú vo všetkých jazykoch aplikácie (`TILE_LANGUAGES`), tak sa nechávajú:
-#
-#     0-2559       latinka, Latin-1, Ext-A (č ď ľ ň š ť ž ĺ ŕ ô), Ext-B,
-#                  diakritika, gréčtina, cyrilika, arabčina, dévanágarí
-#     7424-9215    fonetika, Latin Extended Additional, Greek Extended,
-#                  interpunkcia, meny, ⅓ ½ №, × ÷ ≈, technické
+# ranges for every app language (`TILE_LANGUAGES`); a missing one shows empty boxes.
+#     0-2559       Latin, Latin-1, Ext-A/B, diacritics, Greek, Cyrillic, Arabic, Devanagari
+#     7424-9215    phonetics, Latin Ext. Additional, Greek Ext., punctuation, currency
 #     11264-11519  Latin Extended-C
-#     42752-43007  Latin Extended-D, modifikátory tónu
-#     64256-65279  arabské tvary, na ktoré MapLibre arabčinu skladá
-#
-# Čínštinu, japončinu a kórejčinu kreslí MapLibre systémovým písmom.
-#
-# Je to viac, než mapa Slovenska potrebuje, a je to zámer: rozdiel oproti samej
-# latinke je 0,6 MB, kým chýbajúci rozsah znamená prázdne štvorčeky bez
-# vysvetlenia.
-#
-# Iné písmo je jedna premenná; `vsetko` orezanie vypne. (Prázdna hodnota ho
-# nevypne – `${VAR:-…}` ju nahradí predvoleným zoznamom.) Mapa sveta si rozsahy
-# meria z mien v podkladoch; pri kraji sú mená roztrúsené v PBF.
+#     42752-43007  Latin Extended-D, tone modifiers
+#     64256-65279  Arabic presentation forms MapLibre shapes Arabic with
+# CJK is drawn by MapLibre with the system font; `all` turns the cut off.
 GLYPHS_KEEP_RANGES="${GLYPHS_KEEP_RANGES:-0-2559,7424-9215,11264-11519,42752-43007,64256-65279}"
 
 mkdir -p _site/fonts
 if [ -n "$(ls -A _site/fonts 2>/dev/null)" ]; then
-  echo "Glyfy z cache ✓"
+  echo "Glyphs from cache ✓"
 elif curl -fL --retry 4 --retry-delay 5 -o /tmp/glyphs.zip "$GLYPHS_ZIP"; then
   unzip -q /tmp/glyphs.zip -d /tmp/glyphs
 
-  # Fontstack = adresár, ktorý obsahuje 0-255.pbf. Presné mená
-  # adresárov v balíku sa môžu líšiť, preto vyberáme postupne:
-  # 1) presne to, čo štýl chce, 2) čokoľvek "Noto Sans", 3) všetko.
+  # a fontstack is a folder with 0-255.pbf; names vary: exact → any Noto Sans → all
   mapfile -t stacks < <(find /tmp/glyphs -name '0-255.pbf' -printf '%h\n' | sort -u)
-  echo "V balíku je ${#stacks[@]} fontstackov."
+  echo "The bundle has ${#stacks[@]} fontstacks."
 
-  copy_matching() { # $1 = grep -E vzor na názov adresára
+  copy_matching() { # $1 = grep -E pattern on the folder name
     local copied=0 d
     for d in "${stacks[@]}"; do
       if printf '%s' "$(basename "$d")" | grep -qiE "$1"; then
@@ -64,68 +38,59 @@ elif curl -fL --retry 4 --retry-delay 5 -o /tmp/glyphs.zip "$GLYPHS_ZIP"; then
     || cp -r "${stacks[@]}" _site/fonts/ 2>/dev/null \
     || true
 else
-  echo "::warning::Balík glyfov sa nepodarilo stiahnuť."
+  echo "::warning::The glyph bundle couldn't be downloaded."
 fi
 
-# OREZ ROZSAHOV. Beží aj nad glyfmi z cache: keď sa zoznam rozsahov zmení,
-# starý (širší) obsah cache sa má orezať tiež. Je to `rm` nad súbormi, ktoré
-# už na disku sú, takže opakovanie nič nestojí a nič nepokazí.
-if [ "$GLYPHS_KEEP_RANGES" = 'vsetko' ]; then
-  echo "GLYPHS_KEEP_RANGES=vsetko – rozsahy sa NEOREŽÚ, v balíku ostane celý unicode."
+# runs over cached glyphs too, so a narrower range list trims an older cache
+if [ "$GLYPHS_KEEP_RANGES" = 'all' ] || [ "$GLYPHS_KEEP_RANGES" = 'vsetko' ]; then
+  echo "GLYPHS_KEEP_RANGES=all – ranges are NOT cut, the bundle keeps the whole of unicode."
 elif [ -n "$(ls -A _site/fonts 2>/dev/null)" ]; then
   declare -A OK=()
-  IFS=',' read -ra CASTI <<<"$GLYPHS_KEEP_RANGES"
-  for c in "${CASTI[@]}"; do
+  IFS=',' read -ra PARTS <<<"$GLYPHS_KEEP_RANGES"
+  for c in "${PARTS[@]}"; do
     lo="${c%%-*}"; hi="${c##*-}"
     case "$lo$hi" in ''|*[!0-9]*)
-      echo "::error::\`$c\` v GLYPHS_KEEP_RANGES nie je rozsah v tvare \`od-do\` (čísla znakov, napr. \`0-2047\`)."
+      echo "::error::\`$c\` in GLYPHS_KEEP_RANGES isn't a range of the form \`from-to\` (character numbers, e.g. \`0-2047\`)."
       exit 1 ;;
     esac
-    # `seq`, nie `for (( ))`: rozsahy sú 256-znakové bloky a súbory sa volajú
-    # podľa prvého znaku bloku, takže `<od>/256` až `<do>/256` je presne
-    # zoznam blokov, ktoré rozsah pokrýva.
+    # files are 256-character blocks named by their first character
     for b in $(seq $(( lo / 256 )) $(( hi / 256 ))); do OK["$b"]=1; done
   done
 
-  # overiť zoznam pred mazaním: krok „cache glyfov (save)" beží pri `always()`,
-  # takže by okresaný `_site/fonts` po páde uložil do cache
+  # checked before deleting: the glyph cache save runs on `always()`
   if [ -z "${OK[0]:-}" ]; then
-    echo "::error::GLYPHS_KEEP_RANGES=\`$GLYPHS_KEEP_RANGES\` neobsahuje rozsah od 0 (základná latinka a číslice) – mapa by bola bez nápisov. Nič sa nezmazalo."
+    echo "::error::GLYPHS_KEEP_RANGES=\`$GLYPHS_KEEP_RANGES\` has no range from 0 (basic Latin and digits) – the map would have no labels. Nothing was deleted."
     exit 1
   fi
 
   mapfile -t PBF < <(find _site/fonts -name '*.pbf' | sort)
-  ostalo=0; zmazane=0; pred=0; po=0
+  kept=0; deleted=0; before=0; after=0
   for p in "${PBF[@]}"; do
-    velkost=$(stat -c%s "$p"); pred=$(( pred + velkost ))
+    size=$(stat -c%s "$p"); before=$(( before + size ))
     f="${p##*/}"; lo="${f%%-*}"
-    # Súbor, ktorý sa nevolá `<od>-<do>.pbf`, sa NEMAŽE: neviem, čo je,
-    # a zmazať neznáme je horšie než nechať pár kB navyše.
-    case "$lo" in ''|*[!0-9]*) po=$(( po + velkost )); ostalo=$(( ostalo + 1 )); continue ;; esac
+    # an unknown file name is kept: deleting the unknown is worse than a few kB
+    case "$lo" in ''|*[!0-9]*) after=$(( after + size )); kept=$(( kept + 1 )); continue ;; esac
     if [ -n "${OK[$(( lo / 256 ))]:-}" ]; then
-      po=$(( po + velkost )); ostalo=$(( ostalo + 1 ))
+      after=$(( after + size )); kept=$(( kept + 1 ))
     else
-      rm -f "$p"; zmazane=$(( zmazane + 1 ))
+      rm -f "$p"; deleted=$(( deleted + 1 ))
     fi
   done
-  echo "Glyfy orezané na rozsahy $GLYPHS_KEEP_RANGES: ostalo $ostalo súborov" \
-       "($(( po / 1024 )) kB), zmazaných $zmazane ($(( (pred - po) / 1048576 )) MB ušetrených)."
+  echo "Glyphs cut to ranges $GLYPHS_KEEP_RANGES: $kept files kept" \
+       "($(( after / 1024 )) kB), $deleted deleted ($(( (before - after) / 1048576 )) MB saved)."
 
-  # POISTKA. `0-255.pbf` je základná latinka a číslice, teda to, čím sa dá
-  # napísať čokoľvek náhradné – a je to jediný súbor, ktorý si pýta aj
-  # `workers/deploy/check.sh`. Keby ho orez zhltol, mapa by bola bez nápisov
-  # a prišlo by sa na to až na telefóne.
+  # `0-255.pbf` carries every fallback label and `deploy/check.sh` asks for it
   for d in _site/fonts/*/; do
     [ -d "$d" ] || continue
     if [ ! -s "${d}0-255.pbf" ]; then
-      echo "::error::Po orezaní chýba ${d}0-255.pbf – to by bola mapa bez nápisov. Skontroluj GLYPHS_KEEP_RANGES (musí obsahovať rozsah od 0)."
+      echo "::error::After the cut ${d}0-255.pbf is missing – the map would have no labels. Check GLYPHS_KEEP_RANGES (it must contain a range from 0)."
       exit 1
     fi
   done
 fi
 
 if [ -z "$(ls -A _site/fonts 2>/dev/null)" ]; then
-  echo "::warning::Lokálne glyfy nie sú k dispozícii – štýl použije fonts.openmaptiles.org (ak služba vypadne, mapa bude bez nápisov)."
+  echo "::warning::No local glyphs – the style uses fonts.openmaptiles.org (if it goes down, the map has no labels)."
 else
   du -sh _site/fonts
   ls _site/fonts

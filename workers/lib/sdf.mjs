@@ -1,25 +1,16 @@
 /**
- * Signed distance field z masky pokrytia – jedna implementácia pre všetkých,
- * čo do spritu dávajú farbiteľnú ikonu.
- *
- * Pýtajú sa naň dve miesta z inej strany: `assets/sprite.mjs` prerába cudziu
- * sadu (masku si vypreparuje z hotového obrázka), `assets/arrows.mjs` si masku
- * kreslí sám. Tie dve konštanty musia sedieť so shaderom MapLibre.
- *
- * V alfe nie je krytie, ale vzdialenosť od hrany, takže MapLibre nakreslí
- * ikonu ostro v ľubovoľnej veľkosti a vie jej dať farbu aj halo. Cenou je,
- * že ikona smie mať jednu farbu – preto sú značky trás hotové obrázky.
+ * Signed distance field from a coverage mask – one implementation for every tintable sprite icon.
  */
 
 const INF = 1e20;
 
-/** Dosah distance fieldu v pixeloch – shader MapLibre počíta s 8. */
+/** Distance field reach in pixels – the MapLibre shader assumes 8. */
 export const SDF_RADIUS = 8;
 
-/** Hodnota alfy, na ktorej leží hrana ikony (0.75 · 255 ≈ 191). */
+/** Alpha at the icon edge (0.75 · 255 ≈ 191). */
 const SDF_CUTOFF = 0.25;
 
-/** 1D vzdialenostná transformácia (Felzenszwalb & Huttenlocher). */
+/** 1D distance transform (Felzenszwalb & Huttenlocher). */
 function edt1d(f, d, v, z, n) {
   v[0] = 0;
   z[0] = -INF;
@@ -41,7 +32,7 @@ function edt1d(f, d, v, z, n) {
   }
 }
 
-/** 2D vzdialenostná transformácia nad mriežkou štvorcov vzdialeností. */
+/** 2D distance transform over a grid of squared distances. */
 function edt(grid, w, h, f, d, v, z) {
   for (let x = 0; x < w; x++) {
     for (let y = 0; y < h; y++) f[y] = grid[y * w + x];
@@ -56,8 +47,7 @@ function edt(grid, w, h, f, d, v, z) {
 }
 
 /**
- * Z masky pokrytia (0–1, w × h) vyrobí SDF v boxe (w+2p) × (h+2p).
- * Vracia `{ data, width, height }`, kde `data` sú alfa hodnoty.
+ * SDF in a (w+2p) × (h+2p) box from a coverage mask (0–1, w × h): `{ data, width, height }`.
  */
 export function toSdf(coverage, w, h, pad, radius) {
   const bw = w + 2 * pad;
@@ -103,25 +93,14 @@ export function toSdf(coverage, w, h, pad, radius) {
 }
 
 /**
- * SDF obrázok z PREDIKÁTU nad jednotkovým štvorcom – to isté zadanie tvaru,
- * aké má `poc/web/marks.js` (`draw(u, v)`), len na výstupe je farbiteľná
- * ikona namiesto hotového obrázka.
+ * SDF image from a PREDICATE over the unit square, 4 × 4 supersampled per pixel.
+ * Width and height are separate: a square would pad a one-way arrow into collisions.
  *
- * Vyhladenie je 4 × 4 prevzorkovanie na pixel, rovnako ako pri značkách: tvar
- * je podmienka, nie cesta, takže je to najkratšia cesta k mäkkej hrane – a
- * SDF si z pokrytia aj tak počíta vzdialenosť, takže väčšia presnosť by sa
- * v ňom stratila.
- *
- * ŠÍRKA A VÝŠKA SÚ ZVLÁŠŤ, hoci tvar sa zadáva v jednotkovom štvorci: šípka
- * jednosmerky je širšia než vyššia (leží pozdĺž cesty) a v štvorci by okolo
- * nej ostal prázdny pás, ktorý MapLibre počíta do kolízie – teda by sa jej
- * na cestu zmestilo menej, než sa zdá.
- *
- * @param {(u: number, v: number) => boolean} draw  tvar v ⟨0,1⟩²
- * @param {number} w      šírka obrázka v px (už vynásobená pixelRatiom)
- * @param {number} h      výška obrázka v px
- * @param {number} pad    priehľadný rámik okolo (kvôli halu a hrane atlasu)
- * @param {number} radius dosah distance fieldu (škáluje s pixelRatiom)
+ * @param {(u: number, v: number) => boolean} draw  shape in ⟨0,1⟩²
+ * @param {number} w      image width in px (already times pixelRatio)
+ * @param {number} h      image height in px
+ * @param {number} pad    transparent frame (for the halo and atlas edge)
+ * @param {number} radius distance field reach (scales with pixelRatio)
  */
 export function sdfFromShape(draw, w, h, pad, radius = SDF_RADIUS) {
   const cov = new Float64Array(w * h);

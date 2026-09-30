@@ -1,29 +1,16 @@
 #!/usr/bin/env bash
-# SDF sprity zo sád ikoniek → `_site/sprites/`.
-#
-# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
-#
-# Zoznam zdrojov je v `poc/web/icon-sources.js` – jedno miesto pre web aj
-# pipeline. Z každého sa vyrobí SDF sprite: symboly bez koliesok, ktorým sa dá
-# nastaviť farba.
-#
-# Sada, ktorá sa nestiahne, build nezhodí – sú to súbory z cudzích serverov;
-# chyba je až to, keď nevyjde ani jedna. Ktoré vznikli, ide von v `available`.
-#
-# `set -uo pipefail` bez `-e` je zámer: preskakovanie chýbajúcich sád na tom stojí.
+# SDF sprites from icon sets → `_site/sprites/` (sources in `poc/web/icon-sources.js`).
+# A set that fails to download doesn't fail the build; only none at all does.
+# `set -uo pipefail` without `-e`: skipping missing sets relies on it.
 
 set -uo pipefail
 T_SPR=$(date +%s)
 mkdir -p _site/sprites /tmp/icons
 
-# Cache: hotové sprity sa nemenia, kým sa nezmení zoznam zdrojov ani
-# generátor – v kľúči je hash oboch.
-# find, nie ls: `ls vzor*` bez zhody končí kódom 2 a `pipefail`
-# by ním zhodil celý krok (find nad existujúcim adresárom vráti 0).
+# find, not ls: `ls pattern*` without a match exits 2 and `pipefail` fails the step
 CACHED_SPRITES=$(find _site/sprites -maxdepth 1 -name '*.json' | wc -l)
 
-# vlastné sady z developer módu sú v tom zozname tiež – je to tá istá vec
-# (`<url>.json` + `<url>.png`), len ju nezapísal repozitár, ale človek
+# custom sets from developer mode are in the list too
 node -e "
   Promise.all([
     import('./poc/web/icon-sources.js'),
@@ -43,7 +30,7 @@ ok=""
 while read -r id url; do
   [ -n "$id" ] || continue
   if [ "$CACHED_SPRITES" -gt 0 ] && [ -s "_site/sprites/$id.json" ]; then
-    echo "── $id (z cache)"
+    echo "── $id (from cache)"
     ok="$ok $id"
     continue
   fi
@@ -52,57 +39,39 @@ while read -r id url; do
   for ext in .json .png; do
     curl -fL --retry 4 --retry-delay 5 -o "/tmp/icons/$id$ext" "$url$ext" || got=0
   done
-  # @2x je voliteľné – bez neho mapa funguje, len je na retine mäkšia.
+  # @2x is optional – without it the map is only softer on retina
   for ext in '@2x.json' '@2x.png'; do
     curl -fL --retry 2 --retry-delay 3 -o "/tmp/icons/$id$ext" "$url$ext" \
       || rm -f "/tmp/icons/$id$ext"
   done
   if [ "$got" != 1 ]; then
-    echo "::warning::Sadu ikoniek $id sa nepodarilo stiahnuť – preskakujem."
+    echo "::warning::Icon set $id couldn't be downloaded – skipping."
     continue
   fi
   if node workers/assets/sprite.mjs --in="/tmp/icons/$id" --out="_site/sprites/$id"; then
-    # Štítky s číslom cesty („D1") si kreslíme sami – v cudzej sade ikoniek
-    # nie sú a byť nemôžu, lebo sa naťahujú podľa dĺžky čísla. Keď sa
-    # nedopečú, mapa nespadne: štýl číslo nakreslí len s hrubým halom
-    # (viď `hasIcon` v `poc/web/themes.js`), takže je to varovanie, nie chyba.
+    # our own images; each missing one degrades the map, so warnings only
     node workers/assets/shields.mjs --sprite="_site/sprites/$id" \
-      || echo "::warning::Štítky ciest sa do sady $id nepodarilo dopiecť – čísla ciest budú bez podkladu."
-    # A ŠTÍTKY PODĽA SIETE („D1" na červenej, „E 75" na zelenej). Keď sa
-    # nedopečú, mapa nespadne: štýl siahne po klasickom štítku podľa triedy
-    # cesty – ten je v `match` ako záloha (rozpis v `docs/stitky-ciest.md`).
+      || echo "::warning::Road shields couldn't be baked into set $id – road numbers will have no base."
     node workers/assets/route-shields.mjs --sprite="_site/sprites/$id" \
-      || echo "::warning::Štítky podľa siete sa do sady $id nepodarilo dopiecť – čísla ciest budú s klasickým štítkom."
-    # To isté pre TURISTICKÉ A CYKLISTICKÉ ZNAČKY (biely či žltý štvorec
-    # s farebným pásom): v cudzej sade ikoniek nie sú a byť nemôžu – je to
-    # obrázok konkrétnej tabuľky z terénu, nie symbol. Keď sa nedopečú, mapa
-    # nespadne: pozdĺž trasy sa kreslí ikonka druhu trasy ako predtým.
+      || echo "::warning::Network shields couldn't be baked into set $id – road numbers get the classic shield."
     node workers/assets/marks.mjs --sprite="_site/sprites/$id" \
-      || echo "::warning::Značky trás sa do sady $id nepodarilo dopiecť – trasy budú s ikonkou druhu, nie so značkou."
-    # A ŠÍPKY JEDNOSMERIEK. Tie sme si predtým brali z cudzej sady a mala ich
-    # jediná z troch – pri ostatných vrstva `road-oneway` do štýlu vôbec
-    # nevznikla, takže sa nedalo nastaviť ani ako často sú šípky, ani akej sú
-    # farby (rozpis v `poc/web/arrows.js`). Keď sa nedopečú, mapa nespadne:
-    # vrstva sa vynechá presne tak ako predtým.
+      || echo "::warning::Trail marks couldn't be baked into set $id – trails get the kind icon, not the mark."
     node workers/assets/arrows.mjs --sprite="_site/sprites/$id" \
-      || echo "::warning::Šípky jednosmeriek sa do sady $id nepodarilo dopiecť – jednosmerky budú bez šípok."
-    # A nakoniec VLASTNÉ IKONY z úprav – obrázky, ktoré si niekto nahral
-    # v developer móde. Sú v `style-overrides.json` ako PNG, takže sa len
-    # dekódujú a vložia do atlasu.
+      || echo "::warning::One-way arrows couldn't be baked into set $id – one-way roads will have no arrows."
     node workers/assets/custom-icons.mjs --sprite="_site/sprites/$id" \
-      || echo "::warning::Vlastné ikony sa do sady $id nepodarilo dopiecť – vrstvy, ktoré ich používajú, ostanú bez ikony."
+      || echo "::warning::Custom icons couldn't be baked into set $id – layers using them stay without an icon."
     ok="$ok $id"
   else
-    echo "::warning::Sadu ikoniek $id sa nepodarilo prerobiť na SDF – preskakujem."
+    echo "::warning::Icon set $id couldn't be converted to SDF – skipping."
   fi
 done < /tmp/icons/list.txt
 
 if [ -z "$ok" ]; then
-  echo "::error::Nepodarilo sa pripraviť ani jednu sadu ikoniek – mapa by bola bez ikon."
+  echo "::error::Not a single icon set could be prepared – the map would have no icons."
   exit 1
 fi
 
-# Ktorú sadu má použiť štýl, hovoria úpravy z developer módu.
+# developer-mode overrides pick the style's set
 WANT=$(node -e "
   Promise.all([import('./poc/web/themes.js'), import('node:fs')]).then(([m, fs]) => {
     let raw = {};
@@ -112,11 +81,11 @@ WANT=$(node -e "
 ")
 if [ ! -s "_site/sprites/$WANT.json" ]; then
   WANT=$(printf '%s' "$ok" | awk '{print $1}')
-  echo "::warning::Zvolená sada ikoniek nie je k dispozícii – používam $WANT."
+  echo "::warning::The chosen icon set isn't available – using $WANT."
 fi
 echo "name=$WANT" >> "$GITHUB_OUTPUT"
 echo "available=$(printf '%s' "$ok" | xargs)" >> "$GITHUB_OUTPUT"
-echo "Nasadené sady:$ok, štýl použije $WANT"
-printf '%s\t%s\t%s\t%s\n' "80" "Ikonky (SDF sprity)" "$(( $(date +%s) - T_SPR ))" \
-  "sady:$ok, štýl používa $WANT$([ "$CACHED_SPRITES" -gt 0 ] && echo ' (z cache)')" \
+echo "Deployed sets:$ok, the style uses $WANT"
+printf '%s\t%s\t%s\t%s\n' "80" "Icons (SDF sprites)" "$(( $(date +%s) - T_SPR ))" \
+  "sets:$ok, the style uses $WANT$([ "$CACHED_SPRITES" -gt 0 ] && echo ' (from cache)')" \
   >> steps-out/assets.tsv

@@ -1,55 +1,29 @@
 #!/usr/bin/env node
 /**
- * Prerobí bežný sprite (osm-liberty) na SDF sprite bez koliesok.
- *
- * Dva problémy naraz:
- *
- * 1. Kruh pod ikonou. Ikony osm-liberty sú nakreslené ako biele koliesko so
- *    sivým obrysom a až v ňom je maki symbol – na mape z toho je pole bodiek.
- *    Farbou sa to odfiltrovať nedá, ale koliesko je vo všetkých ikonách
- *    rovnakej veľkosti identické: najčastejšia hodnota po pixeloch cez celú
- *    skupinu dá šablónu pozadia a zvyšok je hľadaný symbol. Ikony na
- *    plnofarebnom podklade sa spracujú voči vlastnej farbe.
- * 2. Farba ikony. MapLibre ju vie nastaviť len obrázku s `sdf: true`, ktorého
- *    alfa nesie signed distance field. Konvencia je rovnaká ako
- *    mapbox/tiny-sdf – hrana leží na 0.75, ktorú hľadá shader.
- *
- * Okolo ikony pribudne rámik pre `icon-halo-width`, ikona sa oreže súmerne
- * okolo stredu (nech sa nepohne kotva) a atlas sa preskladá „shelf" packerom.
- * PNG sa číta aj zapisuje vlastným kodekom, takže netreba npm závislosť.
+ * Turns a plain sprite (osm-liberty) into an SDF sprite without the discs under icons.
  *
  *   node workers/assets/sprite.mjs --in=_site/sprites/osm-liberty \
  *        --out=_site/sprites/osm-liberty-sdf
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { decodePng, encodePng, packShelves } from "../lib/png.mjs";
-// matematika SDF je spoločná s `assets/arrows.mjs` – viď `lib/sdf.mjs`
 import { toSdf, SDF_RADIUS } from "../lib/sdf.mjs";
 
-/** Hrúbka rámika okolo ikony (v pixeloch pri pixelRatio 1) pre halo. */
+/** Frame around the icon for the halo (px at pixelRatio 1). */
 const PAD = 3;
-/** Od koľkých ikon rovnakej veľkosti sa oplatí počítať šablónu pozadia. */
+/** Icons of one size needed before a background template pays off. */
 const TEMPLATE_MIN_GROUP = 12;
-/** Minimálny kontrast symbolu voči šablóne, aby sme mu verili (0–255). */
+/** Minimum symbol contrast against the template to trust it (0–255). */
 const TEMPLATE_MIN_CONTRAST = 24;
-/** Zostrenie masky symbolu okolo hrany (1 = bez zostrenia). */
+/** Symbol mask sharpening at the edge (1 = none). */
 const GLYPH_CONTRAST = 1.8;
-/**
- * Odznak = ikona na plnofarebnom podklade (biele „P" na modrom štvorci).
- * Pozná sa podľa toho, že jej prevažujúca farba je sýta alebo tmavá –
- * nevýrazné sivé podklady sú bežné pozadie a rieši ich šablóna skupiny.
- */
+/** A badge is an icon on a saturated or dark solid base (white "P" on blue). */
 const BADGE_MIN_SATURATION = 0.25;
 const BADGE_MAX_LUMA = 120;
-/**
- * Minimálny rozdiel jasu medzi symbolom a jeho svetlým halom, aby sa dali
- * oddeliť (ikony bez kolieska, napr. osm-bright).
- */
+/** Minimum luma gap between a symbol and its light halo (disc-less icons, osm-bright). */
 const HALO_MIN_CONTRAST = 60;
 
-// odstránenie kolieska pod ikonou
-
-/** Ikona ako pole [R,G,B,A] s premultiplikovanou farbou (kvôli porovnávaniu). */
+/** Icon as [R,G,B,A] with premultiplied colour, for comparing. */
 function readIcon(src, e) {
   const out = new Float64Array(e.width * e.height * 4);
   for (let y = 0; y < e.height; y++) {
@@ -71,14 +45,8 @@ function readIcon(src, e) {
 }
 
 /**
- * Spoločné pozadie skupiny ikon rovnakej veľkosti = **najčastejšia** hodnota
- * po pixeloch. Koliesko (biela plocha + sivý obrys) je vo všetkých ikonách
- * rovnaké až na pixel, kým symbol má každá ikona inde a inak – najčastejšia
- * hodnota preto vždy vyjde na pozadie.
- *
- * (Medián by tu nestačil: ikony s riedkym symbolom, napríklad písmeno „i",
- * majú väčšinu plochy bielu, ale medián cez skupinu je v strede tmavší, takže
- * by sa celý stred ikony tváril ako symbol.)
+ * Shared background of same-size icons = the per-pixel **mode** (the disc is identical
+ * in all); a median would darken the centre into a symbol.
  */
 function modeTemplate(icons, w, h) {
   const t = new Float64Array(w * h * 4);
@@ -116,21 +84,20 @@ const percentile = (values, q) => {
 
 const median = (values) => percentile(values, 0.5);
 
-/** Z rozdielov spraví pokrytie 0–1 so zostrenou hranou, orezané siluetou. */
+/** Differences → coverage 0–1 with a sharpened edge, clipped to the silhouette. */
 function toCoverage(diff, icon, w, h, hi) {
   const cov = new Float64Array(w * h);
   for (let p = 0; p < w * h; p++) {
     const ink = Math.max(0, Math.min(1, diff[p] / hi));
-    // zostrenie okolo 0,5, aby v ťahoch nezostali „soľ a korenie" pixely;
-    // samotná hrana sa nehýbe
+    // sharpen around 0.5 against salt-and-pepper pixels; the edge stays put
     const sharp = Math.max(0, Math.min(1, (ink - 0.5) * GLYPH_CONTRAST + 0.5));
-    // Symbol nikdy nesmie pretiecť mimo pôvodnú ikonu.
+    // the symbol never spills outside the original icon
     cov[p] = sharp * Math.min(1, icon[p * 4 + 3] / 255);
   }
   return cov;
 }
 
-/** Najčastejšia farba nepriehľadných pixelov ikony – jej vlastné pozadie. */
+/** Most common colour of opaque icon pixels – its own background. */
 function dominantColor(icon, w, h) {
   const counts = new Map();
   for (let p = 0; p < w * h; p++) {
@@ -158,11 +125,7 @@ function dominantColor(icon, w, h) {
   ];
 }
 
-/**
- * Odznak = ikona, ktorej prevažujúca farba nie je biele koliesko, ale plný
- * farebný podklad (doprava, parkovanie). Symbol je na ňom svetlý, takže
- * šablóna skupiny by ho nenašla – pozná sa podľa vlastnej farby.
- */
+/** A badge's light symbol on a solid base escapes the group template. */
 function isBadge(icon, w, h) {
   const base = dominantColor(icon, w, h);
   if (!base) return false;
@@ -173,11 +136,7 @@ function isBadge(icon, w, h) {
   return saturation >= BADGE_MIN_SATURATION || luma < BADGE_MAX_LUMA;
 }
 
-/**
- * Symbol ikony, ktorá má vlastnú farbu podkladu (napr. biele „P" na modrom
- * štvorci). Tu šablóna skupiny nepomôže – symbol je oproti nej rovnaký ako
- * podklad. Referenciou je preto najčastejšia farba samotnej ikony.
- */
+/** Symbol of an icon with its own base colour, measured against that colour. */
 function badgeCoverage(icon, w, h) {
   const base = dominantColor(icon, w, h);
   if (!base) return null;
@@ -186,8 +145,7 @@ function badgeCoverage(icon, w, h) {
   const inside = [];
   for (let p = 0; p < w * h; p++) {
     const a = icon[p * 4 + 3];
-    // iba plne krycie pixely – polopriehľadný okraj odznaku by vyšiel ako
-    // obrys okolo celého symbolu
+    // opaque only – the badge's soft edge would come out as an outline
     if (a < 250) continue;
     const f = a / 255;
     const d = Math.max(
@@ -204,17 +162,7 @@ function badgeCoverage(icon, w, h) {
   return toCoverage(diff, icon, w, h, hi);
 }
 
-/**
- * Pokrytie (0–1) vlastného symbolu ikony.
- *
- * Bežná ikona osm-liberty je symbol v bielom koliesku – symbol vyjde ako
- * odchýlka od šablóny skupiny. Časť ikon (doprava, parkovanie) je ale
- * „odznak": svetlý symbol na plnofarebnom podklade. Tie sa poznajú podľa
- * toho, že sa od šablóny líšia *celé*, a spracujú sa voči vlastnej farbe.
- *
- * Vracia `null`, ak sa nedá rozumne určiť symbol (napr. samotné koliesko) –
- * vtedy sa použije alfa silueta.
- */
+/** Coverage (0–1) of the icon's symbol as its difference from the group template, or `null`. */
 function glyphCoverage(icon, template, w, h) {
   const diff = new Float64Array(w * h);
   for (let p = 0; p < w * h; p++) {
@@ -225,19 +173,17 @@ function glyphCoverage(icon, template, w, h) {
     diff[p] = d;
   }
 
-  // prahovať sa smie len vnútri ikony: priehľadné okolie má rozdiel nula
-  // a stalo by sa „pozadím", takže by celé koliesko prešlo ako symbol
+  // threshold inside the icon only, or the transparent zeros become "background"
   const inside = [];
   for (let p = 0; p < w * h; p++) {
     if (icon[p * 4 + 3] >= 128) inside.push(diff[p]);
   }
   if (inside.length < 9) return null;
 
-  // Konštantný posun pozadia (drobné odchýlky proti šablóne).
+  // constant background shift against the template
   const bg = median(inside);
   const rel = inside.map((d) => Math.max(0, d - bg));
-  // horná hranica cez percentil, nie maximum – jeden odľahlý pixel by celý
-  // symbol stlačil pod prah
+  // a percentile, since one outlier would push the whole symbol under the threshold
   const hi = percentile(rel, 0.98);
   if (hi < TEMPLATE_MIN_CONTRAST) return null;
 
@@ -245,14 +191,7 @@ function glyphCoverage(icon, template, w, h) {
   return toCoverage(shifted, icon, w, h, hi);
 }
 
-/**
- * Symbol ikony, ktorá nemá koliesko, ale má okolo seba svetlé halo
- * (tak sú kreslené ikony osm-bright). Šablóna skupiny tu neexistuje, lebo
- * ikony nemajú spoločné pozadie – symbolom je jednoducho tmavá časť.
- *
- * Vracia `null` pre jednofarebné ikony (šípka, bodka), kde by sa nemalo
- * čo oddeľovať a správne je vziať celú siluetu.
- */
+/** Symbol of a disc-less icon with a light halo: the dark part; `null` for one-colour icons. */
 function contrastCoverage(icon, w, h) {
   const luma = new Float64Array(w * h);
   const inside = [];
@@ -282,17 +221,14 @@ function contrastCoverage(icon, w, h) {
   return cov;
 }
 
-/** Alfa silueta ikony ako pokrytie 0–1 (pre jednofarebné ikony). */
+/** The icon's alpha silhouette as coverage 0–1 (one-colour icons). */
 function alphaCoverage(icon, w, h) {
   const cov = new Float64Array(w * h);
   for (let p = 0; p < w * h; p++) cov[p] = icon[p * 4 + 3] / 255;
   return cov;
 }
 
-/**
- * Oreže pokrytie na symbol. Výrez je súmerný okolo stredu ikony, aby sa
- * symbol voči kotve (`icon-anchor`) neposunul.
- */
+/** Crops coverage to the symbol, symmetric around the centre so `icon-anchor` holds. */
 function cropToInk(cov, w, h) {
   let minX = w;
   let minY = h;
@@ -328,9 +264,7 @@ function cropToInk(cov, w, h) {
   return { cov: out, width: cw, height: ch };
 }
 
-// hlavná časť
-
-/** Prerobí jeden pár .json/.png na SDF variant. Vracia počet ikon. */
+/** Converts one .json/.png pair to its SDF variant; returns the icon count. */
 function convert(inBase, outBase, suffix) {
   const jsonPath = `${inBase}${suffix}.json`;
   const pngPath = `${inBase}${suffix}.png`;
@@ -342,10 +276,9 @@ function convert(inBase, outBase, suffix) {
   const entries = Object.entries(index).filter(
     ([, e]) => e && e.width > 0 && e.height > 0
   );
-  if (!entries.length) throw new Error(`${jsonPath}: žiadne ikony`);
+  if (!entries.length) throw new Error(`${jsonPath}: no icons`);
 
-  // Ikony rovnakej veľkosti zdieľajú koliesko – z každej takej skupiny sa
-  // dá vyrobiť šablóna pozadia a od nej odčítať samotný symbol.
+  // same-size icons share the disc, so each group yields a background template
   const pixels = new Map(entries.map(([name, e]) => [name, readIcon(src, e)]));
   const groups = new Map();
   for (const [name, e] of entries) {
@@ -353,7 +286,7 @@ function convert(inBase, outBase, suffix) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(name);
   }
-  // Odznaky do šablóny nepatria – pokazili by pozadie ostatným ikonám.
+  // badges would spoil the template for the others
   const badges = new Set();
   for (const [name, e] of entries) {
     if (isBadge(pixels.get(name), e.width, e.height)) badges.add(name);
@@ -374,9 +307,7 @@ function convert(inBase, outBase, suffix) {
     const icon = pixels.get(name);
     const template = templates.get(`${e.width}x${e.height}`);
 
-    // Stratégie podľa toho, ako je ikona nakreslená, od najspoľahlivejšej:
-    // spoločné pozadie skupiny → vlastný farebný podklad → svetlé halo.
-    // Ak nesedí ani jedna, zostane celá silueta.
+    // most reliable first: group background → own base colour → light halo → silhouette
     let coverage =
       template && !badges.has(name)
         ? glyphCoverage(icon, template, e.width, e.height)
@@ -396,7 +327,7 @@ function convert(inBase, outBase, suffix) {
     );
     return { name, entry: e, sdf, width: sdf.width, height: sdf.height, ratio };
   });
-  console.log(`  symbol oddelený od podkladu: ${stripped}/${boxes.length} ikon`);
+  console.log(`  symbol separated from its base: ${stripped}/${boxes.length} icons`);
 
   const maxWidth = suffix ? 1024 : 512;
   const atlas = packShelves(boxes, maxWidth);
@@ -426,7 +357,7 @@ function convert(inBase, outBase, suffix) {
   writeFileSync(`${outBase}${suffix}.png`, encodePng({ ...atlas, data }));
   writeFileSync(`${outBase}${suffix}.json`, JSON.stringify(outIndex));
   console.log(
-    `✓ ${outBase}${suffix}: ${boxes.length} ikon, atlas ${atlas.width}×${atlas.height}`
+    `✓ ${outBase}${suffix}: ${boxes.length} icons, atlas ${atlas.width}×${atlas.height}`
   );
   return boxes.length;
 }
@@ -441,13 +372,13 @@ function main() {
   const inBase = args.in;
   const outBase = args.out;
   if (!inBase || !outBase) {
-    console.error("Použitie: node workers/assets/sprite.mjs --in=<base> --out=<base>");
+    console.error("Usage: node workers/assets/sprite.mjs --in=<base> --out=<base>");
     process.exit(2);
   }
 
   const count = convert(inBase, outBase, "");
   if (!count) {
-    console.error(`::error::Zdrojový sprite ${inBase}.json/.png neexistuje`);
+    console.error(`::error::Source sprite ${inBase}.json/.png doesn't exist`);
     process.exit(1);
   }
   convert(inBase, outBase, "@2x");

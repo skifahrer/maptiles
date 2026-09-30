@@ -1,12 +1,10 @@
-# Planetiler custom schema – železnice a lanovky z OSM v jednom `.pmtiles`.
-#
-# Všetky koľaje a lanovky vrátane zrušených, stanice s menom a značky na trati.
-# Farby (rýchlosť, rozchod, trakcia) si kreslí aplikácia z atribútov.
-schema_name: FricoMaps železnice a lanovky
+# Planetiler custom schema – railways and aerialways from OSM in one `.pmtiles`.
+# The app draws colours (speed, gauge, traction) from the attributes.
+schema_name: FricoMaps railways and aerialways
 schema_description: >-
-  Železnice, električky, metro, lanovky a vleky – v prevádzke, rozostavané,
-  plánované aj zrušené –, stanice s menami a značky na trati z OSM
-attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>
+  Railways, trams, metro, aerialways and lifts – in service, under construction,
+  proposed and gone –, named stations and trackside signs from OSM
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 
 sources:
   osm:
@@ -26,7 +24,7 @@ definitions:
     - key: service
     - key: maxspeed
     - key: gauge
-    # najširší rozchod v mm, dopočíta ho `lines.py`
+    # widest gauge in mm, from `lines.py`
     - key: gauge_mm
       type: integer
       value:
@@ -128,7 +126,7 @@ definitions:
     - key: signal_wrong_road
       value:
         tag_value: "railway:signal:wrong_road"
-    # smer koľaje pri návestidle v stupňoch, dopočíta ho `lines.py`
+    # track bearing at a signal in degrees, from `lines.py`
     - key: bearing
       type: integer
       value:
@@ -161,7 +159,7 @@ definitions:
               - tag_value: abandoned
     - key: state
       value:
-        # vlek mimo prevádzky často ostáva `aerialway=*` s `disused=yes`
+        # a lift out of service often keeps `aerialway=*` with `disused=yes`
         - if: {__all__: [{aerialway: *lifts}, {abandoned: "yes"}]}
           value: abandoned
         - if: {__all__: [{aerialway: *lifts}, {disused: "yes"}]}
@@ -178,7 +176,7 @@ definitions:
     - key: name
     - key: ref
     - key: operator
-    # nákladná lanovka baní a fabrík
+    # goods ropeway of mines and factories
     - key: usage
     - key: occupancy
       value:
@@ -228,7 +226,7 @@ layers:
           service: __any__
         attributes: *line_attrs
 
-      # vedľajšie koľaje by na prehľadovom zoome zliali stanicu do fľaku
+      # side tracks would blur a station into a blot on overview zooms
       - source: osm
         geometry: line
         min_zoom: 12
@@ -293,7 +291,7 @@ layers:
           railway: [milestone]
         attributes: *point_attrs
 
-      # kde sa mení traťová rýchlosť – body dopočíta `lines.py`
+      # where line speed changes – points from `lines.py`
       - source: osm
         geometry: point
         min_zoom: 14
@@ -334,7 +332,7 @@ layers:
           railway: [tram_stop]
         attributes: *station_attrs
 
-      # stanica zmapovaná ako plocha nemá bod, na ktorom by stálo meno
+      # a station mapped as an area has no point to carry its name
       - source: osm
         geometry: polygon_centroid
         min_zoom: 12
@@ -342,7 +340,7 @@ layers:
           railway: [station, halt]
         attributes: *station_attrs
 
-  # lanovky a vleky; `class` je druh, `state` či premáva
+  # aerialways and lifts; `class` is the kind, `state` whether it runs
   - id: aerialway
     features:
       - source: osm
@@ -352,7 +350,7 @@ layers:
           aerialway: *lifts
         attributes: *lift_attrs
 
-      # rozostavané, plánované a zrušené – druh je v inom kľúči
+      # under construction, proposed and gone – the kind is in another key
       - source: osm
         geometry: line
         min_zoom: 10
@@ -389,7 +387,7 @@ layers:
 
 # testy: `java -jar planetiler.jar verify workers/rail/rail.yml`
 examples:
-  - name: Hlavná trať je od z6 a nesie rýchlosť, rozchod aj trakciu
+  - name: A main line is from z6 and carries speed, gauge and traction
     input:
       source: osm
       geometry: line
@@ -412,7 +410,7 @@ examples:
           electrified: contact_line
           voltage: "25000"
 
-  - name: Široký rozchod nesie šírku v mm
+  - name: Broad gauge carries its width in mm
     input:
       source: osm
       geometry: line
@@ -429,7 +427,7 @@ examples:
           gauge: "1435;1520"
           gauge_mm: 1520
 
-  - name: Vlečka je až od z12
+  - name: A siding only from z12
     input:
       source: osm
       geometry: line
@@ -444,7 +442,7 @@ examples:
           class: rail
           service: siding
 
-  - name: Zrušená trať v tomto balíku JE
+  - name: An abandoned line IS in this package
     input:
       source: osm
       geometry: line
@@ -459,7 +457,7 @@ examples:
           class: abandoned
           name: Trnava – Kúty
 
-  - name: Električka a metro sú od z10
+  - name: Tram and metro from z10
     input:
       source: osm
       geometry: line
@@ -472,7 +470,7 @@ examples:
         tags:
           class: tram
 
-  - name: Linka električky nesie svoju farbu a článok
+  - name: A tram line carries its colour and article
     input:
       source: osm
       geometry: line
@@ -506,7 +504,7 @@ examples:
           name: Žilina
           uic_ref: "5613206"
 
-  - name: Zastávka je od z12
+  - name: A halt from z12
     input:
       source: osm
       geometry: point
@@ -521,7 +519,7 @@ examples:
           class: halt
           name: Pezinok zastávka
 
-  - name: Priecestie je značka na trati
+  - name: A level crossing is a trackside sign
     input:
       source: osm
       geometry: point
@@ -534,7 +532,7 @@ examples:
         tags:
           class: level_crossing
 
-  - name: Výhybka nesie druh, návestidlo druh návesti
+  - name: A switch carries its kind, a signal its aspect kind
     input:
       source: osm
       geometry: point
@@ -551,7 +549,7 @@ examples:
           switch_type: double_slip
           ref: "12"
 
-  - name: Rýchlostník nesie rýchlosť a návestidlo smer koľaje
+  - name: A speed board carries speed and a signal the track bearing
     input:
       source: osm
       geometry: point
@@ -570,7 +568,7 @@ examples:
           speed_limit: "80"
           bearing: 270
 
-  - name: Zmena traťovej rýchlosti je bod s oboma rýchlosťami
+  - name: A line speed change is a point with both speeds
     input:
       source: osm
       geometry: point
@@ -586,7 +584,7 @@ examples:
           speed: 80
           speed_prev: 120
 
-  - name: Kilometrovník nesie polohu
+  - name: A milestone carries its position
     input:
       source: osm
       geometry: point
@@ -601,7 +599,7 @@ examples:
           class: milestone
           position: "12.4"
 
-  - name: Kabínka v prevádzke je od z10
+  - name: A gondola in service from z10
     input:
       source: osm
       geometry: line
@@ -619,7 +617,7 @@ examples:
           name: Skalnaté pleso
           occupancy: "8"
 
-  - name: Plánovaná lanovka nesie druh aj stav
+  - name: A proposed aerialway carries kind and state
     input:
       source: osm
       geometry: line
@@ -634,7 +632,7 @@ examples:
           class: cable_car
           state: proposed
 
-  - name: Rozostavaná lanovka v prefixe kľúča
+  - name: An aerialway under construction in the key prefix
     input:
       source: osm
       geometry: line
@@ -648,7 +646,7 @@ examples:
           class: chair_lift
           state: construction
 
-  - name: Zrušený vlek je stará lanovka
+  - name: A removed lift is an old aerialway
     input:
       source: osm
       geometry: line
@@ -662,7 +660,7 @@ examples:
           class: drag_lift
           state: abandoned
 
-  - name: Rozobratá nákladná lanovka je opustená
+  - name: A dismantled goods ropeway is abandoned
     input:
       source: osm
       geometry: line
@@ -678,7 +676,7 @@ examples:
           state: abandoned
           usage: industrial
 
-  - name: Lanovka bez druhu je tiež lanovka
+  - name: An aerialway without a kind is still an aerialway
     input:
       source: osm
       geometry: line
@@ -692,7 +690,7 @@ examples:
           class: "yes"
           state: active
 
-  - name: Nepoužívaná sedačka
+  - name: A disused chair lift
     input:
       source: osm
       geometry: line
@@ -707,7 +705,7 @@ examples:
           class: chair_lift
           state: disused
 
-  - name: Sedačka s plánovanou náhradou ostáva v prevádzke
+  - name: A chair lift with a proposed replacement stays in service
     input:
       source: osm
       geometry: line
@@ -722,7 +720,7 @@ examples:
           class: chair_lift
           state: active
 
-  - name: Vlek s disused=yes nepremáva
+  - name: A lift with disused=yes doesn't run
     input:
       source: osm
       geometry: line
@@ -737,7 +735,7 @@ examples:
           class: drag_lift
           state: disused
 
-  - name: Sedačka s abandoned=yes je opustená
+  - name: A chair lift with abandoned=yes is abandoned
     input:
       source: osm
       geometry: line
@@ -767,7 +765,7 @@ examples:
           class: station
           name: Lomnické sedlo
 
-  - name: Cesta do železníc nepatrí
+  - name: A road doesn't belong to railways
     input:
       source: osm
       geometry: line

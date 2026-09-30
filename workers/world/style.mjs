@@ -74,7 +74,7 @@ const BOLD = ["Noto Sans Bold"];
 
 const ATTRIBUTION =
   '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap ' +
-  'prispievatelia</a> · <a href="https://download.geofabrik.de/">Geofabrik</a>' +
+  'contributors</a> · <a href="https://download.geofabrik.de/">Geofabrik</a>' +
   ' · <a href="https://www.naturalearthdata.com/">Natural Earth</a>';
 
 /**

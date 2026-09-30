@@ -25,7 +25,7 @@ schema_description: >-
   Násypy, zárezy, múry, ploty, elektrické vedenia, prieseky, stromoradia,
   parkoviská, zjazdovky a plánované cesty – línie a plochy z OSM, ktoré
   schéma OpenMapTiles neprenáša
-attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap prispievatelia</a>
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 
 sources:
   osm:

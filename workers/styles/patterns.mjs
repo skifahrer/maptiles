@@ -1,10 +1,6 @@
 #!/usr/bin/env node
 /**
- * Dopečie do spritu obrázky opakujúcich sa vzorov, ktoré používa hotový štýl.
- *
- * Vzory sa v developer móde nastavujú predpisom, ktorý je zároveň názvom
- * obrázka (`pat:hatch:3a5a34:16:12`). V prehliadači si ich mapa dokreslí sama,
- * ale statický `style.json` pre iOS musí mať obrázky priamo v sprite.
+ * Bakes the repeating patterns a finished style uses into the sprite (iOS has no runtime drawing).
  *
  *   node workers/styles/patterns.mjs \
  *        --sprite=_site/sprites/osm-liberty-sdf --styles=_site/styles
@@ -25,12 +21,12 @@ const spriteBase = args.sprite;
 const stylesDir = args.styles;
 if (!spriteBase || !stylesDir) {
   console.error(
-    "Použitie: node workers/styles/patterns.mjs --sprite=<base> --styles=<dir>"
+    "Usage: node workers/styles/patterns.mjs --sprite=<base> --styles=<dir>"
   );
   process.exit(2);
 }
 
-// ---------- ktoré vzory štýly vôbec používajú ----------
+// which patterns the styles use
 const names = new Set();
 if (existsSync(stylesDir)) {
   for (const file of readdirSync(stylesDir).filter((f) => f.endsWith(".json"))) {
@@ -39,22 +35,21 @@ if (existsSync(stylesDir)) {
         names.add(n);
       }
     } catch (err) {
-      console.warn(`⚠ ${file} sa nepodarilo prečítať: ${err.message}`);
+      console.warn(`⚠ ${file} couldn't be read: ${err.message}`);
     }
   }
 }
 
 if (!names.size) {
-  console.log("Štýly nepoužívajú žiadne vzory – sprite zostáva bez zmeny.");
+  console.log("The styles use no patterns – the sprite stays unchanged.");
   process.exit(0);
 }
-console.log(`Vzory v štýloch (${names.size}): ${[...names].join(", ")}`);
+console.log(`Patterns in the styles (${names.size}): ${[...names].join(", ")}`);
 
 const ok = bakeIntoSprite({
   spriteBase,
-  co: "vzorov",
-  // Naše sú všetky mená, ktoré sú predpisom vzoru – starý vzor sa zahodí
-  // a nakreslí znova z toho, čo je v štýloch teraz.
+  what: "patterns",
+  // every pattern recipe name is ours, redrawn from the current styles
   mine: (name) => Boolean(parsePatternName(name)),
   make: (pixelRatio) =>
     [...names].map((name) => ({
@@ -64,6 +59,6 @@ const ok = bakeIntoSprite({
 });
 
 if (!ok) {
-  console.error(`::error::Sprite ${spriteBase}.json/.png neexistuje`);
+  console.error(`::error::Sprite ${spriteBase}.json/.png doesn't exist`);
   process.exit(1);
 }
