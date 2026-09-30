@@ -1,18 +1,14 @@
 #!/usr/bin/env node
 /**
- * Dopečie do spritu štítky čísel ciest podľa SIETE („D1" na červenej,
- * „E 75" na zelenej, chorvátske „A1" v šesťuholníku).
- *
- * Beží po `assets/shields.mjs`: klasické štítky podľa triedy cesty ostávajú
- * v sprite ako záloha pre siete, ktoré tu nie sú.
+ * Bakes road-number shields by NETWORK ("D1" on red, "E 75" on green) into the sprite.
  *
  *   node workers/assets/route-shields.mjs --sprite=_site/sprites/osm-liberty
  */
 import { bakeIntoSprite } from "../lib/sprite-bake.mjs";
 import { routeShieldRecipes, renderRouteShield } from "../../poc/web/route-shields.js";
 
-const RECEPTY = routeShieldRecipes();
-const MENA = new Set(RECEPTY.map((r) => r.name));
+const RECIPES = routeShieldRecipes();
+const NAMES = new Set(RECIPES.map((r) => r.name));
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => {
@@ -23,19 +19,19 @@ const args = Object.fromEntries(
 
 const spriteBase = args.sprite;
 if (!spriteBase) {
-  console.error("Použitie: node workers/assets/route-shields.mjs --sprite=<base>");
+  console.error("Usage: node workers/assets/route-shields.mjs --sprite=<base>");
   process.exit(2);
 }
 
 const ok = bakeIntoSprite({
   spriteBase,
   what: "network shields",
-  mine: (name) => MENA.has(name),
+  mine: (name) => NAMES.has(name),
   make: (pixelRatio) =>
-    RECEPTY.map(({ name, def }) => {
+    RECIPES.map(({ name, def }) => {
       const img = renderRouteShield(def, pixelRatio);
       const entry = {};
-      // hrot šesťuholníka rovnú časť nemá, tak sa škáluje celý obrázok
+      // a hexagon's point has no straight part, so the whole image scales
       if (img.stretchX) Object.assign(entry, {
         stretchX: img.stretchX, stretchY: img.stretchY, content: img.content
       });
@@ -44,6 +40,6 @@ const ok = bakeIntoSprite({
 });
 
 if (!ok) {
-  console.error(`::error::Sprite ${spriteBase}.json/.png neexistuje`);
+  console.error(`::error::Sprite ${spriteBase}.json/.png doesn't exist`);
   process.exit(1);
 }

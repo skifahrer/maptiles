@@ -1,17 +1,6 @@
 #!/usr/bin/env node
 /**
- * Dopečie do spritu šípky jednosmeriek – vlastné, aby boli v každej sade
- * ikoniek (rozpis v `poc/web/arrows.js`).
- *
- * Beží po `assets/sprite.mjs`, nad hotovým atlasom; preskladanie robí
- * `lib/sprite-bake.mjs`.
- *
- * Sú to SDF obrázky: šípka je jednofarebný tvar a tá farba patrí do palety
- * témy (`onewayIcon`).
- *
- * Keď sa nedopečú, mapa nespadne – vrstva `road-oneway` sa vynechá tak ako
- * pri sade bez `arrow`. Je to teda varovanie, na ktoré má oči
- * `workers/lint/icons.mjs`.
+ * Bakes one-way arrows into the sprite as SDF, so every icon set has them (`poc/web/arrows.js`).
  *
  *   node workers/assets/arrows.mjs --sprite=_site/sprites/osm-liberty
  */
@@ -30,12 +19,12 @@ const args = Object.fromEntries(
 
 const spriteBase = args.sprite;
 if (!spriteBase) {
-  console.error("Použitie: node workers/assets/arrows.mjs --sprite=<base>");
+  console.error("Usage: node workers/assets/arrows.mjs --sprite=<base>");
   process.exit(2);
 }
 
-/** SDF ako RGBA: farbu dá `icon-color`, v alfe je vzdialenosť od hrany. */
-function obrazok(shape, r) {
+/** SDF as RGBA: `icon-color` gives the colour, alpha holds the edge distance. */
+function image(shape, r) {
   const sdf = sdfFromShape(
     shape.draw,
     Math.round(ARROW_W * r),
@@ -56,18 +45,17 @@ function obrazok(shape, r) {
 const ok = bakeIntoSprite({
   spriteBase,
   what: "one-way arrows",
-  // Naše sú všetky mená s predponou `arrow-`. Zahodia sa a nakreslia znova,
-  // aby pri behu nad spritom z cache nepribúdali kópie.
+  // redrawn, so a cached sprite gains no copies
   mine: (name) => name.startsWith(ARROW_PREFIX),
   make: (pixelRatio) =>
     ARROW_SHAPES.map((shape) => ({
       name: arrowImage(shape.id),
-      image: obrazok(shape, pixelRatio),
+      image: image(shape, pixelRatio),
       entry: { sdf: true }
     }))
 });
 
 if (!ok) {
-  console.error(`::error::Sprite ${spriteBase}.json/.png neexistuje`);
+  console.error(`::error::Sprite ${spriteBase}.json/.png doesn't exist`);
   process.exit(1);
 }
