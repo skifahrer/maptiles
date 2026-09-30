@@ -1,70 +1,45 @@
 #!/usr/bin/env bash
-# Krajinné prvky mimo schémy OpenMapTiles → dva `.pmtiles`:
-#   `{región}-features.pmtiles`   línie a plochy (features.yml)
-#   `{región}-points.pmtiles`     body (points.yml)
-#
-# Dva súbory z jedného jobu preto, že appka ponúka „línie z OSM" a „body
-# z OSM" ako dva balíky. Vstup aj predfilter sú rovnaké, líši sa len schéma –
-# druhý beh je pár riadkov navyše, nie druhý job.
-#
-# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
-#
-# Zoznam tagov je vo `filter.txt` vedľa oboch schém. Bez predfiltra by
-# Planetiler čítal celé Slovensko druhýkrát (a s bodmi trikrát).
-#
-# Čo má v schéme `min_zoom` nad maxzoomom, Planetiler zahodí bez slova – tak sa
-# to najprv porovná a povie nahlas.
-#
-# Podiel na veľkosti stránky berie z `BUDGET_FEATURES_PCT`; body sú doň
-# započítané a vlastný podiel nemajú.
+# Landscape features outside OpenMapTiles → `{region}-features.pmtiles` (lines, areas)
+# and `{region}-points.pmtiles` (points): two packages in the app, one prefilter.
+# Points share the `BUDGET_FEATURES_PCT` share of the page size.
 
 set -euo pipefail
 mkdir -p _site/tiles data
 sudo apt-get update -qq
 sudo apt-get install -y -qq osmium-tool
 
-# ---- 1. predfilter ----
-# Zoznam tagov je vo workers/features/filter.txt vedľa schémy, nech
-# sa obe menia na jednom mieste. Bez neho by Planetiler čítal celé
-# Slovensko druhýkrát; po ňom ostane zlomok.
+# tags in `filter.txt` beside the schemas; without it Planetiler reads the whole country again
 T_F=$(date +%s)
 osmium tags-filter --overwrite -o data/features.osm.pbf \
   data/region.osm.pbf --expressions=workers/features/filter.txt
 BEFORE=$(stat -c%s data/region.osm.pbf)
 AFTER=$(stat -c%s data/features.osm.pbf)
-echo "Predfilter: $(du -h data/region.osm.pbf | cut -f1) → $(du -h data/features.osm.pbf | cut -f1)"
-printf '%s\t%s\t%s\t%s\n' "57" "Predfilter krajinných prvkov" "$(( $(date +%s) - T_F ))" \
+echo "Prefilter: $(du -h data/region.osm.pbf | cut -f1) → $(du -h data/features.osm.pbf | cut -f1)"
+printf '%s\t%s\t%s\t%s\n' "57" "Landscape feature prefilter" "$(( $(date +%s) - T_F ))" \
   "$(( BEFORE / 1048576 )) MB → $(( AFTER / 1048576 )) MB" \
   >> steps-out/features.tsv
 
-# Prázdny výsledok nie je chyba – malý testovací štvorec nemusí mať
-# ani jeden násyp. Mapa vtedy pôjde bez oboch vrstiev (línie aj body sú
-# z toho istého predfiltra – prázdny vstup znamená prázdne oboje).
+# an empty result isn't an error; both layers come from this prefilter
 if [ "$AFTER" -lt 2000 ]; then
-  echo "::warning::V tomto území nie je ani jeden krajinný prvok – mapa pôjde bez nich."
+  echo "::warning::This area has no landscape feature – the map goes without them."
   echo "enabled=false" >> "$GITHUB_OUTPUT"
   echo "points_enabled=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi
 
-# ---- 2. dlaždice ----
 FZ="$OPT_FEATURES_MAXZOOM"
 case "$FZ" in ''|*[!0-9]*) FZ=15 ;; esac
 if [ "$FZ" -gt 16 ]; then FZ=16; fi
 
-# Poistka proti tichej strate: čo má v schéme `min_zoom` nad
-# maxzoomom, Planetiler zahodí bez slova. Body zdieľajú maxzoom s líniami
-# a plochami (vlastný by bol štvrtý prepínač pre vrstvu, ktorá je jednotky
-# MB) – poistka preto porovná OBE schémy proti tomu istému `$FZ`.
+# Planetiler silently drops `min_zoom` above maxzoom; points share `$FZ`, so check both
 TOPZ=$(grep -hoE 'min_zoom: [0-9]+' \
        workers/features/features.yml workers/features/points.yml \
        | grep -oE '[0-9]+' | sort -n | tail -1)
 if [ "${TOPZ:-0}" -gt "$FZ" ]; then
-  echo "::warning::workers/features/features.yml alebo points.yml má triedy s min_zoom až ${TOPZ}, ale dlaždice idú po z${FZ} – tie sa do nich vôbec nedostanú. Zdvihni features_maxzoom na ${TOPZ}, alebo tým triedam zníž min_zoom."
+  echo "::warning::workers/features/features.yml or points.yml has classes with min_zoom up to ${TOPZ}, but tiles go to z${FZ} – those never get in. Raise features_maxzoom to ${TOPZ}, or lower min_zoom of those classes."
 fi
 
-# Ten istý orez na región ako pri mape (workers/lib/region-clip.sh) – prvky
-# nesmú siahať ďalej než mapa pod nimi.
+# the map's own region cut
 mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
 
 T_PM=$(date +%s)
@@ -80,10 +55,7 @@ java -Xmx4g -jar planetiler.jar generate-custom \
 
 MB=$(( $(stat -c%s "$OUT") / 1048576 ))
 
-# ---- 3. body, DRUHÝ beh nad tým istým PBF ----
-# Vlastný súbor kvôli balíku na stiahnutie (rozpis v hlavičke `points.yml`) –
-# nie vlastná otázka o zoome či rozpočte, tie zdieľa s líniami a plochami
-# vyššie.
+# points: a second pass over the same PBF, its own file for its own package
 POUT="_site/tiles/${REGION_KEY}-points.pmtiles"
 java -Xmx4g -jar planetiler.jar generate-custom \
   --schema=workers/features/points.yml \
@@ -94,20 +66,11 @@ java -Xmx4g -jar planetiler.jar generate-custom \
   --min_feature_size_at_max_zoom=0 \
   --force
 
-# Prázdne body nie sú chyba – testovací štvorec nemusí mať ani jeden prameň.
-# Mapa vtedy pôjde bez tejto vrstvy, presne ako pri iných voliteľných
-# vrstvách (rovnaké pravidlo ako pri predfiltri vyššie). Na rozdiel od PBF
-# vyššie sa tu meria VÝSTUP Planetileru (`.pmtiles` má vlastnú hlavičku
-# a adresár aj bez jedinej dlaždice, rádovo kilobajt) – práve preto, že
-# spoločný predfilter môže mať cesty a plochy, a ani jeden bod.
+# the OUTPUT is measured: the shared prefilter may hold lines and not one point
 PBYTES=$(stat -c%s "$POUT")
 if [ "$PBYTES" -lt 1000 ]; then
-  echo "::warning::V tomto území nie je ani jeden bodový krajinný prvok (prameň, jaskyňa, rozhľadňa, …) – mapa pôjde bez nich."
-  # Súbor sa ZMAŽE, nenechá sa prázdny v `_site/tiles/` – inak by ho
-  # `workers/deploy/subory.py` (`body_subory`, náhradné hľadanie podľa mena,
-  # keď manifest kľúč nemá) zobralo do balíka `body`, hoci vrstva je
-  # vypnutá. Rovnaké pravidlo ako pri iných voliteľných vrstvách: čo nie je,
-  # sa v `_site` netvári, že je.
+  echo "::warning::This area has no point feature (spring, cave, lookout tower, …) – the map goes without them."
+  # deleted, or `workers/deploy/files.py` would find it by name for the `points` package
   rm -f "$POUT"
   echo "points_enabled=false" >> "$GITHUB_OUTPUT"
   PMB=0
@@ -118,25 +81,21 @@ else
 fi
 echo "points_size_mb=$PMB" >> "$GITHUB_OUTPUT"
 
-# Poistka na rozpočet stránky. `deploy` overí súčet ešte raz, ale
-# keď je nad podielom práve táto vrstva, má sa to povedať tu. Body sú v tom
-# istom podiele ako línie a plochy (vlastný `BUDGET_POINTS_PCT` by bol
-# štvrtý prepínač pre vrstvu, ktorá váži jednotky MB).
+# `deploy` checks the total again, but this layer's excess is said here
 LIMIT_MB="$SIZE_LIMIT_MB"
 case "$LIMIT_MB" in ''|*[!0-9]*) LIMIT_MB=900 ;; esac
 FBUDGET_MB=$(( LIMIT_MB * BUDGET_FEATURES_PCT / 100 ))
 TOTAL_MB=$(( MB + PMB ))
 if [ "$TOTAL_MB" -gt "$FBUDGET_MB" ]; then
-  echo "::warning::Krajinné prvky (línie, plochy a body) majú spolu ${TOTAL_MB} MB, čo je nad podielom ${FBUDGET_MB} MB z rozpočtu stránky. Zníž features_maxzoom alebo zdvihni BUDGET_FEATURES_PCT."
+  echo "::warning::Landscape features (lines, areas and points) take ${TOTAL_MB} MB together, above their ${FBUDGET_MB} MB share of the page budget. Lower features_maxzoom or raise BUDGET_FEATURES_PCT."
 fi
 
 echo "enabled=true" >> "$GITHUB_OUTPUT"
 echo "maxzoom=$FZ" >> "$GITHUB_OUTPUT"
 echo "size_mb=$MB" >> "$GITHUB_OUTPUT"
 ls -lh "$OUT"
-# `$POUT` už nemusí existovať (zmazaný vyššie, keď v území nie je ani jeden
-# bod) – "žiadne" je vtedy pravdivejšia hláška než chyba `du` na chýbajúcom súbore.
-BODY_SIZE=$([ -s "$POUT" ] && du -h "$POUT" | cut -f1 || echo "žiadne")
-printf '%s\t%s\t%s\t%s\n' "58" "Krajinné prvky → PMTiles" "$(( $(date +%s) - T_PM ))" \
-  "maxzoom $FZ, línie+plochy $(du -h "$OUT" | cut -f1), body $BODY_SIZE" \
+# `$POUT` may be gone (deleted above)
+POINTS_SIZE=$([ -s "$POUT" ] && du -h "$POUT" | cut -f1 || echo "none")
+printf '%s\t%s\t%s\t%s\n' "58" "Landscape features → PMTiles" "$(( $(date +%s) - T_PM ))" \
+  "maxzoom $FZ, lines+areas $(du -h "$OUT" | cut -f1), points $POINTS_SIZE" \
   >> steps-out/features.tsv

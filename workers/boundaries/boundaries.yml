@@ -1,31 +1,12 @@
-# Planetiler custom schema – hranice území a ich názvy v jednom `.pmtiles`.
-#
-# Vrstva `boundary` v OpenMapTiles nesie `admin_level`, `disputed` a `maritime`,
-# teda čiaru a nič viac: hranica je rozsekaná na úseky medzi susedmi, nemá meno
-# územia a `admin_level` je orezaný. „V ktorej obci som" sa z toho nevyčíta.
-#
-# Tu sú územia ako plochy s menom a úrovňou, k tomu body sídel. Tri tvary
-# jednej veci, a je to zámer:
-#
-#     `boundary`      plocha územia s menom a `admin_level` – odpovedá na
-#                     „čo je pod týmto bodom"
-#     `boundary_line` tá istá hranica ako čiara; kreslí sa táto, lebo výplň
-#                     cez celý kraj by prekryla mapu pod sebou
-#     `place`         bod sídla s menom a počtom obyvateľov
-#
-# Do dlaždice ide `admin_level` ako číslo, nie naše meno úrovne: v OSM je
-# celosvetový a v každom štáte znamená niečo iné (u nás 2/4/8/9, v Rakúsku
-# 4 spolková krajina, 6 okres, 8 obec).
-#
-# Zoomy: štát z2, kraj z4, okres z6, obec z8 – obcí je rádovo najviac a na
-# prehľadovom zoome by z nich bola len sieť čiar.
-#
-# Čo má vyšší `min_zoom` než maxzoom dlaždíc, Planetiler zahodí a nepovie nič.
-# Predfilter musí pustiť aj členov relácií, inak nemá z čoho zložiť polygón.
-schema_name: FricoMaps hranice území
+# Planetiler custom schema – area borders and their names in one `.pmtiles`.
+# OpenMapTiles `boundary` is a nameless line; here areas carry name and `admin_level`:
+# `boundary` (area: "what is under this point"), `boundary_line` (the same border drawn),
+# `place` (settlement point with name and population). `admin_level` stays OSM's number.
+# Zooms: state z2, region z4, district z6, municipality z8; the prefilter keeps relation members.
+schema_name: FricoMaps area borders
 schema_description: >-
-  Hranice štátu, kraja, okresu a obce ako plochy aj ako čiary, s menom
-  a úrovňou územia, a k tomu body sídel, z ktorých sa tie mená kreslia
+  State, region, district and municipality borders as areas and lines, with
+  the area's name and level, plus the settlement points the names are drawn from
 attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 
 sources:
@@ -33,16 +14,13 @@ sources:
     type: osm
     local_path: data/boundaries.osm.pbf
 
-# `admin_level` je v OSM reťazec („8"), ale je to poradie – ako reťazec by sa
-# `admin_level < 6` v štýle ani v analýze nedalo povedať. `population` z toho
-# istého dôvodu.
+# `admin_level` is a string in OSM but an order, so a number; `population` too
 tag_mappings:
   admin_level: integer
   population: long
 
 definitions:
-  # Atribúty územia sa píšu RAZ – plocha aj čiara nesú to isté, len inú
-  # geometriu, a dve kópie zoznamu by sa raz rozišli.
+  # area attributes written ONCE – area and line carry the same
   - &area_attrs
     - key: name
     - key: name_en
@@ -50,8 +28,7 @@ definitions:
         tag_value: "name:en"
     - key: admin_level
     - key: ref
-    # Kto územie spravuje – `wikidata` je to, čím sa dá napojiť na čokoľvek
-    # iné (aj na náš balík článkov z Wikipédie).
+    # `wikidata` links to anything else (our Wikipedia package too)
     - key: wikidata
     - key: wikipedia
     - key: osm_id
@@ -61,11 +38,10 @@ definitions:
       value: '${ feature.osm_type }'
 
 layers:
-  # ---------- 1. územie ako plocha ----------
-  # Kvôli tomuto vrstva existuje: odpoveď na „v ktorom okrese je tento bod".
+  # 1. the area as a polygon – "which district is this point in"
   - id: boundary
     features:
-      # --- štát: od z2 ---
+      # state: from z2
       - source: osm
         geometry: polygon
         min_zoom: 2
@@ -75,7 +51,7 @@ layers:
             - admin_level: ["2"]
         attributes: *area_attrs
 
-      # --- kraj (a čokoľvek, čo je v danom štáte úroveň 3 a 4): od z4 ---
+      # region (and whatever is level 3 and 4 in a state): from z4
       - source: osm
         geometry: polygon
         min_zoom: 4
@@ -95,9 +71,7 @@ layers:
             - admin_level: ["5", "6", "7"]
         attributes: *area_attrs
 
-      # --- obec: od z8 ---
-      # Najhustejšia úroveň zo všetkých – na nižšom zoome by z nej bola len
-      # sieť čiar cez celú mapu.
+      # municipality: from z8 – the densest level
       - source: osm
         geometry: polygon
         min_zoom: 8
@@ -107,10 +81,7 @@ layers:
             - admin_level: ["8"]
         attributes: *area_attrs
 
-  # ---------- 2. tá istá hranica ako čiara ----------
-  # Plochy sa nekreslia (výplň cez celý kraj by prekryla mapu pod sebou),
-  # takže čiara je to, čo štýl naozaj nakreslí. Je to DRUHÝ tvar tej istej
-  # relácie, nie druhá pravda: mená aj úrovne sú tie isté atribúty.
+  # 2. the same border as a line – the polygon fill would cover the map, so this is drawn
   - id: boundary_line
     features:
       - source: osm
@@ -146,17 +117,12 @@ layers:
             - admin_level: ["8"]
         attributes: *area_attrs
 
-    # Hranica je v OSM rozsekaná na úseky medzi susedmi, takže sa úseky
-    # s rovnakými hodnotami zlepia – inak by na jednej hranici okresu bolo
-    # dvadsať štítkov s tým istým menom.
+    # segments with equal values merge, or one border gets twenty labels
     tile_post_process:
       merge_line_strings:
         min_length: 0
 
-  # ---------- 3. kde sa to meno kreslí ----------
-  # Bod sídla. Hranica povie, kde územie KONČÍ; bod povie, kde sa jeho meno
-  # napíše – ťažisko polygónu je pri obci s dlhým chvostom mimo zastavanej
-  # časti a mapér to vie lepšie.
+  # 3. where the name is drawn – the settlement point, better than a polygon centroid
   - id: place
     features:
       - source: osm
@@ -194,7 +160,7 @@ layers:
           place: [city, town]
         attributes: *place_attrs
 
-      # Dedina a osada sú to, čoho je najviac – vlastný zoom a až od z10.
+      # villages and hamlets are most numerous, so from z10
       - source: osm
         geometry: point
         min_zoom: 10
@@ -203,11 +169,9 @@ layers:
                   neighbourhood, borough]
         attributes: *place_attrs
 
-# ---------------------------------------------------------------------------
-# TESTY. Púšťa ich `java -jar planetiler.jar verify workers/boundaries/boundaries.yml`
-# a je to jediná vec, ktorá o tejto schéme povie pravdu bez celého behu.
+# TESTS: `java -jar planetiler.jar verify workers/boundaries/boundaries.yml`
 examples:
-  - name: Hranica štátu je plocha aj čiara, od z2, s menom
+  - name: A state border is an area and a line, from z2, with a name
     input:
       source: osm
       geometry: polygon
@@ -231,7 +195,7 @@ examples:
           name: Slovensko
           admin_level: 2
 
-  - name: Kraj je od z4
+  - name: A region is from z4
     input:
       source: osm
       geometry: polygon
@@ -253,7 +217,7 @@ examples:
           name: Prešovský kraj
           admin_level: 4
 
-  - name: Obec je od z8 a nesie meno, ktoré hranica v mape nemá
+  - name: A municipality is from z8 and carries the name the map border lacks
     input:
       source: osm
       geometry: polygon
@@ -275,7 +239,7 @@ examples:
           name: Ždiar
           admin_level: 8
 
-  - name: Mestská časť (úroveň 10) sem nepatrí – obcou nie je
+  - name: A city part (level 10) doesn't belong – it isn't a municipality
     input:
       source: osm
       geometry: polygon
@@ -285,7 +249,7 @@ examples:
         name: Staré Mesto
     output: []
 
-  - name: Chránené územie je hranica, ale nie administratívna
+  - name: A protected area is a border, but not an administrative one
     input:
       source: osm
       geometry: polygon
@@ -294,7 +258,7 @@ examples:
         name: TANAP
     output: []
 
-  - name: Bod obce povie, kde sa meno kreslí
+  - name: A municipality point says where the name is drawn
     input:
       source: osm
       geometry: point
@@ -311,7 +275,7 @@ examples:
           name: Ždiar
           population: 1300
 
-  - name: Krajské mesto je od z6
+  - name: A regional capital is from z6
     input:
       source: osm
       geometry: point

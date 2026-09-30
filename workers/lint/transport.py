@@ -1,21 +1,5 @@
 #!/usr/bin/env python3
-"""Dopravná sieť: filter pustí, čo schéma chce – a balík naozaj nesie sieť.
-
-Sedem tichých vecí:
-
-  1. predfilter (`filter.txt`) a schéma (`transport.yml`) sa rozídu –
-     Planetiler dostane PBF, v ktorom ten tag už nie je, a beh zazelená;
-  2. zo siete vypadne celá rodina – kontroluje sa `highway`, `route`
-     (trajekt) aj `aerialway`;
-  3. do siete sa vrátia železnice – tie nesie balík `zeleznice`;
-  4. zo siete ticho vypadne trieda – `include_when` je biela listina, takže
-     čo v nej nie je, sa do dlaždíc nedostane a nepovie o tom nič;
-  5. obmedzenia na ceste (výška, šírka, hmotnosť, rýchlosť) z nej vypadnú –
-     a hodnoty musia ostať reťazcom, `double` spraví z „12'6\"" ticho 12 m;
-  6. `class` a `druh` prestanú byť z `match_value`/`match_key` a stanú sa
-     druhou kópiou zoznamu tried z `include_when`;
-  7. vrstva `adresy` stratí ulicu alebo číslo domu.
-"""
+"""Transport network: the filter lets through what the schema wants, and the package carries it."""
 import json
 import os
 import sys
@@ -26,43 +10,40 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _WORKERS = os.path.dirname(_HERE)
 SCHEMA = os.path.join(_WORKERS, "transport", "transport.yml")
 FILTER = os.path.join(_WORKERS, "transport", "filter.txt")
-CISELNIK = os.path.join(_WORKERS, "data", "packages.json")
+PACKAGES = os.path.join(_WORKERS, "data", "packages.json")
 
-# Rodiny dopravy, ktoré vrstva SĽUBUJE. Kľúč → čím to je v OSM.
-RODINY = {
-    "highway": "cesty (od diaľnice po schody)",
-    "route": "trajekty a prievozy",
-    "aerialway": "lanovky a vleky",
+# transport families the layer PROMISES
+FAMILIES = {
+    "highway": "roads (from motorways to steps)",
+    "route": "ferries",
+    "aerialway": "aerialways and lifts",
 }
 
-# Obmedzenia na ceste, ktoré sú odteraz atribútmi siete (mali vlastnú vrstvu).
-# Kľúč → čo sa stane, keď vypadne.
-OBMEDZENIA = {
-    "maxheight": "výška podjazdu",
-    "maxheight_physical": "nameraná výška podjazdu, keď tabuľa chýba",
-    "maxwidth": "šírka",
-    "maxweight": "hmotnosť",
-    "maxspeed": "maximálna rýchlosť",
-    "lanes": "počet jazdných pruhov",
-    "width": "šírka cesty",
-    "incline": "stúpanie",
+# road restrictions, attributes of this network → what is lost without them
+RESTRICTIONS = {
+    "maxheight": "underpass height",
+    "maxheight_physical": "measured underpass height when the sign is missing",
+    "maxwidth": "width",
+    "maxweight": "weight",
+    "maxspeed": "speed limit",
+    "lanes": "number of lanes",
+    "width": "road width",
+    "incline": "incline",
 }
 
-# Tie z nich, ktoré NESMÚ byť číslom: hodnota nesie jednotku (`3.8 m`,
-# `12'6"`, `50 mph`) a Planetiler by z nej vzal číslo zo začiatku a zvyšok
-# zahodil – TICHO, s platnou dlaždicou a zeleným behom.
-RETAZCE = {"maxheight", "maxheight_physical", "maxwidth", "maxweight",
+# these carry a unit (`3.8 m`, `12'6"`, `50 mph`) that a number would silently drop
+STRINGS = {"maxheight", "maxheight_physical", "maxwidth", "maxweight",
            "maxspeed", "width", "incline"}
 
-# Bez týchto sa adresa nedá nájsť ani ukázať.
-ADRESA = {"addr:housenumber", "addr:conscriptionnumber", "addr:street",
-          "addr:place", "addr:city"}
+# without these an address can't be found or shown
+ADDRESS = {"addr:housenumber", "addr:conscriptionnumber", "addr:street",
+           "addr:place", "addr:city"}
 
-# železnice nesie balík `zeleznice`, v cestách by boli dvakrát
-ZELEZNICE = "railway"
+# railways are the `railways` package, in roads they'd be twice
+RAILWAY = "railway"
 
-# Triedy, ktoré vrstva sľubuje; chýba tu, po čom sa ísť nedá a plochy s bodmi.
-PREJAZDNE = {
+# classes the layer promises
+PASSABLE = {
     "highway": {
         "motorway", "trunk", "primary", "secondary", "tertiary",
         "motorway_link", "trunk_link", "primary_link", "secondary_link",
@@ -87,7 +68,7 @@ def err(msg):
 
 
 def filter_keys(path):
-    """Holé kľúče z `osmium tags-filter --expressions` (bez `w/`, `nwr/`)."""
+    """Bare keys from `osmium tags-filter --expressions` (without `w/`, `nwr/`)."""
     out = set()
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -101,139 +82,133 @@ def filter_keys(path):
 
 
 def main():
-    for path in (SCHEMA, FILTER, CISELNIK):
+    for path in (SCHEMA, FILTER, PACKAGES):
         if not os.path.exists(path):
-            print(f"::error::{path} neexistuje.")
+            print(f"::error::{path} doesn't exist.")
             return 1
 
     with open(SCHEMA, encoding="utf-8") as f:
         schema = yaml.safe_load(f)
-    vrstvy = schema.get("layers") or []
-    bloky = [b for v in vrstvy for b in (v.get("features") or [])]
-    if not bloky:
-        err(f"{SCHEMA}: schéma nemá ani jeden blok – vrstva by bola prázdna.")
-        return hotovo()
+    layers = schema.get("layers") or []
+    blocks = [b for v in layers for b in (v.get("features") or [])]
+    if not blocks:
+        err(f"{SCHEMA}: the schema has no block – the layer would be empty.")
+        return done()
 
-    # ---- 1. predfilter pustí, čo schéma chce ----
-    pusta = filter_keys(FILTER)
-    chce = set()
-    for b in bloky:
-        chce |= set((b.get("include_when") or {}).keys())
-    chyba = sorted(chce - pusta)
-    if chyba:
-        err(f"{FILTER}: schéma sa pýta na {', '.join(chyba)}, ale predfilter "
-            f"to nepúšťa (pozná {', '.join(sorted(pusta))}). Planetiler by "
-            f"dostal PBF, v ktorom ten tag už nie je – dlaždice by vznikli, "
-            f"beh by bol zelený a tá časť siete by v nich jednoducho nebola.")
+    # 1. the prefilter lets through what the schema wants
+    passes = filter_keys(FILTER)
+    wants = set()
+    for b in blocks:
+        wants |= set((b.get("include_when") or {}).keys())
+    missing = sorted(wants - passes)
+    if missing:
+        err(f"{FILTER}: the schema asks for {', '.join(missing)}, but the prefilter "
+            f"doesn't let it through (it knows {', '.join(sorted(passes))}). Planetiler "
+            f"would get a PBF without that tag – tiles made, run green and that "
+            f"part of the network simply not in them.")
 
-    # ---- 2. všetky tri rodiny dopravy sú v sieti ----
-    for kluc, popis in RODINY.items():
-        if kluc not in chce:
-            err(f"{SCHEMA}: v sieti nie sú {popis} (`{kluc}`). Vrstva sľubuje "
-                f"„všetko, po čom sa dá cestovať“ – balík by sa volal rovnako, "
-                f"vážil menej a nikto by sa nedozvedel, že v ňom chýba celý "
-                f"spôsob dopravy.")
+    # 2. all three transport families are in the network
+    for key, what in FAMILIES.items():
+        if key not in wants:
+            err(f"{SCHEMA}: the network lacks {what} (`{key}`). The layer promises "
+                f"“everything one can travel on” – the package would weigh less and "
+                f"nobody would learn a whole means of transport is missing.")
 
-    # ---- 3. železnice v sieti nie sú ----
-    if ZELEZNICE in chce or ZELEZNICE in pusta:
-        err(f"{SCHEMA}, {FILTER}: v cestách je `railway`. Železnice nesie "
-            f"balík `zeleznice` – v balíku `cesty` by boli druhý raz.")
+    # 3. no railways in the network
+    if RAILWAY in wants or RAILWAY in passes:
+        err(f"{SCHEMA}, {FILTER}: roads contain `railway`. Railways are the "
+            f"`railways` package – in `roads` they'd be there twice.")
 
-    # ---- 4. sľúbené triedy sú naozaj v schéme ----
-    v_scheme = {}
-    for b in bloky:
-        for kluc, hodnoty in (b.get("include_when") or {}).items():
-            if not isinstance(hodnoty, list):
-                hodnoty = [hodnoty]
-            v_scheme.setdefault(kluc, set()).update(map(str, hodnoty))
-    for kluc, sluby in PREJAZDNE.items():
-        chyba = sorted(sluby - v_scheme.get(kluc, set()))
-        if chyba:
-            err(f"{SCHEMA}: v sieti nie je `{kluc}=" + ", ".join(chyba) +
-                "`. `include_when` je biela listina, takže tá trieda sa do "
-                "dlaždíc nedostane – filter ju pustí, schéma zahodí, balík je "
-                "len o niečo menší a beh zelený.")
+    # 4. promised classes really are in the schema
+    in_schema = {}
+    for b in blocks:
+        for key, values in (b.get("include_when") or {}).items():
+            if not isinstance(values, list):
+                values = [values]
+            in_schema.setdefault(key, set()).update(map(str, values))
+    for key, promised in PASSABLE.items():
+        missing = sorted(promised - in_schema.get(key, set()))
+        if missing:
+            err(f"{SCHEMA}: the network lacks `{key}=" + ", ".join(missing) +
+                "`. `include_when` is a whitelist, so that class never reaches "
+                "the tiles – the filter passes it, the schema drops it, the "
+                "package is a bit smaller and the run green.")
 
-    # ---- 5. obmedzenia na ceste sú atribútmi siete a sú reťazcom ----
+    # 5. road restrictions are network attributes, and strings
     tag_mappings = schema.get("tag_mappings") or {}
-    for i, b in enumerate(bloky, start=1):
-        # Len cestné bloky – `maxheight` na lanovke ani na trajekte nie je
-        # a vyžadovať ho tam by znamenalo atribút, ktorý nikdy nevznikne.
+    for i, b in enumerate(blocks, start=1):
+        # road blocks only – no `maxheight` on an aerialway or ferry
         if "highway" not in (b.get("include_when") or {}):
             continue
-        atr = {a.get("key") for a in (b.get("attributes") or [])
-               if isinstance(a, dict)}
-        chyba = sorted(set(OBMEDZENIA) - atr)
-        if chyba:
-            err(f"{SCHEMA}: cestný blok {i} nenesie "
-                f"{', '.join(f'`{k}` ({OBMEDZENIA[k]})' for k in chyba)}. "
-                f"Obmedzenia na ceste vlastnú vrstvu UŽ NEMAJÚ – sú atribútmi "
-                f"tejto siete, takže keď vypadnú odtiaľto, nie sú nikde. "
-                f"Sieť sa pritom nakreslí rovnako a beh bude zelený.")
-    for kluc in sorted(RETAZCE):
-        if kluc in tag_mappings:
-            err(f"{SCHEMA}: `{kluc}` je v `tag_mappings` ako "
-                f"`{tag_mappings[kluc]}`. Tá hodnota nesie v OSM jednotku "
-                f"(`3.8 m`, `12'6\"`, `50 mph`) a Planetiler z nej vezme "
-                f"číslo zo začiatku a zvyšok zahodí – z 3,8 m je 12 m a "
-                f"nespadne pri tom nič. Nechaj ju reťazcom.")
+        attrs = {a.get("key") for a in (b.get("attributes") or [])
+                 if isinstance(a, dict)}
+        missing = sorted(set(RESTRICTIONS) - attrs)
+        if missing:
+            err(f"{SCHEMA}: road block {i} doesn't carry "
+                f"{', '.join(f'`{k}` ({RESTRICTIONS[k]})' for k in missing)}. "
+                f"Road restrictions have no layer of their own any more – drop "
+                f"them here and they are nowhere, with the same drawing and a green run.")
+    for key in sorted(STRINGS):
+        if key in tag_mappings:
+            err(f"{SCHEMA}: `{key}` is in `tag_mappings` as "
+                f"`{tag_mappings[key]}`. The OSM value carries a unit "
+                f"(`3.8 m`, `12'6\"`, `50 mph`) and Planetiler takes the leading "
+                f"number and drops the rest – 12'6\" becomes 12 m without a "
+                f"failure. Keep it a string.")
 
-    # ---- 6. `class` a `druh` sú z toho, čím sa blok trafil ----
-    siet = [b for v in vrstvy if v.get("id") == "transport"
-            for b in (v.get("features") or [])]
-    for i, b in enumerate(siet, start=1):
-        atr = {a.get("key"): a for a in (b.get("attributes") or [])
-               if isinstance(a, dict)}
-        for kluc, typ in (("class", "match_value"), ("druh", "match_key")):
-            a = atr.get(kluc)
+    # 6. `class` and `family` come from what the block matched
+    network = [b for v in layers if v.get("id") == "transport"
+               for b in (v.get("features") or [])]
+    for i, b in enumerate(network, start=1):
+        attrs = {a.get("key"): a for a in (b.get("attributes") or [])
+                 if isinstance(a, dict)}
+        for key, kind in (("class", "match_value"), ("family", "match_key")):
+            a = attrs.get(key)
             if a is None:
-                err(f"{SCHEMA}: blok {i} nedáva `{kluc}`. Bez neho sa v sieti "
-                    f"nedá povedať, čo tá čiara je.")
-            elif a.get("type") != typ:
-                err(f"{SCHEMA}: blok {i} má `{kluc}` inak než `type: {typ}` – "
-                    f"vypísaný ručne je to druhá kópia zoznamu tried "
-                    f"z `include_when` a rozíde sa s ním pri prvej pridanej "
-                    f"triede.")
+                err(f"{SCHEMA}: block {i} doesn't give `{key}`. Without it the "
+                    f"network can't say what the line is.")
+            elif a.get("type") != kind:
+                err(f"{SCHEMA}: block {i} has `{key}` other than `type: {kind}` – "
+                    f"written by hand it's a second copy of the class list in "
+                    f"`include_when` and parts with it at the first added class.")
 
-    # ---- 8. adresy nesú ulicu aj číslo, inak sa podľa nich nedá hľadať ----
-    adresy = [b for v in vrstvy if v.get("id") == "adresy"
-              for b in (v.get("features") or [])]
-    if not adresy:
-        err(f"{SCHEMA}: chýba vrstva `adresy` – v balíku `cesty` by sa nedala "
-            f"nájsť ulica s číslom domu.")
-    for i, b in enumerate(adresy, start=1):
-        atr = {a.get("key") for a in (b.get("attributes") or [])
-               if isinstance(a, dict)}
-        chyba = sorted(ADRESA - atr)
-        if chyba:
-            err(f"{SCHEMA}: blok adries {i} nenesie {', '.join(chyba)} – "
-                f"hľadanie by našlo číslo bez ulice alebo ulicu bez čísla.")
+    # 7. addresses carry street and number, or nothing can be searched
+    addresses = [b for v in layers if v.get("id") == "addresses"
+                 for b in (v.get("features") or [])]
+    if not addresses:
+        err(f"{SCHEMA}: the `addresses` layer is missing – the `roads` package "
+            f"couldn't find a street with a house number.")
+    for i, b in enumerate(addresses, start=1):
+        attrs = {a.get("key") for a in (b.get("attributes") or [])
+                 if isinstance(a, dict)}
+        missing = sorted(ADDRESS - attrs)
+        if missing:
+            err(f"{SCHEMA}: address block {i} doesn't carry {', '.join(missing)} – "
+                f"search would find a number without a street or a street without one.")
 
-    # ---- 7. the layer really gets into package `roads` ----
-    # (`workers/lint/packaging.py` checks the same over really packed ZIPs)
-    with open(CISELNIK, encoding="utf-8") as f:
+    # 8. the layer really gets into package `roads` (`packaging.py` checks the ZIPs)
+    with open(PACKAGES, encoding="utf-8") as f:
         packages = {p["key"]: p for p in json.load(f).get("packages") or []}
     roads = packages.get("roads") or {}
     if "transport" not in (roads.get("manifest") or []) or \
             "-transport.pmtiles" not in (roads.get("suffixes") or []):
-        err(f"{CISELNIK}: package `roads` doesn't take the road network (`transport` "
+        err(f"{PACKAGES}: package `roads` doesn't take the road network (`transport` "
             f"in `manifest`, `-transport.pmtiles` in `suffixes`). The layer would be "
             f"built and never packed – promising a network and empty.")
-    return hotovo()
+    return done()
 
 
-def hotovo():
+def done():
     for b in bad:
         print(f"::error::{b}")
     if bad:
-        print(f"\n{len(bad)} problém(ov) v dopravnej sieti.")
+        print(f"\n{len(bad)} problem(s) in the transport network.")
         return 1
-    print("Dopravná sieť: predfilter pustí, čo schéma chce, v sieti sú cesty, "
-          "trajekty aj lanovky, každá sľúbená trieda je v schéme, "
-          "železnice v nej nie sú, "
-          "obmedzenia na ceste v nej sú a ostali reťazcom, `class` s `druh` "
-          "idú z toho, čím sa blok trafil, adresy nesú ulicu aj číslo "
-          "a balík `cesty` ju naozaj nesie.")
+    print("Transport network: the prefilter passes what the schema wants, roads, "
+          "ferries and aerialways are in, every promised class is in the schema, "
+          "no railways, road restrictions are in and stayed strings, `class` and "
+          "`family` come from what the block matched, addresses carry street and "
+          "number, and the `roads` package really carries it.")
     return 0
 
 

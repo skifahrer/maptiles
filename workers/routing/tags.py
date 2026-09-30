@@ -1,153 +1,157 @@
 #!/usr/bin/env python3
-"""Slovník značiek pre smerovanie – jediný prístup k `workers/data/routing-tags.json`."""
+"""Routing tag dictionary – the one way into `workers/data/routing-tags.json`."""
 import hashlib
 import json
 import os
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-CISELNIK = os.path.join(os.path.dirname(_HERE), "data", "routing-tags.json")
+LOOKUP = os.path.join(os.path.dirname(_HERE), "data", "routing-tags.json")
 
-# druhy kľúčov; hodnota v dlaždici sa kóduje podľa nich
-VYMENOVANY, CISLO, VOLNY = "hodnoty", "cislo", "volny"
+# key kinds; a tile value is encoded by them
+ENUMERATED, NUMBER, FREE = "values", "number", "free"
+
+# the id hashes the former Slovak names, so no published archive is orphaned
+_ID_KIND = {ENUMERATED: "hodnoty", NUMBER: "cislo", FREE: "volny"}
+_ID_KEY = {"country": "krajina"}
 
 
-class Slovnik:
-    """Kľúče a hodnoty, ktoré smú do dlaždice – aj s poradím, ktoré je index."""
+class Dictionary:
+    """Keys and values allowed into a tile – in the order that is their index."""
 
-    def __init__(self, path=CISELNIK):
+    def __init__(self, path=LOOKUP):
         with open(path, encoding="utf-8") as f:
             raw = json.load(f)
-        self.verzia = raw["verzia"]
-        self.siet = {k: v for k, v in raw["siet"].items() if not k.startswith("_")}
-        pristup = raw["_pristup"]["hodnoty"]
+        self.version = raw["version"]
+        self.network = {k: v for k, v in raw["network"].items() if not k.startswith("_")}
+        access = raw["_access"]["values"]
 
-        self.kluce = []                    # poradie = index kľúča v dlaždici
-        self.druh = {}
-        self.hodnoty = {}
-        for kluc, spec in raw["kluce"].items():
-            if spec.get("z_siete"):
-                druh, hodnoty = VYMENOVANY, list(self.siet[kluc])
-            elif spec.get("pristup"):
-                druh, hodnoty = VYMENOVANY, list(pristup)
-            elif spec.get(VYMENOVANY):
-                druh, hodnoty = VYMENOVANY, list(spec[VYMENOVANY])
-            elif spec.get(CISLO):
-                druh, hodnoty = CISLO, []
-            elif spec.get(VOLNY):
-                druh, hodnoty = VOLNY, []
+        self.keys = []                     # order = the key's index in the tile
+        self.kind = {}
+        self.values = {}
+        for key, spec in raw["keys"].items():
+            if spec.get("from_network"):
+                kind, values = ENUMERATED, list(self.network[key])
+            elif spec.get("access"):
+                kind, values = ENUMERATED, list(access)
+            elif spec.get(ENUMERATED):
+                kind, values = ENUMERATED, list(spec[ENUMERATED])
+            elif spec.get(NUMBER):
+                kind, values = NUMBER, []
+            elif spec.get(FREE):
+                kind, values = FREE, []
             else:
                 raise SystemExit(
-                    f"::error file=workers/data/routing-tags.json::kľúč "
-                    f"`{kluc}` nemá druh (`hodnoty`, `cislo`, `volny`, "
-                    f"`pristup` ani `z_siete`). Bez druhu sa nedá zakódovať "
-                    f"ani prečítať – telefón by na tom mieste čítal iné číslo.")
-            self.kluce.append(kluc)
-            self.druh[kluc] = druh
-            self.hodnoty[kluc] = hodnoty
-        self._idx = {k: i for i, k in enumerate(self.kluce)}
-        self._hidx = {k: {v: i for i, v in enumerate(vs)}
-                      for k, vs in self.hodnoty.items()}
-        self.id = _id(self.verzia, self.siet, self.kluce, self.druh, self.hodnoty)
+                    f"::error file=workers/data/routing-tags.json::key "
+                    f"`{key}` has no kind (`values`, `number`, `free`, "
+                    f"`access` or `from_network`). Without one it can't be encoded "
+                    f"or read – the phone would read another number there.")
+            self.keys.append(key)
+            self.kind[key] = kind
+            self.values[key] = values
+        self._idx = {k: i for i, k in enumerate(self.keys)}
+        self._vidx = {k: {v: i for i, v in enumerate(vs)}
+                      for k, vs in self.values.items()}
+        self.id = _id(self.version, self.network, self.keys, self.kind, self.values)
 
-    def index(self, kluc):
-        return self._idx.get(kluc)
+    def index(self, key):
+        return self._idx.get(key)
 
-    def hodnota_index(self, kluc, hodnota):
-        return self._hidx.get(kluc, {}).get(hodnota)
+    def value_index(self, key, value):
+        return self._vidx.get(key, {}).get(value)
 
-    def trieda(self, tags):
-        """Čím je way cesta – `(kľúč, hodnota)`, alebo `None`."""
-        for kluc, hodnoty in self.siet.items():
-            v = tags.get(kluc)
-            if v in hodnoty:
-                return kluc, v
+    def road_class(self, tags):
+        """What makes the way a road – `(key, value)`, or `None`."""
+        for key, values in self.network.items():
+            v = tags.get(key)
+            if v in values:
+                return key, v
         return None
 
-    def vyber(self, tags):
-        """Značky, ktoré sa vezú – neznáma hodnota sa zahodí a vráti sa zvlášť."""
-        out, zahodene = {}, []
-        for kluc, v in tags.items():
-            druh = self.druh.get(kluc)
-            if druh is None:
+    def pick(self, tags):
+        """Tags that travel; an unknown value is dropped and returned apart."""
+        out, dropped = {}, []
+        for key, v in tags.items():
+            kind = self.kind.get(key)
+            if kind is None:
                 continue
             v = v.strip()
-            if druh == VYMENOVANY:
-                if kluc in self._hidx and v in self._hidx[kluc]:
-                    out[kluc] = v
+            if kind == ENUMERATED:
+                if key in self._vidx and v in self._vidx[key]:
+                    out[key] = v
                 else:
-                    zahodene.append((kluc, v))
-            elif druh == CISLO:
+                    dropped.append((key, v))
+            elif kind == NUMBER:
                 try:
-                    out[kluc] = str(int(v))
+                    out[key] = str(int(v))
                 except ValueError:
-                    zahodene.append((kluc, v))
+                    dropped.append((key, v))
             elif v:
-                out[kluc] = v
-        return out, zahodene
+                out[key] = v
+        return out, dropped
 
 
-def _id(verzia, siet, kluce, druh, hodnoty):
-    """Id slovníka z jeho obsahu – ručne písané by sa pri zmene neposunulo."""
-    telo = {
-        "verzia": verzia,
-        "siet": {k: list(v) for k, v in siet.items()},
-        "kluce": [[k, druh[k], hodnoty[k]] for k in kluce],
+def _id(version, network, keys, kind, values):
+    """The dictionary id from its content – a hand-written one wouldn't move on change."""
+    body = {
+        "verzia": version,
+        "siet": {k: list(v) for k, v in network.items()},
+        "kluce": [[_ID_KEY.get(k, k), _ID_KIND[kind[k]], values[k]] for k in keys],
     }
-    raw = json.dumps(telo, ensure_ascii=False, sort_keys=False,
+    raw = json.dumps(body, ensure_ascii=False, sort_keys=False,
                      separators=(",", ":")).encode("utf-8")
     return int.from_bytes(hashlib.sha256(raw).digest()[:4], "big")
 
 
 _CACHE = {}
-ZELEZNICE = os.path.join(os.path.dirname(_HERE), "data", "rail-routing-tags.json")
+RAIL = os.path.join(os.path.dirname(_HERE), "data", "rail-routing-tags.json")
 
 
-def slovnik(path=None):
-    path = path or os.environ.get("ROUTING_TAGS") or CISELNIK
+def dictionary(path=None):
+    path = path or os.environ.get("ROUTING_TAGS") or LOOKUP
     if path not in _CACHE:
-        _CACHE[path] = Slovnik(path)
+        _CACHE[path] = Dictionary(path)
     return _CACHE[path]
 
 
 def export(s=None):
-    """Slovník tak, ako ho potrebuje appka – kľúče v poradí indexov, aj s `id`."""
-    s = s or slovnik()
-    return {"verzia": s.verzia, "id": f"{s.id:08x}",
-            "siet": {k: list(v) for k, v in s.siet.items()},
-            "kluce": [[k, s.druh[k], s.hodnoty[k]] for k in s.kluce]}
+    """The dictionary as the app needs it – keys in index order, with `id`."""
+    s = s or dictionary()
+    return {"version": s.version, "id": f"{s.id:08x}",
+            "network": {k: list(v) for k, v in s.network.items()},
+            "keys": [[k, s.kind[k], s.values[k]] for k in s.keys]}
 
 
-def filter_vyrazy(s=None):
-    """Predfilter PBF pre `osmium tags-filter` – zo `siet`, nie druhý zoznam."""
-    s = s or slovnik()
-    riadky = [f"w/{kluc}={','.join(hodnoty)}"
-              for kluc, hodnoty in s.siet.items()]
-    # zákazy odbočenia; členov si `tags-filter` doťahuje sám (bez `-R`)
-    riadky.append("r/type=restriction")
-    return riadky
+def filter_expressions(s=None):
+    """PBF prefilter for `osmium tags-filter` – from `network`, not a second list."""
+    s = s or dictionary()
+    lines = [f"w/{key}={','.join(values)}"
+             for key, values in s.network.items()]
+    # turn restrictions; `tags-filter` pulls members itself (without `-R`)
+    lines.append("r/type=restriction")
+    return lines
 
 
-def _cesta_z_argv(argv):
+def _path_from_argv(argv):
     for i, a in enumerate(argv):
-        if a.startswith("--slovnik="):
+        if a.startswith("--dictionary="):
             return a.split("=", 1)[1]
-        if a == "--slovnik" and i + 1 < len(argv):
+        if a == "--dictionary" and i + 1 < len(argv):
             return argv[i + 1]
     return None
 
 
 if __name__ == "__main__":
-    s = slovnik(_cesta_z_argv(sys.argv[1:]))
+    s = dictionary(_path_from_argv(sys.argv[1:]))
     if "--filter" in sys.argv[1:]:
-        print("\n".join(filter_vyrazy(s)))
+        print("\n".join(filter_expressions(s)))
         sys.exit(0)
     if "--export" in sys.argv[1:]:
         print(json.dumps(export(s), ensure_ascii=False, indent=1))
         sys.exit(0)
-    print(f"slovník v{s.verzia}, id {s.id:08x}, {len(s.kluce)} kľúčov")
-    for kluc in s.kluce:
-        n = len(s.hodnoty[kluc])
-        print(f"  {s.index(kluc):2d}  {kluc:22s} {s.druh[kluc]:8s}"
-              f"{f' ({n} hodnôt)' if n else ''}")
+    print(f"dictionary v{s.version}, id {s.id:08x}, {len(s.keys)} keys")
+    for key in s.keys:
+        n = len(s.values[key])
+        print(f"  {s.index(key):2d}  {key:22s} {s.kind[key]:8s}"
+              f"{f' ({n} values)' if n else ''}")
     sys.exit(0)

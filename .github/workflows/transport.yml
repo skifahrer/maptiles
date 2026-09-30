@@ -1,4 +1,4 @@
-name: Mapa · dopravná sieť
+name: Map · transport network
 
 # CELÁ DOPRAVNÁ SIEŤ z OSM do vlastného `.pmtiles`: cesty od diaľnice po
 # schody, železnice, električky a metro, trajekty a lanovky. Rozpis je

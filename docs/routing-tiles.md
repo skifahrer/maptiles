@@ -26,7 +26,7 @@ smerovanie. PMTiles ostáva ako obálka, lebo katalóg, fronta sťahovania,
 účtovanie miesta aj maska regiónu ten formát už vedia.
 
 **Výšky nie sú z OSM** – PBF ich nemá – ale z DMR 5.0 (sklad `dem-dmr5-v2`,
-prevzorkovaný na 5 m): `build.sh` si ho pre bbox kraja stiahne a `vysky.py`
+prevzorkovaný na 5 m): `build.sh` si ho pre bbox kraja stiahne a `heights.py`
 odoberie bilineárne výšku pod cestou. Keď ho pre kraj v sklade ešte nikto
 nevyrobil, spadne sa na Sonnyho 20 m a beh to napíše do súhrnu.
 
@@ -57,7 +57,7 @@ jej dno.
 
 Vo verzii 1 **nie je**: zábrany na uzloch (`barrier=*`), podmienené zákazy
 (`restriction:conditional`), smerové rýchlosti (`maxspeed:forward`) a krajina
-hrany z `admin_level=2` – tú dnes dosadzuje `--krajina` na celý archív, lebo
+hrany z `admin_level=2` – tú dnes dosadzuje `--country` na celý archív, lebo
 kraj je celý v jednej krajine.
 
 ## Mriežka
@@ -66,7 +66,7 @@ Dlaždice sú **z9 XYZ**, tá istá mriežka ako mapa. Hrana patrí do dlaždice
 **svojho prvého uzla** – to je vlastnosť way v OSM, nie kraja, takže dvom
 behom nad tými istými dátami vyjde tá istá dlaždica.
 
-**Nad mestom sa z9 nezmestí.** Rozpočet na jednu dlaždicu je `ROZPOCET_KB`
+**Nad mestom sa z9 nezmestí.** Rozpočet na jednu dlaždicu je `BUDGET_KB`
 (1 MB) a je to strop na pamäť telefónu, nie na stránku: nad ním sa archív
 sťahuje po kusoch, ktoré sa v ňom nedajú rozumne držať. Bratislavská z9 má
 4,2 MB, košické dve po 2,9 a 2,7 MB. Dlaždica nad rozpočtom sa preto **reže na
@@ -158,7 +158,7 @@ svet, takže dva kraje dosadia tomu istému uzlu to isté číslo), takže miern
 zastarané poradie je stále platné poradie. `tiles.py` vypíše, koľko takých
 uzlov bolo; keď ich je veľa, workflow sa spustí znova.
 
-Archív bez poradia (`tiles.py` bez `--poradie`, teda kým cache ešte nič nemá)
+Archív bez poradia (`tiles.py` bez `--order`, teda kým cache ešte nič nemá)
 sa postaviť dá a `graf` v metadátach archívu to o sebe povie
 (`poradie: null`); telefón si vtedy poradie musí dorátať sám.
 
@@ -206,13 +206,13 @@ referenčná stavba; po krajoch sa už nestavia.
 ```bash
 # poradie – nad celým územím, nie po krajoch (workflow to robí za teba)
 python3 workers/routing/order.py --pbf=data/routing.osm.pbf \
-    --out=data/routing-order.json --nazov=Slovensko
+    --out=data/routing-order.json --name=Slovensko
 
 python3 workers/routing/tiles.py --pbf=data/region.osm.pbf \
     --out=_site/tiles/presovsky-routing.pmtiles \
-    --region-key=presovsky --name=Prešovský --krajina=SK \
-    --poradie=data/routing-order.json \
-    --dem=dem/dmr5/all.vrt --profil-krok=5
+    --region-key=presovsky --name=Prešovský --country=SK \
+    --order=data/routing-order.json \
+    --dem=dem/dmr5/all.vrt --profile-step=5
 
 python3 workers/lint/routing-tiles.py _site/tiles/*-routing.pmtiles
 
@@ -232,6 +232,6 @@ kruhový objazd so štyrmi ramenami, vidlica, zmena mena ulice a slepý koniec
 s jedinou odbočkou. Poradie uzlov je nad všetkým, čo `fixture.py` píše, takže
 archívy sa dajú čítať aj spolu.
 
-Vedľa nich ešte `iny-rank/routing-fixture-east.pmtiles`: ten istý východný
+Vedľa nich ešte `other-order/routing-fixture-east.pmtiles`: ten istý východný
 výrez pod iným `id` poradia a s inými rankmi. Je tam preto, aby ho mala appka
 čo odmietnuť, takže do behu nepatrí a lint sa nad ním nepúšťa.

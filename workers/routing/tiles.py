@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Graf križovatiek → `<kraj>-routing.pmtiles`: dlaždice so značkami, nie s cenami."""
+"""Junction graph → `<region>-routing.pmtiles`: tiles with tags, not costs."""
 import argparse
 import gzip
 import json
@@ -10,22 +10,21 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import format as fmt                                              # noqa: E402
-import tags as slovnik_modul                                      # noqa: E402
+import tags as tags_mod                                           # noqa: E402
 
-# tá istá mriežka ako mapa; okrajové dlaždice susedných krajov tak na seba
-# sadnú a telefón ich spojí podľa z/x/y
+# the map's grid, so neighbouring regions' border tiles line up by z/x/y
 ZOOM = 9
-# meno pod hustým mestom sa nezmestí do rozpočtu, tak sa dlaždica reže hlbšie
+# a dense city won't fit the budget, so its tile is cut deeper
 ZOOM_MAX = 13
 E7 = 1e7
 
 
-def vysky_krok():
-    """Predvolený krok profilu – jedno číslo pre `format.py` aj pre `--help`."""
-    return fmt.KROK_DM / 10
+def default_step():
+    """The default profile step – one number for `format.py` and `--help`."""
+    return fmt.STEP_DM / 10
 
 
-def dlazdica_z(lat_e7, lon_e7, z=ZOOM):
+def tile_at(lat_e7, lon_e7, z=ZOOM):
     lat, lon = lat_e7 / E7, lon_e7 / E7
     n = 2 ** z
     x = int((lon + 180.0) / 360.0 * n)
@@ -34,201 +33,199 @@ def dlazdica_z(lat_e7, lon_e7, z=ZOOM):
     return z, min(max(x, 0), n - 1), min(max(y, 0), n - 1)
 
 
-def okno(z, x, y):
-    """Zemepisný obdĺžnik dlaždice v e7 (west, south, east, north)."""
+def window(z, x, y):
+    """The tile's box in e7 (west, south, east, north)."""
     n = 2.0 ** z
     w = x / n * 360.0 - 180.0
     e = (x + 1) / n * 360.0 - 180.0
-    sever = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / n))))
-    juh = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + 1) / n))))
-    return (round(w * E7), round(juh * E7), round(e * E7), round(sever * E7))
+    north = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / n))))
+    south = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + 1) / n))))
+    return (round(w * E7), round(south * E7), round(e * E7), round(north * E7))
 
 
-class Dlazdica:
-    def __init__(self, zxy, slovnik):
+class Tile:
+    def __init__(self, zxy, dictionary):
         self.zxy = zxy
-        self.slovnik = slovnik
-        self.uzly = {}                 # osm id -> (lat, lon, vyska, rank)
-        self.hrany = []
-        self.zakazy = []
-        self._tagsety = {}
-        self._retazce = {}
+        self.dictionary = dictionary
+        self.nodes = {}                # osm id -> (lat, lon, height, rank)
+        self.edges = []
+        self.restrictions = []
+        self._tagsets = {}
+        self._strings = {}
 
-    def tagset(self, tagy):
-        """Index sady značiek; rovnaké sady sú v archíve raz."""
-        polozky = []
-        for kluc, hodnota in tagy.items():
-            i = self.slovnik.index(kluc)
-            druh = self.slovnik.druh[kluc]
-            if druh == slovnik_modul.VYMENOVANY:
-                kod = self.slovnik.hodnota_index(kluc, hodnota)
-            elif druh == slovnik_modul.CISLO:
-                kod = fmt.zigzag(int(hodnota))
+    def tagset(self, tags):
+        """The tag set's index; equal sets are in the archive once."""
+        items = []
+        for key, value in tags.items():
+            i = self.dictionary.index(key)
+            kind = self.dictionary.kind[key]
+            if kind == tags_mod.ENUMERATED:
+                code = self.dictionary.value_index(key, value)
+            elif kind == tags_mod.NUMBER:
+                code = fmt.zigzag(int(value))
             else:
-                kod = self._retazce.setdefault(hodnota, len(self._retazce))
-            polozky.append((i, kod))
-        polozky.sort()
-        kluc = tuple(polozky)
-        return self._tagsety.setdefault(kluc, len(self._tagsety))
+                code = self._strings.setdefault(value, len(self._strings))
+            items.append((i, code))
+        items.sort()
+        key = tuple(items)
+        return self._tagsets.setdefault(key, len(self._tagsets))
 
-    def telo(self, slovnik_id, poradie_id, s_poradim, s_vyskou=False,
-             krok_dm=fmt.KROK_DM):
-        poradie = sorted(self.uzly)
-        idx = {osm: i for i, osm in enumerate(poradie)}
-        uzly = [(osm, *self.uzly[osm]) for osm in poradie]
-        lat_min = min(u[1] for u in uzly)
-        lat_max = max(u[1] for u in uzly)
-        lon_min = min(u[2] for u in uzly)
-        lon_max = max(u[2] for u in uzly)
-        for h in self.hrany:
+    def body(self, dictionary_id, order_id, with_order, with_height=False,
+             step_dm=fmt.STEP_DM):
+        order = sorted(self.nodes)
+        idx = {osm: i for i, osm in enumerate(order)}
+        nodes = [(osm, *self.nodes[osm]) for osm in order]
+        lat_min = min(u[1] for u in nodes)
+        lat_max = max(u[1] for u in nodes)
+        lon_min = min(u[2] for u in nodes)
+        lon_max = max(u[2] for u in nodes)
+        for h in self.edges:
             for lat, lon in h["geom"]:
                 lat_min, lat_max = min(lat_min, lat), max(lat_max, lat)
                 lon_min, lon_max = min(lon_min, lon), max(lon_max, lon)
 
-        w, s, e, n = okno(*self.zxy)
-        okraj = [i for i, u in enumerate(uzly)
-                 if not (w <= u[2] <= e and s <= u[1] <= n)]
+        w, s, e, n = window(*self.zxy)
+        border = [i for i, u in enumerate(nodes)
+                  if not (w <= u[2] <= e and s <= u[1] <= n)]
 
-        return fmt.zapis({
-            "vyska": s_vyskou,
-            "poradie": s_poradim,
-            "slovnik_id": slovnik_id,
-            "poradie_id": poradie_id,
+        return fmt.write({
+            "height": with_height,
+            "order": with_order,
+            "dictionary_id": dictionary_id,
+            "order_id": order_id,
             "zxy": list(self.zxy),
             "bbox": [lon_min, lat_min, lon_max, lat_max],
-            "uzly": uzly,
-            "krok_dm": krok_dm,
-            "hrany": [{"od": idx[h["od"]], "do": idx[h["do"]],
-                       "tagset": h["tagset"], "dlzka_cm": h["dlzka_cm"],
-                       "smer": h["smer"], "geom": h["geom"],
-                       "profil": h.get("profil") or []} for h in self.hrany],
-            "tagsety": [list(k) for k, _ in
-                        sorted(self._tagsety.items(), key=lambda kv: kv[1])],
-            "retazce": [s for s, _ in
-                        sorted(self._retazce.items(), key=lambda kv: kv[1])],
-            "zakazy": self.zakazy,
-            "okraj": okraj,
+            "nodes": nodes,
+            "step_dm": step_dm,
+            "edges": [{"from": idx[h["from"]], "to": idx[h["to"]],
+                       "tagset": h["tagset"], "length_cm": h["length_cm"],
+                       "direction": h["direction"], "geom": h["geom"],
+                       "profile": h.get("profile") or []} for h in self.edges],
+            "tagsets": [list(k) for k, _ in
+                        sorted(self._tagsets.items(), key=lambda kv: kv[1])],
+            "strings": [s for s, _ in
+                        sorted(self._strings.items(), key=lambda kv: kv[1])],
+            "restrictions": self.restrictions,
+            "border": border,
         })
 
 
-def po_dlazdiciach(siet, hrany, zakazy, z):
-    """Hrana patrí do dlaždice svojho prvého uzla – to je vlastnosť OSM, nie kraja."""
-    skupiny = {}
-    for h in hrany:
-        lat, lon = siet.uzly[h["od"]]
-        skupiny.setdefault(dlazdica_z(lat, lon, z), ([], []))[0].append(h)
-    for zakaz in zakazy:
-        lat, lon = siet.uzly[zakaz["cez"]]
-        skupina = skupiny.get(dlazdica_z(lat, lon, z))
-        if skupina is None:
+def by_tile(network, edges, restrictions, z):
+    """An edge belongs to its first node's tile – a property of OSM, not the region."""
+    groups = {}
+    for h in edges:
+        lat, lon = network.nodes[h["from"]]
+        groups.setdefault(tile_at(lat, lon, z), ([], []))[0].append(h)
+    for r in restrictions:
+        lat, lon = network.nodes[r["via"]]
+        group = groups.get(tile_at(lat, lon, z))
+        if group is None:
             continue
-        skupina[1].append(zakaz)
-    return skupiny
+        group[1].append(r)
+    return groups
 
 
-def postav(zxy, hrany, zakazy, siet, slovnik, krajina, poradie):
-    d = Dlazdica(zxy, slovnik)
-    vysky = vysky_siete(siet)
-    for h in hrany:
-        tagy = dict(h["tagy"])
-        if krajina:
-            tagy["krajina"] = krajina
-        for ref in (h["od"], h["do"]):
-            if ref not in d.uzly:
-                d.uzly[ref] = (*siet.uzly[ref], vysky.get(ref, 0),
-                               poradie.rank(ref))
-        d.hrany.append({"od": h["od"], "do": h["do"], "geom": h["geom"],
-                        "dlzka_cm": h["dlzka_cm"], "smer": h["smer"],
-                        "profil": h.get("profil"), "tagset": d.tagset(tagy)})
-    for zakaz in zakazy:
-        d.zakazy.append({"druh": zakaz["druh"], "vynimky": zakaz["vynimky"],
-                         "hrany": zakaz["hrany"]})
+def build(zxy, edges, restrictions, network, dictionary, country, order):
+    d = Tile(zxy, dictionary)
+    heights = network_heights(network)
+    for h in edges:
+        tags = dict(h["tags"])
+        if country:
+            tags["country"] = country
+        for ref in (h["from"], h["to"]):
+            if ref not in d.nodes:
+                d.nodes[ref] = (*network.nodes[ref], heights.get(ref, 0),
+                                order.rank(ref))
+        d.edges.append({"from": h["from"], "to": h["to"], "geom": h["geom"],
+                        "length_cm": h["length_cm"], "direction": h["direction"],
+                        "profile": h.get("profile"), "tagset": d.tagset(tags)})
+    for r in restrictions:
+        d.restrictions.append({"kind": r["kind"], "exceptions": r["exceptions"],
+                               "edges": r["edges"]})
     return d
 
 
-def vysky_siete(siet):
-    """Výšky uzlov, keď ich sieť má – bez nich sa stĺpec do dlaždice nepíše."""
-    return getattr(siet, "vysky", None) or {}
+def network_heights(network):
+    """Node heights when the network has them – else no column is written."""
+    return getattr(network, "heights", None) or {}
 
 
-def vzorkuj_vysky(siet, dem, krok_m=0.0):
-    """Výšky z modelu; keď to nejde, archív ide bez nich a beh to povie."""
-    import vysky                                                  # noqa: PLC0415
+def sample_heights(network, dem, step_m=0.0):
+    """Heights from the model; when that fails, the archive goes without and says so."""
+    import heights                                                # noqa: PLC0415
     t0 = time.time()
     try:
-        if krok_m > 0:
-            z_modelu, od_susedov, bez, s_prof, bez_prof = \
-                vysky.dopln_profilmi(siet, dem, krok_m)
+        if step_m > 0:
+            from_model, from_neighbours, none, with_prof, no_prof = \
+                heights.fill_with_profiles(network, dem, step_m)
         else:
-            z_modelu, od_susedov, bez = vysky.dopln(siet, dem)
-            s_prof, bez_prof = 0, len(siet.hrany)
+            from_model, from_neighbours, none = heights.fill(network, dem)
+            with_prof, no_prof = 0, len(network.edges)
     except Exception as e:                                        # noqa: BLE001
-        print(f"::warning::Výšky z {dem} sa nedali odobrať ({e}) – archív ide "
-              f"bez nich.")
+        print(f"::warning::Heights from {dem} couldn't be sampled ({e}) – the "
+              f"archive goes without them.")
         return
-    print(f"Výšky: {z_modelu} uzlov z modelu, {od_susedov} od susedov "
-          f"({time.time() - t0:.0f} s)")
-    if krok_m > 0:
-        print(f"Profil po {krok_m:g} m: {s_prof} hrán, {bez_prof} bez profilu")
-    if bez:
-        print(f"::warning::{bez} z {len(siet.uzly)} uzlov nemá výšku ani od "
-              f"suseda – model {dem} ich územie nepokrýva; v archíve majú 0 m.")
-    if krok_m > 0 and bez_prof:
-        print(f"::warning::{bez_prof} z {len(siet.hrany)} hrán nemá výškový "
-              f"profil – model {dem} ich územie nepokrýva a stúpanie po nich "
-              f"sa počíta len z výšok koncov.")
+    print(f"Heights: {from_model} nodes from the model, {from_neighbours} from "
+          f"neighbours ({time.time() - t0:.0f} s)")
+    if step_m > 0:
+        print(f"Profile every {step_m:g} m: {with_prof} edges, {no_prof} without")
+    if none:
+        print(f"::warning::{none} of {len(network.nodes)} nodes have no height, "
+              f"not even from a neighbour – model {dem} doesn't cover them; they "
+              f"are 0 m in the archive.")
+    if step_m > 0 and no_prof:
+        print(f"::warning::{no_prof} of {len(network.edges)} edges have no height "
+              f"profile – model {dem} doesn't cover them and their climb comes "
+              f"only from the end heights.")
 
 
-def rozdel(siet, slovnik, krajina, poradie, rozpocet=None, krok_dm=fmt.KROK_DM):
-    """Dlaždice z9; ktorej sa telo nezmestí do rozpočtu, tá sa reže hlbšie.
+def split(network, dictionary, country, order, budget=None, step_dm=fmt.STEP_DM):
+    """z9 tiles; one whose body won't fit the budget is cut deeper.
 
-    Delí sa tá istá mriežka, takže dieťa celé leží vo svojej z9 a na jej
-    `z/x/y` nie je potom nič – telefón tam nenájde dlaždicu a zostúpi.
+    The same grid is split, so a child lies wholly in its z9 and that `z/x/y`
+    then holds nothing – the phone finds no tile there and descends.
     """
-    strop = fmt.ROZPOCET_KB * 1024 if rozpocet is None else rozpocet
-    s_vyskou = bool(vysky_siete(siet))
-    telá = {}
-    fronta = list(po_dlazdiciach(siet, siet.hrany, siet.zakazy, ZOOM).items())
-    while fronta:
-        zxy, (hrany, zakazy) = fronta.pop()
-        d = postav(zxy, hrany, zakazy, siet, slovnik, krajina, poradie)
-        telo = gzip.compress(
-            d.telo(slovnik.id, poradie.id, bool(poradie), s_vyskou, krok_dm), 9)
-        if len(telo) > strop and zxy[0] < ZOOM_MAX:
-            fronta.extend(po_dlazdiciach(siet, hrany, zakazy, zxy[0] + 1).items())
+    cap = fmt.BUDGET_KB * 1024 if budget is None else budget
+    with_height = bool(network_heights(network))
+    bodies = {}
+    queue = list(by_tile(network, network.edges, network.restrictions, ZOOM).items())
+    while queue:
+        zxy, (edges, restrictions) = queue.pop()
+        d = build(zxy, edges, restrictions, network, dictionary, country, order)
+        body = gzip.compress(
+            d.body(dictionary.id, order.id, bool(order), with_height, step_dm), 9)
+        if len(body) > cap and zxy[0] < ZOOM_MAX:
+            queue.extend(by_tile(network, edges, restrictions, zxy[0] + 1).items())
             continue
-        telá[zxy] = telo
-    return telá
+        bodies[zxy] = body
+    return bodies
 
 
-class Poradie:
-    """Rank na uzol – aj pre uzol, ktorý v poradí nie je."""
+class Order:
+    """A rank per node – also for a node the order doesn't have."""
 
-    def __init__(self, cesta=""):
+    def __init__(self, path=""):
         self.id, self._rank = 0, {}
-        if cesta:
-            with open(cesta, encoding="utf-8") as f:
+        if path:
+            with open(path, encoding="utf-8") as f:
                 raw = json.load(f)
             self.id = int(raw["id"], 16)
             self._rank = {int(k): v for k, v in raw["rank"].items()}
-        self._koniec = len(self._rank)
+        self._end = len(self._rank)
 
     def __bool__(self):
         return bool(self._rank)
 
     def rank(self, osm_id):
-        """Uzol pribudnutý po výpočte poradia ide na koniec, podľa OSM id.
+        """A node added after the order goes last by OSM id – still a GLOBAL order.
 
-        Je to stále GLOBÁLNE poradie – OSM id je jedno na celý svet, takže dva
-        kraje dosadia tomu istému uzlu to isté číslo. Bez toho by sa poradie
-        muselo prepočítať pri každej zmene siete a archívy postavené pred ňou
-        a po nej by sa nedali spojiť.
+        OSM ids are world-wide, so two regions give a node the same number.
         """
         r = self._rank.get(osm_id)
-        return r if r is not None else self._koniec + osm_id
+        return r if r is not None else self._end + osm_id
 
-    def chybajuce(self, uzly):
-        return sum(1 for u in uzly if u not in self._rank)
+    def missing(self, nodes):
+        return sum(1 for u in nodes if u not in self._rank)
 
 
 def main():
@@ -237,121 +234,120 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--region-key", required=True)
     ap.add_argument("--name", default="")
-    ap.add_argument("--krajina", default="",
-                    help="ISO kód krajiny archívu – vstup pre diaľničnú známku")
-    ap.add_argument("--poradie", default="",
-                    help="súbor s poradím uzlov z workers/routing/order.py")
+    ap.add_argument("--country", default="",
+                    help="the archive's ISO country code – input for the vignette")
+    ap.add_argument("--order", default="",
+                    help="node order file from workers/routing/order.py")
     ap.add_argument("--dem", default="",
-                    help="mozaika výškového modelu (VRT) – výšky a profily")
-    ap.add_argument("--slovnik", default="",
-                    help="iný slovník značiek, napr. workers/data/rail-routing-tags.json")
-    ap.add_argument("--profil-krok", type=float, default=vysky_krok(),
-                    help="krok výškového profilu hrany v metroch; 0 = bez neho")
+                    help="elevation model mosaic (VRT) – heights and profiles")
+    ap.add_argument("--dictionary", default="",
+                    help="another tag dictionary, e.g. workers/data/rail-routing-tags.json")
+    ap.add_argument("--profile-step", type=float, default=default_step(),
+                    help="edge height profile step in metres; 0 = none")
     args = ap.parse_args()
 
-    import network                                                # noqa: PLC0415
+    import network as network_mod                                 # noqa: PLC0415
 
-    slovnik = slovnik_modul.slovnik(args.slovnik or None)
-    if args.krajina and slovnik.hodnota_index("krajina", args.krajina) is None:
-        print(f"::error::Krajina `{args.krajina}` nie je v `krajina` vo "
-              f"workers/data/routing-tags.json, takže by sa do archívu "
-              f"nedostala a diaľničná známka by v ňom nemala na čom stáť.",
+    dictionary = tags_mod.dictionary(args.dictionary or None)
+    if args.country and dictionary.value_index("country", args.country) is None:
+        print(f"::error::Country `{args.country}` isn't in `country` of "
+              f"workers/data/routing-tags.json, so it wouldn't get into the "
+              f"archive and the vignette would have nothing to stand on.",
               file=sys.stderr)
         return 1
 
     t0 = time.time()
-    siet = network.nacitaj(args.pbf, slovnik)
-    print(f"Sieť: {siet.ciest} ciest → {len(siet.uzly)} križovatiek, "
-          f"{len(siet.hrany)} hrán, {len(siet.zakazy)} zákazov "
+    network = network_mod.load(args.pbf, dictionary)
+    print(f"Network: {network.ways} ways → {len(network.nodes)} junctions, "
+          f"{len(network.edges)} edges, {len(network.restrictions)} restrictions "
           f"({time.time() - t0:.0f} s)")
 
     if args.dem:
-        vzorkuj_vysky(siet, args.dem, args.profil_krok)
+        sample_heights(network, args.dem, args.profile_step)
     else:
-        print("::warning::Archív ide BEZ VÝŠOK UZLOV (`--dem`): bicykel a "
-              "chodec sa v ňom rátajú, ako keby bol kraj rovina, a trasa "
-              "hlási namiesto stúpania pomlčku.")
+        print("::warning::The archive goes WITHOUT NODE HEIGHTS (`--dem`): bicycle "
+              "and walker cost as if the region were flat, and the route shows a "
+              "dash instead of the climb.")
 
-    poradie = Poradie(args.poradie)
-    if args.poradie:
-        chyba = poradie.chybajuce(siet.uzly)
-        if chyba:
-            print(f"::warning::{chyba} z {len(siet.uzly)} uzlov v poradí "
-                  f"z {args.poradie} nie je – sieť sa od jeho výpočtu zmenila. "
-                  f"Dostanú rank na konci podľa OSM id, takže sa archívy dajú "
-                  f"spojiť ďalej; keď ich je veľa, prepočítaj poradie "
-                  f"(workflow „Navigácia · poradie uzlov“).")
+    order = Order(args.order)
+    if args.order:
+        missing = order.missing(network.nodes)
+        if missing:
+            print(f"::warning::{missing} of {len(network.nodes)} nodes aren't in the "
+                  f"order from {args.order} – the network changed since it was "
+                  f"computed. They rank last by OSM id, so archives still join; "
+                  f"if there are many, recompute the order "
+                  f"(workflow “Routing · node order”).")
     else:
-        print("::warning::Archív ide BEZ PORADIA UZLOV (`--poradie`). Trasa "
-              "sa z neho spočíta, ale telefón si musí poradie dorátať sám – "
-              "a to je jediná drahá časť CCH, ktorá do telefónu nepatrí "
+        print("::warning::The archive goes WITHOUT A NODE ORDER (`--order`). Routes "
+              "still compute, but the phone must work out the order itself – the "
+              "one expensive part of CCH that doesn't belong on a phone "
               "(docs/navigation.md §11).")
 
-    krok_dm = max(1, int(round(args.profil_krok * 10)))
-    telá = rozdel(siet, slovnik, args.krajina, poradie, krok_dm=krok_dm)
-    if not telá:
-        print("::warning::V tomto území nie je ani jedna cesta, po ktorej by "
-              "sa dalo ísť – archív so smerovaním sa nevyrobí.")
+    step_dm = max(1, int(round(args.profile_step * 10)))
+    bodies = split(network, dictionary, args.country, order, step_dm=step_dm)
+    if not bodies:
+        print("::warning::This area has no road one could take – no routing "
+              "archive is made.")
         return 0
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    zoom_max = max(z for z, _, _ in telá)
-    delene = sum(1 for z, _, _ in telá if z > ZOOM)
+    zoom_max = max(z for z, _, _ in bodies)
+    split_count = sum(1 for z, _, _ in bodies if z > ZOOM)
 
-    velke = sorted(((len(b), zxy) for zxy, b in telá.items()), reverse=True)
-    nad = [(n, zxy) for n, zxy in velke if n > fmt.ROZPOCET_KB * 1024]
-    for n, zxy in nad:
-        print(f"::warning::Dlaždica {zxy[0]}/{zxy[1]}/{zxy[2]} má "
-              f"{n // 1024} kB, čo je nad rozpočtom {fmt.ROZPOCET_KB} kB aj "
-              f"na z{ZOOM_MAX}, hlbšie sa už nedelí. Páka je slovník značiek "
-              f"(workers/data/routing-tags.json).")
+    big = sorted(((len(b), zxy) for zxy, b in bodies.items()), reverse=True)
+    over = [(n, zxy) for n, zxy in big if n > fmt.BUDGET_KB * 1024]
+    for n, zxy in over:
+        print(f"::warning::Tile {zxy[0]}/{zxy[1]}/{zxy[2]} is "
+              f"{n // 1024} kB, above the {fmt.BUDGET_KB} kB budget even "
+              f"at z{ZOOM_MAX}, and isn't split further. The lever is the tag "
+              f"dictionary (workers/data/routing-tags.json).")
 
-    graf = {
-        "rozsah": "region",
-        "kluc": args.region_key,
+    graph = {
+        "scope": "region",
+        "key": args.region_key,
         "name": args.name or args.region_key,
         "format": "rtil",
-        "format_verzia": fmt.VERZIA,
-        "slovnik": f"{slovnik.id:08x}",
-        "slovnik_verzia": slovnik.verzia,
-        "poradie": f"{poradie.id:08x}" if poradie else None,
-        "krajina": args.krajina or None,
+        "format_version": fmt.VERSION,
+        "dictionary": f"{dictionary.id:08x}",
+        "dictionary_version": dictionary.version,
+        "order": f"{order.id:08x}" if order else None,
+        "country": args.country or None,
         "zoom": ZOOM,
         "zoom_max": zoom_max,
-        "delenych": delene,
-        "dlazdic": len(telá),
-        "uzlov": len(siet.uzly),
-        "hran": len(siet.hrany),
-        "zakazov": len(siet.zakazy),
-        "vyska": bool(vysky_siete(siet)),
-        "profil": bool(args.profil_krok) and any(h.get("profil")
-                                                 for h in siet.hrany),
-        "profil_krok_m": args.profil_krok or None,
+        "split": split_count,
+        "tiles": len(bodies),
+        "nodes": len(network.nodes),
+        "edges": len(network.edges),
+        "restrictions": len(network.restrictions),
+        "height": bool(network_heights(network)),
+        "profile": bool(args.profile_step) and any(h.get("profile")
+                                                   for h in network.edges),
+        "profile_step_m": args.profile_step or None,
         "multimodal": False,
-        # dlaždica sa reže mriežkou, nie hranicou kraja: susedné kraje majú
-        # okrajové dlaždice tej istej z/x/y a telefón ich spojí podľa OSM id
-        "spojenie": "podľa OSM id uzlov; okrajové dlaždice susedov sa "
-                    "prekrývajú a spájajú sa po prvkoch, nie po dlaždiciach",
-        # hustá dlaždica je nahradená deťmi, na jej vlastnom z/x/y nie je nič
-        "delenie": "na z/x/y bez dlaždice zostúp o zoom nižšie, až po zoom_max",
+        # neighbours' border tiles share z/x/y; the phone joins them by OSM id
+        "joining": "by OSM node id; neighbours' border tiles overlap and join "
+                   "by features, not by tiles",
+        # a dense tile is replaced by its children, its own z/x/y holds nothing
+        "splitting": "no tile at z/x/y means descend a zoom, down to zoom_max",
         "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "run": os.environ.get("GITHUB_RUN_NUMBER", ""),
         "run_id": os.environ.get("GITHUB_RUN_ID", ""),
     }
 
-    # až tu, nech si tiler naimportuje aj lint, ktorý pmtiles mať nemusí
+    # imported here, so a lint without pmtiles can import the tiler
     from pmtiles.tile import (Compression, TileType,                # noqa: PLC0415
                               zxy_to_tileid)
     from pmtiles.writer import Writer                               # noqa: PLC0415
 
     with open(args.out, "wb") as f:
         wr = Writer(f)
-        for zxy in sorted(telá, key=lambda t: zxy_to_tileid(*t)):
-            wr.write_tile(zxy_to_tileid(*zxy), telá[zxy])
-        w = min(okno(*z)[0] for z in telá)
-        s = min(okno(*z)[1] for z in telá)
-        e = max(okno(*z)[2] for z in telá)
-        n = max(okno(*z)[3] for z in telá)
+        for zxy in sorted(bodies, key=lambda t: zxy_to_tileid(*t)):
+            wr.write_tile(zxy_to_tileid(*zxy), bodies[zxy])
+        w = min(window(*z)[0] for z in bodies)
+        s = min(window(*z)[1] for z in bodies)
+        e = max(window(*z)[2] for z in bodies)
+        n = max(window(*z)[3] for z in bodies)
         wr.finalize(
             {"tile_type": TileType.UNKNOWN, "tile_compression": Compression.GZIP,
              "min_zoom": ZOOM, "max_zoom": zoom_max,
@@ -360,22 +356,22 @@ def main():
              "center_lat_e7": (s + n) // 2},
             {"name": os.path.basename(args.out).removesuffix(".pmtiles"),
              "format": "rtil",
-             "description": "Smerovacia sieť so značkami – cenu počíta telefón",
-             "graf": graf},
+             "description": "Routing network with tags – the phone computes the cost",
+             "graph": graph},
         )
 
-    velkost = os.path.getsize(args.out)
-    print(json.dumps(graf, ensure_ascii=False, indent=2))
-    print(f"{args.out}: {len(telá)} dlaždíc (z{ZOOM}–z{zoom_max}, {delene} "
-          f"delených), {velkost / 1048576:.1f} MB, "
-          f"najväčšia {velke[0][0] // 1024} kB")
-    zahodene = siet.zahodene.most_common(10)
-    if zahodene:
-        print("Hodnoty mimo slovníka (zahodené): "
-              + ", ".join(f"{k}×{n}" for k, n in zahodene))
-    if siet.preskocene:
-        print("Preskočené: "
-              + ", ".join(f"{k}×{n}" for k, n in siet.preskocene.items()))
+    size = os.path.getsize(args.out)
+    print(json.dumps(graph, ensure_ascii=False, indent=2))
+    print(f"{args.out}: {len(bodies)} tiles (z{ZOOM}–z{zoom_max}, {split_count} "
+          f"split), {size / 1048576:.1f} MB, "
+          f"largest {big[0][0] // 1024} kB")
+    dropped = network.dropped.most_common(10)
+    if dropped:
+        print("Values outside the dictionary (dropped): "
+              + ", ".join(f"{k}×{n}" for k, n in dropped))
+    if network.skipped:
+        print("Skipped: "
+              + ", ".join(f"{k}×{n}" for k, n in network.skipped.items()))
     return 0
 
 

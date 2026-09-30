@@ -1,19 +1,7 @@
 #!/usr/bin/env node
 /**
- * MapLibre štýl k mape sveta – jeden súbor na farebnú tému.
- *
- * Vlastný generátor preto, že `workers/styles/build.mjs` skladá stovky vrstiev
- * nad schémou OpenMapTiles, z ktorých mapa sveta nemá ani jednu; nebolo by to
- * „to isté s vypnutými vrstvami", ale druhá vetva v tom istom súbore. Farby sú
- * spoločné – berú sa z `poc/web/themes.js`.
- *
- * Odkazy sú predvolene relatívne: táto mapa sa nenasadzuje na Pages, ide na
- * Drive ako `.zip` a `.aar`, ktorý si človek rozbalí k sebe. `--base-url=`
- * z nich spraví absolútne.
- *
- * Zoomy musia sedieť so schémou (`minzoom` kreslí, `min_zoom` vyrába) – inak
- * má mapa dieru alebo platí za dlaždice, ktoré nikto nevykreslí. Stráži to
- * `workers/lint/world.py`.
+ * MapLibre style for the world map – one file per colour theme, relative links by default.
+ * Zooms must match the schema (`workers/lint/world.py`).
  *
  *   node workers/world/style.mjs --out=_site/styles --maxzoom=6
  */
@@ -33,42 +21,28 @@ const outDir = args.out || "_site/styles";
 const region = args.region || "svet";
 const maxzoom = Number(args.maxzoom || 6);
 
-// PODOBA MAPY (`plna` / `basic`). Číselník je ten istý, z ktorého si build
-// skladá schému pre Planetiler – `workers/data/world-variants.json`. Štýl
-// z neho potrebuje jedinú vec: ktoré vrstvy schémy v tej podobe existujú.
-// Kresliť vrstvu, ktorá v dlaždiciach nie je, by MapLibre nezhodilo a nikto
-// by nepovedal nič (presne to stráži `workers/lint/world.py` pri menách).
+// the variant decides which schema layers exist (`workers/data/world-variants.json`)
 const _HERE = dirname(fileURLToPath(import.meta.url));
-const VARIANTY = JSON.parse(
+const VARIANTS = JSON.parse(
   readFileSync(join(_HERE, "..", "data", "world-variants.json"), "utf8")
 );
-const variant = args.variant || "plna";
-if (!VARIANTY[variant] || variant.startsWith("_")) {
+const VARIANT_ALIAS = { plna: "full" };
+const variant = VARIANT_ALIAS[args.variant] || args.variant || "full";
+if (!VARIANTS[variant] || variant.startsWith("_")) {
   console.error(
-    `::error::Podobu mapy sveta „${variant}" nepoznám. Sú: ` +
-      Object.keys(VARIANTY).filter((k) => !k.startsWith("_")).join(", ")
+    `::error::World map variant “${variant}” is unknown. There are: ` +
+      Object.keys(VARIANTS).filter((k) => !k.startsWith("_")).join(", ")
   );
   process.exit(1);
 }
-const VRSTVY = new Set(VARIANTY[variant].layers);
-// Prázdny `--base-url` = relatívne odkazy (balík na disku). S ním sa z nich
-// stanú absolútne (mapa hosťovaná na URL).
+const LAYERS = new Set(VARIANTS[variant].layers);
+// empty `--base-url` = relative links (package on disk)
 const base = (args["base-url"] || "").replace(/\/$/, "");
-const url = (cesta) => (base ? `${base}/${cesta}` : cesta);
-// GLYFY V BALÍKU NIE SÚ. Boli – odkaz sem mieril relatívne, vedľa dlaždíc –
-// a `publish-map.py` ich preto ako jedinému balíku nechával. Odkedy si tri
-// orezané stacky nesie v sebe appka (`skifahrer/rikimaps`, `GlyphStore`)
-// a `glyphs` si pri načítaní prepíše na ne, je kópia v balíku mŕtva váha
-// a pri strope 15 MB na podobu `basic` to nie je zanedbateľná váha.
-//
-// Adresa tu ostáva preto, aby mal ODKIAĽ BRAŤ ten, kto nie je appka: rozbalený
-// balík vo webovom vieweri. Je to tá istá verejná služba, na ktorú siaha
-// `workers/deploy/site.sh` aj `workers/styles/build.mjs`, keď lokálne glyfy
-// nie sú – mapa s cudzími nápismi je lepšia než mapa bez nápisov.
+const url = (path) => (base ? `${base}/${path}` : path);
+// the app carries its own glyphs; this address is for an unpacked package on the web
 const glyphs = args.glyphs || "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf";
 
-// Tie isté fontstacky, aké kopíruje `workers/assets/glyphs.sh` (hľadá presne
-// `Noto Sans Regular` / `Bold` / `Italic`).
+// the fontstacks `workers/assets/glyphs.sh` copies
 const REG = ["Noto Sans Regular"];
 const BOLD = ["Noto Sans Bold"];
 
@@ -77,13 +51,8 @@ const ATTRIBUTION =
   'contributors</a> · <a href="https://download.geofabrik.de/">Geofabrik</a>' +
   ' · <a href="https://www.naturalearthdata.com/">Natural Earth</a>';
 
-/**
- * Od ktorého zoomu sa čo kreslí. Sú to TIE ISTÉ čísla, aké má `min_zoom`
- * v `workers/world/world.yml` – nižšie by mapa mala dieru, vyššie by sa
- * platili dlaždice, ktoré nikto nevykreslí. Porovnáva ich
- * `workers/lint/world.py`.
- */
-const OD = {
+/** From which zoom what is drawn – the same numbers as `min_zoom` in `world.yml`. */
+const FROM = {
   water: 0,
   lakeMinor: 5,
   boundary: 0,
@@ -93,81 +62,73 @@ const OD = {
   downloadLabel: { continent: 2, country: 3, subregion: 5 }
 };
 
-/** Do ktorého zoomu má úroveň regiónov zmysel – nižšia sa vypne, keď nastúpi
- * podrobnejšia. Bez toho by na sebe ležali tri obrysy toho istého územia
- * (výsek je vnútri štátu a ten vnútri svetadielu) a mapa by bola sieť. */
-const DO = { continent: OD.download.country, country: OD.download.subregion };
+/** A region level ends where the finer one starts, or three outlines stack up. */
+const UNTIL = { continent: FROM.download.country, country: FROM.download.subregion };
 
-const UROVNE = ["continent", "country", "subregion"];
+const LEVELS = ["continent", "country", "subregion"];
 
-function styl(temaId) {
-  const c = THEMES[temaId];
+function style(themeId) {
+  const c = THEMES[themeId];
   const layers = [
-    // Pevnina je PODKLAD, nie polygón: mapa sveta nekreslí plochy štátov,
-    // takže všetko, čo nie je voda, je táto farba.
+    // land is the background, not a polygon
     {
       id: "background",
       type: "background",
       paint: { "background-color": c.background }
     },
-    // Moria, oceány a jazerá. Vrstva je čisto plošná (popisky sú vlastné
-    // vrstvy), takže `fill` nemá čo pustiť do earcutu okrem plôch.
+    // seas, oceans and lakes
     {
       id: "water",
       type: "fill",
-      source: "svet",
+      source: "world",
       "source-layer": "water",
-      minzoom: OD.water,
+      minzoom: FROM.water,
       paint: { "fill-color": c.water }
     },
     {
       id: "water-outline",
       type: "line",
-      source: "svet",
+      source: "world",
       "source-layer": "water",
       minzoom: 3,
       paint: { "line-color": c.waterOutline, "line-width": 0.6 }
     }
   ];
 
-  // ---------- regióny sťahovania ----------
-  // Kvôli nim je táto mapa: ukazujú, na aké kusy je OSM rozdelené a ktorý si
-  // stiahnuť. Každá úroveň má vlastnú vrstvu, aby sa dala vypnúť tam, kde
-  // nastúpi podrobnejšia (viď `DO`).
-  for (const uroven of UROVNE) {
-    const od = OD.download[uroven];
-    const doZoomu = DO[uroven];
-    const rozsah = { minzoom: od, ...(doZoomu ? { maxzoom: doZoomu } : {}) };
+  // download regions, the point of this map; one layer per level
+  for (const level of LEVELS) {
+    const from = FROM.download[level];
+    const until = UNTIL[level];
+    const range = { minzoom: from, ...(until ? { maxzoom: until } : {}) };
     layers.push({
-      id: `download-${uroven}`,
+      id: `download-${level}`,
       type: "fill",
-      source: "svet",
+      source: "world",
       "source-layer": "download",
-      ...rozsah,
-      filter: ["==", ["get", "level"], uroven],
+      ...range,
+      filter: ["==", ["get", "level"], level],
       paint: { "fill-color": c.boundaryLocal, "fill-opacity": 0.08 }
     });
     layers.push({
-      id: `download-${uroven}-line`,
+      id: `download-${level}-line`,
       type: "line",
-      source: "svet",
+      source: "world",
       "source-layer": "download",
-      ...rozsah,
-      filter: ["==", ["get", "level"], uroven],
+      ...range,
+      filter: ["==", ["get", "level"], level],
       paint: {
         "line-color": c.boundaryLocal,
-        "line-width": uroven === "subregion" ? 0.8 : 1.4
+        "line-width": level === "subregion" ? 0.8 : 1.4
       }
     });
   }
 
-  // ---------- hranice štátov ----------
   layers.push({
     id: "boundary",
     type: "line",
-    source: "svet",
+    source: "world",
     "source-layer": "boundary",
-    minzoom: OD.boundary,
+    minzoom: FROM.boundary,
     filter: ["==", ["get", "kind"], "country"],
     paint: {
       "line-color": c.boundary,
@@ -175,12 +136,12 @@ function styl(temaId) {
     }
   });
   layers.push({
-    // Sporná hranica prerušovane – mapa nemá tvrdiť, že je istá.
+    // a disputed border is dashed
     id: "boundary-disputed",
     type: "line",
-    source: "svet",
+    source: "world",
     "source-layer": "boundary",
-    minzoom: OD.boundaryDisputed,
+    minzoom: FROM.boundaryDisputed,
     filter: ["==", ["get", "kind"], "disputed"],
     paint: {
       "line-color": c.boundary,
@@ -190,13 +151,12 @@ function styl(temaId) {
     }
   });
 
-  // ---------- popisky ----------
   layers.push({
     id: "place-country",
     type: "symbol",
-    source: "svet",
+    source: "world",
     "source-layer": "place",
-    minzoom: OD.place,
+    minzoom: FROM.place,
     layout: {
       "text-field": ["coalesce", ["get", "name:en"], ["get", "name"], ["get", "name_en"]],
       "text-font": BOLD,
@@ -210,20 +170,20 @@ function styl(temaId) {
       "text-halo-width": 1.4
     }
   });
-  for (const uroven of UROVNE) {
-    const doZoomu = DO[uroven];
+  for (const level of LEVELS) {
+    const until = UNTIL[level];
     layers.push({
-      id: `download-label-${uroven}`,
+      id: `download-label-${level}`,
       type: "symbol",
-      source: "svet",
+      source: "world",
       "source-layer": "download_label",
-      minzoom: OD.downloadLabel[uroven],
-      ...(doZoomu ? { maxzoom: doZoomu } : {}),
-      filter: ["==", ["get", "level"], uroven],
+      minzoom: FROM.downloadLabel[level],
+      ...(until ? { maxzoom: until } : {}),
+      filter: ["==", ["get", "level"], level],
       layout: {
         "text-field": ["get", "name"],
         "text-font": REG,
-        "text-size": uroven === "subregion" ? 10 : 11,
+        "text-size": level === "subregion" ? 10 : 11,
         "text-max-width": 8,
         "text-padding": 6
       },
@@ -236,29 +196,25 @@ function styl(temaId) {
     });
   }
 
-  // ČO PODOBA NEMÁ, SA NEKRESLÍ. Filtruje sa tu, na konci a podľa
-  // `source-layer`, a nie `if`-mi po celom súbore: pribudnúť môže vrstva
-  // aj podoba a takto sa nedá zabudnúť na jedno z tých dvoch miest.
-  // `background` zdroj nemá a ostáva vždy – je to farba pevniny.
-  const podla = layers.filter(
-    (l) => !l["source-layer"] || VRSTVY.has(l["source-layer"])
+  // what the variant lacks isn't drawn – filtered once, here
+  const kept = layers.filter(
+    (l) => !l["source-layer"] || LAYERS.has(l["source-layer"])
   );
 
   return {
     version: 8,
-    name: `FricoMaps svet – ${c.label}`,
-    // Kto štýl otvorí, má vedieť, čo v tej mape je a čo v nej NIE JE.
+    name: `FricoMaps world – ${c.label}`,
     metadata: {
-      "fricomaps:kind": "svet",
+      "fricomaps:kind": "world",
       "fricomaps:variant": variant,
       "fricomaps:description":
-        `Základná mapa sveta (${VARIANTY[variant].label}). Cesty, sídla ani `
-        + "terén v nej nie sú – je to podklad pod výber, ktorý kus si stiahnuť.",
-      "fricomaps:theme": temaId
+        `Basic world map (${VARIANTS[variant].label}). No roads, settlements or `
+        + "terrain – a base for choosing which piece to download.",
+      "fricomaps:theme": themeId
     },
     glyphs,
     sources: {
-      svet: {
+      world: {
         type: "vector",
         url: `pmtiles://${url(`tiles/${region}.pmtiles`)}`,
         attribution: ATTRIBUTION,
@@ -266,18 +222,18 @@ function styl(temaId) {
         maxzoom
       }
     },
-    layers: podla
+    layers: kept
   };
 }
 
 mkdirSync(outDir, { recursive: true });
-const napisane = [];
-for (const temaId of Object.keys(THEMES)) {
-  const cesta = join(outDir, `${region}-${temaId}.json`);
-  writeFileSync(cesta, JSON.stringify(styl(temaId), null, 2) + "\n");
-  napisane.push(cesta);
+const written = [];
+for (const themeId of Object.keys(THEMES)) {
+  const path = join(outDir, `${region}-${themeId}.json`);
+  writeFileSync(path, JSON.stringify(style(themeId), null, 2) + "\n");
+  written.push(path);
 }
-console.log(`Štýly mapy sveta – podoba ${variant} (${napisane.length}): `
-  + napisane.join(", "));
-console.log(`  dlaždice: pmtiles://${url(`tiles/${region}.pmtiles`)}`);
-console.log(`  glyfy:    ${glyphs}`);
+console.log(`World map styles – variant ${variant} (${written.length}): `
+  + written.join(", "));
+console.log(`  tiles:  pmtiles://${url(`tiles/${region}.pmtiles`)}`);
+console.log(`  glyphs: ${glyphs}`);

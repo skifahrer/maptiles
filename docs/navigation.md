@@ -239,7 +239,7 @@ jedno, z ktorého balíka prišiel.
 **Trasa v ňom končí na hranici kraja.** PBF je rezaný `osmium extract -s smart`
 – celé cesty a doplnení členovia relácií, urobené pre **plochy** – takže hrana,
 ktorej chýba druhý koniec, je slepá ulica a relácie zákazov odbočenia na
-hranici môžu byť neúplné. Je to **zámer, nie opomenutie**, a `graf.json`
+hranici môžu byť neúplné. Je to **zámer, nie opomenutie**, a `graph.json`
 v balíku to o sebe hovorí (`rozsah: "region"`, `hranica: "trasa končí na
 hranici regiónu…"`) – mlčanie by sa dalo čítať ako pokazený graf.
 
@@ -269,16 +269,16 @@ nereže**) a má vlastný balík na Drive, ten istý vzor ako Wikipédia:
 ```
 
 …s položkou v `maps.json`, aby sa o ňom bez tokenu dalo dozvedieť, a s
-`obsah.json` aj `graf.json` vnútri, ktoré povedia, z akého PBF a s akou verziou
+`obsah.json` aj `graph.json` vnútri, ktoré povedia, z akého PBF a s akou verziou
 motora je postavený. Verzia motora v ňom **musí** byť: graf a knižnica, ktorá
 ho číta, si musia sedieť a nesúlad vyzerá ako pokazená trasa.
 
-**Ktorý z tých dvoch klient má, sa pozná z `graf.json`** (`rozsah`), nie
+**Ktorý z tých dvoch klient má, sa pozná z `graph.json`** (`scope`), nie
 z veľkosti súboru ani z priečinka.
 
 ### 7c. Prázdny graf je VAROVANIE, nie pád behu
 
-Koľko je v grafe ciest, hovorí `graf.json` (`cesty`) a berie sa to z toho, čo
+Koľko je v grafe ciest, hovorí `graph.json` (`ways`) a berie sa to z toho, čo
 si Valhalla pri stavbe narátala sama – **`routable ways`, teda aj chodník
 (`highway=footway`), pešia cesta (`path`), schody a `sidewalk`**, lebo aj po
 tých sa trasa vedie (profil `pedestrian`). Nula preto neznamená „nie sú tu
@@ -308,7 +308,7 @@ zo štvorice pád behu **je** – to nie je malé územie, ale rozbitý balík.
 
 | `workers/data/routing-areas.json` | na aký CELOŠTÁTNY rozsah sa graf stavia |
 | `workers/routing/pbf.sh` | štátne extrakty z osm.fr, zliate `osmium merge`; **nič sa nereže** |
-| `workers/routing/graph.sh` | graf Valhally v Dockeri pre OBA rozsahy (`AREA` = štát, `REGION_KEY` = kraj), overenie všetkých štyroch súborov, `graf.json` s verziou motora, počtom ciest a s tým, kam trasa smie |
+| `workers/routing/graph.sh` | graf Valhally v Dockeri pre OBA rozsahy (`AREA` = štát, `REGION_KEY` = kraj), overenie všetkých štyroch súborov, `graph.json` s verziou motora, počtom ciest a s tým, kam trasa smie |
 | `.github/workflows/navigation.yml` | „Mapa · Build navigácia“ – celoštátny graf, vlastný balík na Drive, zápis do `maps.json` |
 | `.github/workflows/navigation-region.yml` | graf KRAJA z PBF mapy; artefakt `navigacia-graf` ide do `<kraj>-navigacia.zip` aj `.aar`, nie na Pages |
 | `workers/lint/navigation.py` | rozsah má vlastný uzol v katalógu, celoštátny PBF sa nereže, graf kraja o svojej hranici hovorí a má vlastný balík vedľa dopravnej siete, `admins.sqlite` sa nestratí, formulár sedí s číselníkom |
@@ -327,7 +327,7 @@ v OSM je hodnota reťazec s jednotkou (`3.8 m`, `12'6"`).
 Trasu už teda počítať **je z čoho**: graf existuje, dá sa postaviť a stiahnuť.
 Čo v ňom nie je: `multimodal` (autobus a vlak), lebo ten stojí na GTFS; a tri
 voľby pre auto plus známka po krajinách, kým nie je hotová záplata z §3.
-`graf.json` v balíku o sebe hovorí `multimodal: false`, aby to klient nemusel
+`graph.json` v balíku o sebe hovorí `multimodal: false`, aby to klient nemusel
 hádať.
 
 **Neoverené:** samotná stavba grafu nebežala – v tomto prostredí nie je

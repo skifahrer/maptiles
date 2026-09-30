@@ -1,30 +1,11 @@
-# Planetiler custom schema – krajinné prvky, ktoré OpenMapTiles nemá.
-#
-# Schéma OpenMapTiles sa pozerá len na tridsať kľúčov; `embankment`, líniový
-# `barrier`, `power`, `cutline`, `piste:type`, `natural=cave_entrance` ani
-# `man_made=tower` v nej nie sú vôbec. Nedá sa to zapnúť – musia sa vytiahnuť
-# z toho istého PBF druhýkrát, vlastnou schémou.
-#
-# Ten istý vzor ako značené trasy a skaly: vlastný súbor, maxzoom aj podiel na
-# rozpočte. Keď job nebeží, štýl vrstvu nepridá.
-#
-# Len línie a plochy – body sú vo `workers/features/points.yml` (rovnaký vstup
-# aj predfilter, len druhý beh Planetileru).
-#
-# Predfilter je zámerne širší než tento súbor. Keď sem pribudne trieda, musí
-# pribudnúť aj doň – stráži to `workers/lint/features.py`.
-#
-# Zoomy sú hlavné rozhodnutie: plotov je v OSM viac než všetkých ciest, tak idú
-# od z15; vedenie vysokého napätia je orientačný bod na kilometre, tak od z11.
-#
-# Čo má vyšší `min_zoom`, než je maxzoom dlaždíc, Planetiler zahodí a nepovie
-# nič – raz tak bola v mape nula plotov. Preto je `features_maxzoom`
-# predvolene 15 a build rozdiel ohlási varovaním.
-schema_name: FricoMaps krajinné prvky
+# Planetiler custom schema – landscape lines and areas OpenMapTiles lacks (points: `points.yml`).
+# The prefilter is wider on purpose; `workers/lint/features.py` guards new classes.
+# Planetiler silently drops `min_zoom` above maxzoom, so `features_maxzoom` defaults to 15.
+schema_name: FricoMaps landscape features
 schema_description: >-
-  Násypy, zárezy, múry, ploty, elektrické vedenia, prieseky, stromoradia,
-  parkoviská, zjazdovky a plánované cesty – línie a plochy z OSM, ktoré
-  schéma OpenMapTiles neprenáša
+  Embankments, cuttings, walls, fences, power lines, cutlines, tree rows,
+  car parks, ski pistes and proposed roads – OSM lines and areas the
+  OpenMapTiles schema doesn't carry
 attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 
 sources:
@@ -32,18 +13,15 @@ sources:
     type: osm
     local_path: data/features.osm.pbf
 
-# napätie má byť číslo – štýl podľa neho vyberá hrúbku čiary. „22000;110000"
-# sa nerozparsuje a atribút nebude; to je v poriadku.
+# voltage must be a number – the style picks line width by it; "22000;110000" just drops out
 tag_mappings:
   voltage: integer
 
 layers:
-  # LÍNIE. Jedna vrstva, `class` rozlišuje čo to je – zvlášť by z každej bola
-  # vrstva o pár stovkách kB réžie.
+  # LINES in one layer, `class` tells them apart – a layer each would cost overhead
   - id: feature_line
     features:
-      # násyp: `man_made=embankment` je čiara na hrane, `embankment=yes`
-      # vlastnosť cesty pod ňou. Kreslia sa rovnako, preto jedna trieda.
+      # `man_made=embankment` is a line on the edge, `embankment=yes` a property of the way: one class
       - source: osm
         geometry: line
         min_zoom: 13
@@ -59,7 +37,7 @@ layers:
             type: long
           - key: osm_type
             value: '${ feature.osm_type }'
-      # zárez (opak násypu – cesta vedie pod úrovňou terénu)
+      # cutting (the way runs below the terrain)
       - source: osm
         geometry: line
         min_zoom: 13
@@ -70,7 +48,7 @@ layers:
           - key: class
             value: cutting
 
-      # múry: hradby a oporné múry sú výrazné a dlhé, preto o zoom skôr než plot
+      # walls: city and retaining walls are long and prominent, a zoom before fences
       - source: osm
         geometry: line
         min_zoom: 14
@@ -80,12 +58,11 @@ layers:
           - key: name
           - key: class
             value: wall
-          # ktorý druh múru – štýl z toho vie spraviť hrubšiu hradbu
+          # which kind of wall – the style can draw a thicker city wall
           - key: subclass
             type: match_value
 
-      # ploty a živé ploty od z15: plotov je viac než ciest. Živý plot je
-      # vlastná trieda, lebo sa kreslí ako vegetácia, nie ako prekážka.
+      # fences and hedges from z15: there are more fences than roads; a hedge draws as vegetation
       - source: osm
         geometry: line
         min_zoom: 15
@@ -110,8 +87,7 @@ layers:
           - key: osm_type
             value: '${ feature.osm_type }'
 
-      # elektrické vedenie od z11: v otvorenej krajine orientačný bod
-      # na kilometre
+      # power lines from z11: a landmark in open country
       - source: osm
         geometry: line
         min_zoom: 11
@@ -131,12 +107,7 @@ layers:
             value: power_minor
           - key: voltage
 
-      # plánovaná cesta: `highway=proposed` je trasa, na ktorej sa ešte
-      # nekope – v OpenMapTiles pre ňu neexistuje žiadna trieda (`*_construction`
-      # je `highway=construction`, teda rozostavané). Od z11 ako rozostavané
-      # cesty v štýle. Čo sa plánuje, hovorí `proposed=` alebo
-      # `proposed:highway=`; berú sa oba cez `coalesce` – zdvojený kľúč
-      # Planetiler nikde nedefinuje.
+      # `highway=proposed` has no OpenMapTiles class; `proposed=` or `proposed:highway=` via `coalesce`
       - source: osm
         geometry: line
         min_zoom: 11
@@ -158,7 +129,7 @@ layers:
           - key: osm_type
             value: '${ feature.osm_type }'
 
-      # lanovky mimo prevádzky – tie v nej kreslí OpenMapTiles (`aerialway`)
+      # aerialways out of service – OpenMapTiles draws those in service (`aerialway`)
       - source: osm
         geometry: line
         min_zoom: 11
@@ -200,7 +171,7 @@ layers:
           - key: osm_type
             value: '${ feature.osm_type }'
 
-      # priesek: v lese výrazná rovná čiara, často hranica alebo trasa vedenia
+      # a forest cutline: a straight line, often a border or a power line route
       - source: osm
         geometry: line
         min_zoom: 13
@@ -210,8 +181,7 @@ layers:
           - key: class
             value: cutline
 
-      # nadzemné potrubie; podzemné by bola čiara cez krajinu, ktorú v teréne
-      # nie je ako overiť
+      # pipelines above ground; one underground can't be checked in the field
       - source: osm
         geometry: line
         min_zoom: 13
@@ -233,8 +203,7 @@ layers:
           - key: class
             value: tree_row
 
-      # hate, priehradné múry, plavebné komory: `waterway=dam` ako plocha
-      # v OpenMapTiles je, ako čiara nie – a múr býva mapovaný práve čiarou
+      # dams, weirs and locks as lines – OpenMapTiles has `waterway=dam` only as an area
       - source: osm
         geometry: line
         min_zoom: 13
@@ -250,7 +219,7 @@ layers:
           - key: osm_type
             value: '${ feature.osm_type }'
 
-      # výmole a zrázy
+      # gullies and banks
       - source: osm
         geometry: line
         min_zoom: 14
@@ -260,8 +229,7 @@ layers:
           - key: class
             type: match_value
 
-    # prvok je v OSM rozsekaný na desiatky krátkych ciest; zlepenie je aj
-    # menšie, aj krajšie – prerušovaná čiara sa na 20 m nestihne zopakovať
+    # OSM splits a feature into dozens of short ways; merged it is smaller and dashes repeat
     tile_post_process:
       merge_line_strings:
         min_length: 0
@@ -269,8 +237,7 @@ layers:
   # PLOCHY
   - id: feature_area
     features:
-      # parkovisko: `amenity=parking` je v OpenMapTiles len ako bod, hoci pri
-      # východisku túry je to práve tá plocha, ktorú človek hľadá
+      # `amenity=parking` is only a point in OpenMapTiles, yet at a trailhead it's the area one looks for
       - source: osm
         geometry: polygon
         min_zoom: 14
@@ -280,9 +247,9 @@ layers:
           - key: name
           - key: class
             value: parking
-          # kryté/podzemné parkovisko sa nemá kresliť ako plocha na povrchu
+          # a covered or underground car park isn't a surface area
           - key: parking
-      # skládka a halda
+      # landfill and spoil heap
       - source: osm
         geometry: polygon
         min_zoom: 12
@@ -306,7 +273,7 @@ layers:
           - key: name
           - key: class
             value: spoil_heap
-      # hospodársky dvor
+      # farmyard
       - source: osm
         geometry: polygon
         min_zoom: 13
@@ -316,7 +283,7 @@ layers:
           - key: name
           - key: class
             type: match_value
-      # opustený priemysel
+      # brownfield
       - source: osm
         geometry: polygon
         min_zoom: 12
@@ -325,7 +292,7 @@ layers:
         attributes:
           - key: class
             value: brownfield
-      # kamenné pole: `scree` a `bare_rock` v OpenMapTiles sú, `shingle` nie
+      # shingle: `scree` and `bare_rock` are in OpenMapTiles, `shingle` isn't
       - source: osm
         geometry: polygon
         min_zoom: 11
@@ -335,13 +302,9 @@ layers:
           - key: class
             value: shingle
 
-  # body sú vo `workers/features/points.yml` kvôli balíku, ktorý appka ponúka
-  # zvlášť od línií a plôch
+  # points are in `workers/features/points.yml`, a separate package in the app
 
-  # ZJAZDOVKY A BEŽKY. Vleky a lanovky v dlaždiciach sú, trate nie –
-  # `piste:type` OpenMapTiles nepozná, takže na lyžiarskej mape boli vleky bez
-  # toho, k čomu vedú. Trať sa mapuje raz čiarou (os) a raz plochou (obrys);
-  # obe sa púšťajú zámerne, takže uzavretá cesta dostane výplň aj obrys.
+  # SKI PISTES: OpenMapTiles has lifts but not `piste:type`; a line and an area are both kept
   - id: piste
     features:
       - source: osm
@@ -355,7 +318,7 @@ layers:
           - key: class
             value:
               tag_value: "piste:type"
-          # modrá/červená/čierna – prvé, čo lyžiar hľadá
+          # blue/red/black – the first thing a skier looks for
           - key: difficulty
             value:
               tag_value: "piste:difficulty"

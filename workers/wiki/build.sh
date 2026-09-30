@@ -1,43 +1,27 @@
 #!/usr/bin/env bash
-# Články z Wikipédie ku všetkému, čo v regióne odkazuje na wiki.
-#
-# Vlastný skript, lebo build-map-region.yml je pri strope 128 KiB. Tu je
-# inštalácia, voľby z formulára a výstupy; celý výpočet je v `collect.py`.
-#
-# Planetiler netreba, nič sa nedláždi – odkazy sú tagy a `osmium tags-filter`
-# ich z PBF vyberie za sekundy.
-#
-# Z prostredia (viď wiki.yml):
-#   REGION_KEY WIKI_COUNTRY OPT_WIKI_LANGS OPT_WIKI_MAX
+# Wikipedia articles for everything in the region linking to a wiki; the work is in `collect.py`.
+# From env (see wiki.yml): REGION_KEY WIKI_COUNTRY OPT_WIKI_LANGS OPT_WIKI_MAX
 set -euo pipefail
 
 sudo apt-get update -qq
 sudo apt-get install -y -qq osmium-tool
-# Prevod wikitextu na čistý text. Je to knižnica od Wikimedie a je to jediná
-# cesta, ako mať plný text A ZÁROVEŇ dávky po päťdesiatich: hotový čistý text
-# (`prop=extracts`) API dávkovo nevydá, viď komentár v `collect.py`.
+# the only way to full text in batches of fifty (`prop=extracts` won't batch)
 pip install --quiet mwparserfromhell
 
 mkdir -p wiki-out wiki-cache steps-out
 
-# Jazyky: angličtina a jazyk krajiny sa DOPLNIA SAMY podľa `--country`
-# (rozpis vo `collect.py`), toto sú tie navyše. Prázdno je preto správna
-# predvolená hodnota, nie chyba – „sk,en" by tu bola len druhá pravda o tom,
-# čo už vie číselník `workers/data/wiki-languages.json`.
+# English and the country language are added by `--country`; these are extra
 LANGS="${OPT_WIKI_LANGS:-}"
 COUNTRY="${WIKI_COUNTRY:-}"
 MAX="${OPT_WIKI_MAX:-5000}"
 case "$MAX" in
   ''|*[!0-9]*)
-     echo "::error::wiki_max=$MAX nie je celé číslo – napíš strop počtu" \
-          "článkov, napr. \`wiki_max=2000\`."
+     echo "::error::wiki_max=$MAX isn't a whole number – give a cap on" \
+          "articles, e.g. \`wiki_max=2000\`."
      exit 1 ;;
 esac
 
-# CACHE JE PRIEČINOK, ktorý pred týmto krokom obnovila `cache-restore`
-# z Drive – v ňom je `articles.ndjson` z minulého behu toho istého regiónu.
-# Podáva sa VŽDY, aj keď ešte neexistuje: `collect.py` si ho vyrobí a uloží
-# doň kópiu, takže `cache-save` má čo nahrať už po prvom behu.
+# the cache folder is passed even before it exists, so `cache-save` has something after run one
 python3 workers/wiki/collect.py \
   --pbf=data/region.osm.pbf \
   --out=wiki-out \
@@ -47,10 +31,7 @@ python3 workers/wiki/collect.py \
   --max="$MAX" \
   --stats=steps-out/wiki.tsv
 
-# KOĽKO ICH JE, ROZHODUJE O PUBLIKOVANÍ. Balík `-wikipedia` skladá job
-# `deploy` z tohto priečinka; keď v regióne nie je ani jeden článok, nemá čo
-# baliť a starý balík sa zmaže (`publish-map.py`). Preto sa počet vypisuje na
-# výstup jobu a nie len do logu.
+# the count decides publishing, so it goes to the job output
 COUNT=$(python3 - <<'PY'
 import json
 try:
@@ -64,10 +45,7 @@ MB=$(du -sm wiki-out | cut -f1)
 echo "count=$COUNT" >> "$GITHUB_OUTPUT"
 echo "mb=$MB" >> "$GITHUB_OUTPUT"
 echo "enabled=$([ "$COUNT" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-echo "Články: $COUNT, $MB MB v wiki-out/ (krajina ${COUNTRY:-?}, jazyky navyše ${LANGS:-žiadne})"
-# `ls … | head -5` je pasca: `head` po piatich riadkoch skončí a zavrie rúru,
-# `ls` dopisuje do zavretej rúry, dostane EPIPE – a `pipefail` hore z toho
-# spraví PÁD SKRIPTU na poslednom riadku, keď je práca dávno hotová. Článkov
-# sú tisíce, takže `ls` písať naozaj má čo. Preto here-string, nie rúra.
-ZOZNAM=$(ls -1 wiki-out)
-head -5 <<<"$ZOZNAM"
+echo "Articles: $COUNT, $MB MB in wiki-out/ (country ${COUNTRY:-?}, extra languages ${LANGS:-none})"
+# here-string, not a pipe: `head` closing it would EPIPE `ls` under pipefail
+LISTING=$(ls -1 wiki-out)
+head -5 <<<"$LISTING"

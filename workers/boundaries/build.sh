@@ -1,70 +1,47 @@
 #!/usr/bin/env bash
-# Hranice území a ich názvy z OSM → `{región}-boundaries.pmtiles`.
-#
-# Rozpis je v hlavičke `boundaries.yml`. Krátko: hranica v mape je čiara bez
-# mena územia, takže sa z nej nedá povedať, v ktorej obci nejaký bod je. Je to
-# vrstva na použitie, nie druhé kreslenie – hranice kreslí ďalej základná mapa.
-#
-# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
-#
-# Predfilter musí doťahovať členov relácií, a to je celý rozdiel oproti
-# ostatným vrstvám: hranica obce je relácia, ktorej členmi sú cesty bez
-# `boundary=administrative`. `osmium tags-filter` ich doťahuje sám a vypína sa
-# to až `-R` – preto tu žiadny taký prepínač nie je.
-#
-# Podiel na veľkosti stránky berie z `BUDGET_BOUNDARIES_PCT`.
+# Area borders and names from OSM → `{region}-boundaries.pmtiles`; see `boundaries.yml`.
+# The prefilter must pull relation members – `tags-filter` does unless `-R`, so none here.
+# Its share of the page size comes from `BUDGET_BOUNDARIES_PCT`.
 
 set -euo pipefail
 mkdir -p _site/tiles data steps-out
 sudo apt-get update -qq
 sudo apt-get install -y -qq osmium-tool
 
-# ---- 1. predfilter: hranice, ich členovia a body sídel ----
 T_F=$(date +%s)
 osmium tags-filter --overwrite -o data/boundaries.osm.pbf \
   data/region.osm.pbf --expressions=workers/boundaries/filter.txt
 
-# Relácia štátnej hranice je v PBF celá (`plan/pbf.sh` reže `-s smart -S
-# types=…,boundary`), takže bez rezu nesie balík kraja hranice cez celé Slovensko.
-# Rozpis je v hlavičke `workers/lib/region-cut.sh`.
+# the state border relation comes whole from `plan/pbf.sh`, so cut it to the region
 workers/lib/region-cut.sh data/boundaries.osm.pbf "$REGION_BBOX"
 
 BEFORE=$(stat -c%s data/region.osm.pbf)
 AFTER=$(stat -c%s data/boundaries.osm.pbf)
-echo "Predfilter: $(du -h data/region.osm.pbf | cut -f1) → $(du -h data/boundaries.osm.pbf | cut -f1)"
-printf '%s\t%s\t%s\t%s\n' "63" "Predfilter hraníc" "$(( $(date +%s) - T_F ))" \
+echo "Prefilter: $(du -h data/region.osm.pbf | cut -f1) → $(du -h data/boundaries.osm.pbf | cut -f1)"
+printf '%s\t%s\t%s\t%s\n' "63" "Border prefilter" "$(( $(date +%s) - T_F ))" \
   "$(( BEFORE / 1048576 )) MB → $(( AFTER / 1048576 )) MB" \
   >> steps-out/boundaries.tsv
 
-# Prázdny výsledok nie je chyba – 4 km² rýchleho testu môže padnúť doprostred
-# obce bez jedinej hranice. Že vrstva v mape nie je, povie `obsah.json`.
+# empty isn't an error for a small test; `contents.json` says the layer is absent
 if [ "$AFTER" -lt 2000 ]; then
-  echo "::warning::V tomto území nie je ani jedna administratívna hranica ani sídlo – balík \`hranice\` sa nevyrobí."
+  echo "::warning::This area has no administrative border or settlement – the \`boundaries\` package isn't made."
   echo "enabled=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi
 
-# ---- 2. dlaždice ----
 BZ_="$OPT_BOUNDARIES_MAXZOOM"
 case "$BZ_" in ''|*[!0-9]*) BZ_=12 ;; esac
 if [ "$BZ_" -gt 16 ]; then BZ_=16; fi
 
-# Poistka proti tichej strate: čo má v schéme `min_zoom` nad maxzoomom,
-# Planetiler zahodí BEZ SLOVA. Tá istá poistka ako v jobe `transport`.
+# Planetiler silently drops `min_zoom` above maxzoom
 TOPZ=$(grep -oE 'min_zoom: [0-9]+' workers/boundaries/boundaries.yml \
        | grep -oE '[0-9]+' | sort -n | tail -1)
 if [ "${TOPZ:-0}" -gt "$BZ_" ]; then
-  echo "::error::workers/boundaries/boundaries.yml má bloky s min_zoom až ${TOPZ}, ale dlaždice idú po z${BZ_} – tie sa do nich vôbec nedostanú (pri dedinách a osadách je to väčšina sídel). Zdvihni boundaries_maxzoom na ${TOPZ}, alebo tým blokom zníž min_zoom."
+  echo "::error::workers/boundaries/boundaries.yml has blocks with min_zoom up to ${TOPZ}, but tiles go to z${BZ_} – those never get in (villages and hamlets are most settlements). Raise boundaries_maxzoom to ${TOPZ}, or lower min_zoom of those blocks."
   exit 1
 fi
 
-# Ten istý orez na región ako pri ostatných vrstvách (workers/lib/region-clip.sh).
-# „PBF je aj tak vyrezaný po hranicu regiónu" neplatilo: relácia štátnej hranice
-# príde z `plan/pbf.sh` celá, takže balík Bratislavského kraja hlásil bbox celej
-# republiky a na z12 mal 1325 dlaždíc od Bratislavy po Užhorod.
-#
-# Okres sa rezom nerozpadne: obec leží v okrese a okres v kraji, takže hranica
-# kraja nepretína ani jeden z nich.
+# the whole state border relation needs the region cut too; districts nest, so none splits
 T_PM=$(date +%s)
 OUT="_site/tiles/${REGION_KEY}-boundaries.pmtiles"
 mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
@@ -83,13 +60,13 @@ LIMIT_MB="$SIZE_LIMIT_MB"
 case "$LIMIT_MB" in ''|*[!0-9]*) LIMIT_MB=900 ;; esac
 BBUDGET_MB=$(( LIMIT_MB * BUDGET_BOUNDARIES_PCT / 100 ))
 if [ "$MB" -gt "$BBUDGET_MB" ]; then
-  echo "::warning::Hranice majú ${MB} MB, čo je nad podielom ${BBUDGET_MB} MB z rozpočtu stránky. Zníž boundaries_maxzoom alebo zdvihni BUDGET_BOUNDARIES_PCT."
+  echo "::warning::Borders take ${MB} MB, above their ${BBUDGET_MB} MB share of the page budget. Lower boundaries_maxzoom or raise BUDGET_BOUNDARIES_PCT."
 fi
 
 echo "enabled=true" >> "$GITHUB_OUTPUT"
 echo "maxzoom=$BZ_" >> "$GITHUB_OUTPUT"
 echo "size_mb=$MB" >> "$GITHUB_OUTPUT"
 ls -lh "$OUT"
-printf '%s\t%s\t%s\t%s\n' "64" "Hranice → PMTiles" "$(( $(date +%s) - T_PM ))" \
+printf '%s\t%s\t%s\t%s\n' "64" "Borders → PMTiles" "$(( $(date +%s) - T_PM ))" \
   "maxzoom $BZ_, $(du -h "$OUT" | cut -f1)" \
   >> steps-out/boundaries.tsv

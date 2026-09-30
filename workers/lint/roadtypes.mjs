@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Typ cesty, ktorý sa dá vypnúť v profile, musí mapa vedieť aj nakresliť.
+ * A road type the profile can turn off must be one the map can draw too.
  *
- * Zoznam typov ciest je v `workers/data/routing-tags.json` (`siet`) a appka
- * z neho robí prepínače – pri každom čiaru tak, ako ju kreslí mapa. Keď sa tie
- * dva zoznamy rozídu, nespadne nič: prepínač ostane bez ukážky, alebo je na
- * mape cesta, ktorú sa nedá vypnúť.
+ * The road types are in `workers/data/routing-tags.json` (`network`) and the app
+ * makes toggles from them – each with a line as the map draws it. When the two
+ * lists drift, nothing fails: a toggle has no preview, or the map shows a road
+ * that can't be turned off.
  *
- * Obe strany sú chyba a obe majú výnimku S DÔVODOM – mlčanie je zakázané:
- *   1. typ zo slovníka, ktorého triedu štýl nekreslí (`NEKRESLENE`);
- *   2. trieda cesty v štýle, na ktorú neukazuje ani jeden typ (`NEJAZDNE`).
+ * Both sides are errors and both have exceptions WITH A REASON – silence is banned:
+ *   1. a dictionary type whose class the style doesn't draw (`UNDRAWN`);
+ *   2. a style road class no type points at (`NOT_ROUTABLE`).
  *
  *   node workers/lint/roadtypes.mjs
  */
@@ -20,11 +20,11 @@ import { MAP_TYPE_IDS } from "../../poc/web/map-types.js";
 const TAGS = "workers/data/routing-tags.json";
 
 /**
- * OSM → trieda (a podtrieda) vo vrstve `transportation`.
+ * OSM → class (and subclass) in the `transportation` layer.
  *
- * Je to KÓPIA cudzieho zoznamu – `highway_class` v schéme OpenMapTiles
- * (`layers/transportation/transportation.yaml`). Pri posune OpenMapTiles sa
- * obnovuje odtiaľ, nie dopisuje o to jedno meno, ktoré práve chýba.
+ * A COPY of someone else's list – `highway_class` in the OpenMapTiles schema
+ * (`layers/transportation/transportation.yaml`). When OpenMapTiles moves, refresh
+ * it from there, don't add the one name that happens to be missing.
  */
 const OMT = {
   motorway: ["motorway"], motorway_link: ["motorway"],
@@ -42,40 +42,40 @@ const OMT = {
   ferry: ["ferry"], platform: ["path", "platform"]
 };
 
-/** Typ zo slovníka, ktorý vo vrstve `transportation` nie je – a prečo. */
-const NEKRESLENE = {
+/** A dictionary type absent from the `transportation` layer – and why. */
+const UNDRAWN = {
   via_ferrata:
-    "OpenMapTiles preň triedu nevydáva. Na mape je ako ZNAČENÁ TRASA " +
-    "(`route=via_ferrata`, workers/trails), takže vidieť ju je – len nie ako " +
-    "cestu z `transportation`."
+    "OpenMapTiles gives it no class. The map shows it as a WAYMARKED ROUTE " +
+    "(`route=via_ferrata`, workers/trails), so it is visible – just not as a " +
+    "road from `transportation`."
 };
 
-/** Trieda, ktorú štýl kreslí a routovať sa po nej nedá – a prečo. */
-const NEJAZDNE = {
-  rail: "koľaj; vlak je `transit` a ten stojí na GTFS (docs/navigation.md §6)",
-  transit: "električka a metro – to isté, cestovný poriadok v OSM nie je",
-  pier: "mólo je plocha, po ktorej sa chodí, nie čiara siete",
-  bridge: "teleso mosta ako plocha; jazdí sa po ceste NAD ním",
-  aerialway: "lanovka a vlek – v slovníku sú pod `aerialway`, nie `highway`"
+/** A class the style draws that can't be routed on – and why. */
+const NOT_ROUTABLE = {
+  rail: "track; a train is `transit`, which stands on GTFS (docs/navigation.md §6)",
+  transit: "tram and metro – the same, OSM has no timetable",
+  pier: "a pier is an area one walks on, not a network line",
+  bridge: "the bridge body as an area; one travels on the road ABOVE it",
+  aerialway: "cable cars and lifts – the dictionary has them under `aerialway`, not `highway`"
 };
 
 const bad = [];
 
-function triedy() {
+function classes() {
   const hit = { class: new Set(), subclass: new Set() };
-  const menoTagu = (x) =>
+  const tagName = (x) =>
     Array.isArray(x) && x[0] === "coalesce" && Array.isArray(x[1])
       && x[1][0] === "get" ? x[1][1]
       : Array.isArray(x) && x[0] === "get" ? x[1] : null;
-  const chod = (f) => {
+  const walk = (f) => {
     if (!Array.isArray(f)) return;
     const [op, a, b] = f;
-    const p = menoTagu(a);
+    const p = tagName(a);
     if (p && (op === "==" || op === "!=")) hit[p]?.add(String(b));
     if (p && op === "in" && Array.isArray(b) && b[0] === "literal") {
       for (const v of b[1]) hit[p]?.add(String(v));
     }
-    for (const x of f) chod(x);
+    for (const x of f) walk(x);
   };
   for (const theme of Object.keys(THEMES)) {
     for (const mapType of MAP_TYPE_IDS) {
@@ -87,7 +87,7 @@ function triedy() {
         transportUrl: "https://x/transport.pmtiles"
       });
       for (const l of st.layers) {
-        if (l["source-layer"] === "transportation") chod(l.filter);
+        if (l["source-layer"] === "transportation") walk(l.filter);
       }
     }
   }
@@ -96,65 +96,65 @@ function triedy() {
   return hit;
 }
 
-const slovnik = JSON.parse(readFileSync(TAGS, "utf8"));
-const siet = slovnik.siet;
-const kreslene = triedy();
+const dictionary = JSON.parse(readFileSync(TAGS, "utf8"));
+const network = dictionary.network;
+const drawn = classes();
 
-// 1. čo profil ponúka, musí byť na mape vidieť
-const typy = [
-  ...siet.highway,
-  ...(siet.route || []),
-  ...(siet.railway || []),
-  ...(siet.aerialway || []).map(() => "aerialway")
+// 1. what the profile offers must be visible on the map
+const types = [
+  ...network.highway,
+  ...(network.route || []),
+  ...(network.railway || []),
+  ...(network.aerialway || []).map(() => "aerialway")
 ];
-for (const typ of new Set(typy)) {
-  if (NEKRESLENE[typ]) continue;
-  const map = typ === "aerialway" ? ["aerialway"] : OMT[typ];
+for (const type of new Set(types)) {
+  if (UNDRAWN[type]) continue;
+  const map = type === "aerialway" ? ["aerialway"] : OMT[type];
   if (!map) {
     bad.push(
-      `${TAGS}: typ cesty \`${typ}\` sa dá vypnúť v profile, ale \`OMT\` vo ` +
-      `\`workers/lint/roadtypes.mjs\` ho nepozná – nikto teda nevie, akú ` +
-      `triedu má v dlaždici, takže sa k prepínaču nedá nakresliť čiara tak, ` +
-      `ako ju kreslí mapa. Doplň mapovanie, alebo dôvod do \`NEKRESLENE\`.`);
+      `${TAGS}: road type \`${type}\` can be turned off in the profile, but ` +
+      `\`OMT\` in \`workers/lint/roadtypes.mjs\` doesn't know it – so nobody knows ` +
+      `its tile class and the toggle can't get a line drawn as the map draws it. ` +
+      `Add the mapping, or a reason to \`UNDRAWN\`.`);
     continue;
   }
-  const [trieda, podtrieda] = map;
-  if (!kreslene.class.has(trieda)) {
+  const [cls, subclass] = map;
+  if (!drawn.class.has(cls)) {
     bad.push(
-      `${TAGS}: typ \`${typ}\` má v dlaždici triedu \`${trieda}\`, ktorú štýl ` +
-      `nekreslí. Prepínač v profile by ostal bez ukážky – a používateľ by ` +
-      `vypínal cestu, ktorú na mape nevidí.`);
+      `${TAGS}: type \`${type}\` has tile class \`${cls}\`, which the style ` +
+      `doesn't draw. The profile toggle would have no preview – and the user ` +
+      `would turn off a road they can't see on the map.`);
   }
-  if (podtrieda && !kreslene.subclass.has(podtrieda)) {
+  if (subclass && !drawn.subclass.has(subclass)) {
     bad.push(
-      `${TAGS}: typ \`${typ}\` má podtriedu \`${podtrieda}\`, ktorú štýl ` +
-      `nekreslí – prepínač by bol bez ukážky.`);
+      `${TAGS}: type \`${type}\` has subclass \`${subclass}\`, which the style ` +
+      `doesn't draw – the toggle would have no preview.`);
   }
 }
 
-// 2. čo mapa kreslí ako cestu, musí sa dať vypnúť
-const zo_slovnika = new Set();
-for (const typ of new Set(typy)) {
-  const map = typ === "aerialway" ? ["aerialway"] : OMT[typ];
-  if (map) zo_slovnika.add(map[0]);
+// 2. what the map draws as a road must be possible to turn off
+const fromDictionary = new Set();
+for (const type of new Set(types)) {
+  const map = type === "aerialway" ? ["aerialway"] : OMT[type];
+  if (map) fromDictionary.add(map[0]);
 }
-for (const trieda of [...kreslene.class].sort()) {
-  // `*_construction` je tá istá cesta vo výstavbe – ísť po nej sa nedá
-  if (trieda.endsWith("_construction") || NEJAZDNE[trieda]) continue;
-  if (zo_slovnika.has(trieda)) continue;
+for (const cls of [...drawn.class].sort()) {
+  // `*_construction` is the same road under construction – nobody travels on it
+  if (cls.endsWith("_construction") || NOT_ROUTABLE[cls]) continue;
+  if (fromDictionary.has(cls)) continue;
   bad.push(
-    `${TAGS}: štýl kreslí triedu \`${trieda}\`, ale nevedie k nej ani jeden ` +
-    `typ zo \`siet\`. Na mape je teda cesta, ktorú si používateľ v profile ` +
-    `nemá ako vypnúť – a trasa po nej pôjde ďalej. Doplň typ do slovníka, ` +
-    `alebo dôvod do \`NEJAZDNE\` vo \`workers/lint/roadtypes.mjs\`.`);
+    `${TAGS}: the style draws class \`${cls}\`, but no type in \`network\` ` +
+    `leads to it. The map shows a road the user can't turn off in the profile – ` +
+    `and routes keep using it. Add a type to the dictionary, or a reason to ` +
+    `\`NOT_ROUTABLE\` in \`workers/lint/roadtypes.mjs\`.`);
 }
 
 for (const m of bad) console.log(`::error file=${TAGS}::${m}`);
 if (bad.length) {
-  console.log(`\n${bad.length} problém(ov) medzi typmi ciest a štýlom.`);
+  console.log(`\n${bad.length} problem(s) between road types and the style.`);
   process.exit(1);
 }
 console.log(
-  `Typy ciest: ${new Set(typy).size} zo slovníka má v štýle svoju čiaru ` +
-  `(${kreslene.class.size} tried, ${kreslene.subclass.size} podtried), ` +
-  `a každá kreslená trieda cesty sa dá v profile vypnúť.`);
+  `Road types: ${new Set(types).size} from the dictionary have their line in the style ` +
+  `(${drawn.class.size} classes, ${drawn.subclass.size} subclasses), ` +
+  `and every drawn road class can be turned off in the profile.`);

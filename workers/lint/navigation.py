@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-"""Navigácia: rozsah, jeho uzol v katalógu a čo sa v nej nesmie stratiť.
+"""Routing: its scope, its catalog node and what must not get lost in it.
 
-Dve rôzne veci pod jedným menom, tak sú tu obe:
+Two different things under one name, so both are here:
 
-  * SMEROVACIA SIEŤ KRAJA (`<kraj>-routing.pmtiles`, v základnej mape aj
-    v balíku `cesty`) – to, čo ide do telefónu; rozpis v `docs/routing-tiles.md`;
-  * GRAF VALHALLY nad celým štátom (`navigation.yml`) – referenčná stavba,
-    proti ktorej sa nový motor krížom kontroluje. Po krajoch sa už nestavia.
+  * A REGION'S ROUTING NETWORK (`<region>-routing.pmtiles`, in the base map and
+    in the `roads` package) – what goes to the phone; described in `docs/routing-tiles.md`;
+  * VALHALLA'S GRAPH over a whole state (`navigation.yml`) – the reference build
+    the new engine is cross-checked against. It's no longer built per region.
 
-Tiché veci:
-  1. dva rozsahy v jednom uzle katalógu – druhý beh by položku prvého
-     prepísal a katalóg by poznal len jeden z dvoch balíkov na Drive;
-  2. celoštátny graf sa nesmie stavať z rezaného PBF: hrana bez druhého konca
-     je slepá ulica, ale graf sa postaví a beh zazelená;
-  3. bez `admins.sqlite` Valhalla nevie, v ktorej krajine hrana leží;
-  4. rozsah pokrývajúci krajinu mimo `vignettes.json` sa na známku nespýta;
-  5. sieť kraja musí stáť na PBF mapy, ísť v mape aj v `cesty` a byť
-     v manifeste; vlastný balík `navigacia` je zrušený;
-  6. poradie uzlov: build kraja si ho z cache vezme a keď tam nie je alebo je
-     staré, dopočíta ho sám a uloží; kľúč cache musí na všetkých stranách
-     znieť rovnako, inak archívy ticho a navždy chodia bez neho;
-  7. formulár GitHub zoznam zo súboru prečítať nevie, takže sa píše dvakrát.
+Quiet things:
+  1. two scopes in one catalog node – the second run would overwrite the first's
+     item and the catalog would know only one of two packages on Drive;
+  2. the national graph must not be built from a cut PBF: an edge without its
+     other end is a dead end, yet the graph builds and the run goes green;
+  3. without `admins.sqlite` Valhalla doesn't know which country an edge is in;
+  4. a scope covering a country outside `vignettes.json` never asks for a vignette;
+  5. the region network must stand on the map's PBF, ride in the map and in
+     `roads` and be in the manifest; its own `routing` package is retired;
+  6. node order: a region build takes it from the cache, and when it's missing
+     or stale computes and saves it; the cache key must read the same on every
+     side, or archives quietly and forever go without it;
+  7. a GitHub form can't read a list from a file, so it's written twice.
 """
 import json
 import os
@@ -36,7 +36,7 @@ _DATA = os.path.join(_WORKERS, "data")
 AREAS = os.path.join(_DATA, "routing-areas.json")
 REGIONS = os.path.join(_DATA, "regions.json")
 VIGNETTES = os.path.join(_DATA, "vignettes.json")
-CISELNIK = os.path.join(_DATA, "packages.json")
+REGISTRY = os.path.join(_DATA, "packages.json")
 WORKFLOW = os.path.join(".github", "workflows", "navigation.yml")
 ORDER_WORKFLOW = os.path.join(".github", "workflows", "routing-order.yml")
 REGION_WORKFLOW = os.path.join(".github", "workflows", "navigation-region.yml")
@@ -46,10 +46,9 @@ PBF_SH = os.path.join(_WORKERS, "routing", "pbf.sh")
 GRAPH_SH = os.path.join(_WORKERS, "routing", "graph.sh")
 BUILD_SH = os.path.join(_WORKERS, "routing", "build.sh")
 
-# zoznam je tu aj v graph.sh zámerne: tam sa kontroluje beh (súbor vznikol),
-# tu skript (kontrola z neho nezmizla)
-POVINNE = ("valhalla_tiles.tar", "valhalla.json", "admins.sqlite",
-           "timezones.sqlite")
+# listed in graph.sh too on purpose: there the run is checked, here the script
+REQUIRED = ("valhalla_tiles.tar", "valhalla.json", "admins.sqlite",
+            "timezones.sqlite")
 
 bad = []
 
@@ -58,8 +57,8 @@ def err(path, msg):
     bad.append((path, msg))
 
 
-def celostatny_graf(areas, regions, countries):
-    """Valhalla nad celým štátom – referenčná stavba, ktorá ostáva."""
+def national_graph(areas, regions, countries):
+    """Valhalla over a whole state – the reference build that stays."""
     rel_areas = "workers/data/routing-areas.json"
     rel_regions = "workers/data/regions.json"
 
@@ -67,235 +66,237 @@ def celostatny_graf(areas, regions, countries):
         rk = area.get("region_key")
         if rk not in regions:
             err(rel_areas,
-                f"rozsah `{key}` má `region_key: {rk}`, ktorý v `regions.json` "
-                f"nie je – `publish-map.py` by z neho nevedel poskladať cestu "
-                f"na Drive a balík by skončil v `ostatne/`.")
+                f"scope `{key}` has `region_key: {rk}`, which `regions.json` "
+                f"lacks – `publish-map.py` couldn't build its Drive path from it "
+                f"and the package would end up in `other/`.")
             continue
         r = regions[rk]
         if r.get("admin_level") != 2:
             err(rel_regions,
-                f"`{rk}` má `admin_level: {r.get('admin_level')}`. Graf nie je "
-                f"mapa kraja – s inou hodnotou by mu `publish-map.py` pridal "
-                f"úroveň kraja, ktorá v ňom nie je.")
+                f"`{rk}` has `admin_level: {r.get('admin_level')}`. The graph isn't "
+                f"a region map – with another value `publish-map.py` would give it "
+                f"a region level it doesn't have.")
         if r.get("country") != rk:
             err(rel_regions,
-                f"`{rk}` má `country: {r.get('country')}`, čo NIE JE jeho kľúč. "
-                f"Pri `admin_level: 2` je `country` zároveň uzol v `maps.json`, "
-                f"takže dva rozsahy s tým istým `country` si položku navzájom "
-                f"PREPÍŠU: balíky na Drive ostanú oba, katalóg bude poznať "
-                f"posledný. Daj `country: {rk}` – to isté ako `svet_basic`.")
+                f"`{rk}` has `country: {r.get('country')}`, which ISN'T its key. "
+                f"At `admin_level: 2` `country` is also a node in `maps.json`, "
+                f"so two scopes with the same `country` OVERWRITE each other's "
+                f"item: both packages stay on Drive, the catalog knows the last "
+                f"one. Set `country: {rk}` – the same as `svet_basic`.")
         for c in area.get("countries") or []:
             if c not in countries:
                 err(rel_areas,
-                    f"rozsah `{key}` pokrýva `{c}`, ale `vignettes.json` tú "
-                    f"krajinu nepozná – voľba `vignettes` sa v nej nespýta na "
-                    f"nič a mlčanie sa nedá odlíšiť od „známku tam netreba“.")
+                    f"scope `{key}` covers `{c}`, but `vignettes.json` doesn't "
+                    f"know that country – the `vignettes` option asks nothing "
+                    f"there, and silence can't be told from “no vignette needed”.")
         if not area.get("pbf"):
-            err(rel_areas, f"rozsah `{key}` nemá ani jeden PBF.")
+            err(rel_areas, f"scope `{key}` has not a single PBF.")
 
     if os.path.exists(PBF_SH):
         pbf = open(PBF_SH, encoding="utf-8").read()
-        # komentáre preč – v hlavičke je slovo „reže" práve preto, že sa nereže
-        kod = re.sub(r"^[ \t]*#.*$", "", pbf, flags=re.M)
-        for zle in ("osmium extract", "--polygon", "--bbox"):
-            if zle in kod:
+        # comments out – the header says “cut” precisely because nothing is cut
+        code = re.sub(r"^[ \t]*#.*$", "", pbf, flags=re.M)
+        for wrong in ("osmium extract", "--polygon", "--bbox"):
+            if wrong in code:
                 err("workers/routing/pbf.sh",
-                    f"skript reže PBF (`{zle}`). Graf sa z výrezu stavať "
-                    f"nesmie: hrana, ktorej chýba druhý koniec, je slepá "
-                    f"ulica a trasa cez ňu neprejde – graf sa pritom postaví "
-                    f"a beh zazelená.")
-        if "osmium merge" not in kod and any(
+                    f"the script cuts the PBF (`{wrong}`). The graph must not be "
+                    f"built from a cutout: an edge missing its other end is a "
+                    f"dead end and no route passes it – yet the graph builds "
+                    f"and the run goes green.")
+        if "osmium merge" not in code and any(
                 len(a.get("pbf") or []) > 1 for a in areas.values()):
             err("workers/routing/pbf.sh",
-                "číselník má rozsah s viacerými extraktmi, ale skript ich "
-                "nezlieva `osmium merge`. Zreťaziť PBF sa nedá (každý má "
-                "vlastnú hlavičku) a duplicitné uzly na hraniciach by z grafu "
-                "spravili dve nespojené siete.")
+                "the lookup has a scope with several extracts, but the script "
+                "doesn't join them with `osmium merge`. PBFs can't be concatenated "
+                "(each has its own header) and duplicate border nodes would turn "
+                "the graph into two unconnected networks.")
     else:
-        err("workers/routing/pbf.sh", "skript neexistuje.")
+        err("workers/routing/pbf.sh", "the script doesn't exist.")
 
     if not os.path.exists(GRAPH_SH):
         err("workers/routing/graph.sh",
-            "skript neexistuje. Graf Valhally sa síce po krajoch už nestavia, "
-            "ale ostáva ako REFERENČNÁ stavba – bez nej sa nový motor nemá "
-            "proti čomu skontrolovať.")
+            "the script doesn't exist. Valhalla's graph is no longer built per "
+            "region, but it stays as the REFERENCE build – without it the new "
+            "engine has nothing to be checked against.")
         return
     graph = open(GRAPH_SH, encoding="utf-8").read()
-    for f in POVINNE:
+    for f in REQUIRED:
         if f not in graph:
             err("workers/routing/graph.sh",
-                f"skript nekontroluje `{f}`. Obraz Valhally môže dobehnúť "
-                f"s nulou aj vtedy, keď ten súbor nevyrobil – a nekompletný "
-                f"graf sa prejaví ako „trasa sa nenašla“, teda ako chyba "
-                f"aplikácie, nie ako chyba buildu.")
+                f"the script doesn't check `{f}`. Valhalla's image may exit with "
+                f"zero even when it didn't make that file – and an incomplete "
+                f"graph shows as “no route found”, an app error, not a build "
+                f"error.")
     if "valhalla" not in graph or "--version" not in graph:
         err("workers/routing/graph.sh",
-            "skript nezisťuje verziu Valhally. Graf a knižnica, ktorá ho "
-            "číta, si musia sedieť; nesúlad verzií vyzerá ako pokazená trasa, "
-            "nie ako nesúlad verzií.")
-    if "hranica" not in graph:
+            "the script doesn't read Valhalla's version. The graph and the library "
+            "reading it must match; a version mismatch looks like a broken route, "
+            "not a version mismatch.")
+    if '"border"' not in graph:
         err("workers/routing/graph.sh",
-            "`graf.json` nehovorí, kam trasa v tom grafe smie – a mlčanie sa "
-            "dá čítať ako pokazený graf, nie ako rozsah.")
+            "`graph.json` doesn't say where a route in that graph may go – and "
+            "silence reads as a broken graph, not as a scope.")
 
 
-def siet_kraja():
-    """`<kraj>-routing.pmtiles`: PBF mapy, manifest, kontrola, balenie."""
+def region_network():
+    """`<region>-routing.pmtiles`: the map's PBF, manifest, check, packaging."""
     if not os.path.exists(BUILD_SH):
-        err("workers/routing/build.sh", "skript neexistuje – kraj by ostal "
-                                        "bez smerovacej siete.")
+        err("workers/routing/build.sh", "the script doesn't exist – the region "
+                                        "would go without a routing network.")
     else:
         build = open(BUILD_SH, encoding="utf-8").read()
         if "data/region.osm.pbf" not in build:
             err("workers/routing/build.sh",
-                "sieť kraja sa nestavia z `data/region.osm.pbf`. To PBF je "
-                "rezané presne na hranicu kraja, takže je to jediné, čo drží "
-                "navigáciu za ten istý kraj ako mapu – iný extrakt by ju ticho "
-                "rozšíril za hranicu.")
+                "the region network isn't built from `data/region.osm.pbf`. That "
+                "PBF is cut exactly at the region border, so it alone keeps "
+                "routing to the same region as the map – another extract would "
+                "quietly extend it past the border.")
         if "workers/routing/tiles.py" not in build:
             err("workers/routing/build.sh",
-                "archív nestavia `workers/routing/tiles.py`. Druhý skript by "
-                "bol druhá pravda o tom, čo je v archíve a v akom formáte.")
+                "the archive isn't built by `workers/routing/tiles.py`. A second "
+                "script would be a second truth about what the archive holds and "
+                "in what format.")
         if "workers/lint/routing-tiles.py" not in build:
             err("workers/routing/build.sh",
-                "hotový archív sa neoveruje `workers/lint/routing-tiles.py`. "
-                "Rozbitý archív sa v telefóne prejaví ako „trasa sa nenašla“, "
-                "teda ako chyba aplikácie – a beh by pritom bol zelený.")
+                "the finished archive isn't checked by `workers/lint/routing-tiles.py`. "
+                "A broken archive shows on the phone as “no route found”, an app "
+                "error – while the run is green.")
         if "tags.py --filter" not in build:
             err("workers/routing/build.sh",
-                "predfilter PBF si nepýta zoznam tried zo slovníka "
-                "(`tags.py --filter`). Druhý zoznam sa rozíde a rozíde sa "
-                "ticho: trieda vypadne z archívu a profil ju ponúka ďalej.")
+                "the PBF prefilter doesn't take its class list from the dictionary "
+                "(`tags.py --filter`). A second list drifts, and drifts quietly: a "
+                "class drops out of the archive and the profile keeps offering it.")
 
     if not os.path.exists(REGION_WORKFLOW):
-        err(".github/workflows/navigation-region.yml", "workflow neexistuje.")
+        err(".github/workflows/navigation-region.yml", "the workflow doesn't exist.")
         return
     wtext = open(REGION_WORKFLOW, encoding="utf-8").read()
-    # komentáre preč – v hlavičke je `graph.sh` práve preto, že sa už nevolá
-    kod = re.sub(r"^[ \t]*#.*$", "", wtext, flags=re.M)
-    if "workers/routing/build.sh" not in kod:
+    # comments out – the header names `graph.sh` precisely because it's no longer called
+    code = re.sub(r"^[ \t]*#.*$", "", wtext, flags=re.M)
+    if "workers/routing/build.sh" not in code:
         err(".github/workflows/navigation-region.yml",
-            "kraj sa nestavia `workers/routing/build.sh`.")
-    if "workers/routing/graph.sh" in kod:
+            "the region isn't built by `workers/routing/build.sh`.")
+    if "workers/routing/graph.sh" in code:
         err(".github/workflows/navigation-region.yml",
-            "kraj zase stavia graf Valhally. Ten vážil 176 – 192 MB na kraj "
-            "a na hranici kraja končil; nahradili ho dlaždice so značkami "
-            "(`docs/navigation.md` §10). Celoštátny `navigation.yml` ostáva.")
-    if "name: site-navigacia" not in wtext:
+            "the region builds Valhalla's graph again. It weighed 176 – 192 MB per "
+            "region and ended at the region border; tag tiles replaced it "
+            "(`docs/navigation.md` §10). The national `navigation.yml` stays.")
+    if "name: site-routing" not in wtext:
         err(".github/workflows/navigation-region.yml",
-            "archív sa neodkladá ako `site-navigacia`. Do `_site` – a teda do "
-            "manifestu, do mapy aj do `cesty` – sa dostane jedine cezeň; "
-            "`deploy` zlieva práve `site-*`.")
-    if "workers/routing/order.sh" not in kod:
+            "the archive isn't uploaded as `site-routing`. Only through it does it "
+            "reach `_site` – and so the manifest, the map and `roads`; `deploy` "
+            "merges exactly `site-*`.")
+    if "workers/routing/order.sh" not in code:
         err(".github/workflows/navigation-region.yml",
-            "build kraja si poradie uzlov nedopočíta (`workers/routing/"
-            "order.sh`). Poradie z cache je vec ručného workflowu, ktorý "
-            "nikto nespustí – a archívy potom navždy chodia bez neho.")
-    if "actions/cache-save" not in kod:
+            "the region build doesn't compute the node order (`workers/routing/"
+            "order.sh`). An order from the cache is then up to a manual workflow "
+            "nobody runs – and archives go without it forever.")
+    if "actions/cache-save" not in code:
         err(".github/workflows/navigation-region.yml",
-            "dopočítané poradie sa neukladá do cache (`cache-save`). Každý "
-            "kraj by ho rátal znova a každý by mal iné – a také sa v telefóne "
-            "spojiť nesmú.")
+            "a computed order isn't saved to the cache (`cache-save`). Every region "
+            "would compute it again and each would get a different one – and such "
+            "archives must not be joined on the phone.")
     if "name: pbf" not in wtext:
         err(".github/workflows/navigation-region.yml",
-            "job si nesťahuje artefakt `pbf` z prípravy, takže nemá z čoho "
-            "sieť postaviť – alebo si extrakt zháňa sám, čo je druhá pravda "
-            "o tom, za aké územie navigácia je.")
+            "the job doesn't download the `pbf` artifact from the plan, so it has "
+            "nothing to build the network from – or it fetches an extract itself, "
+            "a second truth about the area routing covers.")
 
     if os.path.exists(BUILD_MAP):
         bm = open(BUILD_MAP, encoding="utf-8").read()
         if "navigation-region.yml" not in bm:
             err(".github/workflows/build-map-region.yml",
-                "build mapy nevolá `navigation-region.yml`, takže sa k mape "
-                "kraja nepostaví smerovacia sieť – a nikto to nepovie: mapa "
-                "je v poriadku, len sa v nej nedá nikam doviezť.")
+                "the map build doesn't call `navigation-region.yml`, so no routing "
+                "network is built for the region map – and nobody says so: the "
+                "map is fine, you just can't route anywhere in it.")
         if "ROUTING_ENABLED" not in bm:
             err(".github/workflows/build-map-region.yml",
-                "manifestu sa nehovorí, či sieť vznikla (`ROUTING_ENABLED`). "
-                "Mapa a `cesty` sa potom skladajú len podľa mien súborov, "
-                "a keď sieť nevznikla, tvári sa mapa, že v nej je.")
+                "the manifest isn't told whether the network was made "
+                "(`ROUTING_ENABLED`). The map and `roads` are then assembled by "
+                "file names alone, and when no network was made the map pretends "
+                "to have one.")
 
     if os.path.exists(SITE_SH):
         site = open(SITE_SH, encoding="utf-8").read()
         if "routing:" not in site:
             err("workers/deploy/site.sh",
-                "manifest nenesie `routing`. Manifest je jediné miesto, ktoré "
-                "vie, čo v mape naozaj je – bez neho sa sieť do mapy a do "
-                "`cesty` skladá zo zálohy podľa prípony mena.")
+                "the manifest doesn't carry `routing`. The manifest is the one place "
+                "that knows what the map really holds – without it the network is "
+                "put into the map and `roads` by the name-suffix fallback.")
 
 
-def poradie(areas, regions):
-    """Poradie uzlov: build kraja si ho vezme z cache, inak dopočíta a uloží.
+def node_order(areas, regions):
+    """Node order: a region build takes it from the cache, else computes and saves it.
 
-    `routing-order.yml` ostáva ako ručné prepočítanie. Kľúč cache je jediná
-    väzba medzi nimi a je to REŤAZEC na troch miestach – keď sa rozíde, build
-    kraja proste nikdy nič nenájde, archívy pôjdu bez poradia a nespadne pri
-    tom nič.
+    `routing-order.yml` stays as a manual recompute. The cache key is the only
+    link between them and it's a STRING in three places – when it drifts, a
+    region build just never finds anything, archives go without an order and
+    nothing fails.
     """
     rel_regions = "workers/data/regions.json"
-    for kluc, r in regions.items():
-        oblast = r.get("routing_area")
-        if oblast and oblast not in areas:
+    for key, r in regions.items():
+        area = r.get("routing_area")
+        if area and area not in areas:
             err(rel_regions,
-                f"`{kluc}` má `routing_area: {oblast}`, ktoré vo "
-                f"`workers/data/routing-areas.json` nie je. Build kraja by "
-                f"hľadal poradie, ktoré nikto nepočíta.")
+                f"`{key}` has `routing_area: {area}`, which "
+                f"`workers/data/routing-areas.json` lacks. The region build would "
+                f"look for an order nobody computes.")
 
     if not os.path.exists(ORDER_WORKFLOW):
         err(".github/workflows/routing-order.yml",
-            "workflow neexistuje. Je to ručné prepočítanie poradia nad CELÝM "
-            "územím – bez neho sa nové poradie dá vynútiť len tým, že sa "
-            "staré nechá zostarnúť.")
+            "the workflow doesn't exist. It's the manual recompute of the order over "
+            "the WHOLE area – without it a new order can only be forced by letting "
+            "the old one go stale.")
         return
     ord_text = open(ORDER_WORKFLOW, encoding="utf-8").read()
     if "workers/routing/order.sh" not in ord_text:
         err(".github/workflows/routing-order.yml",
-            "workflow nepoužíva `workers/routing/order.sh` – ten istý skript, "
-            "akým si poradie dopočíta build kraja. Druhý postup by bol druhá "
-            "pravda o tom, nad akým PBF a akým kódom poradie vzniká.")
+            "the workflow doesn't use `workers/routing/order.sh` – the same script a "
+            "region build computes the order with. A second procedure would be a "
+            "second truth about which PBF and which code the order comes from.")
     order_sh = os.path.join(_WORKERS, "routing", "order.sh")
     if not os.path.exists(order_sh):
-        err("workers/routing/order.sh", "skript neexistuje.")
+        err("workers/routing/order.sh", "the script doesn't exist.")
     else:
         text = open(order_sh, encoding="utf-8").read()
-        for skript, preco in (
+        for script, why in (
                 ("workers/routing/pbf.sh",
-                 "druhý zdroj PBF by bol druhá pravda o tom, nad akým územím "
-                 "sa poradie počíta"),
+                 "a second PBF source would be a second truth about the area the "
+                 "order is computed over"),
                 ("workers/routing/order.py",
-                 "poradie musí rátať ten istý kód, ktorého id ide do archívu")):
-            if skript not in text:
+                 "the order must be computed by the same code whose id goes into "
+                 "the archive")):
+            if script not in text:
                 err("workers/routing/order.sh",
-                    f"skript nepoužíva `{skript}` – {preco}.")
+                    f"the script doesn't use `{script}` – {why}.")
 
-    kluce = {ORDER_WORKFLOW: _kluce_cache(ord_text)}
+    keys = {ORDER_WORKFLOW: _cache_keys(ord_text)}
     if os.path.exists(REGION_WORKFLOW):
-        kluce[REGION_WORKFLOW] = _kluce_cache(
+        keys[REGION_WORKFLOW] = _cache_keys(
             open(REGION_WORKFLOW, encoding="utf-8").read())
-    chyba = [f for f, k in kluce.items() if not k]
-    for f in chyba:
-        err(f, "nie je v ňom kľúč cache s poradím uzlov (`routing-order-…`). "
-               "Poradie sa medzi behmi prenáša jedine ním.")
-    hodnoty = set().union(*kluce.values())
-    if len(hodnoty) > 1:
+    for f in [f for f, k in keys.items() if not k]:
+        err(f, "it has no node-order cache key (`routing-order-…`). The order "
+               "travels between runs only through it.")
+    values = set().union(*keys.values())
+    if len(values) > 1:
         err(".github/workflows/routing-order.yml",
-            f"kľúč cache s poradím znie na každej strane inak ({sorted(hodnoty)}). "
-            f"Build kraja potom nenájde nič, archívy pôjdu bez poradia – "
-            f"a nespadne pri tom nič.")
+            f"the order cache key reads differently on each side ({sorted(values)}). "
+            f"A region build then finds nothing, archives go without an order – "
+            f"and nothing fails.")
 
 
-def _kluce_cache(text):
-    """Predpony kľúčov cache s poradím – bez `run_id`, ten je zámerne rôzny."""
+def _cache_keys(text):
+    """Order cache key prefixes – without `run_id`, which differs on purpose."""
     return {m.rstrip("-")
             for m in re.findall(r"key: (routing-order-[a-z0-9-]*)", text)}
 
 
-def balik():
+def package():
     """Routing rides in the map and in `roads`; its own `routing` package is retired."""
-    if not os.path.exists(CISELNIK):
+    if not os.path.exists(REGISTRY):
         err("workers/data/packages.json", "the package registry doesn't exist.")
         return
-    with open(CISELNIK, encoding="utf-8") as f:
+    with open(REGISTRY, encoding="utf-8") as f:
         reg = json.load(f)
     packages = {p["key"]: p for p in reg.get("packages") or []}
     retired = {r["key"] for r in reg.get("retired") or []}
@@ -327,24 +328,24 @@ def balik():
             "without the network.")
 
 
-def formular(areas):
-    """Výber rozsahu vo formulári sa musí zhodovať s číselníkom."""
-    for cesta in (WORKFLOW, ORDER_WORKFLOW):
-        rel = cesta.replace(os.sep, "/")
-        if not os.path.exists(cesta):
-            err(rel, "workflow neexistuje.")
+def form(areas):
+    """The scope choice in a form must match the lookup."""
+    for path in (WORKFLOW, ORDER_WORKFLOW):
+        rel = path.replace(os.sep, "/")
+        if not os.path.exists(path):
+            err(rel, "the workflow doesn't exist.")
             continue
-        with open(cesta, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             wf = yaml.safe_load(f)
         on = wf.get("on", wf.get(True)) or {}
         inp = ((on.get("workflow_dispatch") or {}).get("inputs") or {})
         opts = set((inp.get("area") or {}).get("options") or [])
         if opts != set(areas):
             err(rel,
-                f"výber `area` vo formulári má {sorted(opts)}, číselník "
-                f"{sorted(areas)}. `choice` GitHub zo súboru prečítať nevie, "
-                f"takže sa to píše dvakrát – a rozsah, ktorý vo výbere nie je, "
-                f"sa nedá vybrať.")
+                f"the form's `area` choice has {sorted(opts)}, the lookup "
+                f"{sorted(areas)}. GitHub's `choice` can't read a file, so it's "
+                f"written twice – and a scope missing from the choice can't be "
+                f"picked.")
 
 
 def main():
@@ -355,22 +356,22 @@ def main():
     with open(VIGNETTES, encoding="utf-8") as f:
         countries = json.load(f)["countries"]
 
-    celostatny_graf(areas, regions, countries)
-    siet_kraja()
-    poradie(areas, regions)
-    balik()
-    formular(areas)
+    national_graph(areas, regions, countries)
+    region_network()
+    node_order(areas, regions)
+    package()
+    form(areas)
 
     for path, msg in bad:
         print(f"::error file={path}::{msg}")
     if bad:
-        print(f"\n{len(bad)} problém(ov) v navigácii.")
+        print(f"\n{len(bad)} problem(s) in routing.")
         return 1
-    print("Navigácia: sieť kraja stojí na PBF mapy, ide v mape aj v `cesty` "
-          "a beh ju overí; poradie uzlov si build kraja dopočíta a uloží "
-          "a všetky strany kľúča cache znejú rovnako; celoštátny graf Valhally "
-          "ostáva ako referenčná stavba, jeho PBF sa nereže a formuláre "
-          "sedia s číselníkom.")
+    print("Routing: the region network stands on the map's PBF, rides in the map "
+          "and in `roads` and the run checks it; a region build computes and saves "
+          "the node order and every side of the cache key reads the same; Valhalla's "
+          "national graph stays as the reference build, its PBF isn't cut and the "
+          "forms match the lookup.")
     return 0
 
 

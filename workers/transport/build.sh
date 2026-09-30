@@ -1,61 +1,44 @@
 #!/usr/bin/env bash
-# Celá dopravná sieť z OSM → `{región}-transport.pmtiles`.
-#
-# Rozpis je v hlavičke `transport.yml`. Krátko: všetko, po čom sa dá cestovať,
-# v jednom archíve, ktorý sa dá stiahnuť bez zvyšku mapy. Je to vrstva na
-# použitie, nie druhé kreslenie – štýl z nej kreslí len obmedzenia na ceste,
-# samotnú sieť kreslí základná mapa.
-#
-# Vlastný skript, lebo build-map-region.yml je pri strope 128 kB.
-#
-# Jeden priechod filtrom (dôvod v hlavičke `filter.txt`): obmedzenia sú
-# atribúty tejto siete a `tags-filter` berie objekt celý aj s nimi.
-#
-# Podiel na veľkosti stránky berie z `BUDGET_TRANSPORT_PCT`.
+# The whole transport network from OSM → `{region}-transport.pmtiles`; see `transport.yml`.
+# A layer to use, downloadable alone; the style draws only road restrictions from it.
+# Its share of the page size comes from `BUDGET_TRANSPORT_PCT`.
 
 set -euo pipefail
 mkdir -p _site/tiles data steps-out
 sudo apt-get update -qq
 sudo apt-get install -y -qq osmium-tool
 
-# ---- 1. predfilter: len to, po čom sa dá ísť ----
 T_F=$(date +%s)
 osmium tags-filter --overwrite -o data/transport.osm.pbf \
   data/region.osm.pbf --expressions=workers/transport/filter.txt
 
 BEFORE=$(stat -c%s data/region.osm.pbf)
 AFTER=$(stat -c%s data/transport.osm.pbf)
-echo "Predfilter: $(du -h data/region.osm.pbf | cut -f1) → $(du -h data/transport.osm.pbf | cut -f1)"
-printf '%s\t%s\t%s\t%s\n' "61" "Predfilter dopravnej siete" "$(( $(date +%s) - T_F ))" \
+echo "Prefilter: $(du -h data/region.osm.pbf | cut -f1) → $(du -h data/transport.osm.pbf | cut -f1)"
+printf '%s\t%s\t%s\t%s\n' "61" "Transport network prefilter" "$(( $(date +%s) - T_F ))" \
   "$(( BEFORE / 1048576 )) MB → $(( AFTER / 1048576 )) MB" \
   >> steps-out/transport.tsv
 
-# Prázdny výsledok nie je chyba – 4 km² rýchleho testu môže padnúť do lesa bez
-# jedinej cesty. Balík `cesty` sa vtedy nevyrobí; že tam nie je, povie
-# `obsah.json` v balíku mapy.
+# empty isn't an error for a small test; `contents.json` says the package is absent
 if [ "$AFTER" -lt 2000 ]; then
-  echo "::warning::V tomto území nie je ani jedna cesta, trajekt ani lanovka – balík \`cesty\` sa nevyrobí."
+  echo "::warning::This area has no road, ferry or aerialway – the \`roads\` package isn't made."
   echo "enabled=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi
 
-# ---- 2. dlaždice ----
 TZ_="$OPT_TRANSPORT_MAXZOOM"
 case "$TZ_" in ''|*[!0-9]*) TZ_=14 ;; esac
 if [ "$TZ_" -gt 16 ]; then TZ_=16; fi
 
-# Poistka proti tichej strate: čo má v schéme `min_zoom` nad maxzoomom,
-# Planetiler zahodí BEZ SLOVA. Tá istá poistka ako v joboch `features`,
-# `hranice` a `vodstvo`.
+# Planetiler silently drops `min_zoom` above maxzoom
 TOPZ=$(grep -oE 'min_zoom: [0-9]+' workers/transport/transport.yml \
        | grep -oE '[0-9]+' | sort -n | tail -1)
 if [ "${TOPZ:-0}" -gt "$TZ_" ]; then
-  echo "::error::workers/transport/transport.yml má bloky s min_zoom až ${TOPZ}, ale dlaždice idú po z${TZ_} – tie sa do nich vôbec nedostanú (pri \`service\` cestách je to každý príjazd k domu). Zdvihni transport_maxzoom na ${TOPZ}, alebo tým blokom zníž min_zoom."
+  echo "::error::workers/transport/transport.yml has blocks with min_zoom up to ${TOPZ}, but tiles go to z${TZ_} – those never get in (for \`service\` roads that is every driveway). Raise transport_maxzoom to ${TOPZ}, or lower min_zoom of those blocks."
   exit 1
 fi
 
-# Ten istý orez na región ako pri mape (workers/lib/region-clip.sh) – sieť
-# nesmie siahať ďalej než mapa pod ňou.
+# the map's own region cut
 mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
 
 T_PM=$(date +%s)
@@ -71,20 +54,18 @@ java -Xmx4g -jar planetiler.jar generate-custom \
 
 MB=$(( $(stat -c%s "$OUT") / 1048576 ))
 
-# Poistka na rozpočet stránky. `deploy` overí súčet ešte raz, ale keď je nad
-# podielom práve táto vrstva, má sa to povedať tu – je to najväčšia z vrstiev
-# stavaných vlastnou schémou.
+# `deploy` checks the total again; the largest own-schema layer says its excess here
 LIMIT_MB="$SIZE_LIMIT_MB"
 case "$LIMIT_MB" in ''|*[!0-9]*) LIMIT_MB=900 ;; esac
 TBUDGET_MB=$(( LIMIT_MB * BUDGET_TRANSPORT_PCT / 100 ))
 if [ "$MB" -gt "$TBUDGET_MB" ]; then
-  echo "::warning::Dopravná sieť má ${MB} MB, čo je nad podielom ${TBUDGET_MB} MB z rozpočtu stránky. Zníž transport_maxzoom alebo zdvihni BUDGET_TRANSPORT_PCT."
+  echo "::warning::The transport network takes ${MB} MB, above its ${TBUDGET_MB} MB share of the page budget. Lower transport_maxzoom or raise BUDGET_TRANSPORT_PCT."
 fi
 
 echo "enabled=true" >> "$GITHUB_OUTPUT"
 echo "maxzoom=$TZ_" >> "$GITHUB_OUTPUT"
 echo "size_mb=$MB" >> "$GITHUB_OUTPUT"
 ls -lh "$OUT"
-printf '%s\t%s\t%s\t%s\n' "62" "Dopravná sieť → PMTiles" "$(( $(date +%s) - T_PM ))" \
+printf '%s\t%s\t%s\t%s\n' "62" "Transport network → PMTiles" "$(( $(date +%s) - T_PM ))" \
   "maxzoom $TZ_, $(du -h "$OUT" | cut -f1)" \
   >> steps-out/transport.tsv

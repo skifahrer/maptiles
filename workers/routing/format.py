@@ -1,60 +1,57 @@
 #!/usr/bin/env python3
-"""Telo smerovacej dlaždice `RTIL` – zápis aj čítanie na jednom mieste."""
+"""The `RTIL` routing tile body – writing and reading in one place."""
 import struct
 
 MAGIC = b"RTIL"
-VERZIA = 1
+VERSION = 1
 
-# `priznaky` v hlavičke: pole, ktoré v archíve nie je, sa nekóduje vôbec
-P_VYSKA = 1
-P_PORADIE = 2
-# výškový profil hrany; blok je AŽ ZA `okraj`, takže čítačka bez neho dočíta
-# dlaždicu do konca a zvyšok nechá ležať – preto sa `VERZIA` nedvíha
-P_PROFIL = 4
+# header `flags`: a field absent from the archive isn't encoded at all
+F_HEIGHT = 1
+F_ORDER = 2
+# the profile block comes AFTER `border`, so an older reader stops before it – no version bump
+F_PROFILE = 4
 
-# krok profilu v decimetroch: 5 m. Decimeter, nie meter – zaokrúhlenie na meter
-# je pri 5 m kroku väčší šum než sám terén a sčítané stúpanie z neho rastie.
-KROK_DM = 50
+# profile step in decimetres: 5 m; rounding to metres would be noisier than the terrain
+STEP_DM = 50
 
-# hrana je prejazdná v smere uzlov way, proti nemu, alebo oboma
-S_VPRED = 1
-S_VZAD = 2
+# an edge runs along the way's nodes, against them, or both
+D_FORWARD = 1
+D_BACKWARD = 2
 
-# index = to, čo je v dlaždici; poradie sa nesmie preskladať bez verzie formátu
-DRUHY_ZAKAZOV = [
+# index = what is in the tile; never reorder without a format version
+RESTRICTION_KINDS = [
     "no_left_turn", "no_right_turn", "no_straight_on", "no_u_turn",
     "no_entry", "no_exit",
     "only_left_turn", "only_right_turn", "only_straight_on", "only_u_turn",
 ]
 
-# `except=bicycle;psv` – bit na vozidlo, ktorého sa zákaz netýka
-VYNIMKY = ["foot", "bicycle", "psv", "hgv", "motorcar", "moped",
-           "motorcycle", "emergency"]
+# `except=bicycle;psv` – one bit per vehicle the restriction spares
+EXCEPTIONS = ["foot", "bicycle", "psv", "hgv", "motorcar", "moped",
+              "motorcycle", "emergency"]
 
-# strop na jednu dlaždicu; nad ním sa archív sťahuje po kusoch, ktoré sa
-# v telefóne nedajú rozumne držať v pamäti
-ROZPOCET_KB = 1024
+# cap per tile; above it a phone can't hold the pieces in memory sensibly
+BUDGET_KB = 1024
 
 
-def pocet_vzoriek(dlzka_m, krok_m):
-    """Koľko vzoriek má profil hrany – posledná sedí na jej konci, nie na kroku."""
-    if dlzka_m <= 0:
+def sample_count(length_m, step_m):
+    """Samples in an edge profile – the last sits on its end, not on a step."""
+    if length_m <= 0:
         return 0
-    celych = int(dlzka_m // krok_m)
-    return celych + (2 if dlzka_m - celych * krok_m > 0.01 else 1)
+    whole = int(length_m // step_m)
+    return whole + (2 if length_m - whole * step_m > 0.01 else 1)
 
 
 def zigzag(n):
     return (n << 1) ^ (n >> 63) if n < 0 else n << 1
 
 
-class Zapis:
+class Writer:
     def __init__(self):
         self.b = bytearray()
 
     def u(self, n):
         if n < 0:
-            raise ValueError(f"varint nie je pre záporné číslo: {n}")
+            raise ValueError(f"no varint for a negative number: {n}")
         while True:
             b = n & 0x7F
             n >>= 7
@@ -65,7 +62,7 @@ class Zapis:
     def z(self, n):
         self.u((n << 1) ^ (n >> 63) if n < 0 else n << 1)
 
-    def bajt(self, n):
+    def byte(self, n):
         self.b.append(n & 0xFF)
 
     def text(self, s):
@@ -74,25 +71,25 @@ class Zapis:
         self.b += raw
 
 
-class Citanie:
+class Reader:
     def __init__(self, b):
         self.b, self.i = b, 0
 
     def u(self):
-        n, posun = 0, 0
+        n, shift = 0, 0
         while True:
             x = self.b[self.i]
             self.i += 1
-            n |= (x & 0x7F) << posun
+            n |= (x & 0x7F) << shift
             if not x & 0x80:
                 return n
-            posun += 7
+            shift += 7
 
     def z(self):
         n = self.u()
         return -(n + 1) // 2 if n & 1 else n // 2
 
-    def bajt(self):
+    def byte(self):
         self.i += 1
         return self.b[self.i - 1]
 
@@ -102,207 +99,206 @@ class Citanie:
         return self.b[self.i - n:self.i].decode("utf-8")
 
 
-def zapis(dlazdica):
-    """Dlaždica ako slovník polí → bajty tela (ešte nezabalené gzipom)."""
-    w = Zapis()
+def write(tile):
+    """A tile as a dict of fields → body bytes (not yet gzipped)."""
+    w = Writer()
     w.b += MAGIC
-    w.bajt(VERZIA)
-    profily = [h.get("profil") or [] for h in dlazdica["hrany"]]
-    ma_profil = any(profily)
-    priznaky = ((P_VYSKA if dlazdica["vyska"] else 0)
-                | (P_PORADIE if dlazdica["poradie"] else 0)
-                | (P_PROFIL if ma_profil else 0))
-    w.bajt(priznaky)
-    w.b += struct.pack(">II", dlazdica["slovnik_id"], dlazdica["poradie_id"])
-    for v in dlazdica["zxy"]:
+    w.byte(VERSION)
+    profiles = [h.get("profile") or [] for h in tile["edges"]]
+    has_profile = any(profiles)
+    flags = ((F_HEIGHT if tile["height"] else 0)
+             | (F_ORDER if tile["order"] else 0)
+             | (F_PROFILE if has_profile else 0))
+    w.byte(flags)
+    w.b += struct.pack(">II", tile["dictionary_id"], tile["order_id"])
+    for v in tile["zxy"]:
         w.u(v)
-    for v in dlazdica["bbox"]:
+    for v in tile["bbox"]:
         w.z(v)
 
-    uzly = dlazdica["uzly"]
-    w.u(len(uzly))
-    _stlpec_z(w, [u[0] for u in uzly], delta=True)
-    _stlpec_z(w, [u[1] for u in uzly], delta=True)
-    _stlpec_z(w, [u[2] for u in uzly], delta=True)
-    if dlazdica["vyska"]:
-        _stlpec_z(w, [u[3] for u in uzly], delta=True)
-    if dlazdica["poradie"]:
-        for u in uzly:
+    nodes = tile["nodes"]
+    w.u(len(nodes))
+    _column_z(w, [u[0] for u in nodes], delta=True)
+    _column_z(w, [u[1] for u in nodes], delta=True)
+    _column_z(w, [u[2] for u in nodes], delta=True)
+    if tile["height"]:
+        _column_z(w, [u[3] for u in nodes], delta=True)
+    if tile["order"]:
+        for u in nodes:
             w.u(u[4])
 
-    hrany = dlazdica["hrany"]
-    w.u(len(hrany))
-    for h in hrany:
-        w.u(h["od"])
-    for h in hrany:
-        w.u(h["do"])
-    for h in hrany:
+    edges = tile["edges"]
+    w.u(len(edges))
+    for h in edges:
+        w.u(h["from"])
+    for h in edges:
+        w.u(h["to"])
+    for h in edges:
         w.u(h["tagset"])
-    for h in hrany:
-        w.u(h["dlzka_cm"])
-    for h in hrany:
-        w.bajt(h["smer"])
-    for h in hrany:
+    for h in edges:
+        w.u(h["length_cm"])
+    for h in edges:
+        w.byte(h["direction"])
+    for h in edges:
         w.u(len(h["geom"]))
-    for h in hrany:
-        lat, lon = uzly[h["od"]][1], uzly[h["od"]][2]
+    for h in edges:
+        lat, lon = nodes[h["from"]][1], nodes[h["from"]][2]
         for glat, glon in h["geom"]:
             w.z(glat - lat)
             w.z(glon - lon)
             lat, lon = glat, glon
 
-    w.u(len(dlazdica["tagsety"]))
-    for ts in dlazdica["tagsety"]:
+    w.u(len(tile["tagsets"]))
+    for ts in tile["tagsets"]:
         w.u(len(ts))
-        for kluc_idx, hodnota in ts:
-            w.u(kluc_idx)
-            w.u(hodnota)
+        for key_idx, value in ts:
+            w.u(key_idx)
+            w.u(value)
 
-    w.u(len(dlazdica["retazce"]))
-    for s in dlazdica["retazce"]:
+    w.u(len(tile["strings"]))
+    for s in tile["strings"]:
         w.text(s)
 
-    w.u(len(dlazdica["zakazy"]))
-    for z in dlazdica["zakazy"]:
-        w.u(z["druh"])
-        w.u(z["vynimky"])
-        w.u(len(z["hrany"]))
-        for od, do in z["hrany"]:
-            w.u(od)
-            w.u(do)
+    w.u(len(tile["restrictions"]))
+    for z in tile["restrictions"]:
+        w.u(z["kind"])
+        w.u(z["exceptions"])
+        w.u(len(z["edges"]))
+        for a, b in z["edges"]:
+            w.u(a)
+            w.u(b)
 
-    w.u(len(dlazdica["okraj"]))
-    for i in dlazdica["okraj"]:
+    w.u(len(tile["border"]))
+    for i in tile["border"]:
         w.u(i)
 
-    if ma_profil:
-        _zapis_profily(w, profily, dlazdica.get("krok_dm") or KROK_DM)
+    if has_profile:
+        _write_profiles(w, profiles, tile.get("step_dm") or STEP_DM)
     return bytes(w.b)
 
 
-def _zapis_profily(w, profily, krok_dm):
-    """Výšky pozdĺž hrán po `krok_dm`, v decimetroch – posledný blok tela."""
-    w.u(krok_dm)
-    w.u(len(profily))
-    for p in profily:
+def _write_profiles(w, profiles, step_dm):
+    """Heights along edges every `step_dm`, in decimetres – the body's last block."""
+    w.u(step_dm)
+    w.u(len(profiles))
+    for p in profiles:
         w.u(len(p))
-    _stlpec_z(w, [p[0] for p in profily if p], delta=True)
-    for p in profily:
+    _column_z(w, [p[0] for p in profiles if p], delta=True)
+    for p in profiles:
         prev = p[0] if p else 0
         for v in p[1:]:
             w.z(v - prev)
             prev = v
 
 
-def citaj(raw):
-    """Bajty tela → ten istý slovník, aký zobral `zapis`."""
+def read(raw):
+    """Body bytes → the same dict `write` took."""
     if raw[:4] != MAGIC:
-        raise ValueError("telo dlaždice nezačína `RTIL` – toto nie je "
-                         "smerovacia dlaždica")
-    r = Citanie(raw)
+        raise ValueError("the tile body doesn't start with `RTIL` – not a "
+                         "routing tile")
+    r = Reader(raw)
     r.i = 4
-    verzia = r.bajt()
-    if verzia != VERZIA:
-        raise ValueError(f"dlaždica je vo formáte v{verzia}, tento kód číta "
-                         f"v{VERZIA}")
-    priznaky = r.bajt()
-    slovnik_id, poradie_id = struct.unpack(">II", raw[r.i:r.i + 8])
+    version = r.byte()
+    if version != VERSION:
+        raise ValueError(f"the tile is format v{version}, this code reads "
+                         f"v{VERSION}")
+    flags = r.byte()
+    dictionary_id, order_id = struct.unpack(">II", raw[r.i:r.i + 8])
     r.i += 8
     zxy = [r.u() for _ in range(3)]
     bbox = [r.z() for _ in range(4)]
 
     n = r.u()
-    ids = _citaj_stlpec(r, n, delta=True)
-    lats = _citaj_stlpec(r, n, delta=True)
-    lons = _citaj_stlpec(r, n, delta=True)
-    vysky = (_citaj_stlpec(r, n, delta=True) if priznaky & P_VYSKA
-             else [0] * n)
-    rank = [r.u() for _ in range(n)] if priznaky & P_PORADIE else [0] * n
-    uzly = list(zip(ids, lats, lons, vysky, rank))
+    ids = _read_column(r, n, delta=True)
+    lats = _read_column(r, n, delta=True)
+    lons = _read_column(r, n, delta=True)
+    heights = (_read_column(r, n, delta=True) if flags & F_HEIGHT
+               else [0] * n)
+    rank = [r.u() for _ in range(n)] if flags & F_ORDER else [0] * n
+    nodes = list(zip(ids, lats, lons, heights, rank))
 
     m = r.u()
-    od = [r.u() for _ in range(m)]
-    do = [r.u() for _ in range(m)]
+    frm = [r.u() for _ in range(m)]
+    to = [r.u() for _ in range(m)]
     tagset = [r.u() for _ in range(m)]
-    dlzka = [r.u() for _ in range(m)]
-    smer = [r.bajt() for _ in range(m)]
-    pocty = [r.u() for _ in range(m)]
-    hrany = []
+    length = [r.u() for _ in range(m)]
+    direction = [r.byte() for _ in range(m)]
+    counts = [r.u() for _ in range(m)]
+    edges = []
     for i in range(m):
-        lat, lon = uzly[od[i]][1], uzly[od[i]][2]
+        lat, lon = nodes[frm[i]][1], nodes[frm[i]][2]
         geom = []
-        for _ in range(pocty[i]):
+        for _ in range(counts[i]):
             lat += r.z()
             lon += r.z()
             geom.append((lat, lon))
-        hrany.append({"od": od[i], "do": do[i], "tagset": tagset[i],
-                      "dlzka_cm": dlzka[i], "smer": smer[i], "geom": geom,
-                      "profil": []})
+        edges.append({"from": frm[i], "to": to[i], "tagset": tagset[i],
+                      "length_cm": length[i], "direction": direction[i],
+                      "geom": geom, "profile": []})
 
-    tagsety = []
+    tagsets = []
     for _ in range(r.u()):
-        tagsety.append([(r.u(), r.u()) for _ in range(r.u())])
-    retazce = [r.text() for _ in range(r.u())]
+        tagsets.append([(r.u(), r.u()) for _ in range(r.u())])
+    strings = [r.text() for _ in range(r.u())]
 
-    zakazy = []
+    restrictions = []
     for _ in range(r.u()):
-        druh, vynimky = r.u(), r.u()
-        zakazy.append({"druh": druh, "vynimky": vynimky,
-                       "hrany": [(r.u(), r.u()) for _ in range(r.u())]})
-    okraj = [r.u() for _ in range(r.u())]
+        kind, exceptions = r.u(), r.u()
+        restrictions.append({"kind": kind, "exceptions": exceptions,
+                             "edges": [(r.u(), r.u()) for _ in range(r.u())]})
+    border = [r.u() for _ in range(r.u())]
 
-    krok_dm = KROK_DM
-    if priznaky & P_PROFIL:
-        krok_dm = _citaj_profily(r, hrany)
+    step_dm = STEP_DM
+    if flags & F_PROFILE:
+        step_dm = _read_profiles(r, edges)
 
-    return {"verzia": verzia, "vyska": bool(priznaky & P_VYSKA),
-            "poradie": bool(priznaky & P_PORADIE),
-            "profil": bool(priznaky & P_PROFIL), "krok_dm": krok_dm,
-            "slovnik_id": slovnik_id, "poradie_id": poradie_id,
-            "zxy": zxy, "bbox": bbox, "uzly": uzly, "hrany": hrany,
-            "tagsety": tagsety, "retazce": retazce, "zakazy": zakazy,
-            "okraj": okraj}
+    return {"version": version, "height": bool(flags & F_HEIGHT),
+            "order": bool(flags & F_ORDER),
+            "profile": bool(flags & F_PROFILE), "step_dm": step_dm,
+            "dictionary_id": dictionary_id, "order_id": order_id,
+            "zxy": zxy, "bbox": bbox, "nodes": nodes, "edges": edges,
+            "tagsets": tagsets, "strings": strings, "restrictions": restrictions,
+            "border": border}
 
 
-def _citaj_profily(r, hrany):
-    """Blok profilov do `hrany[i]["profil"]`; vráti krok v decimetroch."""
-    krok_dm = r.u()
-    pocet = r.u()
-    if pocet != len(hrany):
-        raise ValueError(f"blok profilov hovorí o {pocet} hranách, dlaždica "
-                         f"ich má {len(hrany)}")
-    pocty = [r.u() for _ in range(pocet)]
-    prve, prev = [], 0
-    for n in pocty:
+def _read_profiles(r, edges):
+    """The profile block into `edges[i]["profile"]`; returns the step in decimetres."""
+    step_dm = r.u()
+    count = r.u()
+    if count != len(edges):
+        raise ValueError(f"the profile block speaks of {count} edges, the tile "
+                         f"has {len(edges)}")
+    counts = [r.u() for _ in range(count)]
+    firsts, prev = [], 0
+    for n in counts:
         if n:
             prev += r.z()
-            prve.append(prev)
+            firsts.append(prev)
         else:
-            prve.append(None)
-    for h, n, zaciatok in zip(hrany, pocty, prve):
+            firsts.append(None)
+    for h, n, start in zip(edges, counts, firsts):
         if not n:
-            h["profil"] = []
+            h["profile"] = []
             continue
-        p = [zaciatok]
+        p = [start]
         for _ in range(n - 1):
             p.append(p[-1] + r.z())
-        h["profil"] = p
-    return krok_dm
+        h["profile"] = p
+    return step_dm
 
 
-def _stlpec_z(w, hodnoty, delta):
+def _column_z(w, values, delta):
     prev = 0
-    for v in hodnoty:
+    for v in values:
         w.z(v - prev if delta else v)
         if delta:
             prev = v
 
 
-def _citaj_stlpec(r, n, delta):
+def _read_column(r, n, delta):
     out, prev = [], 0
     for _ in range(n):
         v = r.z() + (prev if delta else 0)
         out.append(v)
         prev = v
     return out
-

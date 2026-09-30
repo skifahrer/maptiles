@@ -1,22 +1,11 @@
-# Predfilter PBF pre `boundaries.yml` (`osmium tags-filter`).
-#
-# Jeden priechod: hranica je „administratívna hranica ALEBO pomenované sídlo".
-#
-# `r/` sú tu nutné a je to celý rozdiel oproti ostatným vrstvám: hranica obce
-# je relácia, ktorej členmi sú cesty bez vlastného `boundary=administrative`.
-# Filter len na `w/` by pustil relácie bez geometrie a v dlaždiciach by ticho
-# nebolo nič; `tags-filter` členov doťahuje sám.
-#
-# Zoznam je zámerne širší než schéma (pustí aj `admin_level` 9 a 10). Opačne to
-# neplatí – stráži to `workers/lint/boundaries.py`.
+# PBF prefilter for `boundaries.yml` (`osmium tags-filter`): admin borders OR named places.
+# `r/` is needed: a municipality border is a relation of ways without the tag.
+# Wider than the schema on purpose; `workers/lint/boundaries.py` guards the other way.
 
-# --- samotné hranice: relácia je tá, čo nesie meno a úroveň ---
+# the borders: the relation carries name and level
 r/boundary=administrative
 w/boundary=administrative
 
-# --- názvy území: štát, kraj, okres, obec ---
-# Meno územia je v OSM na DVOCH miestach: na relácii hranice a na bode sídla
-# (`place=city`, `village`, …). Berú sa obe – relácia povie, kde územie končí,
-# bod povie, kde sa jeho meno kreslí.
+# area names: the relation says where it ends, the place point where its name goes
 n/place
 r/place

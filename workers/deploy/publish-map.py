@@ -78,7 +78,7 @@ def contents(kind, man, fmt="zip", parts=None):
         "file": file_name(kind, fmt),
         "format": fmt,
         "region": strip_test(env("REGION_KEY")),
-        "area": strip_test(env("AREA_KEY")) or "whole",
+        "area": names.area_key() or "whole",
         "test_km2": env("TEST_KM2", "0"),
         "tiles_maxzoom": env("TILES_MAXZOOM"),
         "layers": layers(),

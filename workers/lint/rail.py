@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Železnice a lanovky: filter pustí, čo schéma chce, a navigácia jazdí po tom, čo mapa kreslí."""
+"""Rail and aerialways: the filter passes what the schema wants, routing runs on what the map draws."""
 import json
 import os
 import sys
@@ -11,18 +11,18 @@ _WORKERS = os.path.dirname(_HERE)
 SCHEMA = os.path.join(_WORKERS, "rail", "rail.yml")
 FILTER = os.path.join(_WORKERS, "rail", "filter.txt")
 BUILD = os.path.join(_WORKERS, "rail", "build.sh")
-SLOVNIK = os.path.join(_WORKERS, "data", "rail-routing-tags.json")
+DICTIONARY = os.path.join(_WORKERS, "data", "rail-routing-tags.json")
 
-# kľúče, ktoré na body dopíše `lines.py` – predfilter ich pustiť nemusí
-DOPOCITANE = {"rail_speed"}
+# keys `lines.py` adds to points – the prefilter needn't pass them
+DERIVED = {"rail_speed"}
 
-# čo balík sľubuje v aplikácii
-SLUBY = {"rail", "tram", "subway", "light_rail", "abandoned", "disused",
+# what the package promises in the app
+PROMISED = {"rail", "tram", "subway", "light_rail", "abandoned", "disused",
          "station", "halt", "level_crossing"}
-# lanovky v každom stave – aj rozostavané, plánované a zrušené
-SLUBY_LANOVKY = {"cable_car", "gondola", "chair_lift", "goods", "construction",
+# aerialways in every state – under construction, proposed and abandoned too
+PROMISED_AERIAL = {"cable_car", "gondola", "chair_lift", "goods", "construction",
                  "proposed", "disused", "abandoned", "station"}
-STAVY = {"construction:aerialway", "proposed:aerialway", "disused:aerialway",
+STATES = {"construction:aerialway", "proposed:aerialway", "disused:aerialway",
          "abandoned:aerialway", "razed:aerialway", "was:aerialway",
          "removed:aerialway", "demolished:aerialway", "historic:aerialway"}
 
@@ -40,12 +40,12 @@ def filter_keys(path):
     return out
 
 
-def podmienky(when):
-    """Dvojice kľúč → hodnoty z `include_when`, aj spod `__all__`."""
+def conditions(when):
+    """Key → values pairs of `include_when`, also under `__all__`."""
     if not when:
         return []
     if "__all__" in when:
-        return [p for c in when["__all__"] for p in podmienky(c)]
+        return [p for c in when["__all__"] for p in conditions(c)]
     return [(k, v if isinstance(v, list) else [v]) for k, v in when.items()]
 
 
@@ -53,52 +53,52 @@ def main():
     bad = []
     with open(SCHEMA, encoding="utf-8") as f:
         schema = yaml.safe_load(f)
-    bloky = [b for v in schema.get("layers") or [] for b in v.get("features") or []]
+    blocks = [b for v in schema.get("layers") or [] for b in v.get("features") or []]
 
-    pusta, triedy, lanovky, kluce_vsetky = filter_keys(FILTER), set(), set(), set()
-    for b in bloky:
-        kluce = set()
-        for kluc, hodnoty in podmienky(b.get("include_when")):
-            kluce.add(kluc)
-            kluce_vsetky.add(kluc)
-            if kluc == "railway":
-                triedy |= set(map(str, hodnoty))
-            if kluc == "aerialway":
-                lanovky |= set(map(str, hodnoty))
-        # pri `__all__` stačí jeden kľúč – ostatné prídu s tým istým objektom
-        if kluce and not kluce & (pusta | DOPOCITANE):
-            bad.append(f"{FILTER}: schéma sa pýta na {', '.join(sorted(kluce))}, "
-                       f"predfilter to nepúšťa – dlaždice by vznikli bez toho.")
+    passes, classes, aerial, all_keys = filter_keys(FILTER), set(), set(), set()
+    for b in blocks:
+        keys = set()
+        for key, values in conditions(b.get("include_when")):
+            keys.add(key)
+            all_keys.add(key)
+            if key == "railway":
+                classes |= set(map(str, values))
+            if key == "aerialway":
+                aerial |= set(map(str, values))
+        # under `__all__` one key is enough – the rest come with the same object
+        if keys and not keys & (passes | DERIVED):
+            bad.append(f"{FILTER}: the schema asks for {', '.join(sorted(keys))}, "
+                       f"the prefilter doesn't pass it – tiles would be made without it.")
 
-    for sluba in sorted(SLUBY - triedy):
-        bad.append(f"{SCHEMA}: `railway={sluba}` v schéme nie je, balík ho "
-                   f"pritom sľubuje.")
+    for promise in sorted(PROMISED - classes):
+        bad.append(f"{SCHEMA}: `railway={promise}` isn't in the schema, yet the "
+                   f"package promises it.")
 
-    for sluba in sorted(SLUBY_LANOVKY - lanovky):
-        bad.append(f"{SCHEMA}: `aerialway={sluba}` v schéme nie je, balík ho "
-                   f"pritom sľubuje.")
-    for kluc in sorted(STAVY - kluce_vsetky):
-        bad.append(f"{SCHEMA}: lanovky s `{kluc}` v schéme nie sú – stav by "
-                   f"sa stratil.")
-    for kluc in sorted((STAVY | {"aerialway"}) - pusta):
-        bad.append(f"{FILTER}: predfilter nepúšťa `{kluc}` – lanovky by v "
-                   f"dlaždiciach neboli.")
+    for promise in sorted(PROMISED_AERIAL - aerial):
+        bad.append(f"{SCHEMA}: `aerialway={promise}` isn't in the schema, yet the "
+                   f"package promises it.")
+    for key in sorted(STATES - all_keys):
+        bad.append(f"{SCHEMA}: aerialways with `{key}` aren't in the schema – the "
+                   f"state would be lost.")
+    for key in sorted((STATES | {"aerialway"}) - passes):
+        bad.append(f"{FILTER}: the prefilter doesn't pass `{key}` – aerialways "
+                   f"wouldn't be in the tiles.")
 
-    with open(SLOVNIK, encoding="utf-8") as f:
-        siet = set(json.load(f)["siet"]["railway"])
-    for trieda in sorted(siet - triedy):
-        bad.append(f"{SLOVNIK}: navigácia jazdí po `railway={trieda}`, ktorú "
-                   f"mapa nekreslí – trasa by viedla mimo kresby.")
+    with open(DICTIONARY, encoding="utf-8") as f:
+        network = set(json.load(f)["network"]["railway"])
+    for cls in sorted(network - classes):
+        bad.append(f"{DICTIONARY}: routing runs on `railway={cls}`, which the map "
+                   f"doesn't draw – a route would run off the drawing.")
 
     with open(BUILD, encoding="utf-8") as f:
         build = f.read()
     if "rail-routing-tags.json" not in build:
-        bad.append(f"{BUILD}: koľajová sieť sa nestavia s vlastným slovníkom – "
-                   f"s cestným by v nej nebola ani jedna trať.")
+        bad.append(f"{BUILD}: the rail network isn't built with its own dictionary – "
+                   f"with the road one it would hold not a single line.")
     if " -R" in build or "--omit-referenced" in build:
-        bad.append(f"{BUILD}: `-R` vyhodí členov relácií – plochy staníc zmiznú.")
+        bad.append(f"{BUILD}: `-R` drops relation members – station areas vanish.")
     if "signs.mjs" not in build:
-        bad.append(f"{BUILD}: značky krajiny sa nepečú – appka by kreslila predvolené.")
+        bad.append(f"{BUILD}: country signs aren't baked – the app would draw the defaults.")
     with open(os.path.join(_WORKERS, "data", "packages.json"), encoding="utf-8") as f:
         rail = [p for p in json.load(f)["packages"] if p["key"] == "railways"]
     if not rail or "rail_signs" not in (rail[0].get("manifest") or []):
@@ -108,8 +108,8 @@ def main():
     for b in bad:
         print(f"::error::{b}")
     if not bad:
-        print(f"železnice ✓ ({len(bloky)} blokov, {len(triedy)} tried, "
-              f"{len(lanovky)} druhov lanoviek, sieť {len(siet)} tried)")
+        print(f"rail ✓ ({len(blocks)} blocks, {len(classes)} classes, "
+              f"{len(aerial)} aerialway kinds, network of {len(network)} classes)")
     return 1 if bad else 0
 
 

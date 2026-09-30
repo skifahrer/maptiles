@@ -68,7 +68,7 @@ T_R=$(date +%s)
 ROUT="_site/tiles/${REGION_KEY}-rail-routing.pmtiles"
 python3 workers/routing/tiles.py --pbf=data/rail.osm.pbf --out="$ROUT" \
   --region-key="$REGION_KEY" --name="${REGION_NAME:-$REGION_KEY}" \
-  --slovnik=workers/data/rail-routing-tags.json --profil-krok=0
+  --dictionary=workers/data/rail-routing-tags.json --profile-step=0
 ROUTING=false
 if [ -s "$ROUT" ]; then
   ROUTING=true

@@ -228,7 +228,7 @@ Trails) preto kombinuje OSM s externým DEM. Robíme to rovnako:
 |---|---|---|
 | výšky vrcholov | OSM tag `ele` | už v dlaždiciach, vrstva `mountain_peak` |
 | **vrstevnice a skaly** | **Sonny's LiDAR DTM, model 20m** | náš sklad `dem-sonny` na Drive (napĺňa ho workflow *Dáta · výškové modely*) |
-| **výšky v smerovacej sieti** | **DMR 5.0 prevzorkované na 5 m** | `<kraj>-routing.pmtiles`: výška každých 5 m každej cesty aj chodníka, odoberá [`workers/routing/vysky.py`](routing/vysky.py) zo skladu `dem-dmr5-v2`, zálohou je Sonny 20 m; iný model cez `ROUTING_DEM_SOURCE` |
+| **výšky v smerovacej sieti** | **DMR 5.0 prevzorkované na 5 m** | `<kraj>-routing.pmtiles`: výška každých 5 m každej cesty aj chodníka, odoberá [`workers/routing/heights.py`](routing/heights.py) zo skladu `dem-dmr5-v2`, zálohou je Sonny 20 m; iný model cez `ROUTING_DEM_SOURCE` |
 | **tieňovanie reliéfu, 3D terén** | **ten istý Sonny DEM** | vlastný raster `.pmtiles` (terrarium PNG vnútri), uložený v sklade `dem-terrain` |
 | tieňovanie a 3D – záloha | AWS Terrain Tiles (Terrarium) | [registry.opendata.aws](https://registry.opendata.aws/terrain-tiles/), keď sa vlastné nevyrobia |
 
@@ -2089,7 +2089,7 @@ s OSM `id` uzlov a s tagmi, a cenu ráta telefón podľa profilu používateľa.
 Stavia to [`workers/routing/build.sh`](routing/build.sh) →
 [`tiles.py`](routing/tiles.py) zo slovníka
 [`workers/data/routing-tags.json`](data/routing-tags.json), výšku na uzol
-odoberá zo Sonnyho [`vysky.py`](routing/vysky.py), poradie uzlov pre
+odoberá zo Sonnyho [`heights.py`](routing/heights.py), poradie uzlov pre
 CCH počíta [`workers/routing/order.py`](routing/order.py) a strážia to
 [`workers/lint/routing-tiles.py`](lint/routing-tiles.py)
 a [`roadtypes.mjs`](lint/roadtypes.mjs). Formát je
@@ -2176,7 +2176,7 @@ zanikol (`zrusene`) a starý sa na Drive maže.
 z toho istého PBF ako mapa; graf sa stavia z `data/region.osm.pbf` toho istého
 behu (workflow [`navigation-region.yml`](../.github/workflows/navigation-region.yml)),
 takže **trasa v ňom končí na hranici kraja** – hrana, ktorej v rezanom PBF
-chýba druhý koniec, je slepá ulica. Je to zámer a `graf.json` v balíku to
+chýba druhý koniec, je slepá ulica. Je to zámer a `graph.json` v balíku to
 o sebe hovorí (`rozsah: "region"`, `hranica: …`); kto potrebuje prejsť
 hranicu, má na to celoštátny graf z [`navigation.yml`](../.github/workflows/navigation.yml).
 
@@ -3068,7 +3068,7 @@ v každom štýle inak.
 `{kraj}-rail-routing.pmtiles` je koľajová sieť na navigáciu vlakom: ten istý
 formát ako cestná sieť (`docs/routing-tiles.md`), ale vlastný slovník
 `workers/data/rail-routing-tags.json`, teda iné `id` – s cestnou sa nespája.
-Stavia ju `workers/routing/tiles.py --slovnik=…`.
+Stavia ju `workers/routing/tiles.py --dictionary=…`.
 
 `{kraj}-signs.json/.png` (+`@2x`) sú značky krajiny – návestidlá a tabule pri
 trati, obmedzenie rýchlosti na ceste – ako sprite (`workers/rail/signs.mjs`).

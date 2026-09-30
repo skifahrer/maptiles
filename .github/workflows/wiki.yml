@@ -1,70 +1,59 @@
-name: Mapa · Build wiki
+name: Map · Build wiki
 
-# Ku každému objektu v regióne s tagom `wikipedia`/`wikidata` stiahne článok
-# (anglicky a v jazyku krajiny) ako čistý text, zabalí ho ako
-# `<región>-wikipedia.zip` a `.aar` na Drive a odkaz zapíše do `maps.json`.
-# Aplikácia číta len `.aar` s `index.json` a `articles.ndjson`, preto sa
-# podoba ani `.aar` nedajú vypnúť.
-#
-# Vlastná pipeline, nie job v Build map: iná sieť (cudzí server, ktorý nemá
-# zhodiť hodinový build), iná životnosť (články si žijú vlastným tempom)
-# a iný výstup (text vedľa mapy, do `_site` nejde nič).
-#
-# Balík aj katalóg robí ďalej `workers/deploy/publish-map.py`, len
-# s `--only=wikipedia`: publikuje jediný balík a položku regiónu doplní.
-#
-# Volá ho aj Build map (`workflow_call`) so `skip_cached`: región, ktorý články
-# v cache aj v katalógu už má, sa preskočí.
+# A plain-text article (English and the country language) for every object with
+# `wikipedia`/`wikidata`, packed as `<region>-wikipedia.zip` and `.aar` onto Drive
+# and linked in `maps.json`. The app reads only the `.aar`, so it can't be turned off.
+# Build map calls it too (`workflow_call`) with `skip_cached`.
 
 on:
   workflow_call:
     inputs:
       region:
-        description: "Región z formulára Build map"
+        description: "Region from the Build map form"
         required: true
         type: string
       region_key:
-        description: "Kľúč regiónu z prípravy buildu (na kontrolu cache)"
+        description: "Region key from the build plan (for the cache check)"
         required: false
         default: ""
         type: string
       wiki_langs:
-        description: "Jazyky NAVYŠE, čiarkou"
+        description: "EXTRA languages, comma separated"
         required: false
         default: ""
         type: string
       wiki_max:
-        description: "Strop počtu článkov na jeden beh"
+        description: "Cap on articles per run"
         required: false
         default: "5000"
         type: string
       country:
-        description: "Krajina pre domáci jazyk (prázdne = podľa regiónu)"
+        description: "Country for the local language (empty = from the region)"
         required: false
         default: ""
         type: string
       rebuild:
-        description: "Stiahnuť články odznova (obíde cache na Drive)"
+        description: "Download the articles again (bypasses the Drive cache)"
         required: false
         default: false
         type: boolean
       skip_cached:
-        description: "Preskočiť región, ktorý má články v cache aj v katalógu"
+        description: "Skip a region whose articles are cached and catalogued"
         required: false
         default: false
         type: boolean
       publish:
-        description: "Nahrať na Drive a zapísať do maps.json"
+        description: "Upload to Drive and write to maps.json"
         required: false
         default: true
         type: boolean
       custom_pbf_url:
-        description: "Vlastný .osm.pbf"
+        description: "Custom .osm.pbf"
         required: false
         default: ""
         type: string
       custom_name:
-        description: "Meno vlastného regiónu"
+        description: "Custom region name"
         required: false
         default: ""
         type: string
@@ -78,7 +67,7 @@ on:
   workflow_dispatch:
     inputs:
       region:
-        description: "Región (ignoruje sa, ak je vyplnené custom_pbf_url)"
+        description: "Region (ignored when custom_pbf_url is set)"
         required: true
         default: bratislavsky
         type: choice
@@ -93,37 +82,37 @@ on:
           - presovsky
           - kosicky
       wiki_langs:
-        description: "Jazyky NAVYŠE, čiarkou (en a jazyk krajiny idú vždy)"
+        description: "EXTRA languages, comma separated (en and the country language always)"
         required: false
         default: ""
         type: string
       wiki_max:
-        description: "Strop počtu článkov na jeden beh"
+        description: "Cap on articles per run"
         required: false
         default: "5000"
         type: string
       country:
-        description: "Krajina pre domáci jazyk (prázdne = podľa regiónu)"
+        description: "Country for the local language (empty = from the region)"
         required: false
         default: ""
         type: string
       rebuild:
-        description: "Stiahnuť články odznova (obíde cache na Drive)"
+        description: "Download the articles again (bypasses the Drive cache)"
         required: false
         default: false
         type: boolean
       publish:
-        description: "Nahrať na Drive a zapísať do maps.json"
+        description: "Upload to Drive and write to maps.json"
         required: false
         default: true
         type: boolean
       custom_pbf_url:
-        description: "Vlastný .osm.pbf (iný región Európy/sveta)"
+        description: "Custom .osm.pbf (another region of Europe or the world)"
         required: false
         default: ""
         type: string
       custom_name:
-        description: "Meno vlastného regiónu (do priečinka a mena balíka)"
+        description: "Custom region name (for the folder and package name)"
         required: false
         default: ""
         type: string
@@ -132,7 +121,6 @@ permissions:
   contents: read
 
 env:
-      # prihlásenie na Drive stojí pri celom workflowe ako v Build map
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
   DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
@@ -141,7 +129,7 @@ env:
 
 jobs:
   need:
-    name: Treba články?
+    name: Articles needed?
     if: ${{ inputs.skip_cached && !inputs.rebuild }}
     runs-on: ubuntu-latest
     outputs:
@@ -149,7 +137,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Cache a katalóg
+      - name: Cache and catalog
         id: need
         env:
           REGION_KEY: ${{ inputs.region_key || inputs.region }}
@@ -159,11 +147,11 @@ jobs:
         run: workers/wiki/need.sh
 
   wiki:
-    name: Články z Wikipédie
+    name: Wikipedia articles
     needs: need
     if: ${{ !cancelled() && !failure() && needs.need.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
-      # katalóg `maps.json` je súbor v repozitári a dopisuje ho beh
+    # the run commits `maps.json`
     permissions:
       contents: write
     outputs:
@@ -174,12 +162,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Priprav priečinky
+      - name: Prepare folders
         run: mkdir -p steps-out data
 
-      # PBF sťahuje ten istý skript ako Build map – „ktorý súbor je región"
-      # je jedna otázka a odpoveď na ňu má jedno miesto
-      - name: Stiahni PBF iba daného regiónu
+      # the same script as Build map picks the region's PBF
+      - name: Download the PBF of this region only
         id: region
         env:
           AREA_IN: ""
@@ -193,7 +180,7 @@ jobs:
           REGION: ${{ inputs.region }}
         run: workers/plan/pbf.sh
 
-      - name: Kľúč cache článkov
+      - name: Article cache key
         id: key
         env:
           REGION: ${{ steps.region.outputs.key }}
@@ -202,10 +189,8 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: workers/wiki/key.sh >> "$GITHUB_OUTPUT"
 
-      # obnovuje sa cez predponu (najnovší záznam toho regiónu). Šetria sa tým
-      # bajty a čas prevodu, nie požiadavky: `collect.py` sa dávkovo spýta na
-      # `lastrevid`. `rebuild` restore preskočí.
-      - name: Cache článkov (restore)
+      # by prefix (the region's newest); saves bytes and conversion, not requests
+      - name: Article cache (restore)
         id: cache
         if: ${{ !inputs.rebuild }}
         uses: ./.github/actions/cache-restore
@@ -214,11 +199,11 @@ jobs:
           key: ${{ steps.key.outputs.key }}
           restore-keys: ${{ steps.key.outputs.prefix }}
 
-      - name: Odkazy na wiki → stiahnuté články
+      - name: Wiki links → downloaded articles
         id: wiki
         env:
           REGION_KEY: ${{ steps.region.outputs.key }}
-          # krajinu vie číselník regiónov; input ju len prebije
+          # the input only overrides the regions lookup
           WIKI_COUNTRY: ${{ inputs.country }}
           OPT_WIKI_LANGS: ${{ inputs.wiki_langs }}
           OPT_WIKI_MAX: ${{ inputs.wiki_max }}
@@ -230,12 +215,11 @@ jobs:
               workers/data/regions.json)
           fi
           export WIKI_COUNTRY
-          echo "Krajina pre domáci jazyk: ${WIKI_COUNTRY:-(nepoznám)}"
+          echo "Country for the local language: ${WIKI_COUNTRY:-(unknown)}"
           workers/wiki/build.sh
 
-      # ukladá sa hneď, ako články vzniknú; `always()`, lebo aj čiastočný
-      # výsledok je ďalšiemu behu na osoh
-      - name: Cache článkov (save)
+      # `always()`: a partial result helps the next run too
+      - name: Article cache (save)
         if: ${{ always() && hashFiles('wiki-cache/articles.ndjson') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
@@ -243,14 +227,13 @@ jobs:
           path: wiki-cache
           key: ${{ steps.key.outputs.key }}
 
-      # ten istý skript ako pri mape, len s `--only=wikipedia`: publikuje
-      # jediný balík a položku regiónu doplní, nie prepíše
-      - name: Publikuj na Drive a zapíš do maps.json
+      # `--only=wikipedia` publishes one package and adds to the region entry
+      - name: Publish to Drive and write maps.json
         id: publish
         if: ${{ inputs.publish && steps.wiki.outputs.enabled == 'true' }}
         env:
           REGION_KEY: ${{ steps.region.outputs.key }}
-          AREA_KEY: cely
+          AREA_KEY: whole
           TEST_KM2: "0"
           CUSTOM_PBF_URL: ${{ inputs.custom_pbf_url }}
           CUSTOM_NAME: ${{ inputs.custom_name }}
@@ -260,8 +243,7 @@ jobs:
             --wiki=wiki-out --maps=maps.json \
             --summary="$GITHUB_STEP_SUMMARY"
 
-      # ten istý skript, akým katalóg commituje Build map – vrátane rebasu
-      - name: Commitni maps.json
+      - name: Commit maps.json
         if: ${{ inputs.publish && steps.publish.outcome == 'success' }}
         env:
           MAPS_JSON: ${{ steps.publish.outputs.maps_file || 'maps.json' }}
@@ -269,8 +251,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: workers/deploy/catalog.sh
 
-      # aby si `.aar` mohol vyrobiť job na macOS, musia sa k nemu články dostať
-      - name: Odlož články pre Apple Archive
+      - name: Keep the articles for Apple Archive
         if: ${{ inputs.publish && steps.publish.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
@@ -279,9 +260,8 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-      # bez publikovania sa dá aspoň pozrieť, čo vzniklo; deň retencie – je to
-      # prepravka, nie uložený výsledok
-      - name: Odlož články na pozretie
+      # to look at without publishing; a one-day hand-over
+      - name: Keep the articles for a look
         if: ${{ always() && hashFiles('wiki-out/index.json') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -293,7 +273,7 @@ jobs:
           compression-level: 6
           if-no-files-found: ignore
 
-      - name: Súhrn
+      - name: Summary
         if: ${{ always() }}
         env:
           COUNT: ${{ steps.wiki.outputs.count }}
@@ -305,19 +285,18 @@ jobs:
             echo
             echo "| | |"
             echo "|---|---|"
-            echo "| región | \`${{ inputs.region }}\` |"
-            echo "| článkov | ${COUNT:-0} |"
-            echo "| veľkosť | ${MB:-0} MB |"
+            echo "| region | \`${{ inputs.region }}\` |"
+            echo "| articles | ${COUNT:-0} |"
+            echo "| size | ${MB:-0} MB |"
             echo
-            echo "Jazyky sú angličtina a jazyk krajiny (číselník"
-            echo "\`workers/data/wiki-languages.json\`) plus to, čo si objekty"
-            echo "píšu samy v tagu. Text je z Wikipédie (CC BY-SA)."
+            echo "Languages are English and the country language (lookup"
+            echo "\`workers/data/wiki-languages.json\`) plus what objects name"
+            echo "themselves in tags. Text is from Wikipedia (CC BY-SA)."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # `.aar` je to, čo aplikácia otvorí; job na macOS (nástroj `aa`) beží až po
-  # nahratí ZIPu, `--only` položku katalógu dopĺňa
+  # the `.aar` is what the app opens; the macOS job runs after the ZIP upload
   apple-archive:
-    name: Balík ako Apple Archive (.aar)
+    name: Package as Apple Archive (.aar)
     needs: wiki
     if: ${{ !cancelled() && needs.wiki.outputs.published == 'success' }}
     runs-on: macos-latest
@@ -326,25 +305,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Stiahni články z predošlého jobu
+      - name: Download the articles from the previous job
         uses: actions/download-artifact@v8
         with:
           name: wiki-aar
           path: wiki-out
-      - name: Zabaľ a nahraj .aar na Drive
+      - name: Pack and upload the .aar to Drive
         id: publish
         env:
           ONLY: wikipedia
           WIKI: wiki-out
           REGION_KEY: ${{ needs.wiki.outputs.key }}
-          AREA_KEY: cely
+          AREA_KEY: whole
           TEST_KM2: "0"
           CUSTOM_PBF_URL: ${{ inputs.custom_pbf_url }}
           CUSTOM_NAME: ${{ inputs.custom_name }}
-          # z ktorej vetvy si vypýtať čerstvý `maps.json`
+          # the branch to fetch a fresh `maps.json` from
           BRANCH: ${{ github.ref_name }}
         run: workers/deploy/apple-archive.sh
-      - name: Commitni maps.json
+      - name: Commit maps.json
         if: ${{ steps.publish.outcome == 'success' }}
         env:
           MAPS_JSON: ${{ steps.publish.outputs.maps_file || 'maps.json' }}
