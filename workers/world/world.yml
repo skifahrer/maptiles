@@ -1,37 +1,18 @@
-# Planetiler custom schema – základná mapa sveta.
-#
-# Tri veci a nič viac: vodstvo, hranice štátov a regióny, na ktoré je OSM
-# rozdelené na sťahovanie. Je to podklad pod výber „ktorý kus si stiahnuť",
-# nie mapa na chodenie.
-#
-# Vstup vyrába `workers/world/sources.py` (prečo práve tieto zdroje, je tam):
-#   OSM pobrežné čiary  → data/world/water.gpkg
-#   Natural Earth 10m   → data/world/{lakes,boundaries,countries}.geojson
-#   Geofabrik index-v1  → data/world/downloads.geojson
-#
-# Popisky sú vlastné vrstvy (`place`, `download_label`), nie body pri plochách:
-# `fill` vrstva v MapLibre nepreskočí čiary ani body, takže čisto plošná vrstva
-# nepotrebuje stráž a nedá sa to pokaziť ani neskôr.
-#
-# Zoomy sú hlavné rozhodnutie: regiónov sťahovania je ~500 a pri pohľade na
-# celý svet by z nich bola kaša. Odkrývajú sa po úrovniach stromu – svetadiel
-# od z0, štát od z2, výsek od z5.
-#
-# Čo má vyšší `min_zoom` než maxzoom dlaždíc, Planetiler ticho zahodí; najvyšší
-# je tu 5 a `workers/world/build.sh` rozdiel ohlási.
-schema_name: FricoMaps svet
+# Planetiler custom schema – basic world map: water, state borders and download regions.
+# Input from `workers/world/sources.py`. Regions unfold by tree level: continent z0,
+# country z2, subregion z5; `build.sh` warns about `min_zoom` above maxzoom.
+schema_name: FricoMaps world
 schema_description: >-
-  Základná mapa sveta – vodstvo z pobrežných čiar OSM, hranice štátov
-  a jazerá z Natural Earth a regióny, na ktoré je OSM rozdelené na sťahovanie
+  Basic world map – water from OSM coastlines, state borders
+  and lakes from Natural Earth and the regions OSM is split into for download
 attribution: >-
   <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap
-  contributors</a> (vodstvo, regióny sťahovania: <a
+  contributors</a> (water, download regions: <a
   href="https://download.geofabrik.de/">Geofabrik</a>) /
   <a href="https://www.naturalearthdata.com/">Natural Earth</a>
 
 sources:
-  # Vodné plochy z pobrežných čiar OSM. Premietnuté do EPSG:4326 už pri
-  # príprave, takže tu netreba nič dohadovať.
+  # OSM water areas, already in EPSG:4326
   water:
     type: geopackage
     local_path: data/world/water.gpkg
@@ -51,8 +32,7 @@ sources:
 
 layers:
   # ==================== VODSTVO ====================
-  # Jedna vrstva pre more aj jazerá – kreslia sa rovnako a `kind` ich odlíši,
-  # keby ich niekedy niekto chcel odlíšiť.
+  # sea and lakes in one layer, `kind` tells them apart
   - id: water
     features:
       - source: water
@@ -61,7 +41,7 @@ layers:
         attributes:
           - key: kind
             value: ocean
-      # Veľké jazerá patria k tvaru svetadielu (Bajkal, Veľké jazerá).
+      # large lakes shape a continent (Baikal, the Great Lakes)
       - source: lakes
         geometry: polygon
         min_zoom: 2
@@ -70,7 +50,7 @@ layers:
         attributes: &lake_attributes
           - key: kind
           - key: name
-      # Malé až vtedy, keď je na ne v mape miesto.
+      # small ones once there is room
       - source: lakes
         geometry: polygon
         min_zoom: 5
@@ -78,7 +58,7 @@ layers:
           rank: minor
         attributes: *lake_attributes
 
-  # ==================== HRANICE ŠTÁTOV ====================
+  # state borders
   - id: boundary
     features:
       - source: boundaries
@@ -88,8 +68,7 @@ layers:
           kind: country
         attributes:
           - key: kind
-      # Sporný priebeh ide o dva zoomy neskôr a štýl ho kreslí prerušovane:
-      # mapa nemá tvrdiť, že hranica, na ktorej sa strany nezhodnú, je istá.
+      # disputed borders come two zooms later and are drawn dashed
       - source: boundaries
         geometry: line
         min_zoom: 2
@@ -98,9 +77,7 @@ layers:
         attributes:
           - key: kind
 
-  # ==================== POPISKY ŠTÁTOV ====================
-  # Bod počíta Planetiler z polygónu (`centroid`) – plocha štátu sa nekreslí,
-  # pevninu robí podklad pod vodstvom.
+  # state labels, a centroid of the polygon
   - id: place
     features:
       - source: countries
@@ -147,9 +124,7 @@ layers:
           rank: minor
         attributes: *country_attributes
 
-  # ==================== REGIÓNY SŤAHOVANIA ====================
-  # Plochy toho, na aké kusy je OSM rozdelené na stiahnutie. `pbf` je odkaz,
-  # ktorý sa dá naozaj stiahnuť – kvôli nemu je táto vrstva v mape.
+  # download regions; `pbf` is a link that really downloads
   - id: download
     features:
       - source: downloads
@@ -176,7 +151,7 @@ layers:
           level: subregion
         attributes: *download_attributes
 
-  # Popisok regiónu – vlastná vrstva s bodmi (viď hlavička).
+  # region labels, a layer of points
   - id: download_label
     features:
       - source: downloads

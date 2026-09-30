@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-"""Mapa sveta: štýl kreslí presne tie vrstvy a od tých zoomov, ktoré schéma robí.
-
-Ten istý pár čísel na dvoch miestach ako pri vrstevniciach (`zoom-floor.py`):
-`world.yml` hovorí, čo sa vyrobí, `style.mjs`, čo sa nakreslí. A k tomu meno
-vrstvy – zlý `source-layer` MapLibre nekomentuje, v mape len nič nie je.
-
-  1. každý `source-layer` v štýle je vrstva schémy;
-  2. každá vrstva schémy je v štýle aspoň raz nakreslená;
-  3. najnižší `minzoom` v štýle sa rovná najnižšiemu `min_zoom` v schéme.
-
-Platí to pre každú podobu (`variant`) zvlášť; podoby si kontrola vypýta
-z `workers/world/variant.py`, takže nová je automaticky kontrolovaná.
-
-Bod 3 je zámerne o dne vrstvy, nie o každej triede: v schéme je staging po
-triedach, v štýle po vrstvách a filtroch.
-"""
+"""World map: the style draws exactly the schema's layers, from the schema's zooms, per variant."""
 import json
 import os
 import subprocess
@@ -27,85 +12,82 @@ SCHEMA = "workers/world/world.yml"
 STYLE = "workers/world/style.mjs"
 
 sys.path.insert(0, os.path.join("workers", "world"))
-import variant as podoby_mod  # noqa: E402
+import variant as variant_mod  # noqa: E402
 
 bad = []
 
 doc = yaml.safe_load(open(SCHEMA, encoding="utf-8"))
-raw = podoby_mod.nacitaj()
-podoby = podoby_mod.podoby(raw)
+raw = variant_mod.load()
+variants = variant_mod.variants(raw)
 
 
-def dna(vrstvy):
-    """Dno vrstvy v schéme: najnižší `min_zoom` spomedzi jej prvkov."""
+def floors(layers):
+    """A layer's floor in the schema: the lowest `min_zoom` of its features."""
     out = {}
     for lay in doc.get("layers") or []:
-        if lay["id"] not in vrstvy:
+        if lay["id"] not in layers:
             continue
-        zoomy = [f.get("min_zoom", 0) for f in (lay.get("features") or [])]
-        out[lay["id"]] = min(zoomy) if zoomy else 0
+        zooms = [f.get("min_zoom", 0) for f in (lay.get("features") or [])]
+        out[lay["id"]] = min(zooms) if zooms else 0
     return out
 
 
-for nazov, podoba in sorted(podoby.items()):
-    # Vrstvy, ktoré podoba pýta a schéma nemá, spadnú už tu – s vetou o tom,
-    # ktoré to sú.
+for name, variant in sorted(variants.items()):
     try:
-        podoby_mod.schema_pre(podoba["layers"], doc)
+        variant_mod.schema_for(variant["layers"], doc)
     except SystemExit as exc:
-        bad.append(f"podoba `{nazov}`: {exc}")
+        bad.append(f"variant `{name}`: {exc}")
         continue
-    schema_min = dna(podoba["layers"])
-    print(f"podoba `{nazov}`: vrstvy "
-          + ", ".join(f"{k} od z{v}" for k, v in sorted(schema_min.items())))
+    schema_min = floors(variant["layers"])
+    print(f"variant `{name}`: layers "
+          + ", ".join(f"{k} from z{v}" for k, v in sorted(schema_min.items())))
 
     with tempfile.TemporaryDirectory() as tmp:
-        hotovo = subprocess.run(
-            ["node", STYLE, f"--out={tmp}", f"--variant={nazov}"],
+        done = subprocess.run(
+            ["node", STYLE, f"--out={tmp}", f"--variant={name}"],
             capture_output=True, text=True, check=False)
-        if hotovo.returncode != 0:
-            print(f"::error file={STYLE}::štýl podoby `{nazov}` sa nedá "
-                  f"vygenerovať: {hotovo.stderr.strip() or hotovo.stdout.strip()}")
+        if done.returncode != 0:
+            print(f"::error file={STYLE}::the style of variant `{name}` can't be "
+                  f"generated: {done.stderr.strip() or done.stdout.strip()}")
             sys.exit(1)
-        subory = sorted(f for f in os.listdir(tmp) if f.endswith(".json"))
-        if not subory:
-            print(f"::error file={STYLE}::podoba `{nazov}` nevyrobila ani "
-                  f"jeden štýl.")
+        files = sorted(f for f in os.listdir(tmp) if f.endswith(".json"))
+        if not files:
+            print(f"::error file={STYLE}::variant `{name}` made no style.")
             sys.exit(1)
 
-        for meno in subory:
-            with open(os.path.join(tmp, meno), encoding="utf-8") as f:
-                styl = json.load(f)
+        for fname in files:
+            with open(os.path.join(tmp, fname), encoding="utf-8") as f:
+                style = json.load(f)
             style_min = {}
-            for lay in styl.get("layers") or []:
+            for lay in style.get("layers") or []:
                 src = lay.get("source-layer")
                 if not src:
-                    continue        # `background` nemá zdroj
+                    continue        # `background` has no source
                 z = lay.get("minzoom", 0)
                 style_min[src] = min(style_min.get(src, z), z)
 
             for src, z in sorted(style_min.items()):
                 if src not in schema_min:
                     bad.append(
-                        f"podoba `{nazov}`, {meno}: vrstva štýlu má `source-layer: {src}`, ktorý "
-                        f"tá podoba nemá (má {sorted(schema_min)}). MapLibre na to "
-                        f"nepovie nič – tá vrstva v mape jednoducho nebude.")
+                        f"variant `{name}`, {fname}: a style layer has `source-layer: {src}`, "
+                        f"which the variant lacks (it has {sorted(schema_min)}). MapLibre "
+                        f"says nothing – that layer simply won't be in the map.")
                 elif z != schema_min[src]:
-                    preco = ("mapa má v tých zoomoch dieru"
-                             if z < schema_min[src]
-                             else "platia sa dlaždice, ktoré nikto nekreslí")
+                    why = ("the map has a hole at those zooms"
+                           if z < schema_min[src]
+                           else "tiles are paid for that nobody draws")
                     bad.append(
-                        f"podoba `{nazov}`, {meno}: `{src}` sa kreslí od z{z}, ale schéma ju robí od "
-                        f"z{schema_min[src]} – {preco}. Zrovnaj `minzoom` v "
-                        f"{STYLE} s `min_zoom` v {SCHEMA}.")
+                        f"variant `{name}`, {fname}: `{src}` is drawn from z{z}, but the "
+                        f"schema makes it from z{schema_min[src]} – {why}. Align `minzoom` "
+                        f"in {STYLE} with `min_zoom` in {SCHEMA}.")
             for src in schema_min:
                 if src not in style_min:
                     bad.append(
-                        f"podoba `{nazov}`, {meno}: schéma robí vrstvu `{src}`, ale štýl ju nekreslí "
-                        f"ani raz. Buď ju dokresli, alebo ju zo schémy vyhoď – "
-                        f"inak sú to dlaždice, za ktoré nikto nič nedostane.")
+                        f"variant `{name}`, {fname}: the schema makes layer `{src}`, but the "
+                        f"style never draws it. Draw it, or drop it from the schema – "
+                        f"otherwise they're tiles nobody gets anything for.")
 
 for b in bad:
     print(f"::error::{b}")
-print(f"mapa sveta (schéma × štýl × {len(podoby)} podoby): {len(bad)} chýb")
+print(f"world map (schema × style × {len(variants)} variants): {len(bad)} errors")
 sys.exit(1 if bad else 0)

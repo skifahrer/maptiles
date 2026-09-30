@@ -1,79 +1,43 @@
 {
   "_comment": [
-    "Ktoré podoby mapy sveta sa dajú postaviť – input `variant` vo workflowe",
-    "„Mapa · Build svet“. Je to JEDNO miesto na otázku „čo je v tejto podobe“:",
-    "vrstvy schémy, meno v katalógu, rozpočet aj to, koľko fontov sa zabalí.",
-    "Rozoberá to `workers/world/variant.py`, kreslí `workers/world/style.mjs`",
-    "a stráži `workers/lint/world.py`.",
+    "World map variants – the `variant` input of the “Map · Build world” workflow.",
+    "One place for what a variant holds: schema layers, catalog name, budget and fonts.",
+    "Read by `workers/world/variant.py`, drawn by `workers/world/style.mjs`,",
+    "guarded by `workers/lint/world.py`.",
     "",
-    "PREČO NIE DVE SCHÉMY VEDĽA SEBA. `world.yml` je jediný popis toho, čo sa",
-    "z podkladov vyrába; druhá kópia s vypnutým vodstvom by bola druhá pravda",
-    "o tých istých vrstvách a raz by sa rozišli (pravidlo 1 v CLAUDE.md).",
-    "Podoba preto zo `world.yml` len VYBERÁ vrstvy a `variant.py` z toho zloží",
-    "schému, ktorú Planetiler naozaj dostane. Zdroje, ktoré po tom výbere",
-    "nikto nečíta, sa ani nesťahujú – pri `basic` odpadne 60 MB vodných",
-    "polygónov a niekoľko minút prevodu.",
-    "",
-    "MENO JE SĽUB O ROZSAHU (pravidlo 2). `basic` NESMIE prepísať `svet.zip`",
-    "ani jeho uzol v `maps.json`: kto si podľa katalógu stiahne „mapu sveta“,",
-    "nesmie dostať mapu bez morí. Preto má vlastný kľúč regiónu (`svet_basic`",
-    "vo `workers/data/regions.json`), a z neho vypadne vlastný priečinok na",
-    "Drive aj vlastný uzol v katalógu – tá istá úvaha, akou má rýchly test",
-    "v mene `test4km2`.",
-    "",
-    "NAMERANÉ (Planetiler, august 2026; regióny sťahovania nahradené polygónmi",
-    "štátov z Natural Earth, lebo Geofabrik nebol z toho stroja dostupný):",
-    "",
-    "  podoba   z6        z8        čo v nej je",
-    "  basic    ~3 MB     ~8 MB     hranice štátov + regióny sťahovania",
-    "  plná     desiatky MB         to isté + vodstvo a jazerá",
-    "",
-    "Vodstvo je v tej mape to drahé – rastie zhruba 3× na každý zoom, kým",
-    "hranice a regióny sú čiary a pár stoviek polygónov.",
-    "",
-    "A DRUHÁ POLOVICA ROZPOČTU SÚ FONTY, nie dlaždice: jeden fontstack Noto",
-    "Sans je 33 MB (celý unicode) a v balíku sú dva, takže `svet.zip` je",
-    "z väčšiny písmo. `glyphs: \"podla_dat\"` nechá v balíku len tie rozsahy",
-    "znakov, ktoré sa v menách na mape naozaj vyskytujú (merané, nie hádané –",
-    "viď `workers/world/glyphs.py`): 516 mien štátov z Natural Earth sa vojde",
-    "do jediného rozsahu 0–255 a dva stacky spadnú z 69 MB na stovky kB."
+    "A variant only PICKS layers from `world.yml`; sources nobody reads aren't downloaded.",
+    "`basic` has its own region key (`svet_basic`), so it never overwrites the full map."
   ],
 
-  "_nazvy": {
+  "_names": {
     "_comment": [
-      "Ako sa vrstva schémy volá v `obsah.json` a v `maps.json` (`MAP_LAYERS`).",
-      "Skladá sa z toho, čo podoba naozaj obsahuje – dopisovať ten zoznam",
-      "druhýkrát ku každej podobe by znamenalo, že raz pribudne vrstva a",
-      "katalóg o nej bude mlčať. Popisky vlastné meno nemajú: sú to nápisy",
-      "k vrstve, ktorá v zozname už je."
+      "A schema layer's name in `contents.json` and `maps.json` (`MAP_LAYERS`).",
+      "Labels have no name of their own: they belong to a layer already listed."
     ],
-    "boundary": ["hranice"],
-    "water": ["vodstvo", "jazera"],
+    "boundary": ["boundaries"],
+    "water": ["water", "lakes"],
     "place": [],
-    "download": ["regiony_stahovania"],
+    "download": ["download_regions"],
     "download_label": []
   },
 
-  "plna": {
-    "label": "plná – vodstvo, hranice štátov a regióny sťahovania",
+  "full": {
+    "label": "full – water, state borders and download regions",
     "region": "svet",
     "layers": ["water", "boundary", "place", "download", "download_label"],
     "limit_mb": 250,
-    "glyphs": "cele"
+    "glyphs": "all"
   },
 
   "basic": {
-    "label": "basic – iba hranice štátov a regiónov sťahovania (do 15 MB)",
+    "label": "basic – only state borders and download regions (up to 15 MB)",
     "region": "svet_basic",
     "layers": ["boundary", "place", "download", "download_label"],
     "limit_mb": 15,
-    "glyphs": "podla_dat",
+    "glyphs": "from_data",
     "_comment": [
-      "Bez vodstva a bez jazier. Popisky (`place`, `download_label`) v nej",
-      "ostávajú zámerne: sú to MENÁ tých hraníc a regiónov, stoja pár desiatok",
-      "kB (centroidy, ~250 a ~500 bodov) a bez nich sa v mape, ktorá je len",
-      "podklad pod výber „ktorý kus si stiahnuť“, nedá ten kus pomenovať.",
-      "Bez morí navyše nesie orientáciu už len popisok."
+      "No water and no lakes. Labels stay: they name the borders and regions",
+      "for a few tens of kB, and without seas only labels give orientation."
     ]
   }
 }
