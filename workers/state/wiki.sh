@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Úsek štafety „Wiki state": „Build wiki" nad každým krajom krajiny.
-# Z prostredia: COUNTRY POKRACOVANIE REF REPO GH_TOKEN WIKI_FORMAT REBUILD
+# Z prostredia: COUNTRY POKRACOVANIE REF REPO GH_TOKEN REBUILD
 set -euo pipefail
 
 SELF="${SELF:-wiki-state.yml}"
@@ -12,7 +12,6 @@ POPIS="Nad krajom beží vlastný **$REGION_MENO**, kraje idú jeden po druhom."
 odovzdaj() {
   gh workflow run "$SELF" --repo "$REPO" --ref "$REF" \
     -f country="$COUNTRY" \
-    -f wiki_format="${WIKI_FORMAT:-text}" \
     -f rebuild="${REBUILD:-false}" \
     -f pokracovanie="$1"
 }
@@ -20,7 +19,6 @@ odovzdaj() {
 spusti_kraj() {
   gh workflow run "$REGION_WF" --repo "$REPO" --ref "$REF" \
     -f region="$1" \
-    -f wiki_format="${WIKI_FORMAT:-text}" \
     -f rebuild="${REBUILD:-false}"
 }
 

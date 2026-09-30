@@ -17,16 +17,6 @@ on:
         type: choice
         options:
           - slovensko
-      wiki_format:
-        description: "Podoba článku"
-        required: false
-        default: text
-        type: choice
-        options:
-          - text
-          - wikitext
-          - intro
-          - html
       rebuild:
         description: "Stiahnuť články odznova (obíde cache na Drive)"
         required: false
@@ -59,7 +49,6 @@ jobs:
           REF: ${{ github.ref_name }}
           # plán nemá formulár, preto predvoľby
           COUNTRY: ${{ inputs.country || 'slovensko' }}
-          WIKI_FORMAT: ${{ inputs.wiki_format || 'text' }}
           REBUILD: ${{ inputs.rebuild || false }}
           POKRACOVANIE: ${{ inputs.pokracovanie }}
         run: workers/state/wiki.sh
