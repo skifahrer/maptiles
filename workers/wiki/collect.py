@@ -71,14 +71,10 @@ NDJSON = "articles.ndjson"
 # ním API vráti CHYBU `toomanyvalues`, nie ticho zrezanú dávku – takže sa
 # nemá ako stať, že by dávka po 60 vrátila 50 a o desiatich mlčala.
 CONTENT_BATCH = 50
-# `exintro` je jediná podoba extracts, ktorú API dávkuje, a strop je 20.
-INTRO_BATCH = 20
 WIKIDATA_BATCH = 50
 
-# Namerané (`--format=text`, sk wiki): 153 článkov v 4 požiadavkách za 2,7 s,
-# teda 18 ms na článok. Po jednom to bolo 484 ms na článok – 27× viac.
+# namerané na sk wiki: 153 článkov v 4 požiadavkách za 2,7 s
 MS_PER_ARTICLE_BATCHED = 20
-MS_PER_ARTICLE_SINGLE = 500
 
 # Medzi požiadavkami sa krátko počká. Nie je to strop od Wikimedie, je to
 # slušnosť: celý kraj je pri dávkach po 50 rádovo desiatky požiadaviek.
@@ -282,10 +278,8 @@ doplnkove_langs = articles.doplnkove_langs
 nacitaj_cache = articles.nacitaj_cache
 stiahni_texty = articles.stiahni_texty
 CONTENT_BATCH = articles.CONTENT_BATCH
-INTRO_BATCH = articles.INTRO_BATCH
 WIKIDATA_BATCH = articles.WIKIDATA_BATCH
 MS_PER_ARTICLE_BATCHED = articles.MS_PER_ARTICLE_BATCHED
-MS_PER_ARTICLE_SINGLE = articles.MS_PER_ARTICLE_SINGLE
 PAUSE_S = articles.PAUSE_S
 
 # ---------- 3. beh ----------
@@ -304,10 +298,6 @@ def main():
                     help="poradie jazykov (prvý, ktorý je, sa berie)")
     ap.add_argument("--keys", default=",".join(KEYS),
                     help="tagy, v ktorých sa hľadá odkaz")
-    ap.add_argument("--format", default="text",
-                    choices=("text", "wikitext", "intro", "html"),
-                    help="`text` celý článok ako čistý text, `wikitext` bez "
-                         "prevodu, `intro` len úvod, `html` z REST (po jednom)")
     ap.add_argument("--max", type=int, default=5000,
                     help="strop počtu článkov (0 = bez stropu)")
     ap.add_argument("--cache", default="",
@@ -353,27 +343,14 @@ def main():
     log(f"  článkov priamo       {clankov}")
     log(f"  cez wikidata         {len(qids)}")
     log(f"  jazyky               {', '.join(langs)} (angličtina vždy + jazyk "
-        f"krajiny), formát {args.format}")
-    # Odhad z NAMERANÉHO: dávkové podoby ~20 ms na článok, `html` ~500 ms
-    # (pauza medzi požiadavkami je v oboch číslach). Nech je z plánu dopredu
-    # vidieť, či to budú sekundy alebo hodina – job, ktorý spadne na strop
-    # času, minie rozpočet a nevyrobí nič.
-    # Článkov je pri dvoch jazykoch rádovo dvakrát toľko než objektov – odhad
-    # musí rátať s tým, čo sa naozaj stiahne, nie s počtom bodov.
+        f"krajiny)")
+    # článkov je pri dvoch jazykoch rádovo dvakrát toľko než objektov
     spolu = clankov + len(qids) * len(langs)
-    na_clanok = (MS_PER_ARTICLE_SINGLE if args.format == "html"
-                 else MS_PER_ARTICLE_BATCHED)
-    odhad = (spolu * na_clanok / 1000.0
+    odhad = (spolu * MS_PER_ARTICLE_BATCHED / 1000.0
              + len(qids) / WIKIDATA_BATCH * (PAUSE_S + 0.4))
-    davka = 1 if args.format == "html" else (
-        INTRO_BATCH if args.format == "intro" else CONTENT_BATCH)
-    log(f"  dávka                {davka} článkov na požiadavku, "
-        f"teda ~{-(-spolu // davka)} požiadaviek")
+    log(f"  dávka                {CONTENT_BATCH} článkov na požiadavku, "
+        f"teda ~{-(-spolu // CONTENT_BATCH)} požiadaviek")
     log(f"  odhad                ~{odhad / 60:.1f} min")
-    if args.format == "html":
-        log("  ::warning::`html` sa dávkovať nedá (REST vydá jednu stránku "
-            "na volanie) – pri stovkách článkov je to desiatky minút. "
-            "`text` je z tých istých článkov a ide po päťdesiatich.")
     log("─────────────────────────────────────────────────────")
 
     api = Api()
@@ -429,7 +406,7 @@ def main():
     for lang in sorted(podla_jazyka):
         log(f"Sťahujem {len(podla_jazyka[lang])} článkov ({lang})…")
         hotove, chybne, recyklovane = stiahni_texty(
-            api, lang, podla_jazyka[lang], args.format, cache)
+            api, lang, podla_jazyka[lang], cache)
         z_cache += recyklovane
         for nazov in podla_jazyka[lang]:
             objekty_odkazu = kde[(lang, nazov)]
@@ -475,7 +452,7 @@ def main():
     with open(os.path.join(args.out, "index.json"), "w", encoding="utf-8") as f:
         json.dump({"_comment": f"Čo je v {NDJSON} a ktorý článok patrí ktorému "
                                f"OSM objektu. Vyrába workers/wiki/collect.py.",
-                   "file": NDJSON, "langs": langs, "format": args.format,
+                   "file": NDJSON, "langs": langs, "format": "text",
                    "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                              time.gmtime()),
                    "counts": {"articles": len(index), "osm": len(kde_je),

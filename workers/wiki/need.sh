@@ -4,7 +4,7 @@
 # Volá to build mapy: články sa neobnovujú pri každom builde, na to je
 # `rebuild: clanky`. Chýbajúca cache alebo balík = sťahuje sa.
 #
-# Z prostredia: REGION_KEY COUNTRY LANGS FMT RUN_ID; píše `skip` do GITHUB_OUTPUT.
+# Z prostredia: REGION_KEY COUNTRY LANGS RUN_ID; píše `skip` do GITHUB_OUTPUT.
 set -euo pipefail
 
 PREFIX=$(REGION="$REGION_KEY" workers/wiki/key.sh | sed -n 's/^prefix=//p')

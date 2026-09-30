@@ -1,0 +1,54 @@
+name: Mapa · Wiki state
+
+# „Build wiki" nad každým krajom krajiny, štafetou ako „Build map state".
+# Týždenne, aby balíky niesli nové a upravené články.
+
+on:
+  schedule:
+    # sobota 02:40 UTC, deň pred upratovaním
+    - cron: "40 2 * * 6"
+  workflow_dispatch:
+    inputs:
+      # zoznam drží workers/data/regions.json
+      country:
+        description: "Krajina – články sa postavia v každom jej kraji"
+        required: true
+        default: slovensko
+        type: choice
+        options:
+          - slovensko
+      rebuild:
+        description: "Stiahnuť články odznova (obíde cache na Drive)"
+        required: false
+        default: false
+        type: boolean
+      pokracovanie:
+        description: "Nevypĺňaj – kolík štafety, dávka si ho podáva sama"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+# bez `concurrency`, inak by GitHub zrušil prostredný článok štafety
+
+jobs:
+  estafeta:
+    name: Úsek štafety
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Počkaj na kraj, spusti ďalší a odovzdaj štafetu
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          # plán nemá formulár, preto predvoľby
+          COUNTRY: ${{ inputs.country || 'slovensko' }}
+          REBUILD: ${{ inputs.rebuild || false }}
+          POKRACOVANIE: ${{ inputs.pokracovanie }}
+        run: workers/state/wiki.sh
