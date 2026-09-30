@@ -1,62 +1,62 @@
 name: Map · transport network
 
-# CELÁ DOPRAVNÁ SIEŤ z OSM do vlastného `.pmtiles`: cesty od diaľnice po
-# schody, železnice, električky a metro, trajekty a lanovky. Rozpis je
-# v hlavičke `workers/transport/transport.yml`. Ten istý vzor ako trasy
-# a krajinné prvky: to isté PBF sa číta druhýkrát vlastnou schémou.
+# THE WHOLE TRANSPORT NETWORK from OSM into its own `.pmtiles`: roads from
+# motorways to steps, railways, trams and metro, ferries and aerialways. See the
+# `workers/transport/transport.yml` header. The same pattern as trails and
+# landscape features: the same PBF read a second time with its own schema.
 #
-# Samostatný súbor preto, že `build-map-region.yml` je pri strope 128 KiB, nad
-# ktorým GitHub workflow ticho neprijme. Cena: vstupy sa píšu dvakrát
-# a `workflow_call` nededí ani `env`, ani `secrets` volajúceho.
+# A file of its own because `build-map-region.yml` is near the 128 KiB cap, above
+# which GitHub quietly rejects a workflow. The cost: inputs are written twice
+# and `workflow_call` inherits neither the caller's `env` nor its `secrets`.
 
 on:
   workflow_call:
     inputs:
       region_key:
-        description: "Kľúč regiónu – z neho je meno `{region}-transport.pmtiles`"
+        description: "Region key – it names `{region}-transport.pmtiles`"
         required: true
         type: string
       region_bbox:
-        description: "Bbox regiónu pre orez dlaždíc (workers/lib/region-clip.sh)"
+        description: "Region bbox for clipping tiles (workers/lib/region-clip.sh)"
         required: true
         type: string
       maxzoom:
-        description: "Najvyšší zoom dlaždíc s dopravnou sieťou"
+        description: "Highest zoom of the transport tiles"
         required: false
         default: "14"
         type: string
       region_clip:
-        description: "Orezať dlaždice na hranicu regiónu"
+        description: "Clip tiles to the region border"
         required: false
         default: "false"
         type: string
       size_limit_mb:
-        description: "Rozpočet celej stránky v MB"
+        description: "The whole page budget in MB"
         required: false
         default: "900"
         type: string
       budget_pct:
-        description: "Podiel dopravnej siete na rozpočte stránky v percentách"
+        description: "The transport network's share of the page budget in percent"
         required: false
         default: "8"
         type: string
       day:
-        description: "Dátum pre kľúč cache Planetileru"
+        description: "Date for the Planetiler cache key"
         required: false
         default: ""
         type: string
     outputs:
       enabled:
-        description: "Vznikla vrstva? (vo výreze nemusí byť ani jedna cesta)"
+        description: "Was the layer made? (a cutout may hold no road)"
         value: ${{ jobs.transport.outputs.enabled }}
       maxzoom:
-        description: "Zoom, po ktorý dlaždice naozaj sú"
+        description: "The zoom tiles really go up to"
         value: ${{ jobs.transport.outputs.maxzoom }}
       size_mb:
-        description: "Veľkosť vrstvy v MB"
+        description: "Layer size in MB"
         value: ${{ jobs.transport.outputs.size_mb }}
-    # `workflow_call` nededí secrets sám. Bez nich sa cache na Drive nemá ako
-    # otvoriť a Planetiler (93 MB) sa ťahá pri každom behu.
+    # `workflow_call` doesn't inherit secrets; without them the Drive cache can't
+    # open and Planetiler (93 MB) is downloaded on every run.
     secrets:
       GDRIVE_CREDENTIALS:
         required: false
@@ -65,8 +65,8 @@ on:
       DRIVE_REFRESH:
         required: false
 
-# prihlásenie na Drive pre celý workflow, nie po kroku: `cache-restore`
-# a `cache-save` sú dva kroky a jeden bez tokenu by ťahal všetko odznova
+# Drive sign-in for the whole workflow, not per step: `cache-restore` and
+# `cache-save` are two steps and one without a token would download everything again
 env:
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
@@ -75,7 +75,7 @@ env:
 
 jobs:
   transport:
-    name: Dopravná sieť
+    name: Transport network
     runs-on: ubuntu-latest
     outputs:
       enabled: ${{ steps.transport.outputs.enabled }}
@@ -84,18 +84,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Priprav priečinok na meranie
+      - name: Prepare the timing folder
         run: mkdir -p steps-out
 
-      - name: Stiahni PBF z prípravy
+      - name: Download the PBF from the plan
         uses: actions/download-artifact@v8
         with:
           name: pbf
           path: data
 
-      # polygón regiónu je `--polygon` pre Planetiler; `continue-on-error`,
-      # lebo aj bez neho sa beh dokončiť dá (dlaždice budú na bboxe)
-      - name: Stiahni polygón regiónu
+      # the region polygon is Planetiler's `--polygon`; `continue-on-error`, since
+      # the run finishes without it too (tiles then follow the bbox)
+      - name: Download the region polygon
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
@@ -125,13 +125,13 @@ jobs:
           path: planetiler.jar
           key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
 
-      # testy schémy pred stavbou: sú v nej ako `examples` a je to jediná vec,
-      # ktorá o schéme povie pravdu bez celého behu. Beží ako prvé.
-      - name: Testy schémy dopravnej siete
+      # schema tests before the build (`examples`) – the one thing that tells the
+      # truth about a schema without a whole run. They go first.
+      - name: Transport schema tests
         run: java -jar planetiler.jar verify workers/transport/transport.yml
 
-      # rozpis je vo `workers/transport/build.sh`
-      - name: Dopravná sieť z OSM → PMTiles
+      # described in `workers/transport/build.sh`
+      - name: Transport network from OSM → PMTiles
         id: transport
         env:
           OPT_TRANSPORT_MAXZOOM: ${{ inputs.maxzoom }}
@@ -142,7 +142,7 @@ jobs:
           BUDGET_TRANSPORT_PCT: ${{ inputs.budget_pct }}
         run: workers/transport/build.sh
 
-      - name: Odlož časť stránky
+      - name: Upload the site part
         if: ${{ always() && hashFiles('_site/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -152,7 +152,7 @@ jobs:
           compression-level: 0
           if-no-files-found: ignore
 
-      - name: Odlož meranie krokov
+      - name: Upload the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:

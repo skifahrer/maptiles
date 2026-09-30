@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * Prepíše `poc/web/route-shield-americana.js` z OSM Americana.
+ * Rewrites `poc/web/route-shield-americana.js` from OSM Americana.
  *
- * Americana popisuje štítky čísel ciest celého sveta ako dáta
- * (`src/js/shield_defs.js`, CC0). Tvarové sa dajú nakresliť, obrázkové
- * (`spriteBlank`, americké štítky) nie – tie sa vynechajú a ostane im záloha
- * podľa triedy cesty. Rozpis v `docs/stitky-ciest.md`.
+ * Americana describes the world's route number shields as data
+ * (`src/js/shield_defs.js`, CC0). Shape shields can be drawn, image ones
+ * (`spriteBlank`, US shields) can't – they're skipped and keep the road-class
+ * fallback. Details in `docs/stitky-ciest.md`.
  *
  *   git clone --depth 1 https://github.com/osm-americana/openstreetmap-americana /tmp/am
  *   node workers/tools/americana-shields.mjs --americana=/tmp/am
@@ -22,15 +22,14 @@ const args = Object.fromEntries(
   })
 );
 if (!args.americana) {
-  console.error("Použitie: node workers/tools/americana-shields.mjs --americana=<checkout>");
+  console.error("Usage: node workers/tools/americana-shields.mjs --americana=<checkout>");
   process.exit(2);
 }
 
-const koren = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const vystup = join(koren, "poc", "web", "route-shield-americana.js");
+const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const output = join(root, "poc", "web", "route-shield-americana.js");
 
-// Helpery Americany vracajú obyčajné objekty, tak sa nahradia rovnakými –
-// tým odpadne `node_modules` aj celá knižnica.
+// Americana's helpers return plain objects, so stand-ins do – no `node_modules` needed
 const STUB = `
 const def = (drawFunc, params, extra = {}) => ({ shapeBlank: { drawFunc, params }, ...extra });
 export const textConstraint = (constraintFunc) => ({ constraintFunc });
@@ -90,16 +89,16 @@ try {
   rmSync(dir, { recursive: true, force: true });
 }
 
-/** `white` a `black` sú CSS mená; zvyšok paleta dáva ako hex. */
-const MENA = { white: "#ffffff", black: "#000000" };
-const farba = (v) => (v == null ? null : MENA[v] || String(v));
+/** `white` and `black` are CSS names; the palette gives the rest as hex. */
+const NAMES = { white: "#ffffff", black: "#000000" };
+const color = (v) => (v == null ? null : NAMES[v] || String(v));
 
-/** Z parametrov Americany len to, čo tvar naozaj potrebuje. */
-function recept(shapeBlank, textColor) {
+/** Only the Americana params a shape really needs. */
+function recipe(shapeBlank, textColor) {
   const p = shapeBlank.params || {};
-  const out = { shape: shapeBlank.drawFunc, fill: farba(p.fillColor) || "#ffffff" };
-  if (farba(p.strokeColor)) out.stroke = farba(p.strokeColor);
-  out.text = farba(textColor) || out.stroke || "#000000";
+  const out = { shape: shapeBlank.drawFunc, fill: color(p.fillColor) || "#ffffff" };
+  if (color(p.strokeColor)) out.stroke = color(p.strokeColor);
+  out.text = color(textColor) || out.stroke || "#000000";
   for (const [key, value] of [
     ["width", p.rectWidth], ["radius", p.radius], ["radius1", p.radius1],
     ["radius2", p.radius2], ["yOffset", p.yOffset], ["sideAngle", p.sideAngle]
@@ -111,45 +110,45 @@ function recept(shapeBlank, textColor) {
   return out;
 }
 
-const tvary = [];
-const kluce = new Map();
-const siete = {};
-let obrazkove = 0;
+const shapes = [];
+const keys = new Map();
+const nets = {};
+let images = 0;
 
 for (const [network, def] of Object.entries(networks).sort(([a], [b]) => (a < b ? -1 : 1))) {
   if (!def || !def.shapeBlank) {
-    if (def) obrazkove += 1;
+    if (def) images += 1;
     continue;
   }
-  const r = recept(def.shapeBlank, def.textColor);
-  const kluc = JSON.stringify(r);
-  if (!kluce.has(kluc)) {
-    kluce.set(kluc, tvary.length);
-    tvary.push(r);
+  const r = recipe(def.shapeBlank, def.textColor);
+  const key = JSON.stringify(r);
+  if (!keys.has(key)) {
+    keys.set(key, shapes.length);
+    shapes.push(r);
   }
-  siete[network] = kluce.get(kluc);
+  nets[network] = keys.get(key);
 }
 
-const riadky = Object.entries(siete)
+const rows = Object.entries(nets)
   .map(([n, i]) => `  ${JSON.stringify(n)}: ${i}`)
   .join(",\n");
 
-writeFileSync(vystup, `/**
- * GENEROVANÉ – \`node workers/tools/americana-shields.mjs --americana=<checkout>\`.
- * Needituj ručne; vlastné siete patria do \`route-shield-defs.js\`.
+writeFileSync(output, `/**
+ * GENERATED – \`node workers/tools/americana-shields.mjs --americana=<checkout>\`.
+ * Don't edit by hand; our own networks belong in \`route-shield-defs.js\`.
  *
- * Tvary a farby štítkov čísel ciest z OSM Americana (\`src/js/shield_defs.js\`,
- * CC0): ${tvary.length} receptov, ${Object.keys(siete).length} sietí.
- * Vynechané sú siete kreslené hotovým obrázkom (\`spriteBlank\`, ${obrazkove} sietí)
- * – tým ostáva záloha podľa triedy cesty.
+ * Route number shield shapes and colours from OSM Americana (\`src/js/shield_defs.js\`,
+ * CC0): ${shapes.length} recipes, ${Object.keys(nets).length} networks.
+ * Networks drawn from a ready image (\`spriteBlank\`, ${images} networks) are
+ * skipped – they keep the road-class fallback.
  */
 
-export const AMERICANA_SHAPES = ${JSON.stringify(tvary, null, 2)};
+export const AMERICANA_SHAPES = ${JSON.stringify(shapes, null, 2)};
 
 export const AMERICANA_NETWORKS = {
-${riadky}
+${rows}
 };
 `);
 
-console.log(`✓ ${vystup}: ${Object.keys(siete).length} sietí, ${tvary.length} receptov ` +
-  `(${obrazkove} obrázkových vynechaných)`);
+console.log(`✓ ${output}: ${Object.keys(nets).length} networks, ${shapes.length} recipes ` +
+  `(${images} image ones skipped)`);

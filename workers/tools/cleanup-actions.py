@@ -1,76 +1,70 @@
 #!/usr/bin/env python3
 """
-Upratovanie GitHubu: behy, ktoré nie sú záznamom o ničom – a všetky releasy
-aj artefakty, lebo do GitHubu sa už nepublikuje nič.
+GitHub cleanup: runs that record nothing – and every release and artifact,
+since nothing is published to GitHub any more.
 
-PREČO TO NEJDE INAK: behy a vetvy nie sú súbory v repozitári, takže sa
-nedajú zmazať pull requestom ani z lokálu – token mimo Actions na to nemá
-právo (`Resource not accessible by integration`, HTTP 403). Vnútri behu ho
-ale `GITHUB_TOKEN` má, keď mu workflow dá `actions: write` (behy) a
-`contents: write` (vetvy). Preto je to workflow, ktorý sa spustí ručne.
+WHY IT CAN'T BE DONE OTHERWISE: runs and branches aren't files in the repository,
+so no pull request or local token can delete them (`Resource not accessible by
+integration`, HTTP 403). Inside a run `GITHUB_TOKEN` can, given `actions: write`
+(runs) and `contents: write` (branches). Hence a manually started workflow.
 
-ČO SA POVAŽUJE ZA SMETI:
+WHAT COUNTS AS RUBBISH:
 
-1. **Behy zrušených workflowov.** Keď sa súbor workflowu zmaže, jeho behy
-   ostanú a s nimi aj položka v ľavom zozname Actions – navždy. Zmizne až
-   vtedy, keď má nula behov. Sem patria sondy `zz-*`, ktorými sa hľadalo,
-   prečo GitHub odmietal `build-map-region.yml`, aj staršie zrušené workflowy.
+1. **Runs of retired workflows.** When a workflow file is deleted its runs stay,
+   and so does its entry in the Actions sidebar – for good. It vanishes only at
+   zero runs.
 
-2. **Behy odmietnutých súborov.** Keď je súbor workflowu neplatný (napr. nad
-   stropom 128 KiB), GitHub to neohlási ako chybu – pri pushi vyrobí beh
-   BEZ JOBOV, pomenovaný cestou k súboru. Vyzerá to, že sa workflow spustil
-   sám po mergi, hoci má len `workflow_dispatch`. Spoznať sa dajú presne
-   podľa toho mena: `.github/workflows/nieco.yml` namiesto `name:` z obsahu.
+2. **Runs of rejected files.** When a workflow file is invalid (e.g. over the
+   128 KiB cap) GitHub doesn't report an error – a push makes a run WITHOUT JOBS,
+   named by the file path. They're recognised by exactly that name:
+   `.github/workflows/something.yml` instead of the `name:` inside.
 
-3. (voliteľne) **Vetvy `claude/*`, ktoré sú celé v hlavnej vetve.** Teda tie,
-   ktorých práca je zmergovaná a nemajú oproti nej ani jeden vlastný commit.
+3. (optional) **`claude/*` branches wholly contained in the main branch** – merged,
+   with not one commit of their own.
 
-4. **VŠETKY RELEASY, ICH TAGY A VŠETKY ARTEFAKTY.** Pipeline si do releasov
-   odkladala výškové modely, skaly a tieňovanie a do artefaktov medzivýsledky
-   na pozretie; oboje sa presťahovalo na Google Drive
-   (`workers/drive/store.py`). Tie staré tam teda ostávajú ako niekoľko
-   gigabajtov, ktoré nikto nečíta, a ako pozvánka pomýliť si ich s vydaním
-   softvéru. Nič sa tým nestratí: čo je potrebné, je v sklade na Drive.
+4. **EVERY RELEASE, ITS TAG AND EVERY ARTIFACT.** Elevation models, rocks and
+   shading used to go to releases and intermediate results to artifacts; both
+   moved to Google Drive (`workers/drive/store.py`). The old ones are gigabytes
+   nobody reads, easily mistaken for software releases. Nothing is lost.
 
-   Mazať to musí workflow. Release ani artefakt nie je súbor v repozitári,
-   takže sa nedá zmazať pull requestom, a token mimo Actions na to nemá právo.
-   Vnútri behu áno – `contents: write` na releasy a tagy, `actions: write` na
-   artefakty.
-
-Beží ako `workers/tools/cleanup-actions.py`; čo robiť, hovorí prostredie:
-    MODE=behy | behy_a_vetvy | releasy_a_artefakty | vsetko   (default: behy)
-    DRY_RUN=true | false                                      (default: false)
-Očakáva `gh` a GITHUB_REPOSITORY / GITHUB_RUN_ID od runnera.
+Runs as `workers/tools/cleanup-actions.py`; the environment says what to do:
+    MODE=runs | runs_and_branches | releases_and_artifacts | everything   (default: runs)
+    DRY_RUN=true | false                                                  (default: false)
+Expects `gh` and GITHUB_REPOSITORY / GITHUB_RUN_ID from the runner.
 """
 import json
 import os
 import subprocess
 import sys
 
+# former mode names, so an old dispatch still means the same
+MODE_ALIAS = {"behy": "runs", "behy_a_vetvy": "runs_and_branches",
+              "releasy_a_artefakty": "releases_and_artifacts", "vsetko": "everything"}
+
 REPO = os.environ["GITHUB_REPOSITORY"]
-MODE = os.environ.get("MODE", "behy")
+MODE = os.environ.get("MODE", "runs")
+MODE = MODE_ALIAS.get(MODE, MODE)
 DRY = os.environ.get("DRY_RUN", "false").lower() == "true"
 SELF_RUN = os.environ.get("GITHUB_RUN_ID", "")
 SUMMARY = os.environ.get("GITHUB_STEP_SUMMARY", "")
 
 
 def gh(path, method=None):
-    """Jedno volanie API. Vráti rozparsovaný JSON, alebo None pri chybe."""
+    """One API call. Parsed JSON, or None on error."""
     cmd = ["gh", "api", "-H", "Accept: application/vnd.github+json"]
     if method:
         cmd += ["-X", method]
     cmd.append(path)
     p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode:
-        # Chyba jedného volania nemá zhodiť celé upratovanie – vypíše sa
-        # a ide sa ďalej. Pri mazaní je 404 dokonca v poriadku (už je preč).
+        # one failed call mustn't stop the cleanup; a 404 on delete is fine
         print(f"::warning::{method or 'GET'} {path}: {p.stderr.strip()[:160]}")
         return None
     return json.loads(p.stdout) if p.stdout.strip() else {}
 
 
 def pages(path, key, cap=20):
-    """Postránkovo stiahne zoznam; `cap` je poistka proti nekonečnu."""
+    """A list page by page; `cap` guards against looping forever."""
     out, page = [], 1
     sep = "&" if "?" in path else "?"
     while page <= cap:
@@ -85,66 +79,60 @@ def pages(path, key, cap=20):
     return out
 
 
-def uprac_releasy():
-    """Všetky releasy, ich assety aj tagy. Vracia (koľko, koľko bajtov).
+def clean_releases():
+    """Every release with its assets and tag. Returns (count, bytes).
 
-    Assety sa nemažú zvlášť: zmazanie releasu ich vezme s sebou. Tag ÁNO –
-    ten release po sebe nechá, a osamotený tag `dem-sonny` na verejnom
-    repozitári vyzerá presne ako vydanie, ktorým nikdy nebol.
+    Deleting a release takes its assets, but leaves its tag – and a lone
+    `dem-sonny` tag on a public repository looks just like a release.
     """
     rels = pages(f"/repos/{REPO}/releases", None)
-    bajty = sum(a.get("size", 0) for r in rels for a in (r.get("assets") or []))
-    print(f"\nReleasov: {len(rels)}, v nich {human(bajty)} assetov")
+    size = sum(a.get("size", 0) for r in rels for a in (r.get("assets") or []))
+    print(f"\nReleases: {len(rels)}, holding {human(size)} of assets")
     for r in rels:
         n = len(r.get("assets") or [])
-        vel = human(sum(a.get("size", 0) for a in (r.get("assets") or [])))
-        print(f"  {r['tag_name']:<16} {n:>4} assetov  {vel:>10}  {r['name']}")
+        vol = human(sum(a.get("size", 0) for a in (r.get("assets") or [])))
+        print(f"  {r['tag_name']:<16} {n:>4} assets  {vol:>10}  {r['name']}")
     if DRY:
-        return len(rels), bajty
-    zmazane = 0
+        return len(rels), size
+    deleted = 0
     for r in rels:
         if gh(f"/repos/{REPO}/releases/{r['id']}", method="DELETE") is None:
-            print(f"::warning::release {r['tag_name']} sa nepodarilo zmazať")
+            print(f"::warning::release {r['tag_name']} couldn't be deleted")
             continue
-        zmazane += 1
-        # 404 je tu v poriadku: tag nemusel existovať (draft release ho nemá).
+        deleted += 1
+        # a draft release has no tag, so a 404 is fine
         gh(f"/repos/{REPO}/git/refs/tags/{r['tag_name']}", method="DELETE")
-        print(f"  zmazané: release aj tag {r['tag_name']}")
-    print(f"Zmazaných releasov: {zmazane} z {len(rels)}")
-    return zmazane, bajty
+        print(f"  deleted: release and tag {r['tag_name']}")
+    print(f"Releases deleted: {deleted} of {len(rels)}")
+    return deleted, size
 
 
-def uprac_artefakty():
-    """Všetky artefakty všetkých behov. Vracia (koľko, koľko bajtov).
-
-    Aj tie, ktorým ešte nevypršala retencia. Krátkodobé artefakty (`site-*`,
-    `steps-*`) sú prepravky jedného behu – po ňom už nie sú na nič, a keď je
-    beh dávno hotový, je to len miesto.
-    """
+def clean_artifacts():
+    """Every artifact of every run, retention or not. Returns (count, bytes)."""
     arts = pages(f"/repos/{REPO}/actions/artifacts", "artifacts")
-    # Ten svoj beh si nepodrežeme: `site-*` si joby podávajú práve teraz.
+    # this run's own `site-*` are being passed between jobs right now
     mine = [a for a in arts
             if str((a.get("workflow_run") or {}).get("id", "")) == SELF_RUN]
     arts = [a for a in arts if a not in mine]
-    bajty = sum(a.get("size_in_bytes", 0) for a in arts)
-    print(f"\nArtefaktov: {len(arts)}, {human(bajty)}"
-          + (f" (+{len(mine)} z tohto behu nechávam)" if mine else ""))
-    podla_mena = {}
+    size = sum(a.get("size_in_bytes", 0) for a in arts)
+    print(f"\nArtifacts: {len(arts)}, {human(size)}"
+          + (f" (+{len(mine)} of this run kept)" if mine else ""))
+    by_name = {}
     for a in arts:
-        m = podla_mena.setdefault(a["name"], [0, 0])
+        m = by_name.setdefault(a["name"], [0, 0])
         m[0] += 1
         m[1] += a.get("size_in_bytes", 0)
-    for name, (n, vel) in sorted(podla_mena.items()):
-        print(f"  {name:<52} {n:>4}×  {human(vel):>10}")
+    for name, (n, vol) in sorted(by_name.items()):
+        print(f"  {name:<52} {n:>4}×  {human(vol):>10}")
     if DRY:
-        return len(arts), bajty
-    zmazane = 0
+        return len(arts), size
+    deleted = 0
     for a in arts:
         if gh(f"/repos/{REPO}/actions/artifacts/{a['id']}",
               method="DELETE") is not None:
-            zmazane += 1
-    print(f"Zmazaných artefaktov: {zmazane} z {len(arts)}")
-    return zmazane, bajty
+            deleted += 1
+    print(f"Artifacts deleted: {deleted} of {len(arts)}")
+    return deleted, size
 
 
 def human(n):
@@ -155,79 +143,72 @@ def human(n):
     return f"{n:.1f} TB"
 
 
-# Čo sa v ktorom režime robí. Rozpísané, a nie „obsahuje reťazec", nech sa
-# preklep v `MODE` neprejaví ako beh, ktorý nič neupratal a zazelenal.
-ROBIT = {
-    "behy": ("behy",),
-    "behy_a_vetvy": ("behy", "vetvy"),
-    "releasy_a_artefakty": ("releasy", "artefakty"),
-    "vsetko": ("behy", "vetvy", "releasy", "artefakty"),
+# spelled out, so a typo in `MODE` isn't a green run that cleaned nothing
+DO = {
+    "runs": ("runs",),
+    "runs_and_branches": ("runs", "branches"),
+    "releases_and_artifacts": ("releases", "artifacts"),
+    "everything": ("runs", "branches", "releases", "artifacts"),
 }
 
 
 def main():
-    if MODE not in ROBIT:
-        print(f"::error::Režim „{MODE}“ nepoznám. Sú to: "
-              f"{', '.join(ROBIT)}.")
+    if MODE not in DO:
+        print(f"::error::Unknown mode “{MODE}”. Known: {', '.join(DO)}.")
         return 1
-    robim = ROBIT[MODE]
-    print(f"Repozitár: {REPO}   režim: {MODE} ({', '.join(robim)})   "
-          f"{'LEN VÝPIS (nič sa nemaže)' if DRY else 'ostro'}")
+    doing = DO[MODE]
+    print(f"Repository: {REPO}   mode: {MODE} ({', '.join(doing)})   "
+          f"{'DRY RUN (nothing deleted)' if DRY else 'for real'}")
 
-    zrusene, smeti, zmazane, vetvy = {}, [], 0, []
+    retired, rubbish, deleted, branches = {}, [], 0, []
     rel_n = rel_b = art_n = art_b = 0
 
-    if "releasy" in robim:
-        rel_n, rel_b = uprac_releasy()
-    if "artefakty" in robim:
-        art_n, art_b = uprac_artefakty()
-    if "behy" not in robim:
-        return _suhrn(zrusene, smeti, zmazane, vetvy, rel_n, rel_b, art_n, art_b)
+    if "releases" in doing:
+        rel_n, rel_b = clean_releases()
+    if "artifacts" in doing:
+        art_n, art_b = clean_artifacts()
+    if "runs" not in doing:
+        return _summary(retired, rubbish, deleted, branches, rel_n, rel_b, art_n, art_b)
 
-    # ---------- ktoré workflowy ešte majú svoj súbor ----------
     workflows = pages(f"/repos/{REPO}/actions/workflows", "workflows")
-    zive, zrusene = {}, {}
+    alive, retired = {}, {}
     for w in workflows:
-        # `dynamic/pages/...` je GitHubov vlastný workflow pre Pages, ten
-        # súbor v repe nemá a mazať ho nesmieme.
+        # `dynamic/pages/...` is GitHub's own Pages workflow, with no file here
         if not w["path"].startswith(".github/workflows/"):
             continue
-        (zive if os.path.exists(w["path"]) else zrusene)[w["id"]] = w["path"]
-    print(f"\nWorkflowy: {len(zive)} so súborom, {len(zrusene)} zrušených")
-    for path in sorted(zrusene.values()):
-        print(f"  zrušený: {path}")
+        (alive if os.path.exists(w["path"]) else retired)[w["id"]] = w["path"]
+    print(f"\nWorkflows: {len(alive)} with a file, {len(retired)} retired")
+    for path in sorted(retired.values()):
+        print(f"  retired: {path}")
 
-    # ---------- čo zmazať ----------
-    smeti = []   # (id, dôvod, popis)
-    for wid, path in zrusene.items():
+    rubbish = []   # (id, reason, label)
+    for wid, path in retired.items():
         for r in pages(f"/repos/{REPO}/actions/workflows/{wid}/runs", "workflow_runs"):
-            smeti.append((r["id"], "zrušený workflow", f"{path} #{r['run_number']}"))
+            rubbish.append((r["id"], "retired workflow", f"{path} #{r['run_number']}"))
 
-    for wid, path in zive.items():
+    for wid, path in alive.items():
         for r in pages(f"/repos/{REPO}/actions/workflows/{wid}/runs", "workflow_runs"):
-            # Meno = cesta k súboru → GitHub ten súbor neprečítal, čiže beh
-            # bez jobov. Behy so skutočným menom sú normálna história.
+            # named by its path → GitHub couldn't read the file: a run without jobs
             if r["name"].startswith(".github/workflows/"):
-                smeti.append((r["id"], "odmietnutý súbor", f"{path} #{r['run_number']}"))
+                rubbish.append((r["id"], "rejected file", f"{path} #{r['run_number']}"))
 
-    # Rozbehnutý beh sa mazať nedá a ten svoj by sme si podrezali sami.
-    smeti = [s for s in smeti if str(s[0]) != SELF_RUN]
+    # a running run can't be deleted, and this one would cut itself off
+    rubbish = [s for s in rubbish if str(s[0]) != SELF_RUN]
 
-    print(f"\nBehov na zmazanie: {len(smeti)}")
-    for _, dovod, popis in sorted(smeti, key=lambda s: s[2]):
-        print(f"  [{dovod}] {popis}")
+    print(f"\nRuns to delete: {len(rubbish)}")
+    for _, reason, label in sorted(rubbish, key=lambda s: s[2]):
+        print(f"  [{reason}] {label}")
 
-    zmazane = 0
+    deleted = 0
     if not DRY:
-        for rid, _, popis in smeti:
+        for rid, _, label in rubbish:
             if gh(f"/repos/{REPO}/actions/runs/{rid}", method="DELETE") is not None:
-                zmazane += 1
+                deleted += 1
             else:
-                print(f"::warning::beh {popis} sa nepodarilo zmazať")
-        print(f"\nZmazaných behov: {zmazane} z {len(smeti)}")
+                print(f"::warning::run {label} couldn't be deleted")
+        print(f"\nRuns deleted: {deleted} of {len(rubbish)}")
 
-    # ---------- vetvy ----------
-    if "vetvy" in robim:
+    if "branches" in doing:
         base = (gh(f"/repos/{REPO}") or {}).get("default_branch", "master")
         for b in pages(f"/repos/{REPO}/branches", None):
             name = b["name"]
@@ -236,61 +217,59 @@ def main():
             cmp_ = gh(f"/repos/{REPO}/compare/{base}...{name}")
             if not cmp_:
                 continue
-            # `behind` = vetva nemá oproti hlavnej ani jeden vlastný commit,
-            # `identical` = je to presne tá istá špička. Oboje je zmergované
-            # alebo prázdne; `ahead` a `diverged` sa nechávajú na pokoji.
+            # `behind`/`identical` = merged or empty; `ahead`/`diverged` stay
             if cmp_.get("status") in ("behind", "identical"):
-                vetvy.append((name, cmp_["status"]))
+                branches.append((name, cmp_["status"]))
             else:
-                print(f"  nechávam vetvu {name} ({cmp_.get('status')}, "
-                      f"vlastných commitov: {cmp_.get('ahead_by')})")
+                print(f"  keeping branch {name} ({cmp_.get('status')}, "
+                      f"own commits: {cmp_.get('ahead_by')})")
 
-        print(f"\nVetiev na zmazanie: {len(vetvy)}")
-        for name, st in vetvy:
+        print(f"\nBranches to delete: {len(branches)}")
+        for name, st in branches:
             print(f"  {name} ({st})")
         if not DRY:
-            for name, _ in vetvy:
+            for name, _ in branches:
                 gh(f"/repos/{REPO}/git/refs/heads/{name}", method="DELETE")
 
-    return _suhrn(zrusene, smeti, zmazane, vetvy, rel_n, rel_b, art_n, art_b)
+    return _summary(retired, rubbish, deleted, branches, rel_n, rel_b, art_n, art_b)
 
 
-def _suhrn(zrusene, smeti, zmazane, vetvy, rel_n, rel_b, art_n, art_b):
-    """Súhrn do `GITHUB_STEP_SUMMARY`. Vlastná funkcia, lebo režim
-    `releasy_a_artefakty` končí skôr a súhrn má vypísať aj tak."""
+def _summary(retired, rubbish, deleted, branches, rel_n, rel_b, art_n, art_b):
+    """The `GITHUB_STEP_SUMMARY` table; releases_and_artifacts returns early, so it's apart."""
     if not SUMMARY:
         return 0
+    doing = DO[MODE]
     with open(SUMMARY, "a") as f:
-        f.write("## Upratovanie GitHubu\n\n")
-        f.write("Len výpis, nič sa nemazalo.\n\n" if DRY else "")
-        f.write("| čo | koľko |\n|---|--:|\n")
-        if "behy" in ROBIT[MODE]:
-            f.write(f"| zrušené workflowy (ostali po nich behy) | {len(zrusene)} |\n")
-            f.write(f"| behy na zmazanie | {len(smeti)} |\n")
+        f.write("## GitHub cleanup\n\n")
+        f.write("Dry run, nothing was deleted.\n\n" if DRY else "")
+        f.write("| what | count |\n|---|--:|\n")
+        if "runs" in doing:
+            f.write(f"| retired workflows (with runs left) | {len(retired)} |\n")
+            f.write(f"| runs to delete | {len(rubbish)} |\n")
             if not DRY:
-                f.write(f"| **skutočne zmazaných behov** | **{zmazane}** |\n")
-        if "vetvy" in ROBIT[MODE]:
-            f.write(f"| zlúčené vetvy `claude/*` | {len(vetvy)} |\n")
-        if "releasy" in ROBIT[MODE]:
-            f.write(f"| {'releasy na zmazanie' if DRY else 'zmazané releasy'} "
-                    f"(aj s tagmi) | {rel_n} |\n")
-            f.write(f"| assety v nich | {human(rel_b)} |\n")
-        if "artefakty" in ROBIT[MODE]:
-            f.write(f"| {'artefakty na zmazanie' if DRY else 'zmazané artefakty'} "
+                f.write(f"| **runs actually deleted** | **{deleted}** |\n")
+        if "branches" in doing:
+            f.write(f"| merged `claude/*` branches | {len(branches)} |\n")
+        if "releases" in doing:
+            f.write(f"| {'releases to delete' if DRY else 'releases deleted'} "
+                    f"(with tags) | {rel_n} |\n")
+            f.write(f"| their assets | {human(rel_b)} |\n")
+        if "artifacts" in doing:
+            f.write(f"| {'artifacts to delete' if DRY else 'artifacts deleted'} "
                     f"| {art_n} |\n")
-            f.write(f"| ich veľkosť | {human(art_b)} |\n")
-        if smeti:
-            f.write("\n<details><summary>Zoznam behov</summary>\n\n")
-            for _, dovod, popis in sorted(smeti, key=lambda s: s[2]):
-                f.write(f"- `{popis}` – {dovod}\n")
+            f.write(f"| their size | {human(art_b)} |\n")
+        if rubbish:
+            f.write("\n<details><summary>Runs</summary>\n\n")
+            for _, reason, label in sorted(rubbish, key=lambda s: s[2]):
+                f.write(f"- `{label}` – {reason}\n")
             f.write("\n</details>\n")
-        if "behy" in ROBIT[MODE]:
-            f.write("\nPoložka workflowu zmizne z ľavého zoznamu Actions až "
-                    "vtedy, keď nemá ani jeden beh – preto sa mažú všetky.\n")
-        if "releasy" in ROBIT[MODE]:
-            f.write("\nDo releasov ani artefaktov sa už nepublikuje nič – "
-                    "všetko ide do skladu na Google Drive "
-                    "(`workers/drive/store.py`). Nič sa teda nestratilo.\n")
+        if "runs" in doing:
+            f.write("\nA workflow leaves the Actions sidebar only with no runs "
+                    "at all – so all of them are deleted.\n")
+        if "releases" in doing:
+            f.write("\nNothing is published to releases or artifacts any more – "
+                    "everything goes to the Google Drive store "
+                    "(`workers/drive/store.py`). Nothing was lost.\n")
     return 0
 
 

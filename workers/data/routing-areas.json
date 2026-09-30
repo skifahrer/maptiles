@@ -1,30 +1,29 @@
 {
   "_comment": [
-    "NA AKÝ ROZSAH SA STAVIA NAVIGAČNÝ GRAF – a je to iná otázka než „aká mapa“,",
-    "preto vlastný číselník a nie ďalší kľúč v `areas.json`. Rozoberá ho",
-    "`workers/routing/pbf.sh` a `graph.sh`, stráži `workers/lint/navigation.py`.",
+    "WHAT EXTENT THE ROUTING GRAPH IS BUILT FOR – another question than “which",
+    "map”, hence a lookup of its own and not another key in `areas.json`. Read by",
+    "`workers/routing/pbf.sh` and `graph.sh`, guarded by `workers/lint/navigation.py`.",
     "",
-    "GRAF SA NEDELÍ PO KRAJOCH, ako sa delí mapa – a nie je to pohodlie, je to",
-    "priamy dôsledok zadania. Diaľničná známka po krajinách má zmysel len vtedy,",
-    "keď trasa SMIE prejsť hranicu; graf jedného kraja nevie ani doviezť človeka",
-    "do Rakúska, takže sa v ňom nedá ani vyhnúť tomu, že tam známku nemá. Mapa",
-    "na pozeranie a graf na smerovanie sú dva rôzne rozsahy toho istého územia.",
+    "THE GRAPH ISN'T SPLIT BY REGION like the map – not for convenience, it follows",
+    "from the brief. A vignette per country makes sense only when a route MAY cross",
+    "the border; one region's graph can't even take someone to Austria, so it can't",
+    "avoid lacking a vignette there. A map to look at and a graph to route on are",
+    "two extents of the same territory.",
     "",
-    "A PRETO SÚ TU DVE MOŽNOSTI, nie jedna. Pravidlo 7 (nikdy nesťahuj viac, než",
-    "treba) tu stojí proti zadaniu: cezhraničná trasa chce susedov, ale susedia",
-    "sú niekoľko GB PBF a hodiny stavby, kým runner má ~60 GB voľných a strop",
-    "360 minút na job. Kto navigáciu skúša alebo jazdí doma, postaví",
-    "`slovensko`; kto ide do Rakúska, zaplatí `slovensko_susedia`.",
+    "HENCE TWO OPTIONS, not one. Rule 7 (never download more than needed) stands",
+    "against the brief here: a cross-border route wants the neighbours, but they are",
+    "several GB of PBF and hours of building, while a runner has ~60 GB free and a",
+    "360 minute job cap. Whoever tries routing or drives at home builds",
+    "`slovensko`; whoever goes to Austria pays for `slovensko_susedia`.",
     "",
-    "ČASY A VEĽKOSTI SA MAJÚ DOPLNIŤ Z PRVÉHO BEHU. Zámerne tu nie sú",
-    "odhadnuté: číslo v komentári tohto repozitára znamená namerané, a hádaná",
-    "hodnota by sa od skutočnej nedala odlíšiť. `graph.sh` ich vypíše do súhrnu",
-    "behu aj do `obsah.json` v balíku."
+    "TIMES AND SIZES ARE TO BE FILLED IN FROM THE FIRST RUN. They're deliberately",
+    "not estimated: a number in a comment here means measured. `graph.sh` prints",
+    "them into the run summary and the package's `contents.json`."
   ],
   "_pbf": [
-    "Zdroj PBF je ten istý ako pri mape – osm.fr (`OSMFR_BASE`), lebo tam chodí",
-    "celá pipeline a jeden zdroj sa nemá zdvojovať. Cesty sú BEZ prípony",
-    "`-latest.osm.pbf`; dopĺňa ju `pbf.sh`, aby sa nepísala pri každom riadku."
+    "The PBF source is the same as the map's – osm.fr (`OSMFR_BASE`), since the",
+    "whole pipeline goes there and one source shouldn't be doubled. Paths go",
+    "WITHOUT the `-latest.osm.pbf` suffix; `pbf.sh` adds it."
   ],
   "areas": {
     "slovensko": {
@@ -37,9 +36,9 @@
         "SK"
       ],
       "note": [
-        "Predvolené. Trasa neprejde hranicu, takže voľba `vignettes` má v tomto",
-        "grafe zmysel len pre SK – a `profile.py` to povie, lebo krajiny berie",
-        "z `vignettes.json`, nie z grafu."
+        "The default. A route doesn't cross the border, so the `vignettes` option only",
+        "means SK in this graph – and `profile.py` says so, since it takes countries",
+        "from `vignettes.json`, not from the graph."
       ]
     },
     "slovensko_susedia": {
@@ -62,14 +61,13 @@
         "UA"
       ],
       "note": [
-        "TOTO JE DRAHÝ BEH a je to jediná podoba, v ktorej má známka po krajinách",
-        "plný zmysel. Poľsko a Ukrajina sú pritom najväčšie kusy a pre cestu do",
-        "Rakúska netreba ani jeden – keď sa ukáže, že sa to nevojde do stropov",
-        "runnera, správna odpoveď je ĎALŠIA POLOŽKA tu (napr. `slovensko_at_cz`),",
-        "nie tichý orez tejto.",
-        "MENO JE SĽUB O ROZSAHU (pravidlo 2): keby sa zo zoznamu potichu vypustil",
-        "štát, balík by sa stále volal `…_susedia` a trasa by v ňom končila na",
-        "hranici bez vysvetlenia."
+        "THIS IS THE COSTLY RUN and the only form in which a vignette per country fully",
+        "makes sense. Poland and Ukraine are the biggest pieces and a trip to Austria",
+        "needs neither – if it won't fit the runner's caps, the right answer is ANOTHER",
+        "ENTRY here (e.g. `slovensko_at_cz`), not a quiet trim of this one.",
+        "THE NAME IS A PROMISE ABOUT EXTENT (rule 2): if a state were quietly dropped,",
+        "the package would still be called `…_susedia` and a route in it would end at",
+        "the border without explanation."
       ]
     }
   }
