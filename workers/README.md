@@ -90,6 +90,8 @@ Mapa · Build wiki            objekty regiónu s `wikipedia`/`wikidata`
                              ─► {región}-wikipedia.zip na Drive
                              ▲ na Pages NEJDE – do `_site` z toho nič
                              ▲ vlastná pipeline: iná sieť, iná životnosť
+                             ▲ týždenne v celej krajine: „Mapa · Wiki state"
+                               (`wiki-state.yml`, štafeta kraj po kraji)
 
 Mapa · Build svet            základná mapa CELÉHO sveta – podklad pod výber
 (manuálne, raz za dlho)      „ktorý kus si stiahnuť":
