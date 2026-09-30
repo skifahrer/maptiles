@@ -159,6 +159,12 @@ def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None,
     polozka["symbol"] = meta["symbol"]
     polozka["detail"] = meta["app_popis"]
     polozka["popis"] = meta["popis"]
+    # preklad zmazaný z číselníka zmizne aj z katalógu
+    preklady = katalog_balikov.preklady(meta)
+    if preklady:
+        polozka["translations"] = preklady
+    else:
+        polozka.pop("translations", None)
     if meta.get("cast"):
         polozka["part_of"] = meta["cast"]
     kredity = katalog_balikov.kredity(kind or "mapa", modely)

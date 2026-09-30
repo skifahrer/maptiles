@@ -10,7 +10,8 @@ ktoré sa z neho odvodzujú:
     balik(kluc)       jeden, alebo tvrdý pád s tým, čo sa dá zadať
     kluce()           len kľúče
     zrusene()         balíky, ktoré UŽ NIE SÚ – ich starý súbor sa maže
-    pre_katalog()     `{kľúč: {app, symbol, detail, popis, part_of?}}` do `maps.json`
+    pre_katalog()     `{kľúč: {app, symbol, detail, popis, part_of?, translations?}}`
+    preklady(b)       `{jazyk: {app?, detail?}}` z `preklady` balíka do `maps.json`
     podbaliky(kluc)   kľúče balíkov, ktoré sú časťou `kluc`
     kredity(kluc, …)  autori a licencie dát balíka do `maps.json`
 
@@ -76,8 +77,20 @@ def pre_katalog():
     """
     return {b["kluc"]: {"app": b["app"], "symbol": b["symbol"],
                         "detail": b["app_popis"], "popis": b["popis"],
-                        **({"part_of": b["cast"]} if b.get("cast") else {})}
+                        **({"part_of": b["cast"]} if b.get("cast") else {}),
+                        **({"translations": preklady(b)} if preklady(b) else {})}
             for b in zoznam()}
+
+
+def preklady(b):
+    """Meno a veta balíka v ďalších jazykoch, pod kľúčmi, aké majú v `maps.json`."""
+    out = {}
+    for jazyk, texty in (b.get("preklady") or {}).items():
+        jeden = {kam: texty[odkial] for odkial, kam in (("app", "app"), ("app_popis", "detail"))
+                 if texty.get(odkial)}
+        if jeden:
+            out[jazyk] = jeden
+    return out
 
 
 def podbaliky(kluc):

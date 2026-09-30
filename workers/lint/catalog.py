@@ -55,6 +55,19 @@ for _k, _c in _CASTI.items():
         bad.append(f"workers/data/packages.json: `{_k}` je časťou `{_c}`, ale "
                    f"`{_c}` nie je balík, ktorý by podbalíky mohol mať.")
 
+# preklady: kód jazyka ako v aplikácii, len meno a veta, angličtina je základ
+JAZYK = re.compile(r"^[a-z]{2,3}(-[A-Z][a-z]{3})?(-[A-Z]{2})?$")
+for _b in _CISELNIK.get("baliky") or []:
+    for _j, _t in (_b.get("preklady") or {}).items():
+        _kde = f"workers/data/packages.json: `{_b['kluc']}` preklad `{_j}`"
+        if not JAZYK.match(_j) or _j == "en":
+            bad.append(f"{_kde}: kód jazyka nie je ako v aplikácii (`sk`, `pt-PT`, `sr-Latn`), "
+                       "alebo je to angličtina, ktorá je v `app`/`app_popis`.")
+        if not isinstance(_t, dict) or not _t or set(_t) - {"app", "app_popis"}:
+            bad.append(f"{_kde}: čakám `{{app?, app_popis?}}`, nie {_t!r}.")
+        elif any(not isinstance(v, str) or not v.strip() for v in _t.values()):
+            bad.append(f"{_kde}: prázdny text by v appke nahradil anglický.")
+
 # číta sa raz: treba to pri katalógoch aj nižšie pri kontrole skriptu
 try:
     pmap_text = open(PUBLISH_MAP, encoding="utf-8").read()
@@ -290,6 +303,17 @@ if kmap and "def zapis_katalog(path, parts, regions, baliky, man, iba=" not in k
     bad.append(f"{CATALOG_PY}: `zapis_katalog` nepozná režim „doplň jeden "
                f"balík“ (parameter `iba`). Samostatná pipeline by položku "
                f"regiónu prepísala a odkazy na mapu by zmizli.")
+
+if kmap and 'polozka["translations"] = preklady' not in kmap:
+    bad.append(f"{CATALOG_PY}: položka balíka nenesie `translations` z `preklady` "
+               f"číselníka – appka by ukázala len angličtinu.")
+sys.path.insert(0, "workers/deploy")
+import baliky as _baliky  # noqa: E402
+_skusobny = {"preklady": {"sk": {"app": "Železnice", "app_popis": "Vlaky"}, "de": {"app": "Bahn"}}}
+if _baliky.preklady(_skusobny) != {"sk": {"app": "Železnice", "detail": "Vlaky"},
+                                   "de": {"app": "Bahn"}}:
+    bad.append("workers/deploy/baliky.py: `preklady()` nepremenuje `app_popis` na `detail` "
+               "ani nevynechá, čo preklad nemá.")
 
 # rýchly test sa zapisuje, ale do vlastného uzla: na uzle ostrej mapy by
 # sľuboval mapu s dierou. Kontrolujú sa obe strany – funkcia v deploy/mena.py
