@@ -29,6 +29,12 @@ def strip_test(key):
         base = base[:cut]
 
 
+def area_key():
+    """The cutout key; the former `cely` also means no cutout."""
+    key = strip_test(env("AREA_KEY"))
+    return "whole" if key == "cely" else key
+
+
 def country_from_url(url):
     """`…/extracts/europe/austria/tirol-latest.osm.pbf` → `austria`, else `other`."""
     path = url.split("/extracts/", 1)[-1] if "/extracts/" in url else url
@@ -42,7 +48,7 @@ def drive_path(regions):
     """Folders under the root: [country, region?, area?]."""
     region_key = strip_test(env("REGION_KEY"))
     custom_url = env("CUSTOM_PBF_URL")
-    area_key = strip_test(env("AREA_KEY"))
+    area = area_key()
 
     if custom_url:
         # a custom PBF is not in `regions.json`; the region is what the user named it
@@ -57,8 +63,8 @@ def drive_path(regions):
         if r.get("admin_level") != 2 and region_key:
             parts.append(safe(region_key))
     # `whole` means no cut-out, so no folder of its own
-    if area_key and area_key != "whole":
-        parts.append(safe(area_key))
+    if area and area != "whole":
+        parts.append(safe(area))
     return parts
 
 
@@ -114,7 +120,7 @@ def layers():
 def stem():
     """Stable name without suffix: `<region>[-<area>][-testNkm2]`; `contents.json` carries the rest."""
     region = strip_test(env("REGION_KEY")) or "map"
-    area = strip_test(env("AREA_KEY"))
+    area = area_key()
     pieces = [safe(region)]
     if area and area != "whole":
         pieces.append(safe(area))

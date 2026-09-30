@@ -250,7 +250,7 @@ jobs:
         if: ${{ inputs.publish && steps.wiki.outputs.enabled == 'true' }}
         env:
           REGION_KEY: ${{ steps.region.outputs.key }}
-          AREA_KEY: cely
+          AREA_KEY: whole
           TEST_KM2: "0"
           CUSTOM_PBF_URL: ${{ inputs.custom_pbf_url }}
           CUSTOM_NAME: ${{ inputs.custom_name }}
@@ -337,7 +337,7 @@ jobs:
           ONLY: wikipedia
           WIKI: wiki-out
           REGION_KEY: ${{ needs.wiki.outputs.key }}
-          AREA_KEY: cely
+          AREA_KEY: whole
           TEST_KM2: "0"
           CUSTOM_PBF_URL: ${{ inputs.custom_pbf_url }}
           CUSTOM_NAME: ${{ inputs.custom_name }}

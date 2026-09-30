@@ -102,7 +102,7 @@ jobs:
         id: publish
         if: ${{ inputs.publish }}
         env:
-          AREA_KEY: cely
+          AREA_KEY: whole
           TEST_KM2: "0"
           REGION_KEY: ${{ steps.kat.outputs.region_key }}
           MAP_LAYERS: ${{ steps.kat.outputs.map_layers }}
