@@ -68,7 +68,7 @@ if (!IKONY.length) {
 
 const ok = bakeIntoSprite({
   spriteBase,
-  co: "vlastných ikon",
+  what: "custom icons",
   mine: (name) => name.startsWith(CUSTOM_ICON_PREFIX),
   make: () =>
     IKONY.map(({ name, image, pixelRatio }) => ({

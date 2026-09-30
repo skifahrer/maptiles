@@ -52,7 +52,7 @@ console.log(`Vzory v štýloch (${names.size}): ${[...names].join(", ")}`);
 
 const ok = bakeIntoSprite({
   spriteBase,
-  co: "vzorov",
+  what: "patterns",
   // Naše sú všetky mená, ktoré sú predpisom vzoru – starý vzor sa zahodí
   // a nakreslí znova z toho, čo je v štýloch teraz.
   mine: (name) => Boolean(parsePatternName(name)),

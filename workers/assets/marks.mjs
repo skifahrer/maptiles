@@ -35,7 +35,7 @@ const ZNACKY = markImages();
 
 const ok = bakeIntoSprite({
   spriteBase,
-  co: "značiek trás",
+  what: "trail marks",
   // Naše sú všetky mená s predponou `mark-`. Zahodia sa a nakreslia znova,
   // aby pri behu nad spritom z cache nepribúdali kópie.
   mine: (name) => name.startsWith(MARK_PREFIX),

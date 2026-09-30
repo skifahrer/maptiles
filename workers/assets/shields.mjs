@@ -65,7 +65,7 @@ if (!spriteBase) {
 
 const ok = bakeIntoSprite({
   spriteBase,
-  co: "štítkov ciest",
+  what: "road shields",
   mine: (name) => MENA.has(name),
   make: (pixelRatio) =>
     STITKY.map((st) => {

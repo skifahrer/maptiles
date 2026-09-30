@@ -55,7 +55,7 @@ function obrazok(shape, r) {
 
 const ok = bakeIntoSprite({
   spriteBase,
-  co: "šípok jednosmeriek",
+  what: "one-way arrows",
   // Naše sú všetky mená s predponou `arrow-`. Zahodia sa a nakreslia znova,
   // aby pri behu nad spritom z cache nepribúdali kópie.
   mine: (name) => name.startsWith(ARROW_PREFIX),

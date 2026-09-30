@@ -29,7 +29,7 @@ if (!spriteBase) {
 
 const ok = bakeIntoSprite({
   spriteBase,
-  co: "štítkov podľa siete",
+  what: "network shields",
   mine: (name) => MENA.has(name),
   make: (pixelRatio) =>
     RECEPTY.map(({ name, def }) => {

@@ -1,11 +1,7 @@
 /**
- * Minimálny PNG kodek a skladanie atlasu – zdieľajú ho generátor SDF spritu
- * a dopečenie vzorov do spritu. Vlastný kodek preto, aby pipeline
- * nepotrebovala žiadnu npm závislosť (zlib je súčasť Node).
+ * Minimal PNG codec and atlas packing – our own, so the pipeline needs no npm dependency.
  */
 import { deflateSync, inflateSync } from "node:zlib";
-
-// ============================ PNG kodek ============================
 
 const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -27,9 +23,9 @@ function crc32(buf) {
 
 const CHANNELS = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
 
-/** Načíta PNG (8 bitov na kanál, bez prekladania) do RGBA bufferu. */
+/** Reads a PNG (8 bits per channel, not interlaced) into an RGBA buffer. */
 export function decodePng(buf) {
-  if (!buf.subarray(0, 8).equals(PNG_SIG)) throw new Error("nie je to PNG");
+  if (!buf.subarray(0, 8).equals(PNG_SIG)) throw new Error("not a PNG");
 
   let width = 0;
   let height = 0;
@@ -62,17 +58,17 @@ export function decodePng(buf) {
     off += 12 + len;
   }
 
-  if (bitDepth !== 8) throw new Error(`podporujem len 8 bitov na kanál (má ${bitDepth})`);
-  if (interlace !== 0) throw new Error("prekladané (Adam7) PNG nepodporujem");
+  if (bitDepth !== 8) throw new Error(`only 8 bits per channel supported (has ${bitDepth})`);
+  if (interlace !== 0) throw new Error("interlaced (Adam7) PNG not supported");
   const channels = CHANNELS[colorType];
-  if (!channels) throw new Error(`neznámy colorType ${colorType}`);
-  if (colorType === 3 && !palette) throw new Error("paletové PNG bez PLTE");
+  if (!channels) throw new Error(`unknown colorType ${colorType}`);
+  if (colorType === 3 && !palette) throw new Error("palette PNG without PLTE");
 
   const raw = inflateSync(Buffer.concat(idat));
   const stride = width * channels;
   const out = Buffer.alloc(height * stride);
 
-  // ---- odstránenie riadkových filtrov ----
+  // undo row filters
   const bpp = channels;
   for (let y = 0; y < height; y++) {
     const filter = raw[y * (stride + 1)];
@@ -97,13 +93,13 @@ export function decodePng(buf) {
           v += pa <= pb && pa <= pc ? a : pb <= pc ? b : cc;
           break;
         }
-        default: throw new Error(`neznámy filter ${filter}`);
+        default: throw new Error(`unknown filter ${filter}`);
       }
       cur[i] = v & 0xff;
     }
   }
 
-  // ---- prevod na RGBA ----
+  // to RGBA
   const rgba = Buffer.alloc(width * height * 4);
   for (let i = 0, n = width * height; i < n; i++) {
     const s = i * channels;
@@ -126,12 +122,12 @@ export function decodePng(buf) {
   return { width, height, data: rgba };
 }
 
-/** Zapíše RGBA buffer ako PNG (colorType 6, 8 bitov). */
+/** Writes an RGBA buffer as PNG (colorType 6, 8 bits). */
 export function encodePng({ width, height, data }) {
   const stride = width * 4;
   const raw = Buffer.alloc(height * (stride + 1));
   for (let y = 0; y < height; y++) {
-    raw[y * (stride + 1)] = 0; // filter „None" – SDF sa aj tak dobre komprimuje
+    raw[y * (stride + 1)] = 0; // filter "None" – SDF compresses well anyway
     data.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
   }
 
@@ -158,9 +154,7 @@ export function encodePng({ width, height, data }) {
   ]);
 }
 
-// ============================ preskladanie atlasu ============================
-
-/** Jednoduchý „shelf" packer – ikony sú malé, zložitejší nemá čo zlepšiť. */
+/** Simple shelf packer – icons are small, a smarter one gains nothing. */
 export function packShelves(boxes, maxWidth) {
   const sorted = [...boxes].sort((a, b) => b.height - a.height || b.width - a.width);
   let x = 0;
