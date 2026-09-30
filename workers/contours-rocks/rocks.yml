@@ -1,14 +1,10 @@
-# Planetiler custom schema – samotné skalné plochy, vlastný .pmtiles.
+# Planetiler custom schema – the rock areas alone, their own .pmtiles.
 #
-# Zvlášť od vrstevníc, lebo .pmtiles má jeden maxzoom a tie dve vrstvy ho
-# chcú iný. Nad maxzoom sa dlaždice naťahujú overzoomom.
-#
-# Vstup data/rock.gpkg robí buď rock-areas.py (atribút `slope`), alebo
-# rocks-shading/build.py (`dark`); vždy je vyplnený len jeden.
-# Jedna trieda (`class` vždy `steep`) – všetko sa kreslí rovnako sivo.
-# Diery v plochách sú súčasť tvaru; zapĺňanie je vypnutá voľba.
-schema_name: FricoMaps skaly
-schema_description: Skalné plochy z výškového modelu alebo z tieňovaných dlaždíc
+# Apart from contours: a .pmtiles has one maxzoom and the two want different ones.
+# data/rock.gpkg comes from rock-areas.py (`slope`) or rocks-shading/build.py
+# (`dark`); only one is filled. One class (`class` always `steep`).
+schema_name: FricoMaps rocks
+schema_description: Rock areas from an elevation model or hillshading tiles
 attribution: © Richard Dvorský / <a href="https://www.geoportal.sk/">ÚGKK SR · DMR 5.0 (LiDAR) · CC BY 4.0</a> / <a href="https://sonny.4lima.de/">Sonny's LiDAR DTM</a> / <a href="https://spacedata.copernicus.eu/">Copernicus DEM</a> / <a href="https://www.freemap.sk/">freemap.sk</a>
 
 sources:
@@ -18,10 +14,8 @@ sources:
     projection: EPSG:4326
 
 layers:
-  # min_zoom 11: pod ním je zo skál sivá škvrna bez informácie. To isté dno
-  # majú vrstevnice. Nad z11 malé plochy zahodí Planetiler sám.
-  # To isté číslo musí byť v štýle (`minzoom` vrstvy `rock-area`) –
-  # stráži workers/lint/zoom-floor.py.
+  # min_zoom 11: below it rocks are a grey smudge; the style's `rock-area`
+  # minzoom must match – workers/lint/zoom-floor.py guards it
   - id: rock
     features:
       - source: rock
@@ -29,12 +23,12 @@ layers:
         min_zoom: 11
         attributes:
           - key: class
-          # sklon v stupňoch – len pri skalách z DEM
+          # slope in degrees – only for rocks from a DEM
           - key: slope
             type: integer
-          # o koľko stupňov šedej pod prahom – len pri skalách z tieňovania
+          # grey levels under the threshold – only for rocks from hillshading
           - key: dark
             type: integer
-          # plocha v m² – nech sa dá v štýle rozlíšiť bralo od odrobinky
+          # area in m² – so the style can tell a crag from a crumb
           - key: area
             type: integer

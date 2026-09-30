@@ -1,22 +1,11 @@
 #!/usr/bin/env python3
-"""Raster sklonu po častiach – s trvalým skladom, aby sa nič nepočítalo dvakrát.
+"""The slope raster in chunks – with a persistent store, so nothing is computed twice.
 
-Jednotkou práce aj uloženia je ČASŤ: každá sa z Drive prečíta, prevedie na
-sklon a uloží zvlášť, takže zrušený beh o hotové časti nepríde. Predtým bolo
-jednotkou celé územie, čiže všetko alebo nič.
+Each CHUNK is read from Drive, turned to slope and stored on its own, so a
+cancelled run keeps finished chunks. Chunks snap to a grid anchored at the
+EPSG:3035 origin, so the same land always falls in the same chunk.
 
-Jednotkou je sklon, nie hotové skaly: vektorizovať po častiach nejde (diera
-prerezaná hranicou časti sa zmení na zárez). Sklon je pritom tá drahá časť.
-Vedľajší zisk: zmena prahu `rock_slope` už neznamená nové čítanie z Drive.
-
-Hranice častí sú prichytené na mriežku ukotvenú v počiatku EPSG:3035, nie na
-bbox – tá istá zem tak padne vždy do tej istej časti a sklad trafí aj beh na
-iné, prekrývajúce sa územie.
-
-Geoid sa tu zámerne neprevádza: mení sa plynulo, takže na ploche jednej časti
-je to konštantný posun a sklon sa ním nemení.
-
-Použitie:
+Usage:
     python3 workers/contours-rocks/slope-chunks.py --bbox=19.9,49.09,20.32,49.25 \\
         --res=2 --drive --out=slope-chunks --jobs=6
 """
@@ -35,38 +24,30 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def load(name, path):
-    """workers/*.py sa kvôli pomlčke v mene nedajú `import`-núť normálne."""
+    """workers/*.py can't be imported normally because of the dash in the name."""
     spec = importlib.util.spec_from_file_location(name, os.path.join(_HERE, path))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
-# plánovanie, metrická sústava aj mierka sklonu sú v `rock-areas.py`
+# planning, the metric system and the slope scale are in `rock-areas.py`
 rock = load("rock_areas", "rock-areas.py")
 METRIC, SCALE = rock.METRIC, rock.SCALE
 
-# trvalý sklad častí je priečinok na Drive; berie sa ako modul – volať ho
-# procesom na každú z rádovo stovky častí by znamenalo stovku vypísaní priečinka
+# the persistent chunk store is a Drive folder, used as a module to list it once
 store = load("drive_store", os.path.join(os.pardir, "drive", "store.py"))
 
-# strana časti v pixeloch: menšie časti = jemnejšie obnovenie po páde a menšie
-# súbory, väčšie = menej réžie okolo každej
+# chunk side in pixels: smaller = finer recovery, larger = less overhead
 CHUNK_PX = 4096
-MARGIN_PX = 8    # presah, aby sklon na okraji časti nebol zrezaný
-MAX_CHUNKS = 600  # nad tým prestáva byť sklad výhodou (viď poistku v main)
-RETRY_S = 120     # okno limitu Drive je dlhšie než pokusy jednej časti
+MARGIN_PX = 8    # overlap, so slope at a chunk's edge isn't cut
+MAX_CHUNKS = 600  # above it the store stops paying off
+RETRY_S = 120     # Drive's limit window outlasts one chunk's tries
 
 
 def chunk_grid(bbox, res, chunk_px=CHUNK_PX):
-    """Časti absolútnej mriežky, ktoré zasahujú do bboxu.
-
-    Vracia `(ix, iy, x0, y0, x1, y1)` v metroch EPSG:3035; indexy sú v mriežke
-    ukotvenej v počiatku sústavy, teda nezávislé od územia.
-
-    Prevod do stupňov ide jedným volaním `gdaltransform` nad všetkými rohmi:
-    jeden proces na časť by pri jemnej mriežke trval dlhšie než výpočet.
-    """
+    """Chunks of the absolute grid reaching the bbox, as `(ix, iy, x0, y0, x1, y1)`."""
+    # one `gdaltransform` over all corners: a process per chunk outlasts the computation
     side = chunk_px * res
     mx0, my0, mx1, my1 = rock.to_metric(bbox)
     cand = []
@@ -77,8 +58,7 @@ def chunk_grid(bbox, res, chunk_px=CHUNK_PX):
     if not cand:
         return []
 
-    # osem bodov na časť: hranica je po prevode krivka a pri veľkej časti by sa
-    # mohla do bboxu vydúvať stredom strany, kým rohy ostanú vonku
+    # eight points a chunk: converted, a side bulges into the bbox while corners stay out
     pts = []
     for _, _, x0, y0, x1, y1 in cand:
         pts += [(x0, y0), (x1, y0), (x0, y1), (x1, y1),
@@ -90,7 +70,7 @@ def chunk_grid(bbox, res, chunk_px=CHUNK_PX):
             input="\n".join(f"{x} {y}" for x, y in pts),
             capture_output=True, text=True, check=True).stdout.split()
     except subprocess.CalledProcessError:
-        return cand   # keď sa to nedá zistiť, radšej počítať než vynechať
+        return cand   # when it can't be told, compute rather than skip
 
     xs = [float(v) for v in out[0::3]]
     ys = [float(v) for v in out[1::3]]
@@ -104,32 +84,20 @@ def chunk_grid(bbox, res, chunk_px=CHUNK_PX):
 
 
 def chunk_name(ix, iy, res):
-    """Meno časti v sklade: nesie mriežku aj polohu. Prah sklonu v ňom nie je –
-    ten sa uplatňuje až pri vektorizácii, takže jeho zmena smie sklad použiť.
-
-    Znamienko ide do písmena (E/W, N/S): `slope-r2--615--358` sa číta zle.
-    """
+    """A chunk's store name: grid and position, no slope threshold (applied later)."""
+    # the sign goes into a letter (E/W, N/S): `slope-r2--615--358` reads badly
     sx = f"E{ix:04d}" if ix >= 0 else f"W{-ix:04d}"
     sy = f"N{iy:04d}" if iy >= 0 else f"S{-iy:04d}"
     return f"slope-r{res:g}-{sx}{sy}.tif"
 
 
-# ---------- sklad ----------
-
-NOTE = ("Medzivýsledok skál: sklon terénu v stotinách stupňa (Int16, "
-        "EPSG:3035) po častiach absolútnej mriežky (workers/contours-rocks/slope-chunks.py)")
+NOTE = ("Rock intermediate: terrain slope in hundredths of a degree (Int16, "
+        "EPSG:3035) in chunks of an absolute grid (workers/contours-rocks/slope-chunks.py)")
 
 
 class Store:
-    """Časti v adresári (cache behu) a v sklade na Drive (trvalé).
-
-    Dve vrstvy zámerne: cache je rýchla, ale prerieďuje sa; sklad na Drive
-    nevyprší sám, takže hodina čítania sa nemá ako stratiť.
-
-    Sklad si tento skript volá ako modul – pri stovkách častí je jedno
-    vypísanie priečinka a potom priame prenosy oveľa lacnejšie než proces
-    na každú časť.
-    """
+    """Chunks in a directory (the run's cache) and in the Drive store (persistent)."""
+    # the cache is fast but thins out; the Drive store never expires
 
     def __init__(self, path, store_name, use_store=True):
         self.path = path
@@ -140,30 +108,29 @@ class Store:
         self.made = 0
         os.makedirs(path, exist_ok=True)
         self.creds = None
-        self.items = {}      # meno → {id, size, created}; vypíše sa RAZ
+        self.items = {}      # name → {id, size, created}; listed ONCE
         self.assets = set()
         self.use_store = False
         if not use_store:
             return
-        # bez tokenu sa pokračuje, ale nahlas: časti sa dajú spočítať aj bez
-        # skladu (stojí to čas, nie správnosť)
+        # without a token it goes on, loudly: costs time, not correctness
         try:
-            self.creds = store.creds_or_die("sklad častí sklonu")
-            # jeden výpis priečinka na celý beh; častí je rádovo stovka
+            self.creds = store.creds_or_die("slope chunk store")
+            # one folder listing for the whole run
             self.items = store.index(self.creds, store_name)
             self.assets = set(self.items)
             self.use_store = True
         except SystemExit as exc:
-            print(f"::warning::Sklad častí sklonu na Drive je vypnutý "
-                  f"({str(exc).splitlines()[0][:200]}) – časti sa spočítajú "
-                  f"a po behu sa stratia.", flush=True)
+            print(f"::warning::The slope chunk store on Drive is off "
+                  f"({str(exc).splitlines()[0][:200]}) – chunks are computed "
+                  f"and lost after the run.", flush=True)
 
     def local(self, name):
         p = os.path.join(self.path, name)
         return p if os.path.exists(p) and os.path.getsize(p) > 0 else None
 
     def take(self, name):
-        """Časť z cache alebo zo skladu; None = treba ju spočítať."""
+        """A chunk from the cache or the store; None = it must be computed."""
         p = self.local(name)
         if p:
             with self.lock:
@@ -183,21 +150,19 @@ class Store:
         return None
 
     def put(self, name):
-        """Hotovú časť do skladu. Zlyhanie uploadu nesmie zhodiť beh – časť je
-        spočítaná a v adresári."""
+        """A finished chunk into the store; a failed upload mustn't fail the run."""
         with self.lock:
             self.made += 1
         if not self.use_store:
             return
         try:
-            # `clobber=False`: časť sa nahráva len vtedy, keď v sklade nebola,
-            # takže niet čo prepisovať
+            # `clobber=False`: uploaded only when missing, nothing to overwrite
             store.upload(self.creds, self.store_name,
                          os.path.join(self.path, name), name, NOTE,
                          clobber=False)
         except (RuntimeError, OSError, SystemExit) as exc:
-            print(f"::warning::Časť {name} sa nepodarilo uložiť do skladu "
-                  f"{self.store_name} – nabudúce sa bude počítať znova. "
+            print(f"::warning::Chunk {name} couldn't be saved to store "
+                  f"{self.store_name} – next time it is computed again. "
                   f"{str(exc)[:200]}", flush=True)
         else:
             with self.lock:
@@ -205,23 +170,19 @@ class Store:
 
 
 def slope_chunk(dem, chunk, res, out_path, work, env=None):
-    """DEM → sklon pre jednu časť, orezaný presne na jej hranicu.
-
-    Presah `MARGIN_PX` je preto, že `gdaldem slope` počíta z okolia bunky –
-    bez neho by mal každý okraj pás nezmyselného sklonu a v mozaike šachovnicu.
-    """
+    """DEM → slope for one chunk, clipped exactly to its border."""
+    # `MARGIN_PX`: `gdaldem slope` uses a cell's neighbours, edges would checker the mosaic
     ix, iy, x0, y0, x1, y1 = chunk
     m = MARGIN_PX * res
     dem_tif = os.path.join(work, f"dem-{ix}-{iy}.tif")
     slope_tif = os.path.join(work, f"slope-{ix}-{iy}.tif")
 
     def run(cmd):
-        # stderr musí byť v chybe: `capture_output` ho inak prehltne a z padnutého
-        # behu ostane len „returned non-zero exit status 1"
+        # stderr must be in the error, or only "non-zero exit status 1" is left
         r = subprocess.run(cmd, capture_output=True, text=True, env=env)
         if r.returncode:
             raise RuntimeError(
-                f"{cmd[0]} skončil s kódom {r.returncode} pre časť {ix},{iy}:\n"
+                f"{cmd[0]} ended with code {r.returncode} for chunk {ix},{iy}:\n"
                 f"  {' '.join(cmd)}\n  {r.stderr.strip()[:500]}")
         return r
     try:
@@ -232,18 +193,15 @@ def slope_chunk(dem, chunk, res, out_path, work, env=None):
              "-multi", "-ovr", "AUTO", dem, dem_tif])
         run(["gdaldem", "slope", "-q", "-compute_edges",
              "-co", "COMPRESS=DEFLATE", "-co", "TILED=YES", dem_tif, slope_tif])
-        # Float32 → Int16 v stotinách stupňa: mozaika celého pohoria sa vo
-        # Float32 na disk runnera nezmestí a 0,01° je nerozoznateľné
+        # Float32 → Int16 hundredths: a range's Float32 mosaic won't fit the runner's disk
         tmp_out = out_path + ".part"
-        # `-of GTiff` výslovne: ovládač sa háda z prípony a `.part` GDAL nepozná.
-        # Prípona musí ostať iná než `.tif`, inak by rozrobený súbor vyzeral hotový.
+        # `-of GTiff` explicitly: `.part` is unknown to GDAL, and must not look finished
         run(["gdal_translate", "-q", "-of", "GTiff", "-ot", "Int16",
              "-scale", "0", repr(90.0), "0", repr(90.0 * SCALE),
              "-projwin", repr(x0), repr(y1), repr(x1), repr(y0),
              "-co", "COMPRESS=DEFLATE", "-co", "PREDICTOR=2", "-co", "TILED=YES",
              slope_tif, tmp_out])
-        # až premenovanie spraví časť hotovou – inak by prerušený beh nechal
-        # v cache useknutý súbor
+        # only the rename makes a chunk finished – no truncated file in the cache
         os.replace(tmp_out, out_path)
     finally:
         for f in (dem_tif, slope_tif):
@@ -255,39 +213,39 @@ def slope_chunk(dem, chunk, res, out_path, work, env=None):
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--bbox", required=True, help="west,south,east,north v stupňoch")
+    ap.add_argument("--bbox", required=True, help="west,south,east,north in degrees")
     ap.add_argument("--res", default="auto",
-                    help="mriežka sklonu v metroch, alebo `auto`")
+                    help="slope grid in metres, or `auto`")
     ap.add_argument("--out", default="slope-chunks",
-                    help="adresár so skladom častí (ukladá sa do cache)")
-    ap.add_argument("--work", default="", help="pracovný adresár (default: --out/tmp)")
-    ap.add_argument("--dem", default="", help="lokálny DEM (.vrt/.tif)")
+                    help="directory of the chunk store (cached)")
+    ap.add_argument("--work", default="", help="work directory (default: --out/tmp)")
+    ap.add_argument("--dem", default="", help="a local DEM (.vrt/.tif)")
     ap.add_argument("--drive", action="store_true",
-                    help="čítať priamo z DMR 5.0 na Drive cez HTTP Range")
+                    help="read straight from DMR 5.0 on Drive over HTTP Range")
     ap.add_argument("--jobs", type=int, default=4,
-                    help="koľko častí naraz; pri --drive rozhoduje latencia, "
-                         "nie pásmo, takže sa oplatí ísť vyššie")
+                    help="how many chunks at once; with --drive latency decides, "
+                         "not bandwidth, so higher pays off")
     ap.add_argument("--store", default=os.environ.get("SLOPE_STORE", "dem-slope"),
-                    help="sklad na Drive (viď workers/drive/store.py)")
+                    help="the Drive store (see workers/drive/store.py)")
     ap.add_argument("--no-store", action="store_true",
-                    help="nepoužiť ani neodkladať do skladu (testovací beh)")
+                    help="neither use nor fill the store (test run)")
     ap.add_argument("--rebuild", action="store_true",
-                    help="prepočítať časti aj keď v sklade sú")
+                    help="recompute chunks even when stored")
     ap.add_argument("--chunk-px", type=int, default=CHUNK_PX)
     ap.add_argument("--dem-cell-m", type=float, default=0.0,
-                    help="bunka zdroja v metroch (na `--res=auto`); "
-                         "pri --drive je to 1")
-    # 0 = bez stropu času (viď ROCK_BUDGET_MIN v build-map-region.yml)
+                    help="the source cell in metres (for `--res=auto`); "
+                         "1 with --drive")
+    # 0 = no time cap (see ROCK_BUDGET_MIN in build-map-region.yml)
     ap.add_argument("--budget-min", type=float, default=0.0)
     ap.add_argument("--chunk-cells", type=float, default=150e6)
     ap.add_argument("--tries", type=int, default=3,
-                    help="koľko pokusov na jednu časť, kým sa beh vzdá")
+                    help="tries per chunk before the run gives up")
     ap.add_argument("--heartbeat", type=float,
                     default=float(os.environ.get("ROCK_HEARTBEAT_S") or 30),
-                    help="ako často povedať, čo práve beží (0 = ticho)")
+                    help="how often to say what is running (0 = silent)")
     ap.add_argument("--print-res", action="store_true",
-                    help="len vypíš zvolenú mriežku a skonči")
-    ap.add_argument("--stats", default="", help="kam zapísať štatistiku (key=value)")
+                    help="only print the chosen grid and stop")
+    ap.add_argument("--stats", default="", help="where to write the stats (key=value)")
     args = ap.parse_args()
 
     bbox = tuple(float(v) for v in args.bbox.split(","))
@@ -297,8 +255,7 @@ def main():
     if not dem_cell and args.dem:
         dem_cell = rock.dem_cell_metres(args.dem, (bbox[1] + bbox[3]) / 2)[0]
     if str(args.res).strip().lower() in ("auto", "", "0"):
-        # tabuľka výberu ide na stderr: volajúci si berie mriežku cez
-        # `RES=$(… --print-res)`, takže na stdout smie byť len to číslo
+        # the table goes to stderr: `RES=$(… --print-res)` takes stdout
         import contextlib
         with contextlib.redirect_stdout(sys.stderr):
             res = rock.pick_res(x0, y0, x1, y1, args.chunk_cells, bbox,
@@ -312,83 +269,72 @@ def main():
 
     chunks = chunk_grid(bbox, res, args.chunk_px)
     if not chunks:
-        print(f"::error::Ani jedna časť nezasahuje do územia {args.bbox}.")
+        print(f"::error::Not one chunk reaches the area {args.bbox}.")
         return 2
-    # poistka na počet častí: strana časti je `chunk_px × res`, takže jemná
-    # mriežka ju zmenší a počet rastie s druhou mocninou. Nad tisíckami prestáva
-    # byť sklad výhodou.
+    # a chunk count guard: a fine grid shrinks the side and the count grows squared
     if len(chunks) > MAX_CHUNKS:
         side_km = args.chunk_px * res / 1000
-        print(f"::error::Vyšlo {len(chunks)} častí po {side_km:g} km "
-              f"(mriežka {res:g} m, {args.chunk_px}² px) a strop je "
-              f"{MAX_CHUNKS}. Zdvihni --chunk-px (napr. "
-              f"{args.chunk_px * 4}), zvoľ hrubšiu mriežku (rock_res) "
-              f"alebo menší výrez (rock_area).")
+        print(f"::error::That makes {len(chunks)} chunks of {side_km:g} km "
+              f"(grid {res:g} m, {args.chunk_px}² px) and the cap is "
+              f"{MAX_CHUNKS}. Raise --chunk-px (e.g. {args.chunk_px * 4}), "
+              f"pick a coarser grid (rock_res) or a smaller cut-out (rock_area).")
         return 2
 
     work = args.work or os.path.join(args.out, "tmp")
     os.makedirs(work, exist_ok=True)
-    sklad = Store(args.out, args.store, use_store=not args.no_store)
+    chunk_store = Store(args.out, args.store, use_store=not args.no_store)
 
-    # čo to bude stáť – pred prvým gdalwarpom. Do odhadu patrí aj to, čo
-    # v sklade už je: druhý beh na tom istom pohorí nestojí nič.
+    # the cost before the first gdalwarp, counting what is already stored
     side_km = args.chunk_px * res / 1000
     names = [chunk_name(ix, iy, res) for ix, iy, *_ in chunks]
     have = 0 if args.rebuild else sum(
-        1 for n in names if sklad.local(n) or n in sklad.assets)
+        1 for n in names if chunk_store.local(n) or n in chunk_store.assets)
     todo = len(chunks) - have
     cells = len(chunks) * args.chunk_px ** 2
     est_s = todo * args.chunk_px ** 2 / rock.SLOPE_CELLS_PER_S
 
-    print("── Plán sklonu ──────────────────────────────────────")
-    print(f"  mriežka         {res:g} m")
-    print(f"  častí           {len(chunks)} po {side_km:g}×{side_km:g} km "
+    print("── Slope plan ───────────────────────────────────────")
+    print(f"  grid            {res:g} m")
+    print(f"  chunks          {len(chunks)} of {side_km:g}×{side_km:g} km "
           f"({args.chunk_px}² px)")
-    print(f"  buniek          {cells / 1e9:.2f} mld.")
-    print(f"  sklad           {args.out}"
-          + (f" + Drive {args.store}" if sklad.use_store
-             else " (sklad na Drive vypnutý)"))
-    print(f"  z toho hotových {have} → počítať treba {todo}")
-    print(f"  odhad           {rock.hms(est_s)}"
-          + ("  (všetko je v sklade)" if not todo else ""))
-    print(f"  mozaika na disk ~{cells / 1e9 * rock.MOSAIC_MB_PER_GCELL:.0f} MB")
+    print(f"  cells           {cells / 1e9:.2f} G")
+    print(f"  store           {args.out}"
+          + (f" + Drive {args.store}" if chunk_store.use_store
+             else " (Drive store off)"))
+    print(f"  of them done    {have} → to compute {todo}")
+    print(f"  estimate        {rock.hms(est_s)}"
+          + ("  (all stored)" if not todo else ""))
+    print(f"  mosaic on disk  ~{cells / 1e9 * rock.MOSAIC_MB_PER_GCELL:.0f} MB")
     print("─────────────────────────────────────────────────────", flush=True)
 
     t0 = time.time()
     env = None
     stats_drive = None
     if args.drive:
-        # shim nad Drive, id súborov aj prihlásenie sú v `drive/dmr5.py`
+        # the Drive shim, file ids and sign-in are in `drive/dmr5.py`
         dd = load("dmr5_drive", os.path.join(os.pardir, "drive", "dmr5.py"))
         base, sizes, stats_drive, creds = dd.serve_drive(0)
         dem = f"/vsicurl/{base}/{dd.TIF_NAME}"
         env = dd.drive.gdal_env()
-        print(f"  zdroj: DMR 5.0 na Drive, "
+        print(f"  source: DMR 5.0 on Drive, "
               + ", ".join(f"{n} {s / 2**30:.1f} GiB" for n, s in sizes.items()))
-        print(f"  prístup: {dd.auth.describe(creds)}")
+        print(f"  access: {dd.auth.describe(creds)}")
     elif args.dem:
         dem = args.dem
-        print(f"  zdroj: {dem}")
+        print(f"  source: {dem}")
     else:
-        print("::error::Chýba zdroj – zadaj --dem alebo --drive.")
+        print("::error::No source – give --dem or --drive.")
         return 2
 
     done = [0]
     lock = threading.Lock()
-    running = {}          # meno časti → odkedy sa počíta
-    failed = []           # čo sa nepodarilo ani na posledný pokus
+    running = {}          # chunk name → computing since
+    failed = []           # what failed even on the last try
     tries = max(1, args.tries)
 
     def compute(name, chunk, path):
-        """Jedna časť – a keď spojenie vypadne, ešte raz.
-
-        Sieť medzi GDALom a shimom vypadne raz za desaťtisíce požiadaviek
-        a doteraz to znamenalo koniec celého behu. Časť sa počíta minútu, takže
-        druhý pokus stojí minútu; pád stojí celý job.
-
-        Trvalé chyby sa opakovaním nespravia, tak sú pokusy tri a čaká sa krátko.
-        Po `slope_chunk` neostáva nič rozrobené, takže ďalší pokus začína načisto.
-        """
+        """One chunk – and once more when the connection drops."""
+        # a retry costs a minute, a failure the whole job; nothing half-done is left
         for attempt in range(1, tries + 1):
             with lock:
                 running[name] = time.time()
@@ -402,8 +348,8 @@ def main():
                     raise
                 wait = 5 * attempt
                 why = str(exc).strip().splitlines()[-1][:200]
-                print(f"::warning::Časť {name} zlyhala na {attempt}. pokus "
-                      f"z {tries}, skúšam znova o {wait} s: {why}", flush=True)
+                print(f"::warning::Chunk {name} failed on try {attempt} "
+                      f"of {tries}, trying again in {wait} s: {why}", flush=True)
                 time.sleep(wait)
             finally:
                 with lock:
@@ -413,22 +359,20 @@ def main():
         ix, iy = chunk[0], chunk[1]
         name = chunk_name(ix, iy, res)
         path = os.path.join(args.out, name)
-        got = None if args.rebuild else sklad.take(name)
+        got = None if args.rebuild else chunk_store.take(name)
         if got is None:
             compute(name, chunk, path)
-            sklad.put(name)
+            chunk_store.put(name)
         with lock:
             done[0] += 1
             el = time.time() - t0
             eta = el / done[0] * (len(chunks) - done[0])
             print(f"  [{done[0]}/{len(chunks)}] {name} "
-                  f"{'zo skladu' if got else 'spočítaná'} – "
-                  f"{rock.hms(el)} za sebou, zostáva ~{rock.hms(eta)}", flush=True)
+                  f"{'from the store' if got else 'computed'} – "
+                  f"{rock.hms(el)} elapsed, ~{rock.hms(eta)} left", flush=True)
         return path
 
-    # tep: riadok na hotovú časť stačí, kým časti trvajú desiatky sekúnd – len
-    # čo sa jedna zasekne, vyzerá zaseknutý beh presne ako pomalý.
-    # Počet požiadaviek na Drive je tu hlavné číslo: keď rastie, číta sa.
+    # a heartbeat: a stuck chunk looks just like a slow one; growing Drive requests mean reading
     stop = threading.Event()
 
     def beat():
@@ -437,7 +381,7 @@ def main():
             with lock:
                 live = sorted(running.items(), key=lambda kv: kv[1])
                 d = done[0]
-            parts = [f"[{d}/{len(chunks)}] beží {len(live)}"]
+            parts = [f"[{d}/{len(chunks)}] running {len(live)}"]
             if live:
                 parts.append(", ".join(
                     f"{n.rsplit('-', 1)[-1][:-4]} {rock.hms(now - t)}"
@@ -446,66 +390,64 @@ def main():
                 with stats_drive["lock"]:
                     got, req = stats_drive["bytes"], stats_drive["requests"]
                     bad = stats_drive.get("failed", 0)
-                parts.append(f"z Drive {got / 1e9:.2f} GB v {req:,} požiadavkách"
-                             + (f", {bad:,} zlyhalo" if bad else ""))
+                parts.append(f"from Drive {got / 1e9:.2f} GB in {req:,} requests"
+                             + (f", {bad:,} failed" if bad else ""))
             print("  … " + "  ".join(parts), flush=True)
 
     if args.heartbeat > 0:
         threading.Thread(target=beat, daemon=True).start()
 
-    def priechod(davka, jobs):
-        """Čo prešlo a čo spadlo; pád jednej časti nezhodí ostatné."""
-        hotove, zle = [], []
+    def run_pass(batch, jobs):
+        """What passed and what failed; one chunk failing doesn't fail the rest."""
+        ok, bad = [], []
         with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
-            for fut, chunk in [(ex.submit(one, c), c) for c in davka]:
+            for fut, chunk in [(ex.submit(one, c), c) for c in batch]:
                 try:
-                    hotove.append(fut.result())
+                    ok.append(fut.result())
                 except Exception:               # noqa: BLE001
-                    zle.append(chunk)
-        return hotove, zle
+                    bad.append(chunk)
+        return ok, bad
 
-    tiles, zvysok = priechod(chunks, args.jobs)
-    if zvysok:
-        # limit Drive drží okno, kým doň tlačia ostatné vlákna – druhý
-        # priechod ide po jednom a až jeho pád je koniec
-        print(f"::warning::Sklon: {len(zvysok)} z {len(chunks)} častí spadlo. "
-              f"Po {RETRY_S} s ich skúšam ešte raz, po jednej.", flush=True)
+    tiles, rest = run_pass(chunks, args.jobs)
+    if rest:
+        # Drive's limit holds while other threads push; the second pass goes one by one
+        print(f"::warning::Slope: {len(rest)} of {len(chunks)} chunks failed. "
+              f"Trying them once more after {RETRY_S} s, one at a time.", flush=True)
         time.sleep(RETRY_S)
         with lock:
             failed.clear()
-        znova, zvysok = priechod(zvysok, 1)
-        tiles += znova
+        again, rest = run_pass(rest, 1)
+        tiles += again
     stop.set()
-    if zvysok:
-        # sklad je celý zmysel tohto skriptu, takže pri páde musí byť vidieť,
-        # že hotová práca sa nezahodila
-        bad = [chunk_name(c[0], c[1], res) for c in zvysok]
-        have_now = sum(1 for n in names if sklad.local(n))
-        print(f"::error::Sklon spadol na {len(bad)} častiach "
-              f"({', '.join(bad[:6])}); v sklade ich je {have_now} z "
-              f"{len(chunks)} – ďalší beh dopočíta len zvyšok, nič sa "
-              f"nezahodilo.", flush=True)
+    if rest:
+        # the store is this script's point: show that finished work wasn't thrown away
+        bad = [chunk_name(c[0], c[1], res) for c in rest]
+        have_now = sum(1 for n in names if chunk_store.local(n))
+        print(f"::error::Slope failed on {len(bad)} chunks "
+              f"({', '.join(bad[:6])}); {have_now} of {len(chunks)} are "
+              f"stored – the next run computes only the rest, nothing was "
+              f"thrown away.", flush=True)
         return 1
     tiles.sort()
 
     vrt = os.path.join(args.out, f"slope-r{res:g}.vrt")
     subprocess.run(["gdalbuildvrt", "-q", vrt] + tiles, check=True)
     mb = sum(os.path.getsize(t) for t in tiles) / 1048576
-    print(f"Mozaika sklonu: {len(tiles)} častí, {mb:.0f} MB → {vrt}")
-    print(f"  zo skladu {sklad.hits_local} lokálne + {sklad.hits_store} "
-          f"z Drive, novo spočítaných {sklad.made}, "
-          f"celkom {rock.hms(time.time() - t0)}")
+    print(f"Slope mosaic: {len(tiles)} chunks, {mb:.0f} MB → {vrt}")
+    print(f"  from the store {chunk_store.hits_local} local + "
+          f"{chunk_store.hits_store} from Drive, newly computed "
+          f"{chunk_store.made}, total {rock.hms(time.time() - t0)}")
     if stats_drive:
         with stats_drive["lock"]:
-            print(f"  z Drive {stats_drive['bytes'] / 1e9:.2f} GB "
-                  f"v {stats_drive['requests']:,} požiadavkách")
+            print(f"  from Drive {stats_drive['bytes'] / 1e9:.2f} GB "
+                  f"in {stats_drive['requests']:,} requests")
 
     if args.stats:
         with open(args.stats, "w") as f:
             f.write(f"res={res:g}\nvrt={vrt}\nchunks={len(tiles)}\n"
-                    f"from_cache={sklad.hits_local}\n"
-                    f"from_store={sklad.hits_store}\n"
-                    f"computed={sklad.made}\nmosaic_mb={mb:.0f}\n")
+                    f"from_cache={chunk_store.hits_local}\n"
+                    f"from_store={chunk_store.hits_store}\n"
+                    f"computed={chunk_store.made}\nmosaic_mb={mb:.0f}\n")
     print(f"slope_vrt={vrt}")
     return 0
 

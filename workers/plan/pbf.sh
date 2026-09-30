@@ -1,39 +1,32 @@
 #!/usr/bin/env bash
-# PBF regiónu na disk – stiahnutie, prípadné orezanie, kľúč a bbox pre build.
+# The region's PBF on disk – download, optional crop, key and bbox for the build.
 #
-# Samostatný skript preto, že `build-map-region.yml` má strop 128 kB, nad
-# ktorým ho GitHub ticho neprijme. `set -e` bez `-u` a bez `pipefail` je zámer:
-# presne v tomto režime kód bežal, kým bol v YAMLe.
+# Order: take the PBF (own URL or the parent extract) → read the exact region
+# outline from it (`region-poly.py`) and cut the region by it → optionally
+# crop → print `key`, `name`, `bbox`, `bboxkey`.
 #
-# Poradie: vezmi PBF (vlastná URL alebo rodičovský extrakt) → prečítaj z neho
-# presnú hranicu regiónu (`region-poly.py`) a vyrež kraj podľa nej → voliteľne
-# orež → vypíš `key`, `name`, `bbox`, `bboxkey`.
-#
-# Hranica sa číta z toho istého PBF, akým sa reže – je v OSM dátach, takže sa
-# nedá spočítať skôr; preto je volanie tu a nie v YAMLe.
-#
-# Kraj sa reže z rodiča, hotový export kraja sa nepoužíva: nie je referenčne
-# úplný a viacpolygónovú plochu presahujúcu do susedného kraja Planetiler
-# zahodí celú (miznú celé CHKO a lesy). `-S types=multipolygon,boundary` je
-# nutné – predvolený `smart` dopĺňa len `type=multipolygon`, kým CHKO je
-# `type=boundary`.
+# A region is cut from its parent, never from osm.fr's region export: that one
+# isn't referentially complete, and Planetiler drops a multipolygon reaching
+# into the next region whole. `-S types=multipolygon,boundary` is needed – the
+# default `smart` completes only `type=multipolygon`, protected areas are
+# `type=boundary`. `set -e` without `-u` and `pipefail` is on purpose.
 set -e
 
 T0=$(date +%s)
 mkdir -p data
 CUSTOM_URL="$OPT_CUSTOM_PBF_URL"
 
-# keď PBF (už aj orezané) leží z predošlého behu, sťahovať netreba
+# a PBF (cropped too) from an earlier run needs no download
 CACHED=""
 if [ -s data/region.osm.pbf ]; then
   CACHED=1
-  echo "PBF z cache ✓ ($(du -h data/region.osm.pbf | cut -f1))"
+  echo "PBF from cache ✓ ($(du -h data/region.osm.pbf | cut -f1))"
 fi
 
-# `$2` je cieľový súbor: rodičovský extrakt sa sťahuje bokom
-download() { # $1 = URL, $2 = súbor
+# `$2` is the target: the parent extract downloads aside
+download() { # $1 = URL, $2 = file
   [ -n "$CACHED" ] && return 0
-  echo "Skúšam: $1"
+  echo "Trying: $1"
   curl -fL --retry 3 --retry-delay 5 -o "${2:-data/region.osm.pbf}" "$1"
 }
 
@@ -42,8 +35,8 @@ need_osmium() {
   sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
 }
 
-# `ogr2ogr` so SpatiaLite na pretnutie hranice so štátom; bez neho sa reže
-# plnou geometriou relácie a trvá to dlhšie (povie to `::warning::`)
+# `ogr2ogr` with SpatiaLite intersects the outline with the state; without it
+# the full relation geometry cuts, slower (a `::warning::` says so)
 need_gdal() {
   command -v ogr2ogr >/dev/null && return 0
   sudo apt-get update -qq \
@@ -52,9 +45,9 @@ need_gdal() {
 
 POLY="${REGION_POLY:-data/region.poly}"
 
-# presná hranica regiónu do `$POLY` a `data/region.geojson` – jedna hranica
-# pre osmium, Planetiler, vrstvy z DEM aj viewer
-hranica_z() { # $1 = PBF, z ktorého sa hranica číta
+# the exact region outline into `$POLY` and `data/region.geojson` – one outline
+# for osmium, Planetiler, DEM layers and the viewer
+outline_from() { # $1 = PBF the outline is read from
   need_osmium
   need_gdal
   python3 workers/plan/region-poly.py --region="$KEY" --from-pbf="$1" \
@@ -63,164 +56,148 @@ hranica_z() { # $1 = PBF, z ktorého sa hranica číta
 }
 
 if [ -n "$CUSTOM_URL" ]; then
-  # ----- vlastný región (Európa / svet) -----
+  # ----- own region (Europe / world) -----
   NAME="$OPT_CUSTOM_NAME"
   ISO=""
   ROUTING_AREA=""
   [ -n "$NAME" ] || NAME=$(basename "$CUSTOM_URL" .osm.pbf)
   KEY=$(echo "$NAME" | LC_ALL=C.UTF-8 iconv -f utf8 -t ascii//TRANSLIT | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '_' | sed 's/^_//;s/_*$//')
-  download "$CUSTOM_URL" || { echo "::error::Nepodarilo sa stiahnuť $CUSTOM_URL"; exit 1; }
+  download "$CUSTOM_URL" || { echo "::error::Couldn't download $CUSTOM_URL"; exit 1; }
 
   BBOX="$OPT_CUSTOM_BBOX"
   if [ -z "$BBOX" ]; then
     need_osmium
-    # žiadna rúra z `osmium`: `head -1` zavrie rúru pod stále píšucim
-    # producentom a `pipefail` z EPIPE spraví pád
+    # no pipe from `osmium`: `head -1` closes it under a writer, EPIPE under `pipefail`
     BOXES=$(osmium fileinfo -g header.boxes data/region.osm.pbf)
     BBOX=$(head -1 <<<"$BOXES" | tr -d '() ')
   fi
   if [ -z "$BBOX" ]; then
-    echo "::error::PBF nemá bbox v hlavičke – vyplň input custom_bbox (west,south,east,north)."
+    echo "::error::The PBF has no bbox in its header – fill in custom_bbox (west,south,east,north)."
     exit 1
   fi
 else
-  # ----- prednastavený región z workers/data/regions.json -----
+  # ----- a preset region from workers/data/regions.json -----
   KEY="$REGION"
   NAME=$(jq -r --arg r "$KEY" '.[$r].name' workers/data/regions.json)
   BBOX=$(jq -r --arg r "$KEY" '.[$r].bbox | join(",")' workers/data/regions.json)
   DIR=$(jq -r --arg r "$KEY" '.[$r].osmfr.dir' workers/data/regions.json)
-  # ISO krajiny pre smerovanie: hrana v archíve nesie krajinu, inak nemá
-  # diaľničná známka na čom stáť. Kraj ho má cez svoje `country`.
+  # the country ISO for routing: an edge carries its country, for vignettes
   ISO=$(jq -r --arg r "$KEY" '. as $d | ($d[$r].iso // $d[$d[$r].country].iso // "")' workers/data/regions.json)
-  # územie, nad ktorým je poradie uzlov pre CCH – to isté pre všetky kraje
-  # krajiny, inak sa ich archívy v telefóne spojiť nesmú
+  # the CCH node order area – the same for all regions of a country, or their archives won't join
   ROUTING_AREA=$(jq -r --arg r "$KEY" '. as $d | ($d[$r].routing_area // $d[$d[$r].country].routing_area // "")' workers/data/regions.json)
-  # rodič je kľúč iného regiónu v tom istom číselníku, nie druhá URL
+  # the parent is another region key of the same registry, not a second URL
   PARENT=$(jq -r --arg r "$KEY" '.[$r].osmfr.parent // ""' workers/data/regions.json)
-  if [ "$NAME" = "null" ]; then echo "::error::Neznámy región: $KEY"; exit 1; fi
+  if [ "$NAME" = "null" ]; then echo "::error::Unknown region: $KEY"; exit 1; fi
 
-  # osm.fr mená svojich súborov občas prehodí; berie sa prvý existujúci
+  # osm.fr renames its files now and then; the first existing one is taken
   slugs() { jq -r --arg r "$1" '.[$r].osmfr.slugs[]' workers/data/regions.json; }
 
   if [ -z "$PARENT" ]; then
-    # ----- región bez rodiča (Slovensko ako celok) – hotový export -----
+    # ----- a region without a parent (a whole country) – the ready export -----
     OK=""
     for SLUG in $(slugs "$KEY"); do
       if download "$OSMFR_BASE/$DIR/$SLUG.osm.pbf"; then OK=1; break; fi
     done
     if [ -z "$OK" ]; then
-      echo "::error::PBF pre '$KEY' sa nepodarilo stiahnuť. Obsah $OSMFR_BASE/$DIR/ (uprav slugs vo workers/data/regions.json):"
+      echo "::error::The PBF for '$KEY' couldn't be downloaded. Contents of $OSMFR_BASE/$DIR/ (fix slugs in workers/data/regions.json):"
       curl -sL "$OSMFR_BASE/$DIR/" | grep -oE 'href="[^"]+\.osm\.pbf"' | sort -u || true
-      echo "…alebo vyplň custom_pbf_url s priamou URL na .osm.pbf."
+      echo "…or fill in custom_pbf_url with a direct URL of a .osm.pbf."
       exit 1
     fi
-    # hotový export z osm.fr je okolo štátnej hranice rozšírený, takže je
-    # v ňom pás cudziny; reže sa rovnako ako kraj, len `admin_level=2`
+    # osm.fr's export is widened around the border, so it's cut like a region, at `admin_level=2`
     if [ -z "$CACHED" ]; then
-      hranica_z data/region.osm.pbf
+      outline_from data/region.osm.pbf
       if [ ! -s "$POLY" ]; then
-        echo "::error::Hranica regiónu ($POLY) nie je – bez nej by mapa „$NAME“ niesla pás cudziny za štátnou hranicou a nikto by to z behu nezistil. Robí ju workers/plan/region-poly.py z relácie `boundary=administrative` v stiahnutom PBF; keď hranicu nenašla, povedala prečo o riadok vyššie."
+        echo "::error::The region outline ($POLY) is missing – without it the map “$NAME” would carry a strip beyond the state border, unseen from the run. workers/plan/region-poly.py makes it from the \`boundary=administrative\` relation in the downloaded PBF; when it found none, it said why a line above."
         exit 1
       fi
       need_osmium
-      # plán s odhadom: rez celého štátu je drahší než rez kraja, bboxový
-      # predfilter tu nezahodí nič
-      echo "Režem $NAME presne na štátnu hranicu ($POLY) – pri celom štáte sú to jednotky až desiatky minút."
+      # a plan with an estimate: cutting a state costs more than a region
+      echo "Cutting $NAME exactly to the state border ($POLY) – for a whole state, minutes to tens of minutes."
       TCUT=$(date +%s)
       if ! osmium extract --overwrite -s smart -S types=multipolygon,boundary \
            --polygon "$POLY" -o data/region-cut.osm.pbf data/region.osm.pbf; then
-        echo "::error::Rez na štátnu hranicu zlyhal. Skús beh zopakovať; keď padá stále, pozri sa, či je $POLY platný \`.poly\` (workers/plan/region-poly.py)."
+        echo "::error::Cutting to the state border failed. Try the run again; if it keeps failing, check that $POLY is a valid \`.poly\` (workers/plan/region-poly.py)."
         exit 1
       fi
       mv data/region-cut.osm.pbf data/region.osm.pbf
-      echo "Vyrezané za $(( $(date +%s) - TCUT )) s → $(du -h data/region.osm.pbf | cut -f1)"
+      echo "Cut in $(( $(date +%s) - TCUT )) s → $(du -h data/region.osm.pbf | cut -f1)"
     fi
   elif [ -z "$CACHED" ]; then
-    # ----- kraj: rez z rodiča (prečo, hovorí hlavička súboru) -----
+    # ----- a region: cut from its parent (why: the file header) -----
     PDIR=$(jq -r --arg r "$PARENT" '.[$r].osmfr.dir' workers/data/regions.json)
     PNAME=$(jq -r --arg r "$PARENT" '.[$r].name' workers/data/regions.json)
     if [ "$PDIR" = "null" ]; then
-      echo "::error::Región '$KEY' má \`osmfr.parent: $PARENT\`, ale taký región v workers/data/regions.json nie je (alebo nemá \`osmfr.dir\`). Oprav číselník."
+      echo "::error::Region '$KEY' has \`osmfr.parent: $PARENT\`, but workers/data/regions.json has no such region (or it lacks \`osmfr.dir\`). Fix the registry."
       exit 1
     fi
 
     need_osmium
-    # plán s odhadom pred drahou časťou – hodina ticha v logu sa nedá odlíšiť
-    # od zaseknutého behu
-    echo "Kraj sa reže z rodiča – $PNAME (~373 MB, potom rez ~1 min)."
-    echo "  dôvod: hotový export kraja nemá členov plôch, čo presahujú do susedného kraja (CHKO, veľké lesy), a Planetiler ich zahodí celé"
+    # a plan with an estimate before the expensive part – silence looks stuck
+    echo "The region is cut from its parent – $PNAME (~373 MB, then a cut of ~1 min)."
+    echo "  why: the region export lacks members of areas reaching into the next region (protected areas, large forests), and Planetiler drops them whole"
     OK=""
     for SLUG in $(slugs "$PARENT"); do
       if download "$OSMFR_BASE/$PDIR/$SLUG.osm.pbf" data/parent.osm.pbf; then OK=1; break; fi
     done
     if [ -z "$OK" ]; then
-      echo "::error::Rodičovský extrakt '$PARENT' sa nepodarilo stiahnuť. Obsah $OSMFR_BASE/$PDIR/ (uprav slugs vo workers/data/regions.json):"
+      echo "::error::The parent extract '$PARENT' couldn't be downloaded. Contents of $OSMFR_BASE/$PDIR/ (fix slugs in workers/data/regions.json):"
       curl -sL "$OSMFR_BASE/$PDIR/" | grep -oE 'href="[^"]+\.osm\.pbf"' | sort -u || true
       exit 1
     fi
-    # presná hranica kraja z rodiča, teda z tých istých dát, akými sa reže
-    hranica_z data/parent.osm.pbf
+    # the exact outline from the parent, the same data that is cut
+    outline_from data/parent.osm.pbf
 
-    # hranica musí byť, inak sa nereže nič. Návrat na priame sťahovanie kraja
-    # bol tichý omyl: beh zelený a v mape zase chýbali CHKO.
+    # no outline, no cut; falling back to the region export was a silent mistake
     if [ ! -s "$POLY" ]; then
-      echo "::error::Hranica regiónu ($POLY) nie je, takže sa kraj nemá z čoho vyrezať – a hotový export kraja sa nepoužíva (chýbali by v ňom plochy presahujúce do susedného kraja). Robí ju workers/plan/region-poly.py z relácie `boundary=administrative` v rodičovskom extrakte (náhrada je `.poly` z osm.fr); keď zlyhalo oboje, povedala prečo o riadok vyššie – skús beh zopakovať."
+      echo "::error::The region outline ($POLY) is missing, so there is nothing to cut the region by – and the region export isn't used (areas reaching into the next region would be missing). workers/plan/region-poly.py makes it from the \`boundary=administrative\` relation in the parent extract (the fallback is osm.fr's \`.poly\`); when both failed, it said why a line above – try the run again."
       exit 1
     fi
 
-    echo "Rodič stiahnutý ($(du -h data/parent.osm.pbf | cut -f1)), režem $NAME podľa $POLY …"
+    echo "Parent downloaded ($(du -h data/parent.osm.pbf | cut -f1)), cutting $NAME by $POLY …"
 
-    # `-s smart` = celé cesty a doplnení členovia relácií, teda presne to, čo
-    # hotovému exportu chýba; `-S types=…` kvôli `type=boundary` (CHKO)
+    # `-s smart` = whole ways and completed relation members; `-S types=…` for `type=boundary`
     TCUT=$(date +%s)
     if ! osmium extract --overwrite -s smart -S types=multipolygon,boundary \
          --polygon "$POLY" -o data/region.osm.pbf data/parent.osm.pbf; then
-      echo "::error::Rez kraja z rodičovského extraktu zlyhal. Skús beh zopakovať; keď padá stále, pozri sa, či je $POLY platný \`.poly\` (workers/plan/region-poly.py)."
+      echo "::error::Cutting the region from the parent extract failed. Try the run again; if it keeps failing, check that $POLY is a valid \`.poly\` (workers/plan/region-poly.py)."
       exit 1
     fi
-    # 373 MB preč hneď: PBF si o kus ďalej ešte pýta miesto na orez testu
+    # 373 MB gone at once: the test crop further on needs the space
     rm -f data/parent.osm.pbf
-    echo "Vyrezané za $(( $(date +%s) - TCUT )) s → $(du -h data/region.osm.pbf | cut -f1)"
+    echo "Cut in $(( $(date +%s) - TCUT )) s → $(du -h data/region.osm.pbf | cut -f1)"
   fi
 
-  # hranicu pri PBF z cache: cache drží PBF, nie hranicu, a potrebujú ju aj
-  # joby, ktoré nerežú nič. Číta sa z toho istého PBF – druhé sťahovanie rodiča
-  # by bolo 373 MB za niečo, čo už na disku je.
+  # a cached PBF comes without its outline; read it from the same PBF
   if [ ! -s "$POLY" ]; then
-    hranica_z data/region.osm.pbf
+    outline_from data/region.osm.pbf
   fi
 fi
 
-# ----- voliteľné orezanie na menšie územie -----
-# Orezáva PBF, teda samotnú mapu; dá sa použiť spolu s testom (`crop_bbox`
-# oreže mapu a test z nej vyberie štvorec).
+# ----- optional crop to a smaller area -----
+# crops the PBF, the map itself; works with a test (the test picks a square from it)
 CROP="$OPT_CROP_BBOX"
 if [ -n "$CROP" ]; then
   if [ -z "$CACHED" ]; then
     need_osmium
-    echo "Orezávam na bbox $CROP …"
+    echo "Cropping to bbox $CROP …"
     if ! osmium extract --overwrite -b "$CROP" -s smart \
          -S types=multipolygon,boundary \
          -o data/region-crop.osm.pbf data/region.osm.pbf; then
-      echo "::error::Orezanie na bbox '$CROP' zlyhalo – očakávaný formát je west,south,east,north (napr. 18.98,49.18,19.20,49.28)."
+      echo "::error::Cropping to bbox '$CROP' failed – the expected form is west,south,east,north (e.g. 18.98,49.18,19.20,49.28)."
       exit 1
     fi
     mv data/region-crop.osm.pbf data/region.osm.pbf
   fi
   BBOX="$CROP"
   KEY="${KEY}_crop"
-  NAME="$NAME (výrez)"
+  NAME="$NAME (cut-out)"
 fi
 
-# rýchly test zmenšuje celý beh na štvorec zo stredu výrezu – aj samotnú mapu,
-# nie len vrstvy z výškového modelu. Orez je ten istý `osmium extract`, aký robí
-# `crop_bbox`, takže `bbox` behu sa rovná `dem_bbox`.
-# Celý kraj s terénom len na štvorci sa dá dostať cez prázdny `crop_bbox`,
-# odškrtnutý `test` a `area` na pohorie.
+# a quick test shrinks the whole run to a square in the middle of the cut-out –
+# the map too, so the run's `bbox` equals `dem_bbox`
 TEST_KM2="$OPT_TEST_KM2"
-# okno pre vrstvy z výškového modelu. `pad_bbox` ho zväčšuje o `BORDER_BUFFER_M`,
-# čo je dnes 0 – režeme presne na hranicu. Volanie ostáva preto, že keby sa
-# presah zase zapol, okno sa musí zväčšiť spolu s ním.
+# the window of the DEM layers; `BORDER_BUFFER_M` is 0 today, the call stays for when it isn't
 DEM_BBOX=$(python3 - "$BBOX" <<'PY'
 import sys
 sys.path.insert(0, "workers/plan")
@@ -238,39 +215,33 @@ if [ "${TEST_KM2:-0}" != "0" ]; then
     --test-km2="$TEST_KM2" \
     --test-at="$OPT_TEST_AT")
   DEM_BBOX=$(printf '%s\n' "$RES" | sed -n 's/^bbox=//p')
-  [ -n "$DEM_BBOX" ] || { echo "::error::Testovací štvorec sa nepodarilo spočítať."; exit 1; }
-  # okolie pre obrázok „kde to je" je celý výrez pred zmenšením – z mapy
-  # Slovenska by bol štvorec so 4 km² neviditeľný bod
+  [ -n "$DEM_BBOX" ] || { echo "::error::The test square couldn't be computed."; exit 1; }
+  # the “where it is” picture shows the whole cut-out; 4 km² on a country map is invisible
   printf '%s\n' "$RES" | sed -n 's/^full_bbox=/full_bbox=/p' >> "$GITHUB_OUTPUT"
   echo "test_bbox=$DEM_BBOX" >> "$GITHUB_OUTPUT"
-  # a odlož celú odpoveď pre krok „Vyrieš testovací výrez": je v nej aj kľúč
-  # s príponou `_test4`, ktorý mu druhým výpočtom vyjsť nemôže
-  printf '%s\n' "$RES" > /tmp/vyrez.txt
-  # kľúč ide do mien cache aj uložených výsledkov – testovací beh sa nesmie
-  # tváriť ako ostrý. `-s smart -S types=…` je tu z toho istého dôvodu ako pri
-  # reze z rodiča, len sa prejaví skôr: zo štvorca so 4 km² vytŕča skoro každá
-  # plocha.
+  # the whole answer for “Resolve the cut-out”: it has the `_test4` key a
+  # second computation can't give
+  printf '%s\n' "$RES" > /tmp/cutout.txt
+  # `-s smart -S types=…` as for the parent cut: nearly every area sticks out of 4 km²
   if [ -z "$CACHED" ]; then
     need_osmium
-    echo "Orezávam MAPU na testovací štvorec $DEM_BBOX …"
+    echo "Cropping the MAP to the test square $DEM_BBOX …"
     if ! osmium extract --overwrite -b "$DEM_BBOX" -s smart \
          -S types=multipolygon,boundary \
          -o data/region-test.osm.pbf data/region.osm.pbf; then
-      echo "::error::Orez mapy na testovací štvorec ($DEM_BBOX) zlyhal. Skús beh bez switchu \`test\`, alebo iný stred cez \`options: test_at=lon,lat\`."
+      echo "::error::Cropping the map to the test square ($DEM_BBOX) failed. Try the run without the switch \`test\`, or another centre via \`options: test_at=lon,lat\`."
       exit 1
     fi
     mv data/region-test.osm.pbf data/region.osm.pbf
   fi
-  # mapa je odteraz ten štvorec, takže `bbox` behu je on; `full_bbox` ostáva
-  # celý výrez kvôli obrázku „kde to je"
+  # the map is the square now; `full_bbox` stays the whole cut-out for the picture
   BBOX="$DEM_BBOX"
   KEY="${KEY}_test${TEST_KM2}"
   NAME="$NAME – test ${TEST_KM2} km²"
-  echo "Testovací režim: celý beh (mapa aj terén) na $TEST_KM2 km² → $DEM_BBOX"
+  echo "Test mode: the whole run (map and terrain) on $TEST_KM2 km² → $DEM_BBOX"
 fi
 
-# čo z toho PBF vypadne, musí byť vidieť: plocha bez všetkých členov sa
-# nezmenší, Planetiler ju zahodí celú a build je pri tom zelený
+# what falls out of the PBF must show: Planetiler drops an incomplete area whole, green
 if command -v osmium >/dev/null; then
   python3 workers/plan/pbf-areas.py data/region.osm.pbf \
     --summary="${GITHUB_STEP_SUMMARY:-/dev/null}" || true
@@ -282,11 +253,10 @@ echo "iso=$ISO"   >> "$GITHUB_OUTPUT"
 echo "routing_area=$ROUTING_AREA" >> "$GITHUB_OUTPUT"
 echo "bbox=$BBOX" >> "$GITHUB_OUTPUT"
 echo "dem_bbox=$DEM_BBOX" >> "$GITHUB_OUTPUT"
-# bezpečná podoba bboxu do kľúča cache. Z `dem_bbox`, lebo ho používajú len
-# cache vrstevníc, skál a tieňovania – tie sa pri teste počítajú na štvorci
+# the bbox safe for a cache key, from `dem_bbox`: only DEM layer caches use it
 echo "dem_bboxkey=$(echo "$DEM_BBOX" | tr ',.-' '___')" >> "$GITHUB_OUTPUT"
-echo "Región: $NAME (key=$KEY, bbox=$BBOX)"
+echo "Region: $NAME (key=$KEY, bbox=$BBOX)"
 ls -lh data/region.osm.pbf
-printf '%s\t%s\t%s\t%s\n' "10" "PBF regiónu" "$(( $(date +%s) - T0 ))" \
-  "$NAME, $(du -h data/region.osm.pbf | cut -f1)$([ -n "$CACHED" ] && echo ' (z cache)')" \
+printf '%s\t%s\t%s\t%s\n' "10" "Region PBF" "$(( $(date +%s) - T0 ))" \
+  "$NAME, $(du -h data/region.osm.pbf | cut -f1)$([ -n "$CACHED" ] && echo ' (from cache)')" \
   >> steps-out/plan.tsv

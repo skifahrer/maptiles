@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""Zaoblí obrysy plôch aj priebeh čiar (skaly, vrstevnice).
+"""Round the outlines of areas and the course of lines (rocks, contours).
 
-Izolínia nad rastrom chodí po hranách buniek; po zjednodušení z toho vzniknú
-ostré rohy. Zaobľuje sa kvadratickým B-splinom, vzorkuje podľa priehybu
-tetivy voči kroku mriežky dlaždice. Typ (plocha/čiara) sa zisťuje z geometrie.
-Ide to prúdom cez GeoJSONSeq, aby sa vrstva nedržala celá v pamäti.
-
-Rozbor a merania: docs/.
+A quadratic B-spline, sampled by chord sag against the tile grid step; streamed
+through GeoJSONSeq so the layer isn't held in memory. Analysis: docs/.
 """
 import argparse
 import json
@@ -15,29 +11,29 @@ import os
 import subprocess
 import sys
 
-# krok mriežky dlaždice pozná lib/cell.py
+# lib/cell.py knows the tile grid step
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
 import cell  # noqa: E402
 
-# poistka proti riadiacemu polygónu s kilometrovými hranami
+# a guard against a control polygon with kilometre-long edges
 MAX_SAMPLES = 64
 
 
 def _arc(a, b, c, tol, out):
-    """Jeden oblúk kvadratického B-splinu (a–b–c) pre t ∈ (0, 1]."""
+    """One quadratic B-spline arc (a–b–c) for t ∈ (0, 1]."""
     (x0, y0), (x1, y1), (x2, y2) = a[:2], b[:2], c[:2]
-    # priehyb sa meria kolmo na tetivu – pozdĺžny posun je parametrizácia, nie tvar
-    sx, sy = (x0 + x1) / 2, (y0 + y1) / 2          # začiatok oblúka
-    ex, ey = (x1 + x2) / 2, (y1 + y2) / 2          # koniec oblúka
-    mx, my = (x0 + 6 * x1 + x2) / 8, (y0 + 6 * y1 + y2) / 8   # stred oblúka
+    # sag is measured across the chord – along it is parametrisation, not shape
+    sx, sy = (x0 + x1) / 2, (y0 + y1) / 2          # arc start
+    ex, ey = (x1 + x2) / 2, (y1 + y2) / 2          # arc end
+    mx, my = (x0 + 6 * x1 + x2) / 8, (y0 + 6 * y1 + y2) / 8   # arc middle
     dx, dy = ex - sx, ey - sy
     d = math.hypot(dx, dy)
     if d > 0:
         sag = abs((mx - sx) * dy - (my - sy) * dx) / d
     else:
         sag = math.hypot(mx - sx, my - sy)
-    # delenie na n dielov zmenší priehyb n²-krát
+    # n pieces cut the sag n² times
     n = 1 if sag <= tol else min(MAX_SAMPLES,
                                  int(math.ceil(math.sqrt(sag / tol))))
     for k in range(1, n + 1):
@@ -48,9 +44,9 @@ def _arc(a, b, c, tol, out):
 
 
 def curve_ring(ring, tol):
-    """Limitná krivka nad uzavretým prstencom – zaoblí sa každý roh."""
+    """The limit curve over a closed ring – every corner is rounded."""
     pts = ring[:-1] if len(ring) > 1 and ring[0] == ring[-1] else list(ring)
-    # trojuholník zaobľovať nemá zmysel
+    # no point rounding a triangle
     if len(pts) < 4:
         return list(ring)
     n = len(pts)
@@ -58,15 +54,13 @@ def curve_ring(ring, tol):
     out = [first]
     for i in range(n):
         _arc(pts[i], pts[(i + 1) % n], pts[(i + 2) % n], tol, out)
-    # posledný oblúk končí v prvom bode – prstenec je uzavretý
+    # the last arc ends at the first point – the ring is closed
     out[-1] = first
     return out
 
 
 def curve_line(line, tol):
-    """To isté na otvorenej čiare; krajné body sa nehýbu (zdvojený riadiaci bod),
-    inak by dva kusy čiary na hranici dlaždice na seba nesadli.
-    """
+    """The same on an open line; the ends don't move, so tile pieces still meet."""
     pts = list(line)
     if len(pts) > 2 and pts[0] == pts[-1]:
         return curve_ring(pts, tol)
@@ -80,7 +74,7 @@ def curve_line(line, tol):
     return out
 
 
-# zoznam je tu raz, nech sa smooth_geometry, count_points a -nlt nerozídu
+# listed once, so smooth_geometry, count_points and -nlt don't drift
 POLYGONS = ("Polygon", "MultiPolygon")
 LINES = ("LineString", "MultiLineString")
 
@@ -112,11 +106,8 @@ def count_points(geom):
 
 
 def layer_srs(path, layer):
-    """(`EPSG:kód`, je_projektovaná) zdrojovej vrstvy.
-
-    Ovládač GeoJSON prepočítava vždy do WGS84, takže metrickú vrstvu treba po
-    prechode vrátiť späť do jej CRS.
-    """
+    """(`EPSG:code`, is_projected) of the source layer."""
+    # the GeoJSON driver always converts to WGS84, so a metric layer is set back after
     try:
         info = json.loads(subprocess.run(
             ["ogrinfo", "-json", "-so", path, layer],
@@ -135,13 +126,10 @@ def layer_srs(path, layer):
 
 
 def tolerance(srs, projected, maxzoom, sag):
-    """Dovolený priehyb tetivy v jednotkách vrstvy (stupne alebo metre).
-
-    Zadáva sa v štvrtinách kroku mriežky dlaždice; každá vrstva chodí v inom CRS.
-    """
+    """The allowed chord sag in the layer's units (degrees or metres)."""
     m = cell.tile_grid_m(maxzoom) * sag / 4.0
     if not projected:
-        # delí sa dlhším stupňom (po šírke), nech tolerancia na zemi nevyjde väčšia
+        # divided by the longer degree (latitude), so the ground tolerance isn't larger
         return m / cell.M_PER_DEG_LAT, f"{m:.3f} m"
     if srs == "EPSG:3857":
         return m / math.cos(math.radians(cell.DEFAULT_LAT)), f"{m:.3f} m"
@@ -154,17 +142,17 @@ def main():
     ap.add_argument("--out", dest="dst", required=True)
     ap.add_argument("--layer", default="rock")
     ap.add_argument("--maxzoom", type=int, default=16,
-                    help="maxzoom dlaždíc tejto vrstvy – podľa neho sa určí "
-                         "krok mriežky, a teda hustota vzoriek")
+                    help="this layer's tile maxzoom – it sets the grid step "
+                         "and so the sample density")
     ap.add_argument("--sag", type=float, default=1.0,
-                    help="dovolený priehyb tetivy v ŠTVRTINÁCH kroku mriežky "
-                         "dlaždice (0 = zaoblenie vypnuté)")
+                    help="allowed chord sag in QUARTERS of the tile grid "
+                         "step (0 = rounding off)")
     args = ap.parse_args()
 
     if args.sag <= 0:
         subprocess.run(["ogr2ogr", "-f", "GPKG", args.dst, args.src,
                         "-nln", args.layer, "-overwrite"], check=True)
-        print("  zaoblenie: vypnuté (sag=0)", flush=True)
+        print("  rounding: off (sag=0)", flush=True)
         return 0
 
     srs, projected = layer_srs(args.src, args.layer)
@@ -174,14 +162,13 @@ def main():
     for f in (seq, tmp):
         if os.path.exists(f):
             os.remove(f)
-    # GeoJSONSeq = útvar na riadok, dá sa čítať prúdom. `-a_srs` len prekryje
-    # značku CRS, neprepočítava.
+    # GeoJSONSeq = a shape per line, streamable; `-a_srs` only relabels
     export = ["ogr2ogr", "-f", "GeoJSONSeq", seq, args.src, args.layer]
     if projected:
         export += ["-a_srs", "EPSG:4326", "-lco", "COORDINATE_PRECISION=3"]
     subprocess.run(export, check=True)
 
-    # typ hovorí geometria, nie prepínač – dve pravdy by sa raz rozišli
+    # the geometry says the type, not an option – two truths would drift
     n, pts_in, pts_out, kind = 0, 0, 0, ""
     with open(seq) as fi, open(tmp, "w") as fo:
         for line in fi:
@@ -192,49 +179,47 @@ def main():
             g = feat.get("geometry")
             n += 1
             if g and g.get("type") in POLYGONS + LINES:
-                kind = "plocha" if g["type"] in POLYGONS else "čiara"
+                kind = "area" if g["type"] in POLYGONS else "line"
                 pts_in += count_points(g)
                 feat["geometry"] = smooth_geometry(g, tol)
                 pts_out += count_points(feat["geometry"])
             fo.write(json.dumps(feat, separators=(",", ":")) + "\n")
     os.remove(seq)
 
-    # prázdna vrstva = súbor nulovej dĺžky, ten ovládač neotvorí; vypnutá
-    # vrstva pritom nie je chyba (build.sh ju robí naschvál)
+    # an empty layer is a zero-length file the driver won't open; not an error
     if n == 0:
         os.remove(tmp)
         subprocess.run(["ogr2ogr", "-f", "GPKG", args.dst, args.src,
                         "-nln", args.layer, "-overwrite"], check=True)
-        print("  zaoblenie: vrstva je prázdna, niet čo zaobľovať", flush=True)
+        print("  rounding: the layer is empty, nothing to round", flush=True)
         return 0
 
     if os.path.exists(args.dst):
         os.remove(args.dst)
-    # `-makevalid` len na plochách: zaoblené okraje tenkého ostňa sa môžu
-    # dotknúť. Čiara sa smie krížiť, tam by to bol priechod navyše.
-    lines = kind == "čiara"
+    # `-makevalid` only on areas: rounded edges of a thin spike may touch
+    lines = kind == "line"
     cmd = ["ogr2ogr", "-f", "GPKG", args.dst, tmp, "-nln", args.layer]
-    # prázdna vrstva nepovedala typ – nevnucovať, inak by ju schéma zahodila
+    # an empty layer told no type – don't force one, the schema would drop it
     if kind:
         cmd += ["-nlt", "MULTILINESTRING" if lines else "MULTIPOLYGON"]
     if kind and not lines:
         cmd += ["-makevalid"]
     if projected and srs:
-        # súradnice sú v metroch, len sa tvárili ako stupne
+        # the coordinates are metres, only labelled as degrees
         cmd += ["-a_srs", srs]
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError:
-        print("::warning::-makevalid nefunguje (starý GDAL) – zaoblené skaly "
-              "idú bez kontroly platnosti.")
+        print("::warning::-makevalid doesn't work (old GDAL) – rounded rocks "
+              "go without a validity check.")
         subprocess.run([c for c in cmd if c != "-makevalid"], check=True)
     os.remove(tmp)
 
     grew = pts_out / pts_in if pts_in else 1.0
-    print(f"  zaoblenie: limitná krivka, priehyb do {args.sag / 4:.2f}× kroku "
-          f"mriežky z{args.maxzoom} ({tol_m}), {n} "
-          f"{'čiar' if lines else 'plôch'}, "
-          f"bodov {pts_in} → {pts_out} ({grew:.2f}×)", flush=True)
+    print(f"  rounding: limit curve, sag up to {args.sag / 4:.2f}× the "
+          f"z{args.maxzoom} grid step ({tol_m}), {n} "
+          f"{'lines' if lines else 'areas'}, "
+          f"points {pts_in} → {pts_out} ({grew:.2f}×)", flush=True)
     return 0
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prázdne skaly z padnutého výpočtu sa nesmú uložiť ako hotová vrstva."""
+"""Empty rocks from a failed computation must not be saved as a finished layer."""
 import os
 import re
 import sys
@@ -22,48 +22,49 @@ def main():
     flow = open(FLOW, encoding="utf-8").read()
 
     if not re.search(rf">\s*{re.escape(MARKER)}", rocks):
-        bad.append(f"workers/contours-rocks/rocks.sh nezaznačí pád výpočtu do "
-                   f"`{MARKER}`. Bez tej stopy sa prázdna vrstva uloží ako "
-                   f"hotová a kraj ostane bez skál, kým platí kľúč cache.")
+        bad.append(f"workers/contours-rocks/rocks.sh doesn't mark a failed "
+                   f"computation in `{MARKER}`. Without it an empty layer is "
+                   f"saved as finished and the region has no rocks while the "
+                   f"cache key holds.")
 
-    # krok sa hľadá podľa toho, čo ukladá, nie podľa mena: meno je preklep
-    ulozenie = [ln for ln in flow.splitlines()
-                if "if:" in ln
-                and "steps.hotove.outputs.pocitaj == 'true'" in ln
-                and "contours-out/rock" in ln]
-    if not ulozenie:
-        bad.append("v .github/workflows/dem-layers.yml sa nedá nájsť krok, "
-                   "ktorý ukladá skaly do cache – oprav túto kontrolu spolu "
-                   "s workflowom.")
+    # the step is found by what it saves, not by name: a name is a typo away
+    saving = [ln for ln in flow.splitlines()
+              if "if:" in ln
+              and "steps.done.outputs.compute == 'true'" in ln
+              and "contours-out/rock" in ln]
+    if not saving:
+        bad.append("no step saving rocks to the cache can be found in "
+                   ".github/workflows/dem-layers.yml – fix this check along "
+                   "with the workflow.")
     else:
-        for podmienka, preco in (
+        for condition, why in (
                 ("hashFiles('contours-out/rocks.pmtiles') != ''",
-                 "beh, ktorý sa k dlaždiciam vôbec nedostal (napr. pád "
-                 "v sklone), sa uloží ako hotová vrstva"),
+                 "a run that never got to the tiles (e.g. failed in the slope) "
+                 "is saved as a finished layer"),
                 (f"hashFiles('{MARKER}') == ''",
-                 "prázdna vrstva z padnutého výpočtu sa uloží ako hotová")):
-            if not any(podmienka in ln for ln in ulozenie):
-                bad.append(f"ukladanie skál do cache v dem-layers.yml nemá "
-                           f"podmienku `{podmienka}` – {preco} a ďalšie behy "
-                           f"ju vezmú z cache.")
+                 "an empty layer from a failed computation is saved as finished")):
+            if not any(condition in ln for ln in saving):
+                bad.append(f"saving rocks to the cache in dem-layers.yml lacks "
+                           f"the condition `{condition}` – {why} and later runs "
+                           f"take it from the cache.")
 
     if MARKER not in site:
-        bad.append(f"workers/contours-rocks/site.sh sa nepozerá na `{MARKER}` "
-                   f"– prázdny `.pmtiles` pôjde do mapy aj do balíka a tam sa "
-                   f"nedá odlíšiť od kraja, v ktorom skaly nie sú.")
+        bad.append(f"workers/contours-rocks/site.sh doesn't look at `{MARKER}` "
+                   f"– an empty `.pmtiles` goes into the map and the package, "
+                   f"where it can't be told from a region without rocks.")
 
-    if "capture_output=True" in plan and not re.search(r"raise\s+ChybaPrikazu",
+    if "capture_output=True" in plan and not re.search(r"raise\s+CommandError",
                                                        plan):
-        bad.append("workers/contours-rocks/rock-plan.py zahadzuje stderr "
-                   "spustených príkazov – z pádu ogr2ogr ostane len „exit "
-                   "status 1\" a nie je podľa čoho ho opraviť.")
+        bad.append("workers/contours-rocks/rock-plan.py drops the stderr of the "
+                   "commands it runs – a failed ogr2ogr leaves only \"exit "
+                   "status 1\" and nothing to fix it by.")
 
     if bad:
         for b in bad:
             print(f"::error::{b}")
         return 1
-    print("Skaly: pád výpočtu sa zaznačí, neuloží sa do cache, nejde do mapy "
-          "a v logu je aj stderr ✓")
+    print("Rocks: a failed computation is marked, not cached, kept out of the "
+          "map, and its stderr is in the log ✓")
     return 0
 
 

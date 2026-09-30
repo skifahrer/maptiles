@@ -158,7 +158,10 @@ jobs:
           set -euo pipefail
           ARGS=()
           if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); fi
-          python3 workers/drive/store.py --prune --store=vysledky \
-            --keep-days="${KEEP_DAYS:-90}" \
-            "${ARGS[@]}" \
-            --summary="$GITHUB_STEP_SUMMARY"
+          # `vysledky` is the former name of `results`
+          for STORE in results vysledky; do
+            python3 workers/drive/store.py --prune --store="$STORE" \
+              --keep-days="${KEEP_DAYS:-90}" \
+              "${ARGS[@]}" \
+              --summary="$GITHUB_STEP_SUMMARY"
+          done

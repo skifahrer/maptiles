@@ -209,21 +209,16 @@ def main():
             err(f"{SCHEMA}: blok adries {i} nenesie {', '.join(chyba)} – "
                 f"hľadanie by našlo číslo bez ulice alebo ulicu bez čísla.")
 
-    # ---- 7. vrstva sa naozaj dostane do balíka `cesty` ----
-    # Postaviť ju a nezabaliť je presne ten tichý omyl, pre ktorý balík
-    # existuje: `-cesty.zip` by vážil desiatky kB namiesto desiatok MB a na
-    # ničom by to nebolo vidieť. Balíky drží číselník, tak sa pozeráme doňho.
-    # (`workers/lint/packaging.py` overuje to isté nad NAOZAJ zabalenými
-    # ZIPmi; tu je to lacná poistka pri každom pushi.)
+    # ---- 7. the layer really gets into package `roads` ----
+    # (`workers/lint/packaging.py` checks the same over really packed ZIPs)
     with open(CISELNIK, encoding="utf-8") as f:
-        baliky = {b["kluc"]: b for b in json.load(f).get("baliky") or []}
-    cesty = baliky.get("cesty") or {}
-    if "transport" not in (cesty.get("manifest") or []) or \
-            "-transport.pmtiles" not in (cesty.get("pripony") or []):
-        err(f"{CISELNIK}: balík `cesty` neberie dopravnú sieť (`transport` "
-            f"v `manifest`, `-transport.pmtiles` v `pripony`). Vrstva by sa "
-            f"postavila, nahrala na Pages a do balíka by sa nedostala – ten "
-            f"by sľuboval dopravnú sieť a bol by prázdny.")
+        packages = {p["key"]: p for p in json.load(f).get("packages") or []}
+    roads = packages.get("roads") or {}
+    if "transport" not in (roads.get("manifest") or []) or \
+            "-transport.pmtiles" not in (roads.get("suffixes") or []):
+        err(f"{CISELNIK}: package `roads` doesn't take the road network (`transport` "
+            f"in `manifest`, `-transport.pmtiles` in `suffixes`). The layer would be "
+            f"built and never packed – promising a network and empty.")
     return hotovo()
 
 

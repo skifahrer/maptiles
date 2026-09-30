@@ -96,7 +96,9 @@ KNOWN = {
     "dem-rocks": "Skalné plochy počítané zo sklonu výškového modelu",
     "dem-rocks-img": "Skalné plochy z tmavých miest v tieňovaných dlaždiciach",
     "dem-slope": "Raster sklonu po častiach (medzivýsledok skál)",
-    "vysledky": "Medzivýsledky buildu na pozretie (vrstevnice, skaly, trasy)",
+    "results": "Intermediate build results to look at (contours, rocks, trails)",
+    # the former name of `results`, pruned until it is empty
+    "vysledky": "Intermediate build results, former store",
 }
 
 _ROOT = {}      # id koreňa skladu – zisťuje sa raz za beh

@@ -1,69 +1,52 @@
 #!/usr/bin/env python3
-"""Plán skál: na akej mriežke, koľko buniek a ako dlho to potrvá.
-
-Oddelené od `rock-areas.py`: `slope-chunks.py` sa pýta pred výpočtom („akú
-mriežku zvoliť"), `rock-areas.py` až pri ňom („koľko to ešte potrvá").
-
-Sú tu aj namerané rýchlosti, z ktorých odhady vychádzajú. Keď sa beh s nimi
-rozíde viac než 3×, povie to sám na konci a číslo sa má prepísať.
-"""
+"""The rock plan: which grid, how many cells and how long it will take."""
 import json
 import math
 import os
 import subprocess
 import sys
 
-# `watch.py` je spoločný pre obe cesty ku skalám, tak leží vo `workers/lib/`
+# `watch.py` is shared by both ways to rocks, so it lives in `workers/lib/`
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
 from watch import hms  # noqa: E402
 import cell  # noqa: E402
 
-# mriežku rastra sa pýta aj tieňovanie, tak je prevod v `lib/cell.py`;
-# `rock-areas.py` aj `slope-chunks.py` si ho berú odtiaľto
+# hillshading asks for the raster grid too, so the conversion is in `lib/cell.py`
 dem_cell_metres = cell.dem_cell_metres
 
-METRIC = "EPSG:3035"  # LAEA Európa – pre naše šírky skresľuje plochy minimálne
-# sklon sa ukladá ako Int16 v stotinách stupňa: Byte s krokom 0,5° robil
-# v poli sklonu plošiny a izolínia po nich chodila schodíkmi
+METRIC = "EPSG:3035"  # LAEA Europe – barely distorts areas at our latitudes
+# slope as Int16 in hundredths of a degree: a 0.5° Byte step made terraces the isoline stairs over
 SCALE = 100
 
-# namerané na GitHub runneri – slúžia len na odhad dopredu.
-# Slope: 170 častí / 23,1 mld. buniek za 75 min.
+# measured on a GitHub runner, only for estimating: 170 chunks / 23.1 G cells in 75 min
 SLOPE_CELLS_PER_S = 5.1e6    # gdalwarp + gdaldem slope + gdal_translate
 
-# Contour: cena `gdal_contour -p` ide so ZDROJOVÝMI bunkami, nie s mriežkou,
-# na ktorú sa trasuje – obrys sa nezlacní hrubším trasovaním, ale hrubším
-# skladom. Preto `pick_res` účtuje vektorizáciu mriežke skladu.
-#
-# Číslo platí pre počítanie PO BLOKOCH (`ROCK_BLOCK_PX`): pri jednom priechode
-# `gdal_contour -p` nad veľkým územím spomaľuje, ako pribúdajú rozpracované
-# prstence, a nikdy nedobehol. Prvé číslo z behu, ktorý dobehol, je
-# 12,1 mil. buniek/s na rovine – na skalnatom výreze bude nižšia.
+# `gdal_contour -p` costs by SOURCE cells, not the tracing grid; measured in blocks
+# (`ROCK_BLOCK_PX`) at 12.1 M cells/s on flat land – lower on a rocky cut-out
 CONTOUR_SRC_CELLS_PER_S = 1.2e7
-# ten istý beh na OOM nespadol, takže pri 23,1 mld. buniek bol pod 16 GB:
-# zadanie sa zabije o čas, nie o pamäť
+# the same run stayed under 16 GB at 23.1 G cells: time kills a request, not memory
 MOSAIC_MB_PER_GCELL = 240    # Int16 + DEFLATE + PREDICTOR
 
 
-class ChybaPrikazu(subprocess.CalledProcessError):
-    """CalledProcessError, ktorý v hláške nesie aj stderr."""
+class CommandError(subprocess.CalledProcessError):
+    """A CalledProcessError whose message carries stderr too."""
 
     def __str__(self):
-        chvost = (self.stderr or "").strip()[-2000:]
-        return super().__str__() + (f"\nstderr: {chvost}" if chvost else "")
+        tail = (self.stderr or "").strip()[-2000:]
+        return super().__str__() + (f"\nstderr: {tail}" if tail else "")
 
 
 def run(cmd, **kw):
-    # bez tohto ostane z pádu len „exit status 1" a dôvod nikde
+    # without it a failure leaves only "exit status 1" and no reason
     try:
         return subprocess.run(cmd, check=True, capture_output=True, text=True, **kw)
     except subprocess.CalledProcessError as exc:
-        raise ChybaPrikazu(exc.returncode, exc.cmd, exc.output, exc.stderr) from None
+        raise CommandError(exc.returncode, exc.cmd, exc.output, exc.stderr) from None
 
 
 def to_metric(bbox):
-    """Bbox v stupňoch → rozsah v metroch (EPSG:3035)."""
+    """A bbox in degrees → an extent in metres (EPSG:3035)."""
     w, s, e, n = bbox
     pts = "\n".join(f"{x} {y}" for x, y in
                     [(w, s), (e, s), (w, n), (e, n), ((w + e) / 2, s), ((w + e) / 2, n)])
@@ -75,14 +58,8 @@ def to_metric(bbox):
 
 
 def chunk_plan(x0, y0, x1, y1, res, chunk_cells, bbox, side_m=0):
-    """Rozdelenie na časti + zoznam tých, ktoré naozaj ležia v území.
-
-    EPSG:3035 je pootočená voči poludníkom, takže obdĺžnik opísaný bboxu je
-    v metroch výrazne väčší než región – časti mimo bboxu sa preskočia.
-
-    `side_m` prebije veľkosť časti; používa to `pick_res`, ktorý potrebuje len
-    zistiť, koľko plochy naozaj leží v území.
-    """
+    """Split into chunks + the list of those really in the area."""
+    # EPSG:3035 is rotated against meridians; `side_m` overrides the chunk size
     snap = lambda v, up: (math.ceil(v / res) if up else math.floor(v / res)) * res
     x0, y0, x1, y1 = snap(x0, False), snap(y0, False), snap(x1, True), snap(y1, True)
     width_m, height_m = x1 - x0, y1 - y0
@@ -108,7 +85,7 @@ def chunk_plan(x0, y0, x1, y1, res, chunk_cells, bbox, side_m=0):
 
 
 def intersects_bbox(cx0, cy0, cx1, cy1, bbox):
-    """Zasahuje časť (v metroch) do bboxu územia (v stupňoch)?"""
+    """Does a chunk (in metres) reach the area bbox (in degrees)?"""
     pts = "\n".join(f"{x} {y}" for x, y in
                      [(cx0, cy0), (cx1, cy0), (cx0, cy1), (cx1, cy1),
                       ((cx0 + cx1) / 2, cy0), ((cx0 + cx1) / 2, cy1),
@@ -117,30 +94,22 @@ def intersects_bbox(cx0, cy0, cx1, cy1, bbox):
         out = run(["gdaltransform", "-s_srs", METRIC, "-t_srs", "EPSG:4326"],
                   input=pts).stdout.split()
     except subprocess.CalledProcessError:
-        return True  # keď sa to nedá zistiť, radšej počítať než vynechať
+        return True  # when it can't be told, compute rather than skip
     xs = [float(v) for v in out[0::3]]
     ys = [float(v) for v in out[1::3]]
     return not (max(xs) < bbox[0] or min(xs) > bbox[2]
                 or max(ys) < bbox[1] or min(ys) > bbox[3])
 
 
-# z čoho `--res=auto` vyberá. Najjemnejšie je 1 m: ani 1 m LiDAR pod to nedá
-# nový detail a pixel dlaždice má pri z16 aj tak 1,57 m.
+# what `--res=auto` picks from; 1 m is the finest, a z16 tile pixel is 1.57 m anyway
 RES_LADDER = (1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 8.0, 10.0, 15.0, 20.0)
 
-# podlaha mriežky, na ktorej sa vektorizuje: obrys trasovaný jemnejšie než
-# pixel dlaždice pri z16 sa v mape nemá ako zobraziť. Čas to neušetrí (zmerané),
-# ale výstup je menší a pamäť nižšia.
+# the vectorising grid's floor: finer than a z16 tile pixel can't show on the map
 VEC_FLOOR_M = 1.6
 
 
 def pick_vec_res(res, floor=VEC_FLOOR_M):
-    """Mriežka vektorizácie: najjemnejšia, ktorú je ešte vidieť – ale nikdy
-    jemnejšia než uložený sklon.
-
-    Čas tým neušetríš (zmerané); je to o menšom výstupe a nižšej pamäti.
-    Na čas je jediná páka hrubší sklad (`rock_res`).
-    """
+    """The vectorising grid: the finest still visible, never finer than the stored slope."""
     for r in RES_LADDER:
         if r < res or r < floor:
             continue
@@ -149,45 +118,31 @@ def pick_vec_res(res, floor=VEC_FLOOR_M):
 
 
 def pick_res(x0, y0, x1, y1, chunk_cells, bbox, budget_min, dem_cell_m):
-    """Najjemnejšia mriežka, ktorá má ešte zmysel (a zmestí sa do rozpočtu).
-
-    Rozpočet je predvolene žiadny (`budget_min=0`), takže rozhodujú len dva
-    stropy zdola: desatina bunky zdrojového DEM (jemnejšie sa už len
-    interpoluje) a 1 m absolútne.
-
-    Absolútny strop bol 0,5 m a pri DMR 5.0 to bola chyba: štvornásobok buniek,
-    ktoré nenesú ani o meter terénu viac – pri z16 má pixel dlaždice 1,57 m.
-    Hladší obrys robia `--simplify` a `--smooth` za zlomok ceny.
-    """
-    # koľko plochy naozaj leží v území, zistené na hrubom rastri častí –
-    # nezávisí to od mriežky, tak sa to počíta raz a lacno
+    """The finest grid still meaningful (and fitting the budget)."""
+    # the area really inside, on a coarse chunk raster – independent of the grid
     side = max(2000.0, math.sqrt((x1 - x0) * (y1 - y0) / 50.0))
     probe, _, _, _ = chunk_plan(x0, y0, x1, y1, 10.0, chunk_cells, bbox,
                                 side_m=side)
     area_m2 = sum((c[4] - c[2]) * (c[5] - c[3]) for c in probe)
     if not area_m2:
-        return RES_LADDER[3]  # nič sa netrafilo – nech to povie až chunk_plan
+        return RES_LADDER[3]  # nothing hit – let chunk_plan say it
 
-    # podlaha mriežky skladu, oba dôvody o tom, čo je vidieť – nie o čase:
-    # desatina bunky zdrojového DEM a pixel dlaždice pri z16 (`VEC_FLOOR_M`).
-    # To druhé tu dlho nebolo a `auto` preto pri DMR 5.0 siahalo na 1 m sklad –
-    # pri 2 m je buniek štvrtina a detail v mape rovnaký.
+    # the store grid's floor, both about what shows: a tenth of the DEM cell and a z16 pixel
     floor = max(VEC_FLOOR_M, round((dem_cell_m or 0) / 10.0, 1))
     budget_s = budget_min * 60 if budget_min else float("inf")
 
-    print("── Výber mriežky (rock_res=auto) ────────────────────")
-    print(f"  plocha územia   {area_m2/1e6:.0f} km²")
-    print("  rozpočet        " + ("bez stropu – berie sa najjemnejšia, "
-                                  "ktorá má zmysel"
+    print("── Picking the grid (rock_res=auto) ─────────────────")
+    print(f"  area            {area_m2/1e6:.0f} km²")
+    print("  budget          " + ("no cap – the finest meaningful one "
+                                  "is taken"
                                   if budget_s == float("inf")
                                   else f"{budget_min:g} min"))
     if dem_cell_m:
-        print(f"  bunka DEM       {dem_cell_m:.0f} m → jemnejšie než "
-              f"{floor:g} m nemá zmysel")
+        print(f"  DEM cell        {dem_cell_m:.0f} m → finer than "
+              f"{floor:g} m is meaningless")
     else:
-        print(f"  bunka DEM       neznáma → dolný strop {floor:g} m")
-    # dve polovice, dva riadky: jedno číslo za obe skrývalo, že drahšia je tá
-    # druhá – pri 1 m stojí sklon dve minúty a vektorizácia hodinu a pol
+        print(f"  DEM cell        unknown → floor {floor:g} m")
+    # two halves, two numbers: at 1 m the slope costs two minutes, vectorising an hour and a half
     chosen = None
     for res in RES_LADDER:
         if res < floor:
@@ -195,30 +150,29 @@ def pick_res(x0, y0, x1, y1, chunk_cells, bbox, budget_min, dem_cell_m):
         vec = pick_vec_res(res)
         cells = area_m2 / (res * res)
         s_slope = cells / SLOPE_CELLS_PER_S
-        # vektorizácia sa účtuje tejto mriežke, nie tej, na ktorú sa trasuje:
-        # `gdal_contour` prečíta zdrojové bunky tak či tak
+        # vectorising is charged to this grid: `gdal_contour` reads the source cells anyway
         s_vec = cells / CONTOUR_SRC_CELLS_PER_S
         est = s_slope + s_vec
         fits = est <= budget_s
-        # bez rozpočtu je stĺpec len odhad času, nie súd nad ním
-        znak = "" if budget_s == float("inf") else (
-            "  ✓" if fits else "  × nad rozpočet")
-        print(f"  {res:>4g} m  {cells/1e9:5.2f} mld.  sklon ~{hms(s_slope)}"
-              f"  + vektory ~{hms(s_vec)} (trasuje sa na {vec:g} m)"
-              f"  = ~{hms(est)}{znak}")
+        # without a budget the column is an estimate, not a verdict
+        mark = "" if budget_s == float("inf") else (
+            "  ✓" if fits else "  × over budget")
+        print(f"  {res:>4g} m  {cells/1e9:5.2f} G  slope ~{hms(s_slope)}"
+              f"  + vectors ~{hms(s_vec)} (traced at {vec:g} m)"
+              f"  = ~{hms(est)}{mark}")
         if fits and chosen is None:
             chosen = res
     if chosen is None:
         chosen = RES_LADDER[-1]
-        print(f"::warning::Ani najhrubšia mriežka {chosen:g} m sa do rozpočtu "
-              f"{hms(budget_s)} nezmestí – skús menší výrez (input „area“).")
-    print(f"  vybrané         {chosen:g} m")
+        print(f"::warning::Not even the coarsest {chosen:g} m grid fits the "
+              f"{hms(budget_s)} budget – try a smaller cut-out (input \"area\").")
+    print(f"  picked          {chosen:g} m")
     print("─────────────────────────────────────────────────────", flush=True)
     return chosen
 
 
 def mosaic_cells(vrt):
-    """Koľko buniek má hotová mozaika sklonu – na odhad času vektorizácie."""
+    """How many cells the finished slope mosaic has – to estimate vectorising time."""
     try:
         info = json.loads(run(["gdalinfo", "-json", vrt]).stdout)
         w, h = info["size"]
@@ -228,7 +182,7 @@ def mosaic_cells(vrt):
 
 
 def mosaic_info(vrt):
-    """(šírka, výška, rozsah v metroch, počet zdrojov) hotovej mozaiky."""
+    """(width, height, extent in metres, source count) of a finished mosaic."""
     try:
         info = json.loads(run(["gdalinfo", "-json", vrt]).stdout)
         w, h = info["size"]
@@ -236,36 +190,23 @@ def mosaic_info(vrt):
         x0, y1 = gt[0], gt[3]
         x1, y0 = x0 + gt[1] * w, y1 + gt[5] * h
         try:
-            zdroje = open(vrt).read().count("<SourceFilename")
+            sources = open(vrt).read().count("<SourceFilename")
         except OSError:
-            zdroje = 0
-        return int(w), int(h), (x0, y0, x1, y1), zdroje
+            sources = 0
+        return int(w), int(h), (x0, y0, x1, y1), sources
     except Exception:
         return 0, 0, None, 0
 
 
 def clip_vrt(vrt, box, res, tmp, src_res=0.0):
-    """Mozaika orezaná presne na územie, ktoré si beh vypýtal – a keď treba,
-    rovno na hrubšej mriežke.
-
-    Sklad má absolútnu mriežku častí (to je jeho zmysel), takže mozaika je
-    zjednotenie celých častí, nie územia: 2 km² štvorec môže pretínať štyri
-    z nich. Bez orezu sa vektorizuje osemnásobok a plochy navyše skončia v mape
-    mimo územia.
-
-    Orezáva sa VRT, nie dáta – zápis do XML, takže to stojí milisekundy.
-    Hranice sa prichytávajú na mriežku `res`, nech sa bunky neposunú o pol bunky.
-
-    Zhrubnutie ide tou istou cestou: VRT si rovno vypýta hrubšie bunky
-    a priemeruje. `average`, nie `nearest` – ten by z 1 m poľa vybral každú
-    štvrtú bunku aj s jej zrnom.
-    """
+    """The mosaic clipped to exactly the area asked for – coarser when needed."""
+    # the VRT is clipped, not the data; `average`, since `nearest` keeps the grain
     x0 = math.floor(box[0] / res) * res
     y0 = math.floor(box[1] / res) * res
     x1 = math.ceil(box[2] / res) * res
     y1 = math.ceil(box[3] / res) * res
     out = os.path.join(tmp, "slope-clip.vrt")
-    hrubsie = ["-r", "average"] if src_res and res > src_res else []
+    coarser = ["-r", "average"] if src_res and res > src_res else []
     run(["gdalbuildvrt", "-q", "-te", repr(x0), repr(y0), repr(x1), repr(y1),
-         "-tr", repr(res), repr(res)] + hrubsie + [out, vrt])
+         "-tr", repr(res), repr(res)] + coarser + [out, vrt])
     return out

@@ -279,7 +279,7 @@ def ids_in(creds, parent):
             return out
 
 
-def id_z_odkazu(url):
+def id_from_link(url):
     """Id súboru z odkazu, aký píše `file_link` / `download_link`, inak ""."""
     text = (url or "").strip()
     if "/file/d/" in text:

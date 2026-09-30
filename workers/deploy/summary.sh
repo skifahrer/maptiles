@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
-# Súhrn behu „Build map" do záložky Summary: čo sa robilo, ako dlho a s akým
-# detailom. Riadky si každý job odložil do svojho `steps-*` artefaktu; `deploy`
-# ich zlepí a zoradí podľa poradového čísla, nie podľa času – joby bežia
-# súbežne, takže čas by hovoril o tom, ktorý runner bol rýchlejší.
+# The "Build map" run summary for the Summary tab: what ran, how long, in what detail.
 #
-# Vlastný skript, lebo build-map-region.yml je pri strope 128 KiB.
-#
-# Hodnoty chodia cez prostredie (viď krok „Súhrn buildu"): R_* výsledky jobov,
-# SRC_*/USED_* zdroje vrstiev, SIZE_LIMIT_MB, PAGE_URL, PUBLISH_PAGES,
-# PAGES_BUILD_TYPE, REGION_KEY, TEST_*, INPUTS_JSON. A `gh` a GITHUB_* od runnera.
+# Every job kept its lines in its `steps-*` artifact; `deploy` merges them and
+# sorts by order number, not time – jobs run in parallel. Values come through
+# the environment (see the step "Build summary"): R_* job results, SRC_*/USED_*
+# layer sources, SIZE_LIMIT_MB, PAGE_URL, PUBLISH_PAGES, PAGES_BUILD_TYPE,
+# REGION_KEY, TEST_*, INPUTS_JSON. Plus `gh` and GITHUB_* from the runner.
 
 set -uo pipefail
 S="$GITHUB_STEP_SUMMARY"
 hms() { printf '%d:%02d:%02d' $(( $1 / 3600 )) $(( $1 % 3600 / 60 )) $(( $1 % 60 )); }
 
-# celkový čas je čas workflowu, nie tohto jobu – joby bežia súbežne
+# the total is the workflow's time, not this job's – jobs run in parallel
 STARTED=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
   -q .run_started_at 2>/dev/null || echo '')
 if [ -n "$STARTED" ]; then
@@ -26,294 +23,282 @@ fi
 {
   echo "# ${REGION_NAME}"
   echo
-  echo "Celý beh: **$(hms "$TOTAL")** (joby bežali súbežne, súčet nižšie je väčší)"
+  echo "Whole run: **$(hms "$TOTAL")** (jobs ran in parallel, the sum below is larger)"
   echo
-  echo "| job | výsledok |"
+  echo "| job | result |"
   echo "|---|---|"
-  echo "| Príprava | ${R_PLAN} |"
-  echo "| Vrstevnice a skaly | ${R_CONTOURS} |"
-  echo "| Skaly z tieňovania | ${R_SHADING_ROCKS} |"
-  echo "| Značené trasy | ${R_TRAILS} |"
-  echo "| Krajinné prvky | ${R_FEATURES:-–} |"
-  echo "| Tieňovanie a 3D terén | ${R_TERRAIN} |"
-  echo "| Mapové dlaždice | ${R_TILES} |"
-  echo "| Ikonky a fonty | ${R_ASSETS} |"
+  echo "| Plan | ${R_PLAN} |"
+  echo "| Contours and rocks | ${R_CONTOURS} |"
+  echo "| Rocks from hillshading | ${R_SHADING_ROCKS} |"
+  echo "| Marked trails | ${R_TRAILS} |"
+  echo "| Landscape features | ${R_FEATURES:-–} |"
+  echo "| Hillshading and 3D terrain | ${R_TERRAIN} |"
+  echo "| Map tiles | ${R_TILES} |"
+  echo "| Icons and fonts | ${R_ASSETS} |"
   echo
-  echo "## Čo sa robilo"
+  echo "## What ran"
   echo
-  echo "| krok | trvanie | výsledok |"
+  echo "| step | duration | result |"
   echo "|---|--:|---|"
 } >> "$S"
 
 if [ -d steps-out ] && [ -n "$(find steps-out -name '*.tsv' 2>/dev/null)" ]; then
-  # prvé pole je len na zoradenie
+  # the first field only sorts
   cat steps-out/*.tsv | sort -n | while IFS=$'\t' read -r _ord name secs detail; do
     [ -n "$name" ] || continue
     printf '| %s | %s | %s |\n' "$name" "$(hms "${secs:-0}")" "$detail" >> "$S"
   done
 else
-  echo "| — | — | žiadny job sa nedostal po prvý meraný krok |" >> "$S"
+  echo "| — | — | no job got to its first measured step |" >> "$S"
 fi
 
-# detail skál: čísla píše rock-areas.py, job s vrstevnicami ich pribalil
-# k meraniu krokov
+# rock detail: rock-areas.py writes the numbers, the contours job packed them
 if [ -s steps-out/rock-stats.txt ]; then
   # shellcheck disable=SC1091
   . steps-out/rock-stats.txt
 fi
 
-# „Dáta · tieňované skaly" majú vlastnú tabuľku: nemajú sklon, mriežku ani
-# bunku DEM, takže tá dole by bola stĺpec otáznikov
-if [ "${source:-dem}" = "tienovanie" ]; then
+# rocks from hillshading have no slope, grid or DEM cell – a table of their own
+if [ "${source:-dem}" = "shading" ]; then
   {
     echo
-    echo "## Skalné plochy – z tieňovaných dlaždíc"
+    echo "## Rock areas – from hillshading tiles"
     echo
-    echo "| vlastnosť | hodnota |"
+    echo "| property | value |"
     echo "|---|---|"
-    echo "| územie | ${area_name:-celý región}${area_bbox:+ (\`$area_bbox\`)} |"
-    echo "| počet samostatných plôch | ${count:-?} |"
-    echo "| zdroj | ${asset:-release dem-rocks-img} |"
+    echo "| area | ${area_name:-whole region}${area_bbox:+ (\`$area_bbox\`)} |"
+    echo "| separate areas | ${count:-?} |"
+    echo "| source | ${asset:-store dem-rocks-img} |"
     echo
-    # buď si build hotové polygóny stiahol, alebo si podpipeline zavolal a tá
-    # ich v tomto behu spočítala – kým to bola jedna veta, tvrdila to prvé aj
-    # v druhom prípade
+    # downloaded, or computed by the sub-pipeline in this run – two different sentences
     if [ "${R_SHADING_ROCKS:-skipped}" = 'success' ]; then
-      echo "Tieto skaly **spočítal tento beh** – job *Skaly z tieňovania*,"
-      echo "ktorý si build zavolal sám. Hľadá ich ako tmavé plochy"
-      echo "v hillshade JPG dlaždiciach z freemap.sk (nie zo sklonu"
-      echo "výškového modelu), a hotové polygóny uložil do releasu"
-      echo "\`dem-rocks-img\`. Podrobné čísla (prahy, zoom, koľko dlaždíc)"
-      echo "sú v jeho časti tohto behu."
+      echo "These rocks were **computed by this run** – the job *Rocks from hillshading*,"
+      echo "which the build called itself. It finds them as dark areas in the"
+      echo "hillshade JPG tiles from freemap.sk (not from the elevation model's"
+      echo "slope) and saved the finished polygons to the store"
+      echo "\`dem-rocks-img\`. Detailed numbers (thresholds, zoom, tile count)"
+      echo "are in its part of this run."
     else
-      echo "Tieto skaly sa v tomto behu **nepočítali**. Našiel ich workflow"
-      echo "*Dáta · tieňované skaly* ako tmavé plochy v hillshade JPG"
-      echo "z freemap.sk a build si ich len stiahol z releasu \`dem-rocks-img\`."
-      echo "Podrobné čísla (prahy, zoom, koľko dlaždíc) sú v súhrne toho behu."
+      echo "These rocks were **not computed** in this run. The workflow"
+      echo "*Data · shaded rocks* found them as dark areas in the hillshade JPGs"
+      echo "from freemap.sk and the build only downloaded them from \`dem-rocks-img\`."
+      echo "Detailed numbers (thresholds, zoom, tile count) are in that run's summary."
     fi
     echo
-    echo "> ⚠️ Hillshade je osvetlený z jednej strany, takže sú v ňom tmavé"
-    echo "> **severozápadné** steny a svetlé juhovýchodné. Táto vrstva teda"
-    echo "> časť skál systematicky nemá. Skaly zo sklonu výškového modelu"
-    echo "> (\`rock_source: sonny\` / \`dmr35\` / \`dmr5\` / \`ugkk\`) touto"
-    echo "> vadou netrpia."
+    echo "> ⚠️ Hillshade is lit from one side, so **north-west** walls are dark"
+    echo "> and south-east ones light. This layer systematically misses part"
+    echo "> of the rocks. Rocks from the elevation model's slope"
+    echo "> (\`rock_source: sonny\` / \`dmr35\` / \`dmr5\` / \`ugkk\`) don't"
+    echo "> have this flaw."
   } >> "$S"
 elif [ -s steps-out/rock-stats.txt ]; then
   {
     echo
-    echo "## Skalné plochy – aký to je detail"
+    echo "## Rock areas – what detail"
     echo
-    # inak je pád vidieť len ako „počet plôch: 0", čo vyzerá ako rovina
+    # otherwise a failure shows only as "areas: 0", which looks like flat land
     if [ "${failed:-0}" = '1' ]; then
-      echo "> ❌ **Výpočet skál spadol** – vrstva je prázdna, do mapy ani do"
-      echo "> cache nešla a ďalší beh ju počíta znova. Dôvod je v logu jobu"
-      echo "> *Skaly*, v hláške nad „Skalné plochy sa nevygenerovali\"."
+      echo "> ❌ **The rock computation failed** – the layer is empty, it went"
+      echo "> neither to the map nor the cache and the next run computes it again."
+      echo "> The reason is in the *Rocks* job's log, in the message above"
+      echo "> \"No rock areas were made\"."
       echo
     fi
-    echo "| vlastnosť | hodnota |"
+    echo "| property | value |"
     echo "|---|---|"
-    echo "| územie | ${area_name:-celý región}${area_bbox:+ (\`$area_bbox\`)} |"
-    echo "| výškový model | ${rock_dem:-?} |"
-    echo "| počet samostatných plôch | ${count:-?} |"
-    echo "| obrys sa počíta na mriežke | ${grid_m:-?} m |"
-    echo "| buniek sklonu / čas výpočtu | ${cells_g:-?} mld. / ${took:-?} |"
-    echo "| bunka zdrojového DEM (${rock_dem:-?}) | ~${dem_cell_m:-?} m → **strop skutočného detailu** |"
-    echo "| najmenšia ponechaná plocha | ${min_area_m2:-?} m² |"
-    echo "| skutočne najmenšia plocha | ${min_m2:-?} m² |"
-    echo "| priemerná plocha | ${avg_m2:-?} m² |"
-    echo "| najväčšia plocha | ${max_ha:-?} ha |"
-    echo "| skalného terénu spolu | ${total_km2:-?} km² |"
-    if [ "${plne:-1}" = '1' ]; then
-      echo "| prah sklonu | ≥ ${slope_deg:-?}° (krok ${slope_step_deg:-?}°), jedna trieda |"
+    echo "| area | ${area_name:-whole region}${area_bbox:+ (\`$area_bbox\`)} |"
+    echo "| elevation model | ${rock_dem:-?} |"
+    echo "| separate areas | ${count:-?} |"
+    echo "| outline computed on a grid of | ${grid_m:-?} m |"
+    echo "| slope cells / computation time | ${cells_g:-?} G / ${took:-?} |"
+    echo "| source DEM cell (${rock_dem:-?}) | ~${dem_cell_m:-?} m → **cap of real detail** |"
+    echo "| smallest area kept | ${min_area_m2:-?} m² |"
+    echo "| actual smallest area | ${min_m2:-?} m² |"
+    echo "| mean area | ${avg_m2:-?} m² |"
+    echo "| largest area | ${max_ha:-?} ha |"
+    echo "| rock terrain in total | ${total_km2:-?} km² |"
+    if [ "${solid:-1}" = '1' ]; then
+      echo "| slope threshold | ≥ ${slope_deg:-?}° (step ${slope_step_deg:-?}°), one class |"
     else
-      echo "| prah sklonu | ≥ ${slope_deg:-?}° (steny od ${cliff_deg:-?}°, krok ${slope_step_deg:-?}°) |"
+      echo "| slope threshold | ≥ ${slope_deg:-?}° (cliffs from ${cliff_deg:-?}°, step ${slope_step_deg:-?}°) |"
     fi
-    if [ "${zapln_diery:-0}" = '1' ]; then
-      echo "| diery | **zaplnené** (\`rock_zapln_diery=1\`) – detail tvaru je preč |"
+    if [ "${fill_holes:-0}" = '1' ]; then
+      echo "| holes | **filled** (\`rock_fill_holes=1\`) – the shape's detail is gone |"
     else
-      echo "| plôch s dierou (miesto pod prahom vnútri skaly) | ${with_holes:-0} |"
-      echo "| vykrojené dierami | ${holes_km2:-0} km² |"
+      echo "| areas with a hole (a spot under the threshold inside a rock) | ${with_holes:-0} |"
+      echo "| cut out by holes | ${holes_km2:-0} km² |"
     fi
-    echo "| zjednodušenie obrysu | ${simplify_m:-?} m |"
-    echo "| zaoblenie rohov | priehyb ${smooth_sag:-0}/4 kroku mriežky dlaždice |"
+    echo "| outline simplification | ${simplify_m:-?} m |"
+    echo "| corner rounding | sag ${smooth_sag:-0}/4 of the tile grid step |"
     echo
-    echo "Obrys je izolínia sklonu – plocha má tvar, aký terén naozaj má."
-    if [ "${zapln_diery:-0}" = '1' ]; then
-      echo "Diery sú **zaplnené** (\`options: rock_zapln_diery=1\`), takže"
-      echo "z každej skaly je súvislá plocha bez vnútorného tvaru. Vypnutie"
-      echo "toho prepínača vráti police a medzery tam, kam patria."
+    echo "The outline is a slope isoline – an area has the shape the terrain really has."
+    if [ "${fill_holes:-0}" = '1' ]; then
+      echo "Holes are **filled** (\`options: rock_fill_holes=1\`), so every rock"
+      echo "is a solid area without inner shape. Turning that switch off brings"
+      echo "ledges and gaps back where they belong."
     else
-      echo "Kde je vnútri steny miesto s menším sklonom (polica, terasa),"
-      echo "vypadne z plochy **diera** a nezafarbí sa – aj keď je dookola"
-      echo "všade sklon nad prahom. Práve tie diery robia tvar skaly"
-      echo "čitateľným."
+      echo "Where a wall has a gentler spot inside (a ledge, a terrace), a **hole**"
+      echo "drops out of the area and isn't filled – even with slope over the"
+      echo "threshold all around. Those holes make a rock's shape readable."
     fi
-    if [ "${area_key:-cely}" != "cely" ]; then
+    case "${area_key:-whole}" in whole) ;; *)
       echo
-      echo "> ⚠️ **Vrstevnice aj skaly sú len na výreze „${area_name}“.**"
-      echo "> Vo zvyšku regiónu nebude v mape ani jedno – toto je beh"
-      echo "> na testovanie, nie na nasadenie. Pre celý región zvoľ"
-      echo "> v inpute \`area\` hodnotu \`cely_region\`."
-    fi
+      echo "> ⚠️ **Contours and rocks are only on the cut-out \"${area_name}\".**"
+      echo "> The rest of the region has none of them on the map – this is a run"
+      echo "> for testing, not deploying. For the whole region pick"
+      echo "> \`whole_region\` for the \`area\` input." ;;
+    esac
     echo
-    echo "> Mriežka ${grid_m:-?} m hovorí, ako jemne je obrys odkrokovaný;"
-    echo "> ale zdrojový DEM má bunku ~${dem_cell_m:-?} m, takže nové detaily"
-    echo "> terénu jemnejšia mriežka nevymyslí – len obrys vyhladí a presnejšie"
-    echo "> umiestni. Preto \`rock_res=auto\` nejde pod desatinu bunky DEM:"
-    echo "> ďalšie zjemňovanie by stálo štvornásobok času za nulový detail."
+    echo "> A ${grid_m:-?} m grid says how finely the outline is stepped; but the"
+    echo "> source DEM has a ~${dem_cell_m:-?} m cell, so a finer grid invents no"
+    echo "> new terrain detail – it only smooths and places the outline better."
+    echo "> That is why \`rock_res=auto\` doesn't go below a tenth of the DEM cell:"
+    echo "> refining further would cost four times the time for zero detail."
     echo
-    echo "> Zubatosť rieši zaoblenie rohov, nie hrubšia mriežka. Samotná"
-    echo "> izolínia zubatá nie je (priemerný lom 4,6°), zubatou ju robí až"
-    echo "> zjednodušenie obrysu (28,5°). Roh preto nahradí limitná krivka"
-    echo "> (kvadratický B-spline) vzorkovaná tak, aby sa od svojho presného"
-    echo "> priebehu neodchýlila viac než o zlomok kroku mriežky dlaždice –"
-    echo "> jemnejší detail sa do dlaždice aj tak nezmestí."
+    echo "> Jaggedness is solved by rounding corners, not a coarser grid. The"
+    echo "> isoline itself isn't jagged (mean bend 4.6°); simplifying the outline"
+    echo "> makes it so (28.5°). So a corner is replaced by the limit curve"
+    echo "> (quadratic B-spline), sampled to stray from its exact course by no"
+    echo "> more than a fraction of the tile grid step – finer detail doesn't fit"
+    echo "> a tile anyway."
   } >> "$S"
 fi
 
-# detail značených trás: čísla píše trails/routes.py
+# trail detail: trails/routes.py writes the numbers
 if [ -s steps-out/trail-stats.txt ]; then
   # shellcheck disable=SC1091
   . steps-out/trail-stats.txt
   {
     echo
-    echo "## Značené trasy – čo sa našlo v OSM"
+    echo "## Marked trails – what OSM had"
     echo
-    echo "| vlastnosť | hodnota |"
+    echo "| property | value |"
     echo "|---|---|"
-    echo "| relácií trás (\`type=route\`) | ${routes:-0} |"
-    echo "| z toho pomenovaných | ${named:-0} |"
-    echo "| ciest, po ktorých vedie trasa | ${ways:-0} |"
-    echo "| úsekov v dlaždiciach (cesta × trasa) | ${features:-0} |"
-    echo "| ciest s viac než jednou trasou | ${multi:-0} (najviac naraz ${max_lanes:-0}) |"
-    echo "| turistické / cyklo / MTB | ${type_hiking:-0} / ${type_bicycle:-0} / ${type_mtb:-0} |"
-    echo "| lyžiarske / jazdecké | ${type_ski:-0} / ${type_horse:-0} |"
-    echo "| diaľkové (medzinárodné + národné) | $(( ${tier_international:-0} + ${tier_national:-0} )) |"
-    echo "| farby značiek | ${colours:-–} |"
-    # zlom nad 120° spoj `miter` nezošije, takže sa v dátach delí
-    echo "| rozdelených zlomov nad 120° | ${eased:-0} |"
+    echo "| route relations (\`type=route\`) | ${routes:-0} |"
+    echo "| of them named | ${named:-0} |"
+    echo "| ways a route follows | ${ways:-0} |"
+    echo "| pieces in the tiles (way × route) | ${features:-0} |"
+    echo "| ways with more than one route | ${multi:-0} (at most ${max_lanes:-0} at once) |"
+    echo "| hiking / cycling / MTB | ${type_hiking:-0} / ${type_bicycle:-0} / ${type_mtb:-0} |"
+    echo "| ski / horse | ${type_ski:-0} / ${type_horse:-0} |"
+    echo "| long-distance (international + national) | $(( ${tier_international:-0} + ${tier_national:-0} )) |"
+    echo "| marking colours | ${colours:-–} |"
+    # a `miter` join can't stitch a bend over 120°, so the data splits it
+    echo "| bends over 120° split | ${eased:-0} |"
     echo
-    echo "Trasa sa kreslí ako farebný pásik **vedľa** cesty, každá vo"
-    echo "svojom pruhu – po jednej ceste ich vedie aj ${max_lanes:-1} naraz"
-    echo "a cesta pod nimi zostane vidieť aj s tým, aká je."
+    echo "A route is drawn as a coloured strip **beside** the way, each in its"
+    echo "own lane – up to ${max_lanes:-1} follow one way at once and the way"
+    echo "under them stays visible for what it is."
   } >> "$S"
 fi
 
 {
   echo
-  echo "## Rozpočet stránky"
+  echo "## Site budget"
   echo
-  echo "| časť | veľkosť |"
+  echo "| part | size |"
   echo "|---|--:|"
   for d in tiles terrain sprites fonts; do
     [ -d "_site/$d" ] && echo "| $d | $(du -sm "_site/$d" | cut -f1) MB |"
   done
-  echo "| **spolu** | **$(du -sm _site 2>/dev/null | cut -f1) MB** z ${SIZE_LIMIT_MB} MB |"
+  echo "| **total** | **$(du -sm _site 2>/dev/null | cut -f1) MB** of ${SIZE_LIMIT_MB} MB |"
   echo
-  echo "## Odkiaľ je terén"
+  echo "## Where the terrain is from"
   echo
-  echo "| vrstva | vybraný zdroj | naozaj použitý |"
+  echo "| layer | chosen source | really used |"
   echo "|---|---|---|"
-  echo "| vrstevnice | \`${SRC_CONTOURS}\` | ${USED_CONTOURS} |"
-  echo "| skaly | \`${SRC_ROCKS}\` | ${USED_ROCKS} |"
-  echo "| tieňovanie a 3D | \`${SRC_SHADING}\` | ${USED_SHADING} |"
+  echo "| contours | \`${SRC_CONTOURS}\` | ${USED_CONTOURS} |"
+  echo "| rocks | \`${SRC_ROCKS}\` | ${USED_ROCKS} |"
+  echo "| hillshading and 3D | \`${SRC_SHADING}\` | ${USED_SHADING} |"
   echo
-  echo "Vybraný a použitý sa líšia len vtedy, keď model nebol"
-  echo "k dispozícii a zapol sa náhradný (napr. 1 m ÚGKK → Sonny)."
-  if [ "$SRC_ROCKS" = 'tienovanie' ]; then
+  echo "Chosen and used differ only when a model wasn't available"
+  echo "and a fallback kicked in (e.g. 1 m ÚGKK → Sonny)."
+  if [ "$SRC_ROCKS" = 'shading' ]; then
     echo
-    echo "Tieňované dlaždice, z ktorých sú skaly, stiahol v tomto behu"
-    echo "job *Skaly z tieňovania* – sú v artefakte"
-    echo "\`dlazdice-tienovania-…\` a náhľad mozaiky v \`nahlad-…\`."
+    echo "The hillshading tiles the rocks come from were downloaded in this"
+    echo "run by the job *Rocks from hillshading* – they are in the artifact"
+    echo "\`shading-tiles-…\` and a mosaic preview in \`preview-…\`."
   fi
   echo
 } >> "$S"
 
-# s čím bol beh spustený tu už nie je zámerne: ten blok píše job `plan` na
-# začiatku behu. Keď beh o hodinu spadne, do tohto súhrnu sa nedostane, kým
-# súhrn prípravy je na stránke od prvej minúty.
+# what the run was started with is left out on purpose: the `plan` job writes it first
 
 {
-  echo "**Ako pregenerovať:** spusti workflow znova a vo výbere"
-  echo "\`rebuild\` zvoľ \`vrstevnice\`, \`skaly\` (vrátane uloženej"
-  echo "verzie v sklade \`dem-rocks\` a rozrobených obrysov podpipeline"
-  echo "\`Dáta · tieňované skaly\`), \`tienovanie\` alebo \`vsetko\`."
-  echo "Najprv sa zmaže príslušná cache – inak by sa stará verzia"
-  echo "len vrátila späť."
-  # tabuľka vyššie ukazuje `rebuild` tak, ako bol vo formulári – pri zapnutom
-  # teste by tvrdila `nic`, hoci sa počítalo všetko nanovo
+  echo "**How to regenerate:** run the workflow again and pick \`contours\`,"
+  echo "\`rocks\` (including the stored version in store \`dem-rocks\` and the"
+  echo "half-done outlines of the sub-pipeline \`Data · shaded rocks\`),"
+  echo "\`terrain\` or \`everything\` for \`rebuild\`."
+  echo "The matching cache is deleted first – otherwise the old version"
+  echo "would just come back."
+  # the table above shows `rebuild` as in the form; a test would claim `nothing`
   if [ "${TEST_KM2:-0}" != '0' ]; then
     echo
-    echo "V tomto behu to však nebolo treba: **rýchly test pregenerúva vždy"
-    echo "všetko**, aj pri \`rebuild: nic\` – inak by si ladil na výsledku,"
-    echo "ktorý sa vrátil z cache. Cache ostrého behu to nemaže, testovací"
-    echo "štvorec má vlastný kľúč."
+    echo "This run didn't need it though: **a quick test always regenerates"
+    echo "everything**, even with \`rebuild: nothing\` – otherwise you would tune"
+    echo "a result that came back from the cache. It doesn't delete the real run's"
+    echo "cache, the test square has a key of its own."
   fi
   echo
-  echo "**Rýchly testovací beh:** \`area\` (napr. \`vysoke_tatry\`) počíta"
-  echo "vrstevnice aj skaly len na výreze – z ~40 minút sa stane ~2."
-  echo "Ešte rýchlejší je switch \`test\` (predvolene odškrtnutý): vrstevnice,"
-  echo "skaly aj tieňovanie sa spočítajú len na štvorci so 4 km² zo stredu"
-  echo "výrezu a mapa sa otvorí rovno tam. **Samotná mapa ostáva celá podľa"
-  echo "nastavení regiónu** – kraj, cesty, trasy aj prvky. Iná veľkosť je"
-  echo "\`options: test_km2=5\`. Testovací beh sa zapisuje do"
-  echo "\`maps-test.json\`, nie do \`maps.json\` – mapa s terénom na pár"
-  echo "km² nemá čo robiť v zozname hotových máp."
+  echo "**Quick test run:** \`area\` (e.g. \`vysoke_tatry\`) computes contours"
+  echo "and rocks only on the cut-out – ~40 minutes become ~2."
+  echo "Faster still is the \`test\` switch (unticked by default): contours,"
+  echo "rocks and hillshading are computed only on a 4 km² square in the middle"
+  echo "of the cut-out and the map opens right there. **The map itself stays"
+  echo "whole by the region's settings** – region, roads, trails and features."
+  echo "Another size is \`options: test_km2=5\`. A test run is written to"
+  echo "\`maps-test.json\`, not \`maps.json\` – a map with terrain on a few km²"
+  echo "doesn't belong in the list of finished maps."
 } >> "$S"
 
 if [ "$PAGE_URL" != '' ]; then
-  echo -e "\n[Otvoriť mapu](${PAGE_URL})" >> "$S"
+  echo -e "\n[Open the map](${PAGE_URL})" >> "$S"
 elif [ "${PUBLISH_PAGES:-true}" = 'false' ]; then
-  # nie chyba, len rozhodnutie z formulára
-  echo -e "\n**Na GitHub Pages sa mapa nenasadila** (\`publish_pages=false\`) –" \
-       "hotová je len na Google Drive." >> "$S"
+  # not an error, a choice in the form
+  echo -e "\n**The map wasn't deployed to GitHub Pages** (\`publish_pages=false\`) –" \
+       "it is finished only on Google Drive." >> "$S"
 fi
 
-# Pages berie zdroj z vetvy: mapa je nasadená, ale najbližší push do master ju
-# prepíše. Beh s tým nemôže spraviť nič – je to nastavenie repozitára.
+# Pages takes its source from a branch: the next push to master overwrites the map
 if [ -n "${PAGES_BUILD_TYPE:-}" ] && [ "$PAGES_BUILD_TYPE" != 'workflow' ]; then
   {
     echo
-    echo "> ### ⚠️ Mapu na Pages prepíše najbližší merge"
+    echo "> ### ⚠️ The next merge overwrites the map on Pages"
     echo ">"
-    echo "> Zdroj GitHub Pages je nastavený na **vetvu**, nie na Actions"
-    echo "> (\`build_type=$PAGES_BUILD_TYPE\`). Popri tomto workflowe preto beží"
-    echo "> zabudovaný Jekyll builder (*pages build and deployment*), ktorý pri"
-    echo "> každom pushi do \`master\` nasadí koreň repozitára – teda README –"
-    echo "> a mapu z tohto behu prepíše."
+    echo "> The GitHub Pages source is set to a **branch**, not Actions"
+    echo "> (\`build_type=$PAGES_BUILD_TYPE\`). So beside this workflow the"
+    echo "> built-in Jekyll builder (*pages build and deployment*) runs and on"
+    echo "> every push to \`master\` deploys the repository root – the README –"
+    echo "> overwriting this run's map."
     echo ">"
-    echo "> Mapa je **teraz nasadená a funguje**; zmizne až pri ďalšom mergi."
+    echo "> The map is **deployed and working now**; it disappears with the next merge."
     echo ">"
-    echo "> **Oprava je jednorazová a musíš ju spraviť ty** (token na zmenu"
-    echo "> nastavení repozitára práva nemá):"
+    echo "> **The fix is one-off and yours to do** (the token has no right to"
+    echo "> change repository settings):"
     echo "> **Settings → Pages → Build and deployment → Source: \`GitHub Actions\`**"
   } >> "$S"
 fi
 
-# kde je testovací výrez: obrázok sa nasadil so stránkou, takže má verejnú
-# adresu; odkaz mieri na stred testovaného štvorca
+# where the test cut-out is: the image went out with the site, so it has a public address
 if [ "${TEST_KM2:-0}" != '0' ] && [ -n "${TEST_BBOX:-}" ]; then
   python3 workers/plan/test-map.py \
     --bbox="$TEST_BBOX" --full-bbox="${TEST_FULL_BBOX:-}" \
     --name="$REGION_NAME" \
-    --layers="vrstevnice: ${SRC_CONTOURS}, skaly: ${SRC_ROCKS}, tieňovanie: ${SRC_SHADING}" \
-    --png= --md=/tmp/kde-to-je.md \
-    --img-url="${PAGE_URL}kde-to-je.png" \
+    --layers="contours: ${SRC_CONTOURS}, rocks: ${SRC_ROCKS}, hillshading: ${SRC_SHADING}" \
+    --png= --md=/tmp/where-it-is.md \
+    --img-url="${PAGE_URL}where-it-is.png" \
     --pages-url="$PAGE_URL" --region="${REGION_KEY:-}" || true
-  if [ -s /tmp/kde-to-je.md ]; then
-    { echo; cat /tmp/kde-to-je.md; } >> "$S"
+  if [ -s /tmp/where-it-is.md ]; then
+    { echo; cat /tmp/where-it-is.md; } >> "$S"
   else
-    { echo; echo "### Testovací výrez"; echo;
-      echo "bbox \`${TEST_BBOX}\` (${TEST_KM2} km²) – obrázok sa nepodarilo vyrobiť.";
+    { echo; echo "### Test cut-out"; echo;
+      echo "bbox \`${TEST_BBOX}\` (${TEST_KM2} km²) – the image couldn't be made.";
     } >> "$S"
   fi
 fi
 
-# čo spadlo: tabuľka jobov hore povie „failure" a tým to končí. Tu je krok,
-# trvanie a posledné `::error::` z logu. Trvanie rozlíši `cancelled` timeoutom
-# jobu od zrušenia zvonku. `|| true` všade – chýbajúce právo alebo nedostupný
-# log nemá zhodiť súhrn.
-SPADLO=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
+# what failed: step, duration and the last `::error::` lines; `|| true` so the summary survives
+FAILED=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
   --jq '.jobs[]
         | select(.conclusion == "failure" or .conclusion == "cancelled")
         | [.id, .name, .conclusion, .started_at, .completed_at,
@@ -321,31 +306,31 @@ SPADLO=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_p
              | .name] | first // "—"),
            .html_url] | @tsv' 2>/dev/null || true)
 
-if [ -n "$SPADLO" ]; then
-  { echo; echo "## Čo spadlo"; echo; } >> "$S"
+if [ -n "$FAILED" ]; then
+  { echo; echo "## What failed"; echo; } >> "$S"
   while IFS=$'\t' read -r jid jname jconcl jstart jend jstep jurl; do
     [ -n "${jname:-}" ] || continue
     if [ -n "${jstart:-}" ] && [ -n "${jend:-}" ]; then
-      TRVALO=$(( $(date -d "$jend" +%s) - $(date -d "$jstart" +%s) ))
+      TOOK=$(( $(date -d "$jend" +%s) - $(date -d "$jstart" +%s) ))
     else
-      TRVALO=0
+      TOOK=0
     fi
     {
-      echo "### [$jname]($jurl) – $jconcl po $(hms "$TRVALO")"
+      echo "### [$jname]($jurl) – $jconcl after $(hms "$TOOK")"
       echo
-      echo "Zastavilo sa na kroku **$jstep**."
-      if [ "$jconcl" = "cancelled" ] && [ "$TRVALO" -gt 3000 ]; then
+      echo "It stopped at the step **$jstep**."
+      if [ "$jconcl" = "cancelled" ] && [ "$TOOK" -gt 3000 ]; then
         echo
-        echo "> Zrušené po $(hms "$TRVALO") – to nie je pád, to je strop."
-        echo "> Buď timeout jobu, alebo rozpočet výpočtu. Skús menší výrez,"
-        echo "> nižší zoom alebo hrubšiu mriežku."
+        echo "> Cancelled after $(hms "$TOOK") – not a failure, a cap."
+        echo "> Either the job timeout or the computation budget. Try a smaller"
+        echo "> cut-out, a lower zoom or a coarser grid."
       fi
     } >> "$S"
-    # čas na začiatku riadku ide preč – zalomil by tabuľku
-    CHYBY=$(gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$jid/logs" 2>/dev/null \
+    # the timestamp at the start of a line goes – it would break the table
+    ERRORS=$(gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$jid/logs" 2>/dev/null \
       | grep -a "##\[error\]" | tail -3 | sed 's/^[0-9TZ:.-]* //' || true)
-    if [ -n "$CHYBY" ]; then
-      { echo; echo '```'; echo "$CHYBY"; echo '```'; echo; } >> "$S"
+    if [ -n "$ERRORS" ]; then
+      { echo; echo '```'; echo "$ERRORS"; echo '```'; echo; } >> "$S"
     fi
-  done <<< "$SPADLO"
+  done <<< "$FAILED"
 fi

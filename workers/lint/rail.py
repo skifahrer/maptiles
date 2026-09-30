@@ -100,10 +100,10 @@ def main():
     if "signs.mjs" not in build:
         bad.append(f"{BUILD}: značky krajiny sa nepečú – appka by kreslila predvolené.")
     with open(os.path.join(_WORKERS, "data", "packages.json"), encoding="utf-8") as f:
-        zel = [b for b in json.load(f)["baliky"] if b["kluc"] == "zeleznice"]
-    if not zel or "rail_signs" not in (zel[0].get("manifest") or []):
-        bad.append("workers/data/packages.json: `zeleznice` nenesie `rail_signs` – "
-                   "značky by do balíka nešli.")
+        rail = [p for p in json.load(f)["packages"] if p["key"] == "railways"]
+    if not rail or "rail_signs" not in (rail[0].get("manifest") or []):
+        bad.append("workers/data/packages.json: `railways` doesn't carry `rail_signs` – "
+                   "the signs wouldn't reach the package.")
 
     for b in bad:
         print(f"::error::{b}")

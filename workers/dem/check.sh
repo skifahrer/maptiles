@@ -1,54 +1,46 @@
 #!/usr/bin/env bash
-# Je v sklade na Drive výškový model pre naše územie – a keď nie, čo doplniť?
+# Is the height model for our area in the Drive store – and if not, what to refill?
 #
-# Pre každú z troch vrstiev sa spýta `workers/dem/target.py`, ktorý sklad
-# a ktoré súbory jej zdroj potrebuje, a pozrie sa, či tam sú.
+# For each of the three layers `workers/dem/target.py` says which store and
+# files its source needs; this looks whether they are there. `layer_area_key`
+# below must match the three `fetch.sh` calls – the workflow lint guards it.
 #
-# `dmr5` má dve podoby a prepína medzi nimi kľúč výrezu, ktorý vrstva podá do
-# `fetch.sh`: vrstevnice a skaly podávajú výrez, tieňovanie nie (robí sa na
-# celý región, kde 1 m verzia neexistuje). Tabuľka `layer_area_key` nižšie
-# musí sedieť s tými troma volaniami – stráži to lint workflowov.
+# The cut-out goes as a bbox, not a range key: `Data · DMR 5.0` must read
+# exactly the area the run asked for. The asset name goes separately.
 #
-# Výrez sa podáva bboxom a nie kľúčom pohoria: `Dáta · DMR 5.0` má dostať
-# presne to územie, ktoré si beh vypýtal. Kľúč by si tá pipeline vyriešila
-# z `areas.json` druhýkrát a prečítala celý obdĺžnik. Meno assetu ide zvlášť.
-#
-# Použitie:
 #   BBOX=W,S,E,N AREA_KEY=vysoke_tatry AREA_BBOX=W,S,E,N \
 #   SRC_CONTOURS=dmr5 SRC_ROCKS=dmr5 SRC_TERRAIN=dmr5 \
 #   GDRIVE_CREDENTIALS=… workers/dem/check.sh
 #
-# Do $GITHUB_OUTPUT: `demkey_<vrstva>`, `mirror_<vrstva>`, `mirror_dmr5_area`,
+# Into $GITHUB_OUTPUT: `demkey_<layer>`, `mirror_<layer>`, `mirror_dmr5_area`,
 # `mirror_dmr5_asset`, `mirror_dmr5_tiles`.
 set -euo pipefail
 
-# cesty k susedom sa skladajú z vlastného priečinka – natvrdo napísaná cesta
-# prežila presun do priečinkov a spadla až na runneri
+# neighbour paths are built from the own folder, not hard-coded
 HERE="$(dirname "$0")"
 WORKERS="$(dirname "$HERE")"
 BBOX="${BBOX:-}"
-AREA_KEY="${AREA_KEY:-cely}"
-# bbox výrezu, už pretnutý s regiónom; prázdny = výrezom je celý región
+AREA_KEY="${AREA_KEY:-whole}"
+# the cut-out bbox, intersected with the region; empty = the whole region
 AREA_BBOX="${AREA_BBOX:-$BBOX}"
 OUT="${GITHUB_OUTPUT:-/dev/null}"
 
-# ktorá vrstva podáva kľúč výrezu – viď hlavičku
+# which layer passes the cut-out key – see the header
 layer_area_key() {
   case "$1" in
-    terrain) echo cely ;;
+    terrain) echo whole ;;
     *) echo "$AREA_KEY" ;;
   esac
 }
 
-MIRROR=""       # už zaradené na doplnenie (podľa PODOBY, nie podľa zdroja)
-MIRROR_LIST=""  # na výpis
-DMR5_AREA=""    # bbox, ktorý sa má prečítať ako výrez v plnom rozlíšení
-DMR5_ASSET=""   # a meno, pod ktorým ho build hľadá
-DMR5_TILES=""   # ktoré stupne doplniť ako 1° dlaždice
+MIRROR=""       # queued for refilling (by SHAPE, not source)
+MIRROR_LIST=""  # for the log
+DMR5_AREA=""    # a bbox to read as a full-resolution cut-out
+DMR5_ASSET=""   # and the name the build looks for it by
+DMR5_TILES=""   # which degrees to refill as 1° tiles
 
-# pozrie sa na jeden zdroj: či pre naše územie v jeho sklade niečo je a aký je
-# otlačok obsahu
-check_source() { # $1 = vrstva (na výpis), $2 = zdroj
+# one source: is anything for our area in its store, and its content fingerprint
+check_source() { # $1 = layer (for the log), $2 = source
   local what="$1" src="$2" akey rel assets names need=false
   local form target want mirror degrees
   akey=$(layer_area_key "$what")
@@ -58,80 +50,70 @@ check_source() { # $1 = vrstva (na výpis), $2 = zdroj
   form=$(tget form); rel=$(tget store); want=$(tget assets)
   mirror=$(tget mirror); degrees=$(tget degrees)
 
-  # meno aj veľkosť naraz: z mien sa hľadá, z celého riadku počíta otlačok.
-  # `|| true`: keď sa sklad ešte nezaložil, `pipefail` by zhodil celý krok.
+  # name and size at once: names are searched, whole lines fingerprinted;
+  # `|| true`: a store not created yet would fail the step under `pipefail`
   assets=$({ python3 "$WORKERS/drive/store.py" --index --store="$rel" \
     2>/dev/null || true; } | sort)
   names=$(printf '%s\n' "$assets" | cut -d: -f1)
 
   if [ "$form" = 'area' ]; then
-    # plné rozlíšenie sa zrkadlí po výrezoch (1° dlaždica má pri 1 m ~48 GB)
+    # full resolution is mirrored by cut-outs (a 1° tile is ~48 GB at 1 m)
     if printf '%s\n' "$names" | grep -qx "$want"; then
-      echo "$what ($src): $want je v sklade $rel ✓"
+      echo "$what ($src): $want is in store $rel ✓"
     else
-      echo "$what ($src): $want v sklade $rel nie je → doplní sa"
+      echo "$what ($src): $want isn't in store $rel → refilling"
       need=true
     fi
   elif [ -z "$want" ]; then
-    # vlastný región bez bboxu – zoznam dlaždíc sa nedá zistiť
+    # an own region without a bbox – the tile list can't be known
     [ -z "$assets" ] && need=true || true
-    echo "$what ($src): bbox nie je známy; sklad $rel má $(printf '%s' "$assets" | grep -c . || true) súborov → doplniť: $need"
+    echo "$what ($src): the bbox is unknown; store $rel has $(printf '%s' "$assets" | grep -c . || true) files → refill: $need"
   else
-    local have=0 total=0 t chybaju=""
+    local have=0 total=0 t missing=""
     for t in $want; do
       total=$(( total + 1 ))
       if printf '%s\n' "$names" | grep -qx "$t"; then
         have=$(( have + 1 ))
       else
-        chybaju="$chybaju $t"
+        missing="$missing $t"
       fi
     done
-    # koľko z nich musí byť v sklade, závisí od toho, či sa dá doplniť práve
-    # tá chýbajúca.
-    #
-    # `dmr5`: áno – doplnenie číta presne tie stupne, ktoré mu podáme, a uloží
-    # každý prečítaný (prázdna dlaždica je záznam, že sa tam pozeralo), takže
-    # chýbajúce meno znamená „toto sme nikdy nečítali".
-    # `sonny`/`dmr35`: nie – sťahuje sa celý produkt naraz a prázdne dlaždice
-    # sa zahadzujú, takže chýbajúce meno môže znamenať aj „tam ten model nemá
-    # dáta". Pokrytie tam meria `coverage.py` až pri sťahovaní.
-    #
-    # Meno v sklade ešte nie je model: `trust.py` otvára podozrivo malé súbory
-    # (veľkosť je vo výpise skladu), inak by prázdna dlaždica prešla ako hotová.
+    # how many must be there depends on whether the missing one can be refilled:
+    # `dmr5` stores every degree it read (empty too), so a missing name means
+    # “never read”; `sonny`/`dmr35` drop empty tiles, so it may mean “no data”.
+    # A name isn't a model yet: `trust.py` opens suspiciously small files.
     if [ "$src" = 'dmr5' ] && [ "$have" -gt 0 ]; then
-      local male nedoveryhodne
-      male=$(printf '%s\n' "$assets" | python3 "$HERE/trust.py" \
+      local small untrusted
+      small=$(printf '%s\n' "$assets" | python3 "$HERE/trust.py" \
         --store="$rel" --names="$want" --only-suspect)
-      if [ -n "$male" ]; then
-        # `gdalinfo` až keď je čo otvárať: inštalácia GDALu je pol minúty
-        # na jobe, ktorý inak trvá osem sekúnd
+      if [ -n "$small" ]; then
+        # `gdalinfo` only when there is something to open: installing GDAL takes half a minute
         if ! command -v gdalinfo >/dev/null 2>&1; then
-          echo "  (dopĺňam gdal-bin – v sklade je podozrivo malá dlaždica)"
+          echo "  (adding gdal-bin – the store holds a suspiciously small tile)"
           sudo apt-get update -qq
           sudo apt-get install -y -qq gdal-bin
         fi
-        nedoveryhodne=$(printf '%s\n' "$assets" | python3 "$HERE/trust.py" \
+        untrusted=$(printf '%s\n' "$assets" | python3 "$HERE/trust.py" \
           --store="$rel" --names="$want")
-        for t in $nedoveryhodne; do
-          case " $chybaju " in
+        for t in $untrusted; do
+          case " $missing " in
             *" $t "*) ;;
-            *) chybaju="$chybaju $t"; have=$(( have - 1 )) ;;
+            *) missing="$missing $t"; have=$(( have - 1 )) ;;
           esac
         done
       fi
     fi
     if [ "$src" = 'dmr5' ]; then
-      [ -n "$chybaju" ] && need=true || true
+      [ -n "$missing" ] && need=true || true
     else
       [ "$have" -eq 0 ] && need=true || true
     fi
-    echo "$what ($src): dlaždíc pre bbox $total, v sklade $rel $have → doplniť: $need"
-    [ -n "$chybaju" ] && echo "  chýbajú:$chybaju" || true
-    # doplniť treba len chýbajúce stupne, nie celý bbox – jeden stupeň je pol
-    # hodiny čítania z Drive. Meno dlaždice hovorí svoj juhozápadný roh, takže
-    # obálka sa spočíta z mien.
-    if [ "$need" = true ] && [ "$src" = 'dmr5' ] && [ -n "$chybaju" ]; then
-      degrees=$(python3 - $chybaju <<'PY'
+    echo "$what ($src): tiles for the bbox $total, in store $rel $have → refill: $need"
+    [ -n "$missing" ] && echo "  missing:$missing" || true
+    # refill only the missing degrees (half an hour of Drive reading each);
+    # a tile name is its south-west corner, so the envelope comes from names
+    if [ "$need" = true ] && [ "$src" = 'dmr5' ] && [ -n "$missing" ]; then
+      degrees=$(python3 - $missing <<'PY'
 import sys
 lons, lats = [], []
 for t in sys.argv[1:]:
@@ -146,19 +128,16 @@ PY
   fi
 
   if [ "$need" = true ]; then
-    # deduplikuje sa podľa podoby, nie podľa zdroja: pri jedinom `dmr5` môžu
-    # chýbať oba tvary naraz
+    # deduplicated by shape, not source: one `dmr5` may miss both shapes
     case " $MIRROR " in
-      *" $mirror "*) echo "  ($mirror už dopĺňa iná vrstva)" ;;
+      *" $mirror "*) echo "  ($mirror is refilled by another layer already)" ;;
       *)
         MIRROR="$MIRROR $mirror"
         MIRROR_LIST="$MIRROR_LIST $mirror"
         if [ "$src" = 'dmr5' ]; then
-          # DMR 5.0 nedopĺňa update-dem.yml – ten ho stiahnuť nevie (145 GB
-          # proti ~60 GB voľným). Robí to `Dáta · DMR 5.0` cez HTTP Range.
+          # DMR 5.0 is refilled by `Data · DMR 5.0` over HTTP Range (145 GB won't download)
           if [ "$form" = 'area' ]; then
-            # bbox, nie kľúč: čítať sa má presne to, čo si beh vypýtal.
-            # Meno assetu je to isté `$want`, ktoré sa vyššie hľadalo v sklade.
+            # a bbox, not a key; the asset name is the `$want` searched above
             DMR5_AREA="$AREA_BBOX"
             DMR5_ASSET="$want"
           else
@@ -170,11 +149,10 @@ PY
         ;;
     esac
   fi
-  # otlačok len z dlaždíc, ktoré vrstva naozaj číta: z celého skladu ho
-  # zmenilo aj doplnenie susedného kraja a cache padla všetkým
+  # a fingerprint only of the tiles the layer reads, or a neighbour's refill drops every cache
   DEMKEY=$(printf '%s\n' "$assets" | awk -v want="$want" '
-    BEGIN { n = split(want, w, " "); for (i = 1; i <= n; i++) chce[w[i]] = 1 }
-    n == 0 || substr($0, 1, index($0, ":") - 1) in chce
+    BEGIN { n = split(want, w, " "); for (i = 1; i <= n; i++) wanted[w[i]] = 1 }
+    n == 0 || substr($0, 1, index($0, ":") - 1) in wanted
   ' | sha256sum | cut -c1-12)
 }
 
@@ -186,32 +164,27 @@ for pair in \
   src="${pair#*:}"
   DEMKEY=""
   NEED_SRC=""
-  # skaly z DMR 5.0 si DEM nepýtajú: sklon si ho `slope-chunks.py` číta z Drive
-  # po častiach a každú si odloží do vlastného skladu
+  # DMR 5.0 rocks read slope from Drive in parts (`slope-chunks.py`), no DEM refill
   if [ "$layer" = 'rocks' ] && [ "$src" = 'dmr5' ]; then
-    echo "rocks ($src): DEM sa nedopĺňa – sklon sa číta z Drive po častiach"
-  # prázdny zdroj = vrstva je vypnutá (alebo skaly idú z tieňovania)
-  elif [ -n "$src" ] && [ "$src" != 'ziadne' ]; then
+    echo "rocks ($src): no DEM refill – slope is read from Drive in parts"
+  # an empty source = the layer is off (or rocks come from hillshading)
+  elif [ -n "$src" ] && [ "$src" != 'none' ] && [ "$src" != 'ziadne' ]; then
     check_source "$layer" "$src"
   fi
   echo "demkey_$layer=$DEMKEY" >> "$OUT"
   echo "mirror_$layer=$NEED_SRC" >> "$OUT"
 done
 
-# dlaždice DMR 5.0 sa dopĺňajú po celých stupňoch a to je drahé – nech je to
-# vidieť z logu, a nie až z trvania jobu
+# DMR 5.0 tiles refill by whole degrees, which is expensive – say so in the log
 if [ -n "$DMR5_TILES" ]; then
   IFS=, read -r DW DS DE DN <<< "$DMR5_TILES"
   DEG=$(( (DE - DW) * (DN - DS) ))
-  echo "DMR 5.0 dlaždice: doplní sa $DEG stupňov ($DMR5_TILES)"
-  # odhad, nie meranie: jeden stupeň v 5 m sa číta z pyramídy 4 m, čo je
-  # rádovo dve gigabajty a pol hodiny na stupeň
+  echo "DMR 5.0 tiles: refilling $DEG degrees ($DMR5_TILES)"
+  # an estimate: a 5 m degree is read from the 4 m pyramid, ~2 GB and half an hour
   if [ "$DEG" -gt 2 ]; then
-    echo "::warning::Doplnenie $DEG stupňov DMR 5.0 je rádovo $(( DEG / 2 ))–$DEG hodín. Kratšie to ide s menším územím (input \`area\`) alebo so switchom \`test\`; hrubší model (sonny, dmr35) je hotový hneď."
+    echo "::warning::Refilling $DEG degrees of DMR 5.0 takes about $(( DEG / 2 ))–$DEG hours. A smaller area (input \`area\`) or the switch \`test\` is quicker; a coarser model (sonny, dmr35) is ready at once."
   fi
-  # a naopak: keď je územie oveľa menšie než stupeň, ktorý sa preň číta.
-  # Dlaždica sa vždy musí prečítať celá – jej meno je sľub o celom stupni.
-  # Raz doplnená v sklade ostane, takže ďalší test na tom stupni je zadarmo.
+  # and the other way: an area far smaller than the degree read for it
   python3 - "$BBOX" "$DEG" <<'PY' || true
 import math, sys
 try:
@@ -222,16 +195,16 @@ deg = int(sys.argv[2])
 km2 = ((e - w) * 111.32 * math.cos(math.radians((s + n) / 2))) * ((n - s) * 110.54)
 tile_km2 = deg * 111.32 * 110.54 * math.cos(math.radians((s + n) / 2))
 if km2 > 0 and tile_km2 / km2 > 50:
-    print(f"::warning::Tieňovanie z DMR 5.0 potrebuje {deg}° dlaždice, čo je "
-          f"~{tile_km2:.0f} km² čítania na územie s {km2:.0f} km² "
-          f"({tile_km2 / km2:.0f}× viac). Dlaždica sa musí prečítať celá – jej "
-          f"meno je sľub o celom stupni. Je to rádovo pol hodiny na stupeň; "
-          f"na rýchly test je lacnejšie `shading_source: sonny`. Raz doplnená "
-          f"dlaždica v sklade ostane, takže ďalší beh ju už neplatí.")
+    print(f"::warning::Hillshading from DMR 5.0 needs {deg}° tiles, "
+          f"~{tile_km2:.0f} km² of reading for an area of {km2:.0f} km² "
+          f"({tile_km2 / km2:.0f}× more). A tile must be read whole – its name "
+          f"promises the whole degree. About half an hour per degree; for a quick "
+          f"test `shading_source: sonny` is cheaper. A refilled tile stays in the "
+          f"store, so the next run doesn't pay for it.")
 PY
 fi
 if [ -n "$DMR5_AREA" ]; then
-  echo "DMR 5.0 výrez: prečíta sa $DMR5_AREA → $DMR5_ASSET"
+  echo "DMR 5.0 cut-out: reading $DMR5_AREA → $DMR5_ASSET"
 fi
 {
   echo "mirror_dmr5_area=$DMR5_AREA"
@@ -239,4 +212,4 @@ fi
   echo "mirror_dmr5_tiles=$DMR5_TILES"
 } >> "$OUT"
 
-echo "Doplniť treba:${MIRROR_LIST:- nič}"
+echo "To refill:${MIRROR_LIST:- nothing}"

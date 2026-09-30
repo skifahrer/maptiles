@@ -1,70 +1,51 @@
 #!/usr/bin/env bash
-# Jeden úsek štafety dávky „Regenerate state": počkaj na kraj, ktorý beží,
-# spusti nad ďalším to, čo sa má pregenerovať, a odovzdaj štafetu sám sebe.
+# One relay leg of “Regenerate state”: over each region it starts one thing,
+# the one the form names (`what`); `workers/state/jobs.py` says what that runs.
 #
-# Samotná štafeta je vo `workers/state/estafeta.sh` – to isté jadro, aké
-# používa „Build map state". Tu ostáva len to, čím sa táto dávka líši:
-# nespúšťa celý build, ale jednu vec, a ktorú, hovorí formulár (`co`).
-#
-# Čo sa nad krajom spustí, nerozhoduje tento skript – číselník je vo
-# `workers/state/jobs.py`. Keby to bol `case` tu, pribudnutá voľba by vo
-# formulári bola a štafeta by na nej spadla, alebo by spustila niečo iné a beh
-# by bol zelený.
-#
-# Dve cesty, dve ceny: body, línie a navigácia idú cez „Pregeneruj vrstvu
-# kraja" (minúty), vrstevnice, skaly a tieňovanie potrebujú sklad výškového
-# modelu, tak idú celým buildom kraja s `rebuild` (hodiny).
-#
-# Z prostredia (viď `.github/workflows/regenerate-state.yml`):
-#   COUNTRY CO POKRACOVANIE REF SELF REPO SUMMARY GH_TOKEN
+# From the environment (see `.github/workflows/regenerate-state.yml`):
+#   COUNTRY WHAT CONTINUATION REF SELF REPO SUMMARY GH_TOKEN
 #   CONTOUR_SOURCE ROCK_SOURCE SHADING_SOURCE ROCK_SLOPE TEST OPTIONS
 set -euo pipefail
 
-CO="${CO:?chýba, čo sa má pregenerovať}"
+WHAT="${WHAT:?what to regenerate is missing}"
 SELF="${SELF:-regenerate-state.yml}"
-# Kam sa to nad krajom posiela, hovorí číselník – nie tento skript.
-REGION_WF="$(python3 workers/state/jobs.py --workflow="$CO")"
-REGION_MENO="$(python3 workers/state/jobs.py --meno="$CO")"
-CO_POPIS="$(python3 workers/state/jobs.py --popis="$CO")"
+REGION_WF="$(python3 workers/state/jobs.py --workflow="$WHAT")"
+REGION_NAME="$(python3 workers/state/jobs.py --name="$WHAT")"
+WHAT_DESCRIPTION="$(python3 workers/state/jobs.py --describe="$WHAT")"
 
-TITUL="Pregenerovanie · ${COUNTRY:-?} · $CO"
-POPIS="Pregeneruje sa **$CO_POPIS**.
-Nad krajom to robí vlastný beh **$REGION_MENO**; dávka ich spúšťa jeden po
-druhom a po každom si spustí ďalší svoj beh – job má strop 6 h, dávka trvá aj
-deň, a tak ju nemá čo zabiť."
+TITLE="Regeneration · ${COUNTRY:-?} · $WHAT"
+DESCRIPTION="Regenerating **$WHAT_DESCRIPTION**.
+Over each region it is a run of **$REGION_NAME**; the batch starts them one
+by one and dispatches its own next run after each – a job has a 6 h cap, a
+batch takes a day, so nothing can kill it."
 
-# ---------- odovzdanie štafety ----------
-# Ten istý workflow, ten istý formulár, iný kolík. Nastavenia sa podávajú
-# CELÉ a zakaždým: reťaz je séria samostatných behov a beh, ktorý by si ich
-# nepodal, by pregeneroval niečo iné – a bol by pri tom zelený.
-odovzdaj() {
-  local kolik="$1"
-  echo "Odovzdávam štafetu: pokracovanie=$kolik"
+# same workflow, same form, another baton; settings go whole every time
+hand_over() {
+  local baton="$1"
+  echo "Handing the relay over: continuation=$baton"
   gh workflow run "$SELF" --repo "$REPO" --ref "$REF" \
     -f country="$COUNTRY" \
-    -f co="$CO" \
+    -f what="$WHAT" \
     -f contour_source="${CONTOUR_SOURCE:-dmr5}" \
     -f rock_source="${ROCK_SOURCE:-dmr5}" \
     -f shading_source="${SHADING_SOURCE:-dmr5}" \
     -f rock_slope="${ROCK_SLOPE:-50}" \
     -f test="${TEST:-false}" \
     -f options="${OPTIONS:-}" \
-    -f pokracovanie="$kolik"
+    -f continuation="$baton"
 }
 
-# ---------- spustenie nad jedným krajom ----------
-# Polia vypíše číselník (`--polia`), po riadkoch `kľúč=hodnota`. Čítajú sa
-# celé riadky a nie slová: `options` je jedno pole s medzerami.
-spusti_kraj() {
-  local kraj="$1" riadok
-  local -a args=(-f "region=$kraj")
-  while IFS= read -r riadok; do
-    [ -n "$riadok" ] || continue
-    args+=(-f "$riadok")
-  done < <(python3 workers/state/jobs.py --polia="$CO")
+# fields come from the registry line by line: `options` holds spaces
+start_region() {
+  local region="$1" line
+  local -a args=(-f "region=$region")
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    args+=(-f "$line")
+  done < <(python3 workers/state/jobs.py --fields="$WHAT")
   gh workflow run "$REGION_WF" --repo "$REPO" --ref "$REF" "${args[@]}"
 }
 
-# shellcheck source=workers/state/estafeta.sh
-. workers/state/estafeta.sh
-estafeta_hlavna
+# shellcheck source=workers/state/relay-core.sh
+. workers/state/relay-core.sh
+relay_main

@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Koľko hladenia vrstevníc je akurát – merané, nie odhadnuté.
+"""How much contour smoothing is just right – measured, not guessed.
 
-Nie je to časť pipeline: nástroj, ktorým sa vyberali `CONTOUR_DEM_LOWPASS`,
-`CONTOUR_SIMPLIFY` a `CONTOUR_SMOOTH` v build-map-region.yml. Model terénu má
-aj tvary široké pár metrov, aby bolo vidieť, čo z nich hladenie zmaže.
-Meria sa aj po mriežke dlaždice – zaokrúhlené súradnice sú tie schodíky,
-ktoré vidno pri max zoome. Zaobľovanie sa berie priamo zo smooth-shapes.py.
+Not part of the pipeline: the tool that picked `CONTOUR_DEM_LOWPASS`,
+`CONTOUR_SIMPLIFY` and `CONTOUR_SMOOTH`. Also measured on the tile grid, whose
+rounded coordinates are the stairs seen at max zoom.
 
     python3 workers/contours-rocks/measure-smoothing.py [--seed=7]
 """
@@ -17,7 +15,7 @@ import sys
 
 import numpy as np
 
-# tá istá krivka, akú posiela pipeline; pomlčka v mene sa cez import nedá
+# the same curve the pipeline sends; the dash in the name blocks import
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -30,17 +28,17 @@ def _load(name, fname):
 
 
 shapes = _load("smooth_shapes", "smooth-shapes.py")
-# krok mriežky dlaždice hovorí lib/cell.py
+# lib/cell.py tells the tile grid step
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "lib"))
 import cell  # noqa: E402
 
-NX, NY = 640, 320          # 1 m mriežka
-LAT = 49.1                 # zemepisná šírka (Tatry) – kvôli mriežke dlaždice
-EXTENT = cell.TILE_EXTENT  # súradnicová mriežka vektorovej dlaždice
-SLOPE = 0.10               # 10 % svah – izolínia je potom graf y(x)
-# reálne tvary terénu: (vlnová dĺžka m, amplitúda m)
+NX, NY = 640, 320          # 1 m grid
+LAT = 49.1                 # latitude (Tatras) – for the tile grid
+EXTENT = cell.TILE_EXTENT  # the vector tile's coordinate grid
+SLOPE = 0.10               # a 10 % slope – the isoline is then a graph y(x)
+# real terrain shapes: (wavelength m, amplitude m)
 FEATS = [(60.0, 1.20), (25.0, 0.50), (12.0, 0.22)]
-NOISE = 0.15               # mikroreliéf: kry, balvany, šum merania
+NOISE = 0.15               # micro-relief: shrubs, boulders, measurement noise
 LEVEL = 16.0
 
 
@@ -58,7 +56,7 @@ def terrain(rng=None):
 
 
 def lowpass(Z, win):
-    """Priemer v okne `win`×`win` a späť na pôvodnú mriežku (dva gdalwarpy)."""
+    """A mean over a `win`×`win` window and back to the grid (two gdalwarps)."""
     if win <= 1:
         return Z
     ny, nx = Z.shape
@@ -73,7 +71,7 @@ def lowpass(Z, win):
         for col in tmp.T])
 
 
-# marching squares: tak trasuje izolíniu aj gdal_contour
+# marching squares: how gdal_contour traces an isoline too
 def _edge(p, q, zp, zq, level):
     t = (level - zp) / (zq - zp)
     return (p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1]))
@@ -94,7 +92,7 @@ def contour(Z, level):
                    if (z[k] >= level) != (z[(k + 1) % 4] >= level)]
             if len(pts) == 2:
                 segs.append((pts[0], pts[1]))
-            elif len(pts) == 4:          # sedlo – rozhodne stred bunky
+            elif len(pts) == 4:          # a saddle – the cell centre decides
                 if (sum(z) / 4 >= level) == (z[0] >= level):
                     segs += [(pts[0], pts[1]), (pts[2], pts[3])]
                 else:
@@ -103,7 +101,7 @@ def contour(Z, level):
 
 
 def longest_chain(segs):
-    """Najdlhšia súvislá čiara – tá cez celý výrez, nie odrobinky pri kraji."""
+    """The longest continuous line – across the cut-out, not crumbs at the edge."""
     def key(p):
         return round(p[0], 6), round(p[1], 6)
 
@@ -118,9 +116,9 @@ def longest_chain(segs):
             continue
         chain = list(segs[start])
         used[start] = True
-        for koniec in (0, 1):
+        for at_end in (0, 1):
             while True:
-                tip = chain[-1] if koniec else chain[0]
+                tip = chain[-1] if at_end else chain[0]
                 nxt = next(((si, s) for si, s in adj.get(key(tip), [])
                             if not used[si]), None)
                 if nxt is None:
@@ -128,13 +126,13 @@ def longest_chain(segs):
                 si, side = nxt
                 used[si] = True
                 other = segs[si][1 - side]
-                chain.append(other) if koniec else chain.insert(0, other)
+                chain.append(other) if at_end else chain.insert(0, other)
         if len(chain) > len(best):
             best = chain
     return best
 
 
-# to isté, čo robí ogr2ogr -simplify a smooth-shapes.py
+# the same as ogr2ogr -simplify and smooth-shapes.py do
 def simplify(pts, tol):
     if tol <= 0 or len(pts) < 3:
         return list(pts)
@@ -161,7 +159,7 @@ def simplify(pts, tol):
 
 
 def chaikin(pts, passes):
-    """Orezávanie rohov – bývalý stav pipeline, len na porovnanie."""
+    """Corner cutting – the pipeline's former state, for comparison only."""
     pts = list(pts)
     for _ in range(passes):
         out = [pts[0]]
@@ -174,19 +172,19 @@ def chaikin(pts, passes):
 
 
 def limit(pts, sag, maxzoom):
-    """Limitná krivka zo smooth-shapes.py; `sag` v štvrtinách kroku mriežky."""
+    """The limit curve from smooth-shapes.py; `sag` in quarters of the grid step."""
     tol = tile_step(maxzoom) * sag / 4.0
     return shapes.curve_line([tuple(p) for p in pts], tol)
 
 
-# metriky
+# metrics
 def tile_step(z, lat=LAT):
-    """Krok mriežky dlaždice v metroch pri danom zoome."""
+    """The tile grid step in metres at a zoom."""
     return cell.tile_grid_m(z, lat)
 
 
 def quantize(pts, step):
-    """Zaokrúhlenie na mriežku dlaždice – to isté, čo spraví zápis do MVT."""
+    """Snapping to the tile grid – what writing an MVT does."""
     return [(round(x / step) * step, round(y / step) * step) for x, y in pts]
 
 
@@ -203,7 +201,7 @@ def bends(pts):
 
 
 def resample(pts, step=0.5):
-    """Rovnomerne po dĺžke – inak by metriky vážili husto obsadené úseky."""
+    """Evenly by length – otherwise metrics would weigh dense stretches."""
     P = np.asarray(pts)
     d = np.r_[0, np.cumsum(np.hypot(*np.diff(P, axis=0).T))]
     s = np.arange(0, d[-1], step)
@@ -212,7 +210,7 @@ def resample(pts, step=0.5):
 
 def metrics(pts):
     R = resample(pts)
-    R = R[(R[:, 0] > 20) & (R[:, 0] < NX - 20)]     # okraje výrezu nerátať
+    R = R[(R[:, 0] > 20) & (R[:, 0] < NX - 20)]     # skip the cut-out's edges
     dev = math.sqrt(float(np.mean((R[:, 1] - (LEVEL - feature(R[:, 0]))
                                    / SLOPE) ** 2)))
     x = R[:, 0]
@@ -220,20 +218,17 @@ def metrics(pts):
     for lam, _ in FEATS:
         cols += [np.sin(2 * math.pi * x / lam), np.cos(2 * math.pi * x / lam)]
     coef = np.linalg.lstsq(np.vstack(cols).T, R[:, 1], rcond=None)[0]
-    tvary = [100.0 * math.hypot(coef[2 + 2 * k], coef[3 + 2 * k])
+    shapes_kept = [100.0 * math.hypot(coef[2 + 2 * k], coef[3 + 2 * k])
              / (amp / SLOPE) for k, (_, amp) in enumerate(FEATS)]
-    return dev, tvary
+    return dev, shapes_kept
 
 
-# krok prevzorkovania pred meraním zubov – rovnaký pre všetky riadky tabuľky
+# the resampling step before measuring teeth – the same for every row
 SHAPE_STEP = 0.5
 
 
-def na_km(pts, thr=30.0):
-    """Ostré lomy tvaru na kilometer – po rovnomernom prevzorkovaní.
-
-    Bez neho by sa merala hustota bodov, nie zubatosť.
-    """
+def per_km(pts, thr=30.0):
+    """Sharp bends per kilometre, after even resampling (or density is measured)."""
     R = resample(pts, SHAPE_STEP)
     ang = bends([tuple(p) for p in R])
     km = SHAPE_STEP * len(R) / 1000.0
@@ -241,59 +236,59 @@ def na_km(pts, thr=30.0):
 
 
 def run(Z, win, quarters, how, label, maxzoom):
-    """`how` = ("chaikin", počet prechodov) alebo ("limit", priehyb v 1/4)."""
+    """`how` = ("chaikin", passes) or ("limit", sag in 1/4)."""
     simp = simplify(contour(lowpass(Z, win), LEVEL), quarters / 4.0)
     pts = (chaikin(simp, how[1]) if how[0] == "chaikin"
            else limit(simp, how[1], maxzoom))
     ang = bends(pts)
-    dev, tvary = metrics(pts)
-    # a to isté po mriežke dlaždice – tak to skončí v .pmtiles
+    dev, kept = metrics(pts)
+    # and the same on the tile grid – how it ends in .pmtiles
     qpts = quantize(pts, tile_step(maxzoom))
     qang = bends(qpts)
     print(f"{label:50s} {len(pts):5d} {ang.mean():6.1f}° "
-          f"{100 * float(np.mean(ang > 30)):5.1f}% {na_km(pts):6.1f} "
+          f"{100 * float(np.mean(ang > 30)):5.1f}% {per_km(pts):6.1f} "
           f"{dev:6.2f} m "
-          + " ".join(f"{t:4.0f}%" for t in tvary)
+          + " ".join(f"{t:4.0f}%" for t in kept)
           + f"  │ {qang.mean():6.1f}° {100 * float(np.mean(qang > 30)):5.1f}%"
-          f" {na_km(qpts):6.1f}")
+          f" {per_km(qpts):6.1f}")
 
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Meranie hladenia vrstevníc na simulovanom teréne.")
+        description="Measuring contour smoothing on simulated terrain.")
     ap.add_argument("--seed", type=int, default=20260810)
     ap.add_argument("--maxzoom", type=int, default=14,
-                    help="maxzoom dlaždíc s vrstevnicami (mriežka 4096)")
+                    help="maxzoom of the contour tiles (a 4096 grid)")
     args = ap.parse_args()
 
     Z = terrain(np.random.default_rng(args.seed))
     lam = "  ".join(f"{int(l)} m" for l, _ in FEATS)
-    krok = tile_step(args.maxzoom)
-    print(f"terén: svah {SLOPE:.0%}, šum σ = {NOISE} m, tvary {lam}, "
+    step = tile_step(args.maxzoom)
+    print(f"terrain: slope {SLOPE:.0%}, noise σ = {NOISE} m, shapes {lam}, "
           f"seed {args.seed}")
-    print(f"dlaždice: maxzoom z{args.maxzoom} → mriežka {krok:.3f} m "
-          f"(extent {EXTENT}, šírka {LAT}°)")
-    print(f"{'nastavenie':50s} {'bodov':>5s} {'lom':>7s} {'>30°':>6s} "
-          f"{'zub/km':>6s} {'odchýlka':>8s}  tvary (λ 60 / 25 / 12 m)"
-          f"  │ po mriežke z{args.maxzoom}: lom, >30°, zub/km")
+    print(f"tiles: maxzoom z{args.maxzoom} → grid {step:.3f} m "
+          f"(extent {EXTENT}, latitude {LAT}°)")
+    print(f"{'setting':50s} {'points':>5s} {'bend':>7s} {'>30°':>6s} "
+          f"{'teeth/km':>6s} {'deviation':>8s}  shapes (λ 60 / 25 / 12 m)"
+          f"  │ on the z{args.maxzoom} grid: bend, >30°, teeth/km")
     run(terrain(), 1, 0, ("chaikin", 0),
-        "referencia (terén bez šumu, bez úprav)", args.maxzoom)
+        "reference (terrain without noise, untouched)", args.maxzoom)
     print()
     for win, q, how, note in [
         (1, 1, ("chaikin", 1), "  ← 2025"),
-        (5, 2, ("chaikin", 2), "  ← august (oblé)"),
+        (5, 2, ("chaikin", 2), "  ← August (rounded)"),
         (3, 1, ("chaikin", 1), ""),
-        (3, 1, ("chaikin", 2), "  ← doteraz"),
-        (3, 1, ("chaikin", 3), "  (zuby preč, ale mriežka horšia)"),
+        (3, 1, ("chaikin", 2), "  ← until now"),
+        (3, 1, ("chaikin", 3), "  (teeth gone, but the grid worse)"),
         (3, 1, ("limit", 1), ""),
-        (3, 1, ("limit", 2), "  ← teraz"),
+        (3, 1, ("limit", 2), "  ← now"),
         (3, 1, ("limit", 4), ""),
         (7, 2, ("limit", 2), ""),
     ]:
-        okno = f"okno {win}×{win}" if win > 1 else "bez vyhladenia"
-        zaob = (f"{how[1]}× Chaikin" if how[0] == "chaikin"
-                else f"limitná, priehyb {how[1]}/4 mriežky")
-        run(Z, win, q, how, f"{okno}, {q}/4 bunky, {zaob}{note}", args.maxzoom)
+        window = f"window {win}×{win}" if win > 1 else "no smoothing"
+        rounding = (f"{how[1]}× Chaikin" if how[0] == "chaikin"
+                    else f"limit, sag {how[1]}/4 grid")
+        run(Z, win, q, how, f"{window}, {q}/4 cell, {rounding}{note}", args.maxzoom)
 
 
 if __name__ == "__main__":

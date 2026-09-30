@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""Skaly z tieňovania, 1/3: stiahnutie dlaždíc z freemap.sk.
+"""Rocks from hillshading, 1/3: downloading tiles from freemap.sk.
 
-Geometria dlaždicovej mriežky, `Fetcher` (sťahovanie s opakovaním, viacerými
-profilmi prehliadača a diskovou cache) a `probe_zoom`, ktorý zistí, po ktorý
-zoom tá služba dlaždice vôbec má.
-
-Sú tu aj spoločné základy (`WEBMERC`, `R`, `TILE`, `run()`) – ostatné moduly
-si ich berú odtiaľto. Spúšťa sa ako modul, nie z príkazovej riadky.
+The tile grid geometry, `Fetcher` (retries, browser profiles, a disk cache) and
+`probe_zoom`, plus the shared basics (`WEBMERC`, `R`, `TILE`, `run()`). A module.
 """
 import gzip
 import http.client
@@ -20,25 +16,17 @@ import time
 import urllib.parse
 import zlib
 
-# dlaždice sú vo Web Mercatore a mozaika sa v ňom aj počíta – žiadne
-# prevzorkovanie, jeden pixel dlaždice = jeden pixel rastra
+# tiles are Web Mercator and so is the mosaic: one tile pixel = one raster pixel
 WEBMERC = "EPSG:3857"
-R = 20037508.342789244  # polovica strany sveta v metroch EPSG:3857
+R = 20037508.342789244  # half the world's side in EPSG:3857 metres
 TILE = 256
 
-TILES_PER_S = 25.0  # pri --jobs=12 a ~25 kB na dlaždicu
+TILES_PER_S = 25.0  # at --jobs=12 and ~25 kB a tile
 
-# koľko buniek za sekundu zvládne `gdal_contour` nad hotovou mozaikou.
-# Je to tu, hoci sa contour počíta až vo `vector.py`: podľa tohto čísla vyberá
-# `probe_zoom` zoom, na ktorom beh ešte dobehne. Opačne to nejde – vrstva
-# dlaždíc o vektore vedieť nesmie.
-#
-# Bolo tu 3,5 mil./s prevzatých zo skál z DEM a nebola to pravda: izolínia
-# tmavosti nad zrnitým JPEGom má rádovo viac segmentov než izolínia sklonu nad
-# hladkým rastrom. 3e5 je bezpečná strana merania.
+# gdal_contour cells/s over a darkness mosaic; `probe_zoom` picks by it (a safe 3e5)
 CONTOUR_CELLS_PER_S = 3.0e5
 
-# `watch.py` je spoločný pre obe cesty ku skalám, tak leží vo `workers/lib/`
+# `watch.py` is shared by both ways to rocks, so it lives in `workers/lib/`
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
 from watch import hms  # noqa: E402
@@ -49,7 +37,7 @@ def run(cmd, **kw):
 
 
 def lonlat_to_tile(lon, lat, z):
-    """Súradnice → dlaždicové súradnice (desatinné)."""
+    """Coordinates → tile coordinates (fractional)."""
     n = 2.0 ** z
     x = (lon + 180.0) / 360.0 * n
     la = math.radians(max(-85.05112, min(85.05112, lat)))
@@ -58,9 +46,9 @@ def lonlat_to_tile(lon, lat, z):
 
 
 def tile_range(bbox, z):
-    """Bbox v stupňoch → rozsah dlaždíc [x0, x1) × [y0, y1) na zoome z."""
+    """A bbox in degrees → the tile range [x0, x1) × [y0, y1) at zoom z."""
     w, s, e, n = bbox
-    x0f, y0f = lonlat_to_tile(w, n, z)   # sever = menšie y
+    x0f, y0f = lonlat_to_tile(w, n, z)   # north = smaller y
     x1f, y1f = lonlat_to_tile(e, s, z)
     lim = 2 ** z
     x0, y0 = max(0, int(math.floor(x0f))), max(0, int(math.floor(y0f)))
@@ -69,21 +57,17 @@ def tile_range(bbox, z):
 
 
 def tile_res(z):
-    """Veľkosť pixela v metroch EPSG:3857 (nie na zemi – viď ground_res)."""
+    """Pixel size in EPSG:3857 metres (not on the ground – see ground_res)."""
     return 2.0 * R / (TILE * 2.0 ** z)
 
 
 def ground_res(z, lat):
-    """Skutočná veľkosť pixela na zemi: Mercator naťahuje mierku 1/cos(šírka),
-    takže meter v EPSG:3857 je pri 49° len ~0,65 m terénu."""
+    """The real pixel size on the ground: Mercator stretches by 1/cos(latitude)."""
     return tile_res(z) * math.cos(math.radians(lat))
 
 
-# hlavičky, ktorými sa pipeline predstavuje. Každý profil je jeden skutočný
-# prehliadač – UA, `Sec-CH-UA` aj platforma musia sedieť dokopy.
-# Berie to ale freemap.sk možnosť rozoznať, že ide o dávku, a je to
-# dobrovoľnícky server: preto ostáva `jobs` nízke a dlaždice sa cachujú.
-# `ua=project` vráti hlavičku, ktorá sa priznáva.
+# each profile is one real browser – UA, `Sec-CH-UA` and platform must agree;
+# freemap.sk is a volunteer server, so `jobs` stays low and tiles are cached
 BROWSERS = (
     ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
      '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"', '"Windows"', "sk-SK,sk;q=0.9,en-US;q=0.8,en;q=0.7"),
@@ -107,8 +91,7 @@ BROWSERS = (
 
 PROJECT_UA = "fricomaps/shading-rocks (github.com/skifahrer/fricomaps)"
 
-# prvé bajty formátov, ktoré vie PIL prečítať – na rozoznanie obrázka od
-# chybovej stránky, nie na výber dekodéra
+# first bytes of formats PIL reads – to tell an image from an error page
 IMAGE_MAGIC = (b"\xff\xd8\xff",          # JPEG
                b"\x89PNG\r\n\x1a\n",     # PNG
                b"GIF87a", b"GIF89a",     # GIF
@@ -120,8 +103,7 @@ def looks_like_image(body):
 
 
 def decode_body(body, encoding):
-    """Rozbalí telo, keď ho server zabalil – prehliadačovité hlavičky pýtajú
-    `gzip, deflate`, takže to treba vedieť aj prijať."""
+    """Unpack the body when the server packed it – browser headers ask for gzip, deflate."""
     enc = (encoding or "").strip().lower()
     if not enc or enc == "identity":
         return body
@@ -132,17 +114,14 @@ def decode_body(body, encoding):
             try:
                 return zlib.decompress(body)
             except zlib.error:
-                return zlib.decompress(body, -zlib.MAX_WBITS)  # bez hlavičky
+                return zlib.decompress(body, -zlib.MAX_WBITS)  # headerless
     except (OSError, zlib.error):
         return b""
     return body
 
 
 class Fetcher:
-    """Sťahovanie dlaždíc: thread-local trvalé spojenie + disková cache.
-
-    Pri 12 000 dlaždiciach je TLS handshake väčšina času. 404 nie je chyba.
-    """
+    """Tile downloads: a thread-local persistent connection + a disk cache; 404 is no error."""
 
     def __init__(self, url_tmpl, cache_dir, jobs=12, retries=3, timeout=30,
                  ua="rotate", log_every=25):
@@ -159,25 +138,15 @@ class Fetcher:
         self.n_ok = self.n_miss = self.n_cached = self.n_fail = 0
         self.n_done = 0
         self.bytes = 0
-        # proxy sa rieši tunelom (CONNECT), nie prepísaním URL – inak by sa
-        # trvalé spojenie zahodilo
+        # a proxy is tunnelled (CONNECT), or the persistent connection is lost
         self.proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or ""
 
     def path(self, z, x, y):
         return os.path.join(self.cache, str(z), str(x), f"{y}.jpg")
 
     def headers(self):
-        """Hlavičky na jeden request.
-
-        `ua=rotate` (predvolené) vyberie náhodný profil zo `BROWSERS`; ostatné
-        hlavičky idú z toho istého profilu, nech si neodporujú. `ua=project`
-        sa priznáva menom projektu.
-
-        Trvalé spojenie sa tým nezahadzuje – nie je to dokonalé maskovanie
-        a ani sa oň nesnažíme.
-        """
-        # `Accept-Encoding` bez `br`/`zstd` zámerne: `http.client` telo
-        # nerozbaľuje a v stdlib je len gzip a deflate
+        """Headers for one request: `rotate` picks a `BROWSERS` profile, `project` names us."""
+        # no `br`/`zstd`: `http.client` doesn't unpack and stdlib has only gzip and deflate
         h = {"Accept": "image/avif,image/webp,image/jpeg,image/*,*/*;q=0.8",
              "Accept-Encoding": "gzip, deflate",
              "Connection": "keep-alive"}
@@ -226,20 +195,16 @@ class Fetcher:
             self.local.conn = None
 
     def get(self, z, x, y):
-        """True = dlaždicu máme (z cache alebo stiahnutú)."""
-        return self.fetch(z, x, y) in ("cache", "stiahnuté")
+        """True = we have the tile (cached or downloaded)."""
+        return self.fetch(z, x, y) in ("cache", "downloaded")
 
     def fetch(self, z, x, y):
-        """Stiahne jednu dlaždicu do cache a povie, ako to dopadlo:
-        `cache` / `stiahnuté` / `chýba` (404) / `zlyhalo`.
-
-        Stav ide von preto, aby sa dalo poznať, či server dáva dáta, alebo len
-        rýchlo odpovedá 404."""
+        """Download one tile to the cache: `cache` / `downloaded` / `missing` (404) / `failed`."""
         dst = self.path(z, x, y)
         if os.path.exists(dst):
             with self.lock:
                 self.n_cached += 1
-            return "cache" if os.path.getsize(dst) > 0 else "chýba"
+            return "cache" if os.path.getsize(dst) > 0 else "missing"
         url = self.tmpl.format(z=z, x=x, y=y)
         rel = urllib.parse.urlsplit(url).path
         body, status = None, 0
@@ -253,8 +218,7 @@ class Fetcher:
                 if status == 200 and looks_like_image(body):
                     break
                 if status == 200:
-                    # chybová stránka s kódom 200 je pri dlaždicových službách
-                    # bežná – uložiť ju ako .jpg by bola tichá diera v mozaike
+                    # an error page with 200 is common; saved as .jpg it is a silent hole
                     status, body = 0, None
                     self._drop()
                 elif status == 404:
@@ -276,19 +240,18 @@ class Fetcher:
             with self.lock:
                 self.n_ok += 1
                 self.bytes += len(body)
-            return "stiahnuté"
+            return "downloaded"
         if status == 404:
-            open(dst, "wb").close()   # značka „tu nič nie je"
+            open(dst, "wb").close()   # a marker: nothing here
             with self.lock:
                 self.n_miss += 1
-            return "chýba"
+            return "missing"
         with self.lock:
             self.n_fail += 1
-        return "zlyhalo"
+        return "failed"
 
     def fetch_all(self, z, x0, y0, x1, y1):
-        """Stiahne celý obdĺžnik dlaždíc. Vlákna si berú prácu zo spoločného
-        zoznamu, takže pomalá dlaždica nebrzdí celý pás."""
+        """Download the whole tile rectangle from a shared queue, so a slow tile blocks nothing."""
         jobs = [(x, y) for y in range(y0, y1) for x in range(x0, x1)]
         total = len(jobs)
         idx = [0]
@@ -304,10 +267,9 @@ class Fetcher:
                 if i >= total:
                     return
                 x, y = jobs[i]
-                stav = self.fetch(z, x, y)
+                state = self.fetch(z, x, y)
                 now = time.time()
-                # riadok na dlaždicu (podľa `--log-every`); časový strop je
-                # poistka, nech log nestíchne, keď server spomalí
+                # a line per `--log-every` tiles, and every 15 s so a slow server isn't silent
                 with self.lock:
                     self.n_done += 1
                     done = self.n_done
@@ -318,8 +280,8 @@ class Fetcher:
                         rate = done / max(1e-6, now - t0)
                         eta = (total - done) / max(1e-6, rate)
                         print(f"  [{done}/{total}] {self.tmpl.format(z=z, x=x, y=y)}"
-                              f"  {stav}, zostáva {total - done}, "
-                              f"{rate:.0f}/s, ešte {hms(eta)}, "
+                              f"  {state}, {total - done} left, "
+                              f"{rate:.0f}/s, {hms(eta)} to go, "
                               f"{self.bytes / 1048576:.0f} MB", flush=True)
 
         threads = [threading.Thread(target=worker, daemon=True)
@@ -329,52 +291,47 @@ class Fetcher:
         for t in threads:
             t.join()
         dt = time.time() - t0
-        print(f"  dlaždice: {self.n_ok} stiahnutých, {self.n_cached} z cache, "
-              f"{self.n_miss} chýba (404), {self.n_fail} zlyhalo, "
-              f"{self.bytes / 1048576:.0f} MB za {hms(dt)}", flush=True)
-        # len keď sa naozaj niečo sťahovalo – pri behu celom z cache by
-        # „0 rôznych prehliadačov" vyzeralo ako porucha
+        print(f"  tiles: {self.n_ok} downloaded, {self.n_cached} from the cache, "
+              f"{self.n_miss} missing (404), {self.n_fail} failed, "
+              f"{self.bytes / 1048576:.0f} MB in {hms(dt)}", flush=True)
+        # only when something was downloaded – "0 browsers" from the cache looks broken
         if self.ua == "rotate" and self.ua_seen:
-            print(f"  hlavičky: {len(self.ua_seen)} rôznych prehliadačov "
-                  f"z {len(BROWSERS)} profilov", flush=True)
+            print(f"  headers: {len(self.ua_seen)} different browsers "
+                  f"of {len(BROWSERS)} profiles", flush=True)
         if self.n_fail and self.n_fail > total * 0.02:
-            print(f"::warning::Nepodarilo sa stiahnuť {self.n_fail} dlaždíc "
-                  f"z {total} – v mozaike budú prázdne miesta.")
+            print(f"::warning::{self.n_fail} of {total} tiles couldn't be "
+                  f"downloaded – the mosaic will have blank spots.")
         return dt
 
 
 def probe_zoom(fetcher, bbox, zmax, zmin, max_tiles, budget_s):
-    """Najvyšší zoom, ktorý server naozaj dá a ktorý sa stihne spočítať.
-
-    Dva stropy: `--max-tiles` chráni dobrovoľnícky server, `--budget-min` chráni
-    beh. Zoom sa nedá prečítať z metadát (XYZ šablóna žiadne nemá), tak sa skúša
-    jedna dlaždica v strede územia zhora nadol.
-    """
+    """The highest zoom the server really gives and that can be computed in time."""
+    # an XYZ template has no metadata, so one tile in the middle is tried top down
     w, s, e, n = bbox
     lon, lat = (w + e) / 2.0, (s + n) / 2.0
-    print("── Hľadám najvyšší zoom ─────────────────────────────")
+    print("── Looking for the highest zoom ─────────────────────")
     for z in range(zmax, zmin - 1, -1):
         x0, y0, x1, y1 = tile_range(bbox, z)
         count = (x1 - x0) * (y1 - y0)
-        odhad = count * TILE * TILE / CONTOUR_CELLS_PER_S
+        estimate = count * TILE * TILE / CONTOUR_CELLS_PER_S
         if count > max_tiles:
-            print(f"  z{z:<3} {count:>8} dlaždíc  × nad strop {max_tiles}")
+            print(f"  z{z:<3} {count:>8} tiles  × over the {max_tiles} cap")
             continue
-        if budget_s and odhad > budget_s:
-            print(f"  z{z:<3} {count:>8} dlaždíc  × obrysy ~{hms(odhad)}, "
-                  f"rozpočet {hms(budget_s)}")
+        if budget_s and estimate > budget_s:
+            print(f"  z{z:<3} {count:>8} tiles  × outlines ~{hms(estimate)}, "
+                  f"budget {hms(budget_s)}")
             continue
         tx, ty = lonlat_to_tile(lon, lat, z)
         ok = fetcher.get(z, int(tx), int(ty))
-        print(f"  z{z:<3} {count:>8} dlaždíc  "
-              f"{'✓ dlaždica je' if ok else '× server nedal dlaždicu'}"
-              + (f", obrysy ~{hms(odhad)}" if ok else ""))
+        print(f"  z{z:<3} {count:>8} tiles  "
+              f"{'✓ tile is there' if ok else '× the server gave no tile'}"
+              + (f", outlines ~{hms(estimate)}" if ok else ""))
         if ok:
-            print(f"  vybrané         z{z}")
+            print(f"  picked          z{z}")
             print("─────────────────────────────────────────────────────", flush=True)
             return z
     print("─────────────────────────────────────────────────────", flush=True)
-    print("::error::Žiadny zoom neprešiel: buď je výrez privelký na rozpočet "
-          "(zdvihni --budget-min alebo zmenši area), alebo server nedal ani "
-          "jednu skúšobnú dlaždicu (skontroluj --url).")
+    print("::error::No zoom passed: either the cut-out is too big for the budget "
+          "(raise --budget-min or shrink area), or the server gave not one "
+          "probe tile (check --url).")
     return 0

@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""GeoJSON výstup nesmie dostať SRS – inak metre ticho zmenia na stupne.
-
-Ovládač GeoJSON prepočítava do WGS84 vždy, keď vrstva vie, v čom je, takže
-`-a_srs EPSG:3035` metre neoznačí, ale zmení na stupne – a ogr2ogr skončí
-úspechom. Pipeline na to doplatila dvakrát: skaly mali 1e-9 m² a filter ich
-všetky vyhodil; únia švov vyšla ako 0,00 km² z 3570 km² a zahodila sa.
-
-  1. žiadny worker nepíše GeoJSON s `-a_srs` ani `-t_srs`;
-  2. prepínače sú napísané, nie vlepené z premennej – práve cez `*srs_args`
-     sa to sem raz dostalo;
-  3. `po_blokoch` `<SRS>` z okna bloku vyhadzuje;
-  4. `zlep_svy` si výsledok únie overí, takže návrat do stupňov by bol hlasný.
-"""
+"""GeoJSON output must get no SRS – otherwise metres silently turn into degrees."""
 import ast
 import os
 import re
@@ -20,110 +8,105 @@ import sys
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _WORKERS = os.path.dirname(_HERE)
 
-# Mená ovládačov, ktoré prepočítavajú do WGS84. `GPKG` ani `GeoPackage` medzi
-# nimi nie sú – tam `-a_srs` naozaj len OZNAČÍ a nič neprepočíta.
+# drivers converting to WGS84; in `GPKG` `-a_srs` really only labels
 GEOJSON = ("GeoJSON", "GeoJSONSeq")
 SRS_FLAGS = ("-a_srs", "-t_srs")
 
 
-def python_subory():
-    for koren, _, subory in os.walk(_WORKERS):
-        for meno in sorted(subory):
-            if meno.endswith(".py"):
-                yield os.path.join(koren, meno)
+def python_files():
+    for root, _, files in os.walk(_WORKERS):
+        for name in sorted(files):
+            if name.endswith(".py"):
+                yield os.path.join(root, name)
 
 
-def kusy(zoznam):
-    """Prvky zoznamu: reťazcové konštanty, alebo `None` pri všetkom ostatnom."""
-    von = []
-    for prvok in zoznam.elts:
-        if isinstance(prvok, ast.Constant) and isinstance(prvok.value, str):
-            von.append(prvok.value)
-        elif isinstance(prvok, ast.Starred):
-            von.append(None)
+def items(lst):
+    """List items: string constants, or `None` for anything unpacked."""
+    out = []
+    for item in lst.elts:
+        if isinstance(item, ast.Constant) and isinstance(item.value, str):
+            out.append(item.value)
+        elif isinstance(item, ast.Starred):
+            out.append(None)
         else:
-            von.append("")   # f-string, premenná – jeden prvok, nie diera
-    return von
+            out.append("")   # an f-string or variable – one item, not a hole
+    return out
 
 
 def main():
     bad = []
 
-    # ---------- 1. a 2. príkazy, ktoré píšu GeoJSON ----------
-    najdene = 0
-    for cesta in python_subory():
-        rel = os.path.relpath(cesta, os.path.dirname(_WORKERS))
+    # 1. and 2. commands writing GeoJSON
+    found = 0
+    for path in python_files():
+        rel = os.path.relpath(path, os.path.dirname(_WORKERS))
         try:
-            strom = ast.parse(open(cesta).read(), filename=cesta)
+            tree = ast.parse(open(path).read(), filename=path)
         except SyntaxError as exc:
-            bad.append(f"`{rel}` sa nedá prečítať ({exc}).")
+            bad.append(f"`{rel}` can't be read ({exc}).")
             continue
-        for uzol in ast.walk(strom):
-            if not isinstance(uzol, ast.List):
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.List):
                 continue
-            prvky = kusy(uzol)
-            texty = [p for p in prvky if p]
+            parts = items(node)
+            texts = [p for p in parts if p]
             if not any(t.endswith("ogr2ogr") or t == "gdal_contour"
-                       for t in texty):
+                       for t in texts):
                 continue
-            # Píše sa GeoJSON? Rozhoduje `-f <ovládač>`, presne ako v príkaze.
+            # is GeoJSON written? `-f <driver>` decides, as in the command
             format_ = None
-            for i, p in enumerate(prvky[:-1]):
+            for i, p in enumerate(parts[:-1]):
                 if p == "-f":
-                    format_ = prvky[i + 1]
+                    format_ = parts[i + 1]
             if format_ not in GEOJSON:
                 continue
-            najdene += 1
-            riadok = uzol.lineno
-            for vlajka in SRS_FLAGS:
-                if vlajka in texty:
+            found += 1
+            line = node.lineno
+            for flag in SRS_FLAGS:
+                if flag in texts:
                     bad.append(
-                        f"`{rel}:{riadok}` píše {format_} a podáva `{vlajka}`. "
-                        f"Ovládač GeoJSON podľa neho súradnice PREPOČÍTA do "
-                        f"WGS84 – z metrov budú stupne, ogr2ogr skončí úspechom "
-                        f"a nepovie nič. Nechaj výstup bez SRS (bloky ho preto "
-                        f"z okna vyhadzujú) a SRS priraď až tam, kde sa nič "
-                        f"neprepočítava – pri prepise do GPKG.")
-            # Rozpitvaný zoznam je problém len pri `ogr2ogr` – `gdal_contour`
-            # `-a_srs` ani nepozná a `*urovne`/`*atributy` sú v ňom prahy
-            # a mená stĺpcov, nie prepínače súradnicovej sústavy.
-            if None in prvky and any(t.endswith("ogr2ogr") for t in texty):
+                        f"`{rel}:{line}` writes {format_} and passes `{flag}`. "
+                        f"The GeoJSON driver then CONVERTS the coordinates to "
+                        f"WGS84 – metres become degrees, ogr2ogr succeeds and "
+                        f"says nothing. Keep the output without SRS and assign "
+                        f"it where nothing converts – when rewriting to GPKG.")
+            # unpacking matters only for `ogr2ogr`; `*levels` in gdal_contour are thresholds
+            if None in parts and any(t.endswith("ogr2ogr") for t in texts):
                 bad.append(
-                    f"`{rel}:{riadok}` píše {format_}, ale prepínače si vlepuje "
-                    f"z premennej (`*…`), takže sa nedá prečítať, či medzi nimi "
-                    f"nie je `-a_srs`. Presne takto sa sem `-a_srs` raz dostal. "
-                    f"Napíš prepínače priamo do zoznamu.")
-    if not najdene:
-        bad.append("Nenašiel sa ani jeden príkaz, ktorý píše GeoJSON. Buď sa "
-                   "premenoval ovládač, alebo sa príkazy skladajú inak – "
-                   "a kontrola potom nestráži nič.")
+                    f"`{rel}:{line}` writes {format_}, but splices its options "
+                    f"from a variable (`*…`), so whether `-a_srs` is among them "
+                    f"can't be read. That is exactly how `-a_srs` got here once. "
+                    f"Write the options into the list directly.")
+    if not found:
+        bad.append("No command writing GeoJSON was found. Either the driver was "
+                   "renamed or commands are built differently – and the check "
+                   "then guards nothing.")
 
-    # ---------- 3. a 4. dve miesta, na ktorých to stojí ----------
-    bloky = os.path.join(_WORKERS, "lib", "contour-blocks.py")
-    src = open(bloky).read()
+    # 3. and 4. the two places it stands on
+    blocks = os.path.join(_WORKERS, "lib", "contour-blocks.py")
+    src = open(blocks).read()
     if not re.search(r"<SRS\[\^>\]\*>", src):
-        bad.append("`workers/lib/contour-blocks.py` už z okna bloku nevyhadzuje "
-                   "`<SRS>`. `gdal_contour` by potom písal stupne, plocha každej "
-                   "skaly by vyšla rádovo 1e-9 m² a filter by ich vyhodil "
-                   "všetky – pri zelenom behu (31245134321, 31426542010).")
+        bad.append("`workers/lib/contour-blocks.py` no longer drops `<SRS>` from "
+                   "the block window. `gdal_contour` would write degrees, every "
+                   "rock would be ~1e-9 m² and the filter would drop them all – "
+                   "in a green run (31245134321, 31426542010).")
 
-    telo = src.split("def zlep_svy", 1)
-    if len(telo) < 2:
-        bad.append("`workers/lib/contour-blocks.py` už nemá `zlep_svy` – ak sa "
-                   "zlepovanie švov presunulo inam, presuň aj túto kontrolu.")
-    elif "skontroluj_metricke(" not in telo[1]:
-        bad.append("`zlep_svy` si výsledok únie neoveruje "
-                   "`skontroluj_metricke()`. Bez toho je návrat do stupňov "
-                   "tichý: únia vyjde správne, plocha sa prepočíta ako nula "
-                   "a zahodí sa ako „stratená“ – s hláškou, ktorá posiela "
-                   "hľadať chybu do GEOSu (beh 32300347626).")
+    body = src.split("def stitch_seams", 1)
+    if len(body) < 2:
+        bad.append("`workers/lib/contour-blocks.py` no longer has `stitch_seams` "
+                   "– if stitching moved, move this check too.")
+    elif "check_metric(" not in body[1]:
+        bad.append("`stitch_seams` doesn't check the union with `check_metric()`. "
+                   "Without it a return to degrees is silent: the union comes out "
+                   "right, the area computes as zero and is dropped as \"lost\" – "
+                   "with a message sending you to GEOS (run 32300347626).")
 
     if bad:
         for b in bad:
             print(f"::error::{b}")
         return 1
-    print(f"GeoJSON výstup bez SRS: {najdene} príkazov skontrolovaných, bloky "
-          f"`<SRS>` vyhadzujú a únia švov si jednotky overuje ✓")
+    print(f"GeoJSON output without SRS: {found} commands checked, blocks drop "
+          f"`<SRS>` and the seam union checks its units ✓")
     return 0
 
 

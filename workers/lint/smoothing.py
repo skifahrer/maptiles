@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""Zaoblenie obrysu sa nesmie ticho pokaziť ani ticho vrátiť späť.
-
-Vrstevnice boli „vyhladené, ale pravidelne zubaté" a nikto to nemal ako
-povedať – build bol zelený a vidieť to bolo len okom. Zaobľuje sa limitnou
-krivkou; rozbiť sa to dá na týchto miestach:
-
-  1. cesta k `smooth-shapes.py` z iného priečinka (nie cez `dirname(__file__)`);
-  2. bez `--maxzoom` sa vezme 16 a vrstva pre z14 sa vzorkuje 4× jemnejšie;
-  3. `--sag` má strop 4 – nad krokom mriežky sú tetivy vidieť ako fazety;
-  4. konce otvorenej čiary sa nesmú pohnúť, prstenec musí ostať uzavretý;
-  5. zmena tvaru sa musí prejaviť v kľúči cache aj v mene assetu so skalami.
-"""
+"""Outline rounding must neither break nor silently roll back."""
 import importlib.util
 import math
 import os
@@ -22,12 +11,11 @@ _WORKERS = os.path.dirname(_HERE)
 _ROOT = os.path.dirname(_WORKERS)
 SMOOTH = os.path.join(_WORKERS, "contours-rocks", "smooth-shapes.py")
 KEYS = os.path.join(_WORKERS, "plan", "cache-keys.sh")
-# ladenie zaoblenia je v `env:` workflowu s vrstvami z výškového modelu –
-# potrebuje ho aj pregenerovanie jednej vrstvy
+# rounding is tuned in the DEM layers workflow's `env:`, regeneration needs it too
 WF = os.path.join(_ROOT, ".github", "workflows", "dem-layers.yml")
 
-# kto zaobľuje; cesta je relatívna k `workers/`, `volanie` skladá príkaz
-VOLAJU = [
+# who rounds; the path is relative to `workers/`
+CALLERS = [
     ("contours-rocks/build.sh", "workers/contours-rocks/smooth-shapes.py"),
     ("contours-rocks/rock-areas.py", "smooth-shapes.py"),
     ("rocks-shading/vector.py", "smooth-shapes.py"),
@@ -48,87 +36,77 @@ def main():
     bad = []
     sm = load("smooth_shapes", SMOOTH)
 
-    # 1. cesta k skriptu a 2./3. čo sa mu podáva
-    for rel, _ in VOLAJU:
+    # 1. the path to the script and 2./3. what it is passed
+    for rel, _ in CALLERS:
         src = open(os.path.join(_WORKERS, rel)).read()
         if "smooth-shapes.py" not in src:
-            bad.append(f"`workers/{rel}` už `smooth-shapes.py` nevolá. Ak sa "
-                       f"zaoblenie presunulo inam, oprav aj tento zoznam – "
-                       f"dve kópie zaobľovania sa raz rozídu a jedna vrstva "
-                       f"bude hladká inak než druhá.")
+            bad.append(f"`workers/{rel}` no longer calls `smooth-shapes.py`. If "
+                       f"rounding moved, fix this list too – two copies of "
+                       f"rounding drift and one layer ends smoother than another.")
             continue
-        for prep in ("--maxzoom", "--sag"):
-            if prep not in src:
-                bad.append(f"`workers/{rel}` volá `smooth-shapes.py` bez "
-                           f"`{prep}`. Bez `--maxzoom` sa mlčky vezme z16 "
-                           f"a vrstva na nižšom zoome sa vzorkuje jemnejšie, "
-                           f"než dlaždica unesie; bez `--sag` sa nedá vypnúť "
-                           f"ani nastaviť priehyb.")
-    # cesta z iného priečinka nesmie ísť cez `dirname(__file__)`
+        for opt in ("--maxzoom", "--sag"):
+            if opt not in src:
+                bad.append(f"`workers/{rel}` calls `smooth-shapes.py` without "
+                           f"`{opt}`. Without `--maxzoom` z16 is silently taken "
+                           f"and a lower zoom's layer is sampled finer than a "
+                           f"tile holds; without `--sag` the sag can't be set.")
+    # a path from another folder must not go through `dirname(__file__)`
     ext = open(os.path.join(_WORKERS, "rocks-shading", "vector.py")).read()
     m = re.search(r"os\.path\.join\(([^)]*?)\"smooth-shapes\.py\"", ext, re.S)
     if not m or "contours-rocks" not in m.group(1):
-        bad.append("`workers/rocks-shading/vector.py` si cestu k "
-                   "`smooth-shapes.py` neskladá cez `contours-rocks` – ten "
-                   "súbor je tam a nikde inde. Krok by spadol na "
-                   "FileNotFoundError až po hodinách sťahovania dlaždíc.")
+        bad.append("`workers/rocks-shading/vector.py` doesn't build the path to "
+                   "`smooth-shapes.py` through `contours-rocks` – the file is "
+                   "there and nowhere else. The step would fail on "
+                   "FileNotFoundError after hours of downloading tiles.")
 
-    # ktorý maxzoom sa podáva ktorej vrstve – zámena je tichá. Hľadá sa priamo
-    # ten argument, nie meno premennej v okolí. `build.sh` a `rocks.sh` sú
-    # jeden skript rozdelený kvôli stropu 800 riadkov, tak sa čítajú spolu.
+    # which maxzoom goes to which layer – a swap is silent; build.sh and rocks.sh are one script
     build = "".join(
         open(os.path.join(_WORKERS, "contours-rocks", n)).read()
         for n in ("build.sh", "rocks.sh"))
-    for co, arg in (("vrstevníc", '--maxzoom="$OPT_CONTOUR_MAXZOOM"'),
-                    ("skál", '--maxzoom="$OPT_ROCK_MAXZOOM"')):
+    for what, arg in (("contours", '--maxzoom="$OPT_CONTOUR_MAXZOOM"'),
+                      ("rocks", '--maxzoom="$OPT_ROCK_MAXZOOM"')):
         if arg not in build:
-            bad.append(f"V `workers/contours-rocks/build.sh` ani v jeho druhej "
-                       f"polovici `rocks.sh` nie je `{arg}` – zaoblenie {co} "
-                       f"by sa riadilo mriežkou inej vrstvy (alebo predvolenou "
-                       f"z16). Tichý rozdiel v hustote bodov, ktorý build nemá "
-                       f"ako povedať.")
+            bad.append(f"Neither `workers/contours-rocks/build.sh` nor its second "
+                       f"half `rocks.sh` has `{arg}` – rounding the {what} would "
+                       f"follow another layer's grid (or the default z16). A "
+                       f"silent difference in point density.")
 
-    # 3. priehyb ostáva pod krokom mriežky
+    # 3. the sag stays under the grid step
     wf = open(WF).read()
-    for kluc in ("CONTOUR_SMOOTH", "ROCK_SMOOTH"):
-        m = re.search(rf'^\s*{kluc}:\s*"(\d+)"', wf, re.M)
+    for key in ("CONTOUR_SMOOTH", "ROCK_SMOOTH"):
+        m = re.search(rf'^\s*{key}:\s*"(\d+)"', wf, re.M)
         if not m:
-            bad.append(f"V `dem-layers.yml` nie je `{kluc}` – bez neho sa "
-                       f"zaoblenie riadi predvolenou hodnotou skriptu a "
-                       f"formulár o nej klame.")
+            bad.append(f"`dem-layers.yml` has no `{key}` – rounding follows the "
+                       f"script's default and the form lies about it.")
             continue
         sag = int(m.group(1))
         if sag > 4:
-            bad.append(f"`{kluc}` je {sag}, čiže priehyb {sag / 4:.2f} kroku "
-                       f"mriežky dlaždice. Nad jedným krokom je vzorkovanie "
-                       f"väčšou chybou než zaokrúhlenie do dlaždice (±pol "
-                       f"kroku) a tetivy vidno ako fazety.")
+            bad.append(f"`{key}` is {sag}, a sag of {sag / 4:.2f} tile grid "
+                       f"steps. Over one step sampling is a bigger error than "
+                       f"snapping to the tile (±half a step) and the chords "
+                       f"show as facets.")
 
-    # 4. konce a prstence
-    # konce otvorenej čiary sa nesmú pohnúť ani o milimeter – inak by dva kusy
-    # tej istej vrstevnice na hranici dlaždice prestali sadnúť na seba
-    ciara = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (20.0, 10.0), (30.0, 0.0)]
-    out = sm.curve_line(ciara, 0.05)
-    if tuple(out[0]) != ciara[0] or tuple(out[-1]) != ciara[-1]:
-        bad.append(f"Zaoblená čiara nezačína a nekončí tam, kde pôvodná "
-                   f"({out[0]} … {out[-1]} namiesto {ciara[0]} … "
-                   f"{ciara[-1]}). Na hranici dlaždice z toho bude medzera.")
-    if len(out) <= len(ciara):
-        bad.append("Zaoblenie čiary nepridalo ani bod – roh sa nezaoblil.")
+    # 4. ends and rings: an open line's ends must not move, or tile pieces won't meet
+    line = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (20.0, 10.0), (30.0, 0.0)]
+    out = sm.curve_line(line, 0.05)
+    if tuple(out[0]) != line[0] or tuple(out[-1]) != line[-1]:
+        bad.append(f"The rounded line doesn't start and end where the original "
+                   f"did ({out[0]} … {out[-1]} instead of {line[0]} … "
+                   f"{line[-1]}). That leaves a gap at a tile border.")
+    if len(out) <= len(line):
+        bad.append("Rounding the line added no point – no corner was rounded.")
 
-    # prstenec musí ostať uzavretý
-    prstenec = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)]
-    ring = sm.curve_ring(prstenec, 0.05)
+    square = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)]
+    ring = sm.curve_ring(square, 0.05)
     if tuple(ring[0]) != tuple(ring[-1]):
-        bad.append(f"Zaoblený prstenec nie je uzavretý ({ring[0]} vs "
-                   f"{ring[-1]}) – z plochy vypadne neplatný polygón.")
+        bad.append(f"The rounded ring isn't closed ({ring[0]} vs "
+                   f"{ring[-1]}) – the area becomes an invalid polygon.")
 
-    # priehyb naozaj drží pod toleranciou. Meria sa vzdialenosť od krivky,
-    # nie uhol medzi tetivami – ten závisí od hustoty bodov.
-    def vzdialenost(bod, ciara):
-        x, y = bod
+    # the sag really stays under the tolerance: distance from the curve, not chord angles
+    def distance(point, line):
+        x, y = point
         best = float("inf")
-        for (x0, y0), (x1, y1) in zip(ciara, ciara[1:]):
+        for (x0, y0), (x1, y1) in zip(line, line[1:]):
             dx, dy = x1 - x0, y1 - y0
             n2 = dx * dx + dy * dy
             t = 0.0 if n2 == 0 else max(0.0, min(
@@ -136,55 +114,53 @@ def main():
             best = min(best, math.hypot(x - x0 - t * dx, y - y0 - t * dy))
         return best
 
-    roh = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)]
+    corner = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)]
     for tol in (0.5, 0.05, 0.005):
-        hruba = sm.curve_line(roh, tol)
-        presna = sm.curve_line(roh, tol / 100.0)
-        worst = max(vzdialenost(b, hruba) for b in presna)
+        coarse = sm.curve_line(corner, tol)
+        exact = sm.curve_line(corner, tol / 100.0)
+        worst = max(distance(b, coarse) for b in exact)
         if worst > tol * 1.2:
-            bad.append(f"Pri tolerancii {tol} m sa vzorkovaná krivka odchyľuje "
-                       f"od svojho presného priebehu o {worst:.3f} m – "
-                       f"vzorkovanie nedrží priehyb, ktorý sľubuje, a v mape "
-                       f"z toho budú fazety.")
+            bad.append(f"At a {tol} m tolerance the sampled curve strays "
+                       f"{worst:.3f} m from its exact course – sampling doesn't "
+                       f"keep the sag it promises, and the map shows facets.")
 
-    # jemnejšia tolerancia nesmie dať menej bodov
-    hrubo = len(sm.curve_line([(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)], 1.0))
-    jemne = len(sm.curve_line([(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)], 0.01))
-    if jemne <= hrubo:
-        bad.append(f"Desaťkrát jemnejšia tolerancia dala {jemne} bodov proti "
-                   f"{hrubo} – vzorkovanie sa neriadi priehybom.")
+    # a finer tolerance must not give fewer points
+    few = len(sm.curve_line([(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)], 1.0))
+    many = len(sm.curve_line([(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)], 0.01))
+    if many <= few:
+        bad.append(f"A ten times finer tolerance gave {many} points against "
+                   f"{few} – sampling doesn't follow the sag.")
 
-    # 5. krok mriežky je jedno číslo
+    # 5. the grid step is one number
     for z in (11, 14, 16):
-        krok = cell.tile_grid_m(z)
-        cakane = cell.tile_m_per_px(z) * cell.TILE_PX / cell.TILE_EXTENT
-        if abs(krok - cakane) > 1e-12:
-            bad.append(f"`cell.tile_grid_m({z})` nesedí s pixelom dlaždice – "
-                       f"krok mriežky a veľkosť pixela sú jedna otázka.")
+        step = cell.tile_grid_m(z)
+        expected = cell.tile_m_per_px(z) * cell.TILE_PX / cell.TILE_EXTENT
+        if abs(step - expected) > 1e-12:
+            bad.append(f"`cell.tile_grid_m({z})` doesn't match the tile pixel – "
+                       f"the grid step and the pixel size are one question.")
     if cell.TILE_EXTENT != 4096:
-        bad.append(f"`cell.TILE_EXTENT` je {cell.TILE_EXTENT}. Planetiler "
-                   f"`extent` meniť nevie, je to 4096 – iné číslo by znamenalo, "
-                   f"že sa vzorkuje podľa mriežky, ktorá neexistuje.")
+        bad.append(f"`cell.TILE_EXTENT` is {cell.TILE_EXTENT}. Planetiler can't "
+                   f"change `extent`, it is 4096 – another number means sampling "
+                   f"to a grid that doesn't exist.")
 
-    # 6. staré dáta sa nesmú vrátiť
+    # 6. old data must not come back; the version number is in `C_SETTINGS`
     keys = open(KEYS).read()
-    # číslo verzie stojí v `C_NASTAVENIA`
-    if not re.search(r'^C_NASTAVENIA="contours-v(\d+)-', keys, re.M):
-        bad.append("V `workers/plan/cache-keys.sh` nie je verzia v kľúči "
-                   "vrstevníc (`C_NASTAVENIA=\"contours-v<číslo>-…\"`). Zmena "
-                   "tvaru vrstevníc sa bez nej neprejaví – cache vráti tie "
-                   "staré a build bude zelený.")
+    if not re.search(r'^C_SETTINGS="contours-v(\d+)-', keys, re.M):
+        bad.append("`workers/plan/cache-keys.sh` has no version in the contours "
+                   "key (`C_SETTINGS=\"contours-v<number>-…\"`). A change of "
+                   "contour shape wouldn't show – the cache returns the old ones "
+                   "and the build is green.")
     if not re.search(r"^\s*ROCK_ALGO:\s*v\d+", wf, re.M):
-        bad.append("V `dem-layers.yml` nie je `ROCK_ALGO: v<číslo>` – meno "
-                   "assetu so skalami by potom nenieslo TVAR obrysu a sklad by "
-                   "vrátil staré zubaté skaly.")
+        bad.append("`dem-layers.yml` has no `ROCK_ALGO: v<number>` – the rock "
+                   "asset name wouldn't carry the outline SHAPE and the store "
+                   "would return the old jagged rocks.")
 
     if bad:
         for b in bad:
             print(f"::error::{b}")
         return 1
-    print("Zaoblenie: cesta k skriptu sedí, každé volanie vie svoju mriežku, "
-          "priehyb drží a konce ostávajú ✓")
+    print("Rounding: the script path is right, every call knows its grid, the "
+          "sag holds and the ends stay ✓")
     return 0
 
 

@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Katalóg máp `maps.json` – čo sa doň píše a kam.
-
-Volá to `publish-map.py`; `catalog.sh` ten istý súbor commitne. Samostatne sa
-dá spýtať len `--subor` (ostrý alebo testovací katalóg).
-"""
+"""The map catalog `maps.json` – what is written into it and where."""
 import importlib.util
 import json
 import os
@@ -17,7 +13,7 @@ _DRIVE = os.path.join(_WORKERS, "drive")
 
 
 def _load(name, path):
-    """workers/*.py sa kvôli pomlčke v mene nedajú `import`-núť normálne."""
+    """workers/*.py can't be imported normally because of the dash in their names."""
     if name in sys.modules:
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(name, path)
@@ -28,8 +24,7 @@ def _load(name, path):
 
 
 folder = _load("drive_folder", os.path.join(_DRIVE, "folder.py"))
-_HERE_DIR = os.path.dirname(os.path.abspath(__file__))
-katalog_balikov = _load("deploy_baliky", os.path.join(_HERE_DIR, "baliky.py"))
+packages = _load("deploy_packages", os.path.join(_HERE, "packages.py"))
 
 
 def env(name, default=""):
@@ -40,436 +35,432 @@ def log(msg):
     print(msg, flush=True)
 
 
-def rozdel_test(key):
-    """`vysoke_tatry_test4km2` → (`vysoke_tatry`, `4`), inak `(key, "")`."""
+def split_test(key):
+    """`vysoke_tatry_test4km2` → (`vysoke_tatry`, `4`), else `(key, "")`."""
     cut = key.rfind("_test")
     if cut < 0 or not key.endswith("km2"):
         return key, ""
-    stred = key[cut + 5:-3]
-    return (key[:cut], stred) if stred.replace(".", "").isdigit() else (key, "")
+    middle = key[cut + 5:-3]
+    return (key[:cut], middle) if middle.replace(".", "").isdigit() else (key, "")
 
 
-# jedno miesto, ktoré hovorí, ktorý katalóg sa píše – pýtajú sa naň traja
-KATALOG = "maps.json"
-KATALOG_TEST = "maps-test.json"
+CATALOG = "maps.json"
+CATALOG_TEST = "maps-test.json"
+
+# former part keys of the base map
+LEGACY_PARTS = {"trasy": "trails", "navigacia": "routing", "znacky": "signs"}
 
 
-def katalog_subor(base=KATALOG):
-    """`maps.json`, alebo `maps-test.json` pri teste. Prázdne = nezapisuj."""
+def catalog_file(base=CATALOG):
+    """`maps.json`, or `maps-test.json` for a test. Empty = don't write."""
     if not base:
         return ""
     test_km2 = env("TEST_KM2", "0")
     if test_km2 in ("", "0"):
         return base
-    koren, _, pripona = base.rpartition(".")
-    kmen = koren or base
-    # `-test` sa nesmie pripojiť dvakrát: odpoveď chodí pipeline ďalej
-    if kmen.endswith("-test"):
+    head, _, ext = base.rpartition(".")
+    stem = head or base
+    # the answer travels on, so `-test` must not be added twice
+    if stem.endswith("-test"):
         return base
-    return f"{kmen}-test" + (f".{pripona}" if koren else "")
+    return f"{stem}-test" + (f".{ext}" if head else "")
 
 
-def zaklad_zapisu(path):
-    """Kam si beh odloží katalóg, aký ho našiel – `catalog.sh` ho zlieva."""
+def write_base(path):
+    """Where a run keeps the catalog as it found it – `catalog.sh` merges from it."""
     return f"{path}.base"
 
 
 def region_entry(man):
-    """Položka regiónu z `manifest.json` – zoomy, bbox, zdroje výšok."""
+    """The region's entry in `manifest.json` – zooms, bbox, height sources."""
     key = man.get("default_region")
     return ((man.get("regions") or {}).get(key) or {}) if key else {}
 
 
-VRSTVY_TILES = ("pmtiles", "contours", "rocks", "trails", "features", "points",
-                "transport", "boundaries", "water", "rail", "rail_routing",
-                "buildings")
+TILE_LAYERS = ("pmtiles", "contours", "rocks", "trails", "features", "points",
+               "transport", "boundaries", "water", "rail", "rail_routing",
+               "buildings")
 
 
 def tiles_paths(man, reg):
-    """Cesty k `.pmtiles` v balíku; berú sa z manifestu, z kľúča sa odvodiť nedajú."""
-    out = {k: reg[k] for k in VRSTVY_TILES if reg.get(k)}
+    """Paths to `.pmtiles` in the package, from the manifest – a key can't tell them."""
+    out = {k: reg[k] for k in TILE_LAYERS if reg.get(k)}
     dem = (man.get("dem") or "").rstrip("/")
     if dem.endswith(".pmtiles"):
         out["terrain"] = "tiles/" + dem.rsplit("/", 1)[-1]
     return out
 
 
-# jediný zoznam hotových máp; štruktúra sedí s cestou na Drive, `_` = metadáta
-
-def katalog_meno(regions, key, kind):
-    """Ľudské meno kraja/výseku/krajiny – z číselníkov, nie vymyslené."""
-    key, test = rozdel_test(key)
-    chvost = f" – rýchly test {test} km²" if test else ""
+def catalog_name(regions, key, kind):
+    """Human name of a region/area/country – from the registries, never made up."""
+    key, test = split_test(key)
+    tail = f" – quick test {test} km²" if test else ""
     if kind == "area":
         try:
             with open(os.path.join(_DATA, "areas.json")) as f:
-                meno = (json.load(f).get(key) or {}).get("name") or key
+                name = (json.load(f).get(key) or {}).get("name") or key
         except (OSError, ValueError):
-            meno = key
-        return meno + chvost
+            name = key
+        return name + tail
     r = regions.get(key) or {}
-    return (r.get("name") or key) + chvost
+    return (r.get("name") or key) + tail
 
 
-# dva zápisy toho istého okamihu: `…_at` sa číta očami, `…_ts` sa odčítava
-def teraz():
-    """(ISO 8601 UTC, sekundy od epochy) – jeden okamih v oboch podobách."""
+def now():
+    """(ISO 8601 UTC, epoch seconds) – one instant, read by eye and by subtraction."""
     t = time.time()
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t)), int(t)
 
 
-def modely_kraja(man, reg):
-    """Z ktorého výškového modelu je ktorá vrstva kraja."""
+def region_models(man, reg):
+    """Which height model each layer of the region comes from."""
     return {"contours": reg.get("dem_source"), "rocks": reg.get("rock_source"),
             "shading": man.get("dem_source")}
 
 
-def zapis_balik(mapy, kind, name, velkost, fid, fmt, kedy="", kedy_ts=None,
-                sha="", modely=None):
-    """Jeden balík v jednom formáte do `maps` položky katalógu.
+def migrate_node(maps):
+    """Rename former package and part keys of one `maps` entry to today's, in place."""
+    for old, new in packages.legacy().items():
+        if old in maps:
+            entry = maps.pop(old)
+            maps.setdefault(new, entry)
+    for entry in maps.values():
+        if not isinstance(entry, dict):
+            continue
+        if "popis" in entry:
+            entry.setdefault("description", entry.pop("popis"))
+        parts = entry.pop("casti", None)
+        if isinstance(parts, dict):
+            entry.setdefault("parts", parts)
+        for key in list((entry.get("parts") or {})):
+            part = entry["parts"][key]
+            if isinstance(part, dict) and "popis" in part:
+                part.setdefault("description", part.pop("popis"))
+            if key in LEGACY_PARTS:
+                entry["parts"].setdefault(LEGACY_PARTS[key], entry["parts"].pop(key))
 
-    Vrch položky ukazuje na ZIP kvôli starším čitateľom; bez ZIPu na to, čo je.
-    """
-    zaznam = {
+
+def migrate(data):
+    """Every node of the catalog on today's keys; a run on older code may still write old ones."""
+    pending = [v for k, v in data.items() if not k.startswith("_") and isinstance(v, dict)]
+    while pending:
+        node = pending.pop()
+        if isinstance(node.get("maps"), dict):
+            migrate_node(node["maps"])
+        for sub in ("regions", "subregions"):
+            pending += [v for v in (node.get(sub) or {}).values() if isinstance(v, dict)]
+    return data
+
+
+def write_package(maps, kind, name, size, fid, fmt, at="", at_ts=None,
+                  sha="", models=None):
+    """One package in one format into a `maps` entry; the top mirrors the ZIP for older readers."""
+    record = {
         "file": name,
-        "size": velkost,
+        "size": size,
         "link": folder.file_link(fid),
         "download": folder.download_link(fid),
-        # pôvod je pri balíku, nie len pri kraji: wiki robí iná pipeline
+        # provenance per package: wiki is built by another pipeline
         "run": env("GITHUB_RUN_NUMBER"),
     }
-    if kedy:
-        zaznam["updated_at"] = kedy
-    if kedy_ts is not None:
-        zaznam["updated_ts"] = kedy_ts
-    # obsah, nie dátum: ten istý build dvakrát nie je pre appku nová mapa
+    if at:
+        record["updated_at"] = at
+    if at_ts is not None:
+        record["updated_ts"] = at_ts
+    # contents, not date: the same build twice is no new map for the app
     if sha:
-        zaznam["sha256"] = sha
-    polozka = mapy.setdefault(kind or "mapa", {})
-    polozka.setdefault("formats", {})[fmt] = zaznam
-    # položka bez vrchu je položka bez odkazu a appke rozbije celú krajinu
-    if fmt == "zip" or "zip" not in polozka["formats"]:
-        polozka.update(zaznam)
-    # meno a ikona balíka z číselníka; kľúč, ktorý v ňom nie je, sa nedopĺňa
+        record["sha256"] = sha
+    entry = maps.setdefault(kind or "base", {})
+    entry.setdefault("formats", {})[fmt] = record
+    # an entry without a top is one without a link, and breaks the country in the app
+    if fmt == "zip" or "zip" not in entry["formats"]:
+        entry.update(record)
     try:
-        meta = katalog_balikov.balik(kind or "mapa")
+        meta = packages.package(kind or "base")
     except SystemExit:
         return
-    polozka["app"] = meta["app"]
-    polozka["symbol"] = meta["symbol"]
-    polozka["detail"] = meta["app_popis"]
-    polozka["popis"] = meta["popis"]
-    if meta.get("cast"):
-        polozka["part_of"] = meta["cast"]
-    kredity = katalog_balikov.kredity(kind or "mapa", modely)
-    if kredity:
-        polozka["credits"] = kredity
+    entry["app"] = meta["app"]
+    entry["symbol"] = meta["symbol"]
+    entry["detail"] = meta["app_detail"]
+    entry["description"] = meta["description"]
+    if meta.get("part_of"):
+        entry["part_of"] = meta["part_of"]
+    credits = packages.credits(kind or "base", models)
+    if credits:
+        entry["credits"] = credits
 
 
-# odkaz, za ktorým už súbor nie je; `zive=None` = neoverovalo sa, nemaže sa nič
-
-def odkaz_id(zaznam):
-    """Id súboru z `download`/`link` jedného zápisu balíka, alebo ""."""
-    if not isinstance(zaznam, dict):
+def link_id(record):
+    """File id from `download`/`link` of one package record, or ""."""
+    if not isinstance(record, dict):
         return ""
-    return (folder.id_z_odkazu(zaznam.get("download"))
-            or folder.id_z_odkazu(zaznam.get("link")))
+    return (folder.id_from_link(record.get("download"))
+            or folder.id_from_link(record.get("link")))
 
 
-def mrtvy(zaznam, zive, chranene):
-    """Ukazuje tento zápis na súbor, ktorý na Drive už nie je?"""
-    fid = odkaz_id(zaznam)
-    return bool(fid) and fid not in zive and fid not in chranene
+def is_dead(record, live, protected):
+    """Does this record point at a file no longer on Drive?"""
+    fid = link_id(record)
+    return bool(fid) and fid not in live and fid not in protected
 
 
-def ozivenie(zaznam, zive):
-    """Nové id súboru toho istého mena v priečinku, alebo "".
-
-    Mŕtvy odkaz väčšinou znamená, že sa zápis katalógu nedostal do vetvy –
-    súbor tam je, len pod novým id. Pri dvoch zhodách radšej nič.
-    """
-    meno = zaznam.get("file") if isinstance(zaznam, dict) else None
-    if not meno:
+def revival(record, live):
+    """New id of a file of the same name in the folder, or "" – with two matches, none."""
+    name = record.get("file") if isinstance(record, dict) else None
+    if not name:
         return ""
-    zhody = [fid for fid, nazov in zive.items() if nazov == meno]
-    return zhody[0] if len(zhody) == 1 else ""
+    matches = [fid for fid, title in live.items() if title == name]
+    return matches[0] if len(matches) == 1 else ""
 
 
-def oziv(zaznam, zive):
-    """Prepíš odkazy zápisu na živý súbor toho mena. True = podarilo sa."""
-    fid = ozivenie(zaznam, zive)
+def revive(record, live):
+    """Point the record at the live file of its name. True = done."""
+    fid = revival(record, live)
     if not fid:
         return False
-    zaznam["link"] = folder.file_link(fid)
-    zaznam["download"] = folder.download_link(fid)
+    record["link"] = folder.file_link(fid)
+    record["download"] = folder.download_link(fid)
     return True
 
 
-def precisti_mrtve(mapy, zive, chranene=()):
-    """Zrovnaj odkazy položky so skutočným priečinkom. `(opravené, vyhodené)`.
-
-    Ide po formátoch, nie po balíkoch; vrch položky je zrkadlo ZIPu, prepisuje
-    sa tiež.
-    """
-    opravene, vyhodene = [], []
-    for kind in sorted(mapy):
-        polozka = mapy[kind]
-        if not isinstance(polozka, dict):
+def prune_dead(maps, live, protected=()):
+    """Match an entry's links with the real folder, by format. `(fixed, dropped)`."""
+    fixed, dropped = [], []
+    for kind in sorted(maps):
+        entry = maps[kind]
+        if not isinstance(entry, dict):
             continue
-        padli = []
-        formaty = polozka.get("formats")
-        if isinstance(formaty, dict):
-            for fmt in sorted(formaty):
-                if not mrtvy(formaty[fmt], zive, chranene):
+        fell = []
+        formats = entry.get("formats")
+        if isinstance(formats, dict):
+            for fmt in sorted(formats):
+                if not is_dead(formats[fmt], live, protected):
                     continue
-                popis = f"{kind}/{fmt} ({formaty[fmt].get('file') or '?'})"
-                if oziv(formaty[fmt], zive):
-                    opravene.append(popis)
+                label = f"{kind}/{fmt} ({formats[fmt].get('file') or '?'})"
+                if revive(formats[fmt], live):
+                    fixed.append(label)
                 else:
-                    padli.append(popis)
-                    del formaty[fmt]
-            if not formaty:
-                polozka.pop("formats", None)
-        zive_formaty = polozka.get("formats") or {}
-        if zive_formaty:
-            if mrtvy(polozka, zive, chranene):
-                polozka.update(zive_formaty.get("zip")
-                               or zive_formaty[sorted(zive_formaty)[0]])
-            vyhodene += padli
+                    fell.append(label)
+                    del formats[fmt]
+            if not formats:
+                entry.pop("formats", None)
+        live_formats = entry.get("formats") or {}
+        if live_formats:
+            if is_dead(entry, live, protected):
+                entry.update(live_formats.get("zip")
+                             or live_formats[sorted(live_formats)[0]])
+            dropped += fell
             continue
-        # bez formátov rozhoduje sám vrch; jedna hláška, nie dve
-        if mrtvy(polozka, zive, chranene):
-            popis = f"{kind} ({polozka.get('file') or '?'})"
-            if oziv(polozka, zive):
-                opravene.append(popis)
-                vyhodene += padli
+        # without formats the top decides alone; one message, not two
+        if is_dead(entry, live, protected):
+            label = f"{kind} ({entry.get('file') or '?'})"
+            if revive(entry, live):
+                fixed.append(label)
+                dropped += fell
             else:
-                vyhodene.append(popis)
-                del mapy[kind]
+                dropped.append(label)
+                del maps[kind]
         else:
-            vyhodene += padli
-    return opravene, vyhodene
+            dropped += fell
+    return fixed, dropped
 
 
-def uprac(mapy, zrusene=(), zive=None, chranene=()):
-    """Vyhoď z položky, čo do nej už nepatrí – a povedz o tom."""
-    for kind in zrusene:
-        if mapy.pop(kind, None) is not None:
-            log(f"Balík `{kind}` už neexistuje (obsah je v základnej mape) – "
-                f"z položky katalógu vypadol.")
-    if zive is None:
+def tidy(maps, retired=(), live=None, protected=()):
+    """Drop what no longer belongs in an entry – and say so."""
+    for kind in retired:
+        if maps.pop(kind, None) is not None:
+            log(f"Package `{kind}` no longer exists (its contents are in the base map) – "
+                f"dropped from the catalog entry.")
+    if live is None:
         return
-    opravene, vyhodene = precisti_mrtve(mapy, zive, chranene)
-    for popis in opravene:
-        log(f"::warning::Odkaz na {popis} v katalógu ukazoval do prázdna, ale "
-            f"súbor toho mena v priečinku mapy JE – prepísal som odkaz naň. "
-            f"(Balík nahral beh, ktorému sa zápis katalógu nedostal do vetvy.)")
-    for popis in vyhodene:
-        log(f"::warning::V katalógu bol odkaz na {popis}, ale taký súbor "
-            f"v priečinku mapy na Drive nie je ani pod iným id – vypadol.")
+    fixed, dropped = prune_dead(maps, live, protected)
+    for label in fixed:
+        log(f"::warning::The catalog link to {label} pointed nowhere, but a file of "
+            f"that name IS in the map folder – relinked it. (A run uploaded the "
+            f"package but its catalog write never reached the branch.)")
+    for label in dropped:
+        log(f"::warning::The catalog linked {label}, but no such file is in the "
+            f"map folder on Drive, not even under another id – dropped.")
 
 
-def zapis(path, data, popis):
-    """Zapíše katalóg, keď sa naozaj zmenil. True = súbor je iný.
-
-    Minifikovane (číta to appka), ale `sort_keys=True` – nech `git diff` ukáže
-    len skutočnú zmenu.
-    """
+def write(path, data, label):
+    """Write the catalog when it really changed; minified but sorted, so diffs stay real."""
     text = json.dumps(data, ensure_ascii=False, separators=(",", ":"),
                       sort_keys=True) + "\n"
     try:
         with open(path) as f:
             if f.read() == text:
-                log(f"{path}: to isté ako doteraz – bez zmeny.")
+                log(f"{path}: same as before – unchanged.")
                 return False
     except OSError:
         pass
     with open(path, "w") as f:
         f.write(text)
-    log(f"{path}: {popis}")
+    log(f"{path}: {label}")
     return True
 
 
-def zapis_casti(mapy, casti):
-    """Koľko z balíka `mapa` je hľadanie.
-
-    Hľadanie nemá vlastný balík, takže inde sa jeho veľkosť nedá prečítať.
-    Píše sa aj `0`; `casti` sa prepisuje, nie dopĺňa. `raw_size` je pred
-    zabalením, `size` po ňom.
-    """
-    polozka = mapy.get("mapa")
-    if polozka is None:
-        return                        # tento beh základnú mapu nenahral
-    if not casti:
-        polozka.pop("casti", None)
+def write_parts(maps, parts):
+    """Parts of the `base` package – no package of their own, so sized here; `0` too."""
+    entry = maps.get("base")
+    if entry is None:
+        return                        # this run didn't upload the base map
+    if not parts:
+        entry.pop("parts", None)
         return
-    polozka["casti"] = {k: dict(v) for k, v in casti.items()}
+    entry["parts"] = {k: dict(v) for k, v in parts.items()}
 
 
-def zapis_katalog(path, parts, regions, baliky, man, iba="", merge=False,
-                  kat=None, layers=None, spravuje=None, casti=None,
-                  zrusene=(), zive=None):
-    """Doplň (alebo prepíš) položku v `maps.json`. Vracia True, keď sa zmenil.
+COMMENT = ("Map catalog of finished maps on Google Drive – which there are and "
+           "where. The top key is the country, under it `regions` and `subregions`; "
+           "keys starting with `_` are catalog metadata, not countries. Written at the "
+           "end of a build by workers/deploy/publish-map.py; never edited by hand.")
+COMMENT_TEST = ("QUICK TEST runs – terrain covers only a few km² of the cut-out, so "
+                "these are NOT maps to download; finished maps are in maps.json. ")
 
-    `baliky` je `(druh, meno, veľkosť, id, formát, sha)` toho, čo sa nahralo.
-    `kat` je cesta v katalógu, keď sa líši od cesty na Drive (rýchly test).
-    `merge=True` = beh nahral len ďalší formát, balíky sa dopĺňajú.
-    `casti` = kúsky bez vlastného balíka; `None` = tento beh ich nepočítal.
-    `spravuje` = druhy balíkov, o ktorých beh rozhoduje; ostatné ostávajú.
-    `zrusene` = balíky, ktoré už neexistujú – vypadnú vždy.
-    `zive` = id súborov, čo na Drive teraz sú; `None` = neoverovalo sa.
+
+def write_catalog(path, parts, regions, uploaded, man, only="", merge=False,
+                  cat=None, layers=None, owns=None, base_parts=None,
+                  retired=(), live=None):
+    """Add (or overwrite) an entry in `maps.json`. True when it changed.
+
+    `uploaded` is `(kind, name, size, id, format, sha)`; `owns` the kinds this run decides.
     """
     try:
         with open(path) as f:
             data = json.load(f)
     except (OSError, ValueError):
         data = {}
-    # podľa toho `catalog.sh` pozná, čo zmenil tento beh a čo cudzí job
+    # so `catalog.sh` can tell this run's change from another job's
     try:
-        with open(zaklad_zapisu(path), "w") as f:
+        with open(write_base(path), "w") as f:
             json.dump(data, f, ensure_ascii=False, sort_keys=True)
     except OSError as exc:
-        log(f"::warning::Katalóg pred zápisom sa nedal odložiť ({exc}) – "
-            f"commit ponesie celý súbor, nie len tento prírastok.")
-    je_test = os.path.basename(path) == KATALOG_TEST
-    data.setdefault("_comment",
-                    ("Rýchle TESTOVACIE behy" if je_test else
-                     "Katalóg hotových máp na Google Drive")
-                    + " – ktoré sú a kde. "
-                    + ("Terén (vrstevnice, skaly, tieňovanie) je v nich len na "
-                       "pár km² zo stredu výrezu, takže to NIE SÚ mapy na "
-                       "stiahnutie; hotové mapy sú v maps.json. " if je_test
-                       else "")
-                    + "Hlavný kľúč je krajina, pod ňou `regions` (kraj) a "
-                    "`subregions` (výsek); kľúče na `_` sú metadáta katalógu, "
-                    "nie krajiny. Dopisuje ho na konci buildu "
-                    "workers/deploy/publish-map.py (krok „Zapíš mapu do "
-                    "maps.json“); ručne sa needituje. Odkazy otvorí ten, kto "
-                    "má prístup k priečinku s mapami.")
-    data["_updated_at"], data["_updated_ts"] = teraz()
+        log(f"::warning::The catalog before the write couldn't be kept ({exc}) – "
+            f"the commit carries the whole file, not just this change.")
+    migrate(data)
+    is_test = os.path.basename(path) == CATALOG_TEST
+    data["_comment"] = (COMMENT_TEST if is_test else "") + COMMENT
+    data["_updated_at"], data["_updated_ts"] = now()
 
-    kat = kat or parts
-    krajina = data.setdefault(kat[0], {})
-    krajina.setdefault("name", katalog_meno(regions, kat[0], "region"))
-    uzol = krajina                      # build celej krajiny končí tu
-    if len(kat) > 1:
-        regs = krajina.setdefault("regions", {})
-        uzol = regs.setdefault(kat[1], {})
-        uzol.setdefault("name", katalog_meno(regions, kat[1], "region"))
-    if len(kat) > 2:
-        subs = uzol.setdefault("subregions", {})
-        uzol = subs.setdefault(kat[2], {})
-        uzol.setdefault("name", katalog_meno(regions, kat[2], "area"))
+    cat = cat or parts
+    country = data.setdefault(cat[0], {})
+    country.setdefault("name", catalog_name(regions, cat[0], "region"))
+    node = country                      # a whole-country build ends here
+    if len(cat) > 1:
+        regs = country.setdefault("regions", {})
+        node = regs.setdefault(cat[1], {})
+        node.setdefault("name", catalog_name(regions, cat[1], "region"))
+    if len(cat) > 2:
+        subs = node.setdefault("subregions", {})
+        node = subs.setdefault(cat[2], {})
+        node.setdefault("name", catalog_name(regions, cat[2], "area"))
 
     reg = region_entry(man)
-    if iba:
-        # doplnenie, nie prepis: samostatná pipeline vie len o svojom balíku
-        uzol.setdefault("name", katalog_meno(regions, kat[-1], "region"))
-        uzol.setdefault("drive", "/".join(parts))
-        # `updated_at` a `run` pri kraji hovoria, ktorý beh vyrobil mapu
-        uzol.setdefault("updated_at", data["_updated_at"])
-        uzol.setdefault("updated_ts", data["_updated_ts"])
-        uzol.setdefault("run", env("GITHUB_RUN_NUMBER"))
-        mapy = uzol.setdefault("maps", {})
-        for kind, name, velkost, fid, fmt, sha in baliky:
-            zapis_balik(mapy, kind, name, velkost, fid, fmt,
-                        kedy=data["_updated_at"], kedy_ts=data["_updated_ts"],
-                        sha=sha, modely=modely_kraja(man, reg))
-        # `casti` sa tu neprepisujú; zrušený balík a mŕtvy odkaz sa upratujú
-        uprac(mapy, zrusene, zive, {fid for _k, _n, _v, fid, _f, _s in baliky})
-        return zapis(path, data,
-                     f"doplnený balík {iba} k {'/'.join(kat)}")
-    polozka = {
-        "name": uzol.get("name"),
+    if only:
+        # an addition, not a rewrite: a separate pipeline knows only its package
+        node.setdefault("name", catalog_name(regions, cat[-1], "region"))
+        node.setdefault("drive", "/".join(parts))
+        # `updated_at` and `run` of the region say which run built the map
+        node.setdefault("updated_at", data["_updated_at"])
+        node.setdefault("updated_ts", data["_updated_ts"])
+        node.setdefault("run", env("GITHUB_RUN_NUMBER"))
+        maps = node.setdefault("maps", {})
+        for kind, name, size, fid, fmt, sha in uploaded:
+            write_package(maps, kind, name, size, fid, fmt,
+                          at=data["_updated_at"], at_ts=data["_updated_ts"],
+                          sha=sha, models=region_models(man, reg))
+        tidy(maps, retired, live, {fid for _k, _n, _v, fid, _f, _s in uploaded})
+        return write(path, data, f"added package {only} to {'/'.join(cat)}")
+    entry = {
+        "name": node.get("name"),
         "drive": "/".join(parts),
-        # čas tohto behu; položka sa zapisuje celá, takže vznik = prepis
+        # the entry is written whole, so creation = rewrite
         "updated_at": data["_updated_at"],
         "updated_ts": data["_updated_ts"],
         "run": env("GITHUB_RUN_NUMBER"),
         "layers": list(layers or []),
-        # balík × formát; vrch položky ukazuje na ZIP kvôli starším čitateľom
         "maps": {},
     }
-    # čo treba vedieť pri výbere, nie až po rozbalení. Strop zoomu musí byť pri
-    # každej vrstve, čo ho má vlastný, a každá vrstva z DEM musí povedať zdroj.
+    # what a choice needs before unpacking: every zoom cap and every DEM source
     for k in ("bbox", "maxzoom", "contours_maxzoom", "contour_interval",
               "rocks_maxzoom", "rock_slope", "dem_source", "rock_source",
               "trails_maxzoom", "features_maxzoom", "points_maxzoom",
               "transport_maxzoom", "boundaries_maxzoom", "water_maxzoom",
               "rail_maxzoom", "buildings_maxzoom"):
         if reg.get(k) is not None:
-            polozka[k] = reg[k]
-    # cesty k dlaždiciam sa neodvodzujú z kľúča uzla (viď `tiles_paths`)
+            entry[k] = reg[k]
     tiles = tiles_paths(man, reg)
     if tiles:
-        polozka["tiles"] = tiles
+        entry["tiles"] = tiles
     if tiles.get("terrain"):
         if man.get("dem_maxzoom") is not None:
-            polozka["terrain_maxzoom"] = man["dem_maxzoom"]
+            entry["terrain_maxzoom"] = man["dem_maxzoom"]
         if man.get("dem_source"):
-            polozka["terrain_source"] = man["dem_source"]
+            entry["terrain_source"] = man["dem_source"]
     area_bbox = env("AREA_BBOX")
     test_km2 = env("TEST_KM2", "0")
     if test_km2 not in ("", "0"):
-        # pri teste najdôležitejšie číslo: mapa je kraj, terén len ten štvorec
-        polozka["test_km2"] = test_km2
+        # the key number of a test: the map is the region, the terrain just that square
+        entry["test_km2"] = test_km2
     if area_bbox and (len(parts) > 2 or test_km2 not in ("", "0")):
         try:
-            polozka["area_bbox"] = [float(v) for v in area_bbox.split(",")]
+            entry["area_bbox"] = [float(v) for v in area_bbox.split(",")]
         except ValueError:
             pass
-    stare_maps = uzol.get("maps") or {}
+    old_maps = node.get("maps") or {}
     if merge:
-        polozka["maps"] = {k: dict(v) for k, v in stare_maps.items()}
+        entry["maps"] = {k: dict(v) for k, v in old_maps.items()}
     else:
-        # prepis sa týka len toho, o čom tento beh rozhoduje
-        if spravuje is None:
+        if owns is None:
             raise SystemExit(
-                "::error::`zapis_katalog` bez `spravuje=`: nedá sa povedať, "
-                "ktoré balíky tento beh rieši a ktoré patria inej pipeline. "
-                "Podaj druhy z `baliky` (robí to `publish-map.py`).")
-        riesi = set(spravuje)
-        polozka["maps"] = {k: dict(v) for k, v in stare_maps.items()
-                           if k not in riesi}
+                "::error::`write_catalog` without `owns=`: there is no telling which "
+                "packages this run decides and which belong to another pipeline. "
+                "Pass the kinds of `uploaded` (publish-map.py does).")
+        decided = set(owns)
+        entry["maps"] = {k: dict(v) for k, v in old_maps.items()
+                         if k not in decided}
     if merge:
-        # čo tento beh nevie, to nesmie zmazať – pri `merge` je základom katalóg
-        zaklad = {k: v for k, v in uzol.items()
-                  if k not in ("maps", "regions", "subregions")}
-        zaklad.update(polozka)
-        polozka = zaklad
-    for kind, name, velkost, fid, fmt, sha in baliky:
-        zapis_balik(polozka["maps"], kind, name, velkost, fid, fmt,
-                    kedy=data["_updated_at"], kedy_ts=data["_updated_ts"],
-                    sha=sha, modely=modely_kraja(man, reg))
-    if casti is not None:
-        zapis_casti(polozka["maps"], casti)
-    # až teraz, keď sú v položke aj balíky tohto behu; tie sú `chranene`
-    uprac(polozka["maps"], zrusene, zive,
-          {fid for _k, _n, _v, fid, _f, _s in baliky})
+        # what this run doesn't know it must not delete – with `merge` the catalog is the base
+        kept = {k: v for k, v in node.items()
+                if k not in ("maps", "regions", "subregions")}
+        kept.update(entry)
+        entry = kept
+    for kind, name, size, fid, fmt, sha in uploaded:
+        write_package(entry["maps"], kind, name, size, fid, fmt,
+                      at=data["_updated_at"], at_ts=data["_updated_ts"],
+                      sha=sha, models=region_models(man, reg))
+    if base_parts is not None:
+        write_parts(entry["maps"], base_parts)
+    # only now, with this run's packages in; those are protected
+    tidy(entry["maps"], retired, live,
+         {fid for _k, _n, _v, fid, _f, _s in uploaded})
 
-    # `subregions` patria uzlu, nie tejto mape
-    zachovaj = {k: uzol[k] for k in ("regions", "subregions") if k in uzol}
-    uzol.clear()
-    uzol.update(polozka)
-    uzol.update(zachovaj)
+    # `subregions` belong to the node, not to this map
+    keep = {k: node[k] for k in ("regions", "subregions") if k in node}
+    node.clear()
+    node.update(entry)
+    node.update(keep)
 
-    # koľko balíkov ostalo po inej pipeline – nech je to vidieť na logu
-    cudzie = [k for k in polozka["maps"]
-              if k not in {(kind or "mapa") for kind, *_ in baliky}]
-    return zapis(path, data, f"zapísaná mapa {'/'.join(kat)} "
-                             f"({len(polozka['maps'])} balíkov, "
-                             + (f"z toho {len(cudzie)} z inej pipeline "
-                                f"({', '.join(sorted(cudzie))}), " if cudzie else "")
-                             + f"priečinok {'/'.join(parts)})")
+    foreign = [k for k in entry["maps"]
+               if k not in {(kind or "base") for kind, *_ in uploaded}]
+    return write(path, data, f"wrote map {'/'.join(cat)} "
+                             f"({len(entry['maps'])} packages, "
+                             + (f"{len(foreign)} of them from another pipeline "
+                                f"({', '.join(sorted(foreign))}), " if foreign else "")
+                             + f"folder {'/'.join(parts)})")
 
 
 if __name__ == "__main__":
-    # jediná otázka, na ktorú sa dá spýtať z príkazového riadka
-    if sys.argv[1:] == ["--subor"]:
-        print(katalog_subor())
+    if sys.argv[1:] == ["--file"]:
+        print(catalog_file())
+    elif sys.argv[1:2] == ["--migrate"]:
+        for p in sys.argv[2:]:
+            with open(p) as f:
+                d = json.load(f)
+            write(p, migrate(d), "migrated to today's keys")
     else:
         raise SystemExit(
-            "::error::workers/deploy/catalog.py sa samostatne pýta len na "
-            "`--subor` (ktorý katalóg zapisovať – maps.json, alebo pri "
-            "rýchlom teste maps-test.json). Katalóg zapisuje "
-            "workers/deploy/publish-map.py.")
+            "::error::workers/deploy/catalog.py alone answers only `--file` (which "
+            "catalog to write – maps.json, or maps-test.json for a quick test) and "
+            "`--migrate <catalog>…`. The catalog is written by workers/deploy/publish-map.py.")

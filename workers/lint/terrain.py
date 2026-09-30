@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-"""Tieňovanie nesmie ticho stratiť presnosť, ktorou stojí a padá.
-
-Výška sa kedysi zaokrúhľovala na celé metre a DEM sa na maxzoome zväčšoval
-priemerom – hillshade z toho spravil pravidelnú tkaninu cez celú mapu a nič
-nespadlo. Oprava je v troch číslach, ktoré sa dajú „zjednodušiť" späť, tak sa
-strážia:
-
-  1. zvislý krok ide za pixelom a s odstupom `FRAC_BITS_MARGIN` (krok presne
-     na hranici viditeľnosti dá pravidelný, teda viditeľný, falošný sklon);
-  2. `average` až keď je pixel aspoň `AVERAGE_RATIO`× hrubší než bunka;
-  3. warp musí niesť zlomok (`-ot Int16` by ho zahodil) a `terrarium` musí
-     zaokrúhľovať, nie orezávať maskou (maska je `floor`, teda schod).
-
-A štvrtá, iná vec: podoba kódovania je v mene assetu aj v kľúči cache – keď sa
-rozídu, build si vytiahne staré dlaždice a bude zelený.
-"""
+"""Hillshading must not silently lose the precision it stands on."""
 import os
 import re
 import sys
@@ -25,15 +10,13 @@ TILES = os.path.join(_WORKERS, "terrain", "tiles.py")
 BUILD = os.path.join(_WORKERS, "terrain", "build.sh")
 KEYS = os.path.join(_WORKERS, "plan", "cache-keys.sh")
 MASK = os.path.join(_WORKERS, "lib", "region-mask.py")
-# práca nad mriežkou výšok leží vo vyska.py – kontrola sa pozerá do oboch
-VYSKA = os.path.join(_WORKERS, "terrain", "vyska.py")
-# rozhodovanie sa spúšťa, nie číta zo zdrojáku, a preto býva v lib/cell.py,
-# ktoré nemá numpy: lintovací job má len holý python3. Čo je nad poľami, sa
-# kontroluje na texte.
+# work on the height grid is in height.py – the check looks into both
+HEIGHT = os.path.join(_WORKERS, "terrain", "height.py")
+# the decisions are run, not read, so they live in numpy-free lib/cell.py
 sys.path.insert(0, os.path.join(_WORKERS, "lib"))
 import cell  # noqa: E402
 
-# zoomy, na ktorých tieňovanie naozaj beží
+# zooms hillshading really runs on
 ZOOMS = range(5, 17)
 
 
@@ -41,181 +24,168 @@ def main():
     bad = []
     t = cell
 
-    # 1. zvislý krok ide za pixelom
-    # bez úľavy na `MAX_FRAC_BITS`: ten strop je poistka proti nezmyselne
-    # jemnému kroku, nie povolenie nechať krok hrubý
+    # 1. the vertical step follows the pixel; `MAX_FRAC_BITS` is no excuse for a coarse step
     for z in ZOOMS:
         px = t.tile_m_per_px(z)
         bits = t.frac_bits(px)
-        krok = 2.0 ** -bits
-        strop = t.SLOPE_EPS * px
-        if krok > strop:
-            bad.append(f"z{z}: pixel {px:.1f} m znesie krok najviac "
-                       f"{strop:.3f} m, ale `frac_bits` dala {bits} bitov, "
-                       f"teda {krok:g} m"
-                       + (f" (zaráža strop MAX_FRAC_BITS={t.MAX_FRAC_BITS})"
+        step = 2.0 ** -bits
+        cap = t.SLOPE_EPS * px
+        if step > cap:
+            bad.append(f"z{z}: a {px:.1f} m pixel bears a step of at most "
+                       f"{cap:.3f} m, but `frac_bits` gave {bits} bits, "
+                       f"that is {step:g} m"
+                       + (f" (held by MAX_FRAC_BITS={t.MAX_FRAC_BITS})"
                           if bits >= t.MAX_FRAC_BITS else "")
-                       + ". Z plošiniek spraví hillshade pravidelnú tkaninu.")
-        # a s odstupom: krok presne na hranici nechá pravidelný falošný sklon,
-        # ktorý oko číta ako mriežku
-        s_margin = strop / (2 ** t.FRAC_BITS_MARGIN)
-        if krok > s_margin and bits < t.MAX_FRAC_BITS:
-            bad.append(f"z{z}: krok {krok:g} m je len tesne pod hranicou "
-                       f"viditeľnosti ({strop:.3f} m). Kvantizácia robí "
-                       f"falošný sklon PRAVIDELNE, takže má byť "
-                       f"{t.FRAC_BITS_MARGIN} bitov pod ňou, teda najviac "
-                       f"{s_margin:.4f} m – `frac_bits` dala {bits} bitov.")
-    # a druhá strana: na hrubých zoomoch sa nemá platiť za nič
+                       + ". Hillshade turns the terraces into a regular weave.")
+        # with a margin: a step right at the edge leaves a regular false slope
+        s_margin = cap / (2 ** t.FRAC_BITS_MARGIN)
+        if step > s_margin and bits < t.MAX_FRAC_BITS:
+            bad.append(f"z{z}: step {step:g} m is only just under the edge of "
+                       f"visibility ({cap:.3f} m). Quantisation makes a false "
+                       f"slope REGULARLY, so it must be {t.FRAC_BITS_MARGIN} "
+                       f"bits under it, at most {s_margin:.4f} m – "
+                       f"`frac_bits` gave {bits} bits.")
+    # the other side: coarse zooms shouldn't pay for nothing
     if t.frac_bits(t.tile_m_per_px(5)) != 0:
-        bad.append("z5: taký hrubý pixel znesie celý meter, ale `frac_bits` "
-                   "si pýta zlomkové bity – to je bajt navyše na dlaždicu "
-                   "za presnosť, ktorú tam nikto neuvidí.")
+        bad.append("z5: such a coarse pixel bears a whole metre, but "
+                   "`frac_bits` asks for fraction bits – an extra byte per "
+                   "tile for precision nobody sees there.")
 
-    # 2. priemeruje sa, až keď je čo priemerovať
-    # hranica nie je `pixel >= bunka`: tesne nad bunkou padne do box filtra raz
-    # jedna, raz dve, čiže rytmus plošiniek. Čísla pri `AVERAGE_RATIO`.
-    for mriezka in (1.0, 5.0, 10.0, 20.0, 31.0):
+    # 2. average only when there is something to average; numbers at `AVERAGE_RATIO`
+    for grid in (1.0, 5.0, 10.0, 20.0, 31.0):
         for z in ZOOMS:
             px = t.tile_m_per_px(z)
-            r = t.resampling(px, mriezka)
-            if px < t.AVERAGE_RATIO * mriezka and r == "average":
-                bad.append(f"model {mriezka:g} m, z{z} (pixel {px:.1f} m): pixel "
-                           f"nie je ani {t.AVERAGE_RATIO:g}× hrubší než bunka, "
-                           f"ale prevzorkúva sa `average` – ten tu prekryje raz "
-                           f"jednu bunku, raz dve, a z tých plošiniek spraví "
-                           f"hillshade mriežku.")
-            if px >= t.AVERAGE_RATIO * mriezka and r != "average":
-                bad.append(f"model {mriezka:g} m, z{z} (pixel {px:.1f} m): DEM sa "
-                           f"zmenšuje aspoň {t.AVERAGE_RATIO:g}×, tam sa musí "
-                           f"priemerovať (`average`), nie `{r}`.")
-    # v pásme tesne nad bunkou sa `average` vrátiť nesmie
+            r = t.resampling(px, grid)
+            if px < t.AVERAGE_RATIO * grid and r == "average":
+                bad.append(f"model {grid:g} m, z{z} (pixel {px:.1f} m): the "
+                           f"pixel isn't even {t.AVERAGE_RATIO:g}× coarser than "
+                           f"a cell, but `average` resamples – it covers one "
+                           f"cell, then two, and hillshade makes a grid of it.")
+            if px >= t.AVERAGE_RATIO * grid and r != "average":
+                bad.append(f"model {grid:g} m, z{z} (pixel {px:.1f} m): the DEM "
+                           f"shrinks at least {t.AVERAGE_RATIO:g}×, it must "
+                           f"average (`average`), not `{r}`.")
+    # just above the cell `average` must not come back
     if t.resampling(25.0, 20.0) == "average":
-        bad.append("Pixel 25 m nad bunkou 20 m (z12 pri Sonnym) sa prevzorkúva "
-                   "`average` – nameraných 5,45 proti 4,07 pri `cubicspline` "
-                   "(a 5,36 proti 0,53 na samotnom warpe). To je tá mriežka, "
-                   "ktorú bolo vidieť na mape aj po oprave zväčšovania, "
-                   "a `cubicspline` je tu zadarmo.")
-    # bez známej mriežky sa nesmie hádať
+        bad.append("A 25 m pixel over a 20 m cell (z12 with Sonny) resamples by "
+                   "`average` – measured 5.45 against 4.07 with `cubicspline` "
+                   "(and 5.36 against 0.53 on the warp alone). That is the grid "
+                   "seen on the map, and `cubicspline` is free here.")
+    # without a known grid no guessing
     if t.resampling(10.0, 0.0) != "average":
-        bad.append("Bez známej mriežky modelu musí `resampling` ostať pri "
-                   "`average` – to je doterajšie správanie a pri zmenšovaní "
-                   "je správne.")
+        bad.append("Without a known model grid `resampling` must stay at "
+                   "`average` – the behaviour so far, and right when shrinking.")
 
-    # 3. warp musí niesť zlomok
+    # 3. the warp must carry the fraction
     src = open(TILES).read()
     warp = src[src.index("def warp_level"):]
     warp = warp[:warp.index("\ndef ")] if "\ndef " in warp[1:] else warp
     if re.search(r'"-ot",\s*"Int16"', warp):
-        bad.append("`warp_level` warpuje do Int16 – zlomok výšky sa zahodí "
-                   "ešte pred kódovaním a zvislý krok je metrový bez ohľadu "
-                   "na `frac_bits`.")
+        bad.append("`warp_level` warps to Int16 – the height fraction is "
+                   "dropped before encoding and the vertical step is a metre "
+                   "whatever `frac_bits` says.")
     elif not re.search(r'"-ot",\s*"Float32"', warp):
-        bad.append("`warp_level` nemá `-ot Float32`; skontroluj, či zlomok "
-                   "výšky prežije až po kódovanie.")
+        bad.append("`warp_level` lacks `-ot Float32`; check that the height "
+                   "fraction survives to the encoding.")
 
-    # 3b. kóduje sa zaokrúhlením, nie orezaním: maskovanie spodných bitov je
-    # `floor`, teda schod na hranici zoomov. Na texte, lebo numpy tu nie je.
+    # 3b. encoding rounds, not masks: masking low bits is `floor`, a stair at zoom borders
     enc = src[src.index("def terrarium"):]
     enc = enc[:enc.index("\ndef ", 1)] if "\ndef " in enc[1:] else enc
     if re.search(r">>\s*\(?\s*8\s*-\s*bits", enc):
-        bad.append("`terrarium` reže zlomok maskou (`>> (8 - bits)`), a to je "
-                   "`floor` – každá výška klesne až o celý krok. Musí sa "
-                   "zaokrúhliť NA krok (`np.rint(… / krok) * krok`).")
+        bad.append("`terrarium` cuts the fraction with a mask (`>> (8 - bits)`), "
+                   "which is `floor` – every height drops by up to a step. It "
+                   "must round TO the step (`np.rint(… / step) * step`).")
     elif "np.rint" not in enc:
-        bad.append("`terrarium` nezaokrúhľuje (`np.rint`); bez toho sa zlomok "
-                   "oreže nadol a výšky sa systematicky posunú.")
+        bad.append("`terrarium` doesn't round (`np.rint`); without it the "
+                   "fraction is cut down and heights shift systematically.")
 
-    # 4. podoba kódovania: sklad aj cache
+    # 4. the encoding shape: store and cache
     build = open(BUILD).read()
     keys = open(KEYS).read()
-    # verzia je premenná (`ENC_VER`), nie napísané číslo – kým napísaná bola,
-    # skladalo sa `-v4` a hľadalo `-v3`, takže sa uložené dlaždice nenašli nikdy
+    # the version is a variable (`ENC_VER`): written twice, `-v4` was stored and `-v3` sought
     v_asset = set(re.findall(r"^ENC_VER=v(\d+)\s*$", build, re.M))
-    # komentáre o verzii ju smú menovať; zakázané je číslo v kóde
-    kod = "\n".join(r for r in build.splitlines()
-                    if not r.lstrip().startswith("#"))
-    napisane = set(re.findall(r"-v(\d+)\\?\.pmtiles", kod))
-    # kľúč tieňovania sa skladá v `T_NASTAVENIA`
-    v_cache = set(re.findall(r'^T_NASTAVENIA="terrain-v(\d+)-', keys, re.M))
+    # comments may name the version; a number in code is forbidden
+    code = "\n".join(r for r in build.splitlines()
+                     if not r.lstrip().startswith("#"))
+    written = set(re.findall(r"-v(\d+)\\?\.pmtiles", code))
+    # the hillshading key is built in `T_SETTINGS`
+    v_cache = set(re.findall(r'^T_SETTINGS="terrain-v(\d+)-', keys, re.M))
     if len(v_asset) != 1:
-        bad.append(f"Vo `workers/terrain/build.sh` sa nedá prečítať `ENC_VER=v<číslo>` "
-                   f"(našlo sa {sorted(v_asset)}). Podoba kódovania musí byť "
-                   f"premenná na JEDNOM mieste – meno assetu sa skladá aj pri "
-                   f"hľadaní v sklade, aj pri ukladaní, a obe musia hovoriť "
-                   f"to isté.")
-    elif napisane:
-        bad.append(f"Vo `workers/terrain/build.sh` je verzia kódovania napísaná "
-                   f"číslom ({sorted('v' + v for v in napisane)}) popri `ENC_VER`. "
-                   f"Práve tak sa rozišli `-v4` v mene assetu a `-v3` v `sed`-e, "
-                   f"ktorý sklad prehľadáva: uložené dlaždice sa nenašli nikdy "
-                   f"a tieňovanie sa počítalo v každom behu znova. Použi "
-                   f"`${{ENC_VER}}`.")
+        bad.append(f"`ENC_VER=v<number>` can't be read in `workers/terrain/build.sh` "
+                   f"(found {sorted(v_asset)}). The encoding shape must be a "
+                   f"variable in ONE place – the asset name is built both when "
+                   f"searching the store and when saving, and both must agree.")
+    elif written:
+        bad.append(f"`workers/terrain/build.sh` writes the encoding version as a "
+                   f"number ({sorted('v' + v for v in written)}) beside `ENC_VER`. "
+                   f"That is how `-v4` in the asset name and `-v3` in the `sed` "
+                   f"searching the store drifted: stored tiles were never found "
+                   f"and hillshading was computed in every run. Use `${{ENC_VER}}`.")
     elif not v_cache:
-        bad.append("V `workers/plan/cache-keys.sh` nie je verzia v kľúči "
-                   "tieňovania (`T_NASTAVENIA=\"terrain-v<číslo>-…\"`) – bez "
-                   "nej vráti cache staré dlaždice.")
+        bad.append("`workers/plan/cache-keys.sh` has no version in the "
+                   "hillshading key (`T_SETTINGS=\"terrain-v<number>-…\"`) – "
+                   "without it the cache returns old tiles.")
     elif v_asset != v_cache:
-        bad.append(f"Podoba kódovania sa rozišla: sklad hovorí v{v_asset.pop()}, "
-                   f"cache v{v_cache.pop()}. Jedno z tých dvoch miest vráti "
-                   f"dlaždice spočítané po starom a build bude zelený.")
+        bad.append(f"The encoding shape drifted: the store says v{v_asset.pop()}, "
+                   f"the cache v{v_cache.pop()}. One of them returns tiles "
+                   f"computed the old way and the build is green.")
     else:
-        print(f"  ✓ podoba kódovania v{v_cache.pop()} v sklade aj v cache")
+        print(f"  ✓ encoding shape v{v_cache.pop()} in the store and the cache")
 
-    # 5. tieňovanie končí na hranici kraja: dlaždice aj pixely, a za hranicou rovina
+    # 5. hillshading ends at the region's edge: tiles and pixels, a plane beyond
     if "--poly=data/region.geojson" not in build:
-        bad.append("`workers/terrain/build.sh` nepodáva `tiles.py` polygón "
-                   "kraja (`--poly=data/region.geojson`) – dlaždice sa vyrobia "
-                   "na celom obdĺžniku bboxu a tieňovanie bude siahať ďaleko "
-                   "za región (pri Prešovskom kraji 37 % plochy navyše).")
+        bad.append("`workers/terrain/build.sh` doesn't pass `tiles.py` the region "
+                   "polygon (`--poly=data/region.geojson`) – tiles are made over "
+                   "the whole bbox and hillshading reaches far beyond the region "
+                   "(37 % extra area for the Prešov region).")
     strip = src[src.index("def main("):]
     if "pixel_mask(" not in strip:
-        bad.append("`terrain/tiles.py` sa nepýta, ktoré PIXELY ležia v kraji "
-                   "(`pixel_mask`). Sám dlaždicový orez hrubší než dlaždica "
-                   "byť nemôže, takže tieňovanie zase presiahne za hranicu "
-                   "regiónu – na z10 na dvojnásobok jeho plochy, a build bude "
-                   "zelený.")
-    if "zarovnaj_za_hranicou(" not in strip:
-        bad.append("`terrain/tiles.py` nezrovnáva výšku za hranicou kraja "
-                   "(`zarovnaj_za_hranicou`). Čokoľvek iné než rovina má sklon "
-                   "a klient z neho kreslí tieňovanie mimo regiónu – na mape "
-                   "bez plochy `mimo` (vrstva nad iným podkladom) je to vidieť.")
-    if "pokracuj_okolim" in src:
-        bad.append("`terrain/tiles.py` zase dopĺňa výšku za hranicou okolím "
-                   "(`pokracuj_okolim`) – pokračovanie má sklon, takže sa "
-                   "tieňuje aj mimo kraja.")
-    # jedna výška pre celý beh: rovina po pásoch či zoomoch by mala švy
-    if strip.count("vyska_roviny(") != 1 or "def vyska_roviny" not in src:
-        bad.append("`terrain/tiles.py` nemá výšku roviny za hranicou spočítanú "
-                   "raz na beh (`vyska_roviny`). Iná výška v inom páse alebo "
-                   "zoome je schod, teda tieňovaná čiara mimo kraja.")
+        bad.append("`terrain/tiles.py` doesn't ask which PIXELS are in the region "
+                   "(`pixel_mask`). A tile clip can't be finer than a tile, so "
+                   "hillshading overhangs the region again – twice its area at "
+                   "z10, and the build is green.")
+    if "flatten_outside(" not in strip:
+        bad.append("`terrain/tiles.py` doesn't flatten the height outside the "
+                   "region (`flatten_outside`). Anything but a plane has slope "
+                   "and the client shades it outside the region – visible on a "
+                   "map without the `outside` fill (a layer over another base).")
+    if "pokracuj_okolim" in src or "continue_surroundings" in src:
+        bad.append("`terrain/tiles.py` fills the height outside from the "
+                   "surroundings again – a continuation has slope, so it is "
+                   "shaded outside the region.")
+    # one height for the whole run: a plane per strip or zoom would seam
+    if strip.count("plane_height(") != 1 or "def plane_height" not in src:
+        bad.append("`terrain/tiles.py` doesn't compute the plane height outside "
+                   "once per run (`plane_height`). Another height in another "
+                   "strip or zoom is a stair, a shaded line outside the region.")
     if not re.search(r"keep\[[^\]]*\][^\n]*\.any\(\)", strip):
-        bad.append("`terrain/tiles.py` nevynecháva dlaždicu, v ktorej nie je "
-                   "ani jeden pixel kraja – rovina za hranicou by sa zapisovala "
-                   "do dlaždíc, ktoré s krajom nemajú spoločné nič.")
-    if "def zarovnaj_za_hranicou" not in open(VYSKA).read():
-        bad.append("`workers/terrain/vyska.py` už nemá `zarovnaj_za_hranicou` – "
-                   "to je to, čím sa za hranicou kraja prestane tieňovať.")
+        bad.append("`terrain/tiles.py` doesn't skip a tile with no region pixel "
+                   "– the plane would be written into tiles with nothing of the "
+                   "region in them.")
+    if "def flatten_outside" not in open(HEIGHT).read():
+        bad.append("`workers/terrain/height.py` no longer has `flatten_outside` "
+                   "– that is what stops shading outside the region.")
     if "def pixel_mask" not in open(MASK).read():
-        bad.append("`workers/lib/region-mask.py` už nemá `pixel_mask` – "
-                   "na to, ktoré PIXELY ležia v kraji, je jedna odpoveď "
-                   "a býva vedľa tej dlaždicovej, nie druhýkrát v `tiles.py`.")
-    # rezerva: s `--edge 0` by posledný prúžok v kraji tieňoval hranu roviny
+        bad.append("`workers/lib/region-mask.py` no longer has `pixel_mask` – "
+                   "which PIXELS are in the region has one answer, beside the "
+                   "tile one, not a second in `tiles.py`.")
+    # a margin: with `--edge 0` the last strip in the region would shade the plane's edge
     edge = re.search(r'"--edge",\s*type=int,\s*default=(\d+)', src)
     if not edge:
-        bad.append("`terrain/tiles.py` nemá prepínač `--edge` (koľko pixelov "
-                   "skutočného terénu ostáva ešte za hranicou kraja).")
+        bad.append("`terrain/tiles.py` lacks the `--edge` option (how many "
+                   "pixels of real terrain stay outside the region).")
     elif int(edge.group(1)) < 1:
-        bad.append("`--edge` má predvolene 0 pixelov: rovina začne presne na "
-                   "hranici kraja, takže posledný prúžok tieňovania V KRAJI "
-                   "kreslí jej hranu, nie terén. Rezerva ju posunie za hranicu, "
-                   "kde je v štýle plocha `mimo`.")
+        bad.append("`--edge` defaults to 0 pixels: the plane starts right at the "
+                   "region's edge, so the last strip of shading IN the region "
+                   "draws its edge, not terrain. The margin moves it under the "
+                   "`outside` fill.")
 
     if bad:
         for b in bad:
             print(f"::error::{b}")
         return 1
-    print("Tieňovanie: zvislý krok ide za pixelom, priemeruje sa len nadol, "
-          "warp nesie zlomok, za hranicou kraja je rovina ✓")
+    print("Hillshading: the vertical step follows the pixel, averaging only "
+          "down, the warp carries the fraction, a plane outside the region ✓")
     return 0
 
 

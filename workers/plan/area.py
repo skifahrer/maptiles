@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
-"""Vyrieši input `area` na bbox, kľúč a meno – na jednom mieste.
+"""Resolve the input `area` to bbox, key and name – in one place, always within the region.
 
-Potrebuje to `plan`, `check-dem`, `contours` aj mirror ÚGKK. Vstup je názov
-pohoria z `workers/data/areas.json`, bbox `W,S,E,N`, alebo prázdno (celý
-región); vždy sa pretne s bboxom regiónu.
+The input is a range from `workers/data/areas.json`, a bbox `W,S,E,N`, or empty
+(the whole region). `--test-km2` cuts a small square around the centre; its key
+gets `_test4`, so a test never lands in a real run's cache or asset.
 
-`--test-km2` vyreže malý štvorec okolo stredu výrezu – kvôli rýchlosti ladenia.
-Kľúč dostane príponu `_test4`, aby si testovací výsledok nesadol do cache ani
-na asset ostrého behu.
-
-Použitie:
     python3 workers/plan/area.py --region-bbox=W,S,E,N --area=vysoke_tatry
 """
 import argparse
@@ -20,19 +15,12 @@ import os
 import re
 import sys
 
-# stupeň dĺžky sa krát kosínus šírky – na 49° je to asi dve tretiny
+# a degree of longitude times the cosine of latitude
 M_PER_DEG_LAT = 110540.0
 M_PER_DEG_LON = 111320.0
 
-# koľko terénu sa počíta ešte za hranicou regiónu – dnes 0.
-#
-# Kým sa hranica brala z `.poly` osm.fr, bola zaokrúhlená a rozšírená, tak sa
-# polygón nafukoval a mapy sa v tom páse prekrývali. Odkedy sa číta presne
-# z OSM relácie, susedné kraje na seba nadväzujú samy od seba.
-#
-# Konštanta ostáva z dvoch dôvodov: `pad_bbox` ňou nafukuje okno pre vrstvy
-# z DEM (`-cutline` v ňom nesmie vytŕčať von), a číslo sa nesie v menách
-# uložených vrstiev, nech sklad nevráti tú starú, orezanú po inom.
+# terrain computed past the region border – 0 since the outline comes from OSM;
+# kept for `pad_bbox` and because stored layer names carry the number
 BORDER_BUFFER_M = 0
 
 
@@ -42,7 +30,7 @@ def bbox_km2(w, s, e, n):
 
 
 def pad_bbox(bbox, meters):
-    """Obdĺžnik zväčšený o `meters` na každú stranu (stupne podľa šírky)."""
+    """The rectangle grown by `meters` on each side (degrees by latitude)."""
     w, s, e, n = bbox
     dlat = meters / M_PER_DEG_LAT
     dlon = meters / (M_PER_DEG_LON * math.cos(math.radians((s + n) / 2)))
@@ -50,25 +38,21 @@ def pad_bbox(bbox, meters):
 
 
 def test_square(bbox, km2, at=""):
-    """Malý štvorec s plochou ~`km2` vnútri `bbox`.
-
-    Keď by vyliezol von, posunie sa dovnútra – nie oreže: polovičný výrez by
-    mal inú plochu, než akú si pýtal.
-    """
+    """A small square of ~`km2` inside `bbox`, moved inward rather than clipped."""
     w, s, e, n = bbox
     clon = (w + e) / 2.0
     clat = (s + n) / 2.0
     if at.strip():
         parts = [float(v) for v in at.split(",")]
         if len(parts) != 2:
-            raise ValueError(f"test_at musí byť `lon,lat`, nie „{at}“")
+            raise ValueError(f"test_at must be `lon,lat`, not “{at}”")
         clon, clat = parts
 
-    strana_m = math.sqrt(km2 * 1e6)
-    dlat = strana_m / M_PER_DEG_LAT / 2.0
-    dlon = strana_m / (M_PER_DEG_LON * math.cos(math.radians(clat))) / 2.0
+    side_m = math.sqrt(km2 * 1e6)
+    dlat = side_m / M_PER_DEG_LAT / 2.0
+    dlon = side_m / (M_PER_DEG_LON * math.cos(math.radians(clat))) / 2.0
 
-    # väčší štvorec než samotný výrez nemá zmysel dorábať
+    # a square bigger than the cut-out itself makes no sense
     if 2 * dlon >= (e - w) or 2 * dlat >= (n - s):
         return [w, s, e, n]
 
@@ -83,56 +67,53 @@ def main():
     ap.add_argument("--area", default="")
     ap.add_argument("--areas", default="workers/data/areas.json")
     ap.add_argument("--test-km2", type=float, default=0.0,
-                    help="testovací režim: vyrezať štvorec s približne toľkými "
-                         "km² okolo stredu výrezu (0 = vypnuté)")
+                    help="test mode: cut a square of about this many km² "
+                         "around the centre of the cut-out (0 = off)")
     ap.add_argument("--test-at", default="",
-                    help="stred testovacieho štvorca ako `lon,lat` "
-                         "(prázdne = stred výrezu)")
-    ap.add_argument("--out", default="", help="kam zapísať (default stdout)")
+                    help="centre of the test square as `lon,lat` "
+                         "(empty = centre of the cut-out)")
+    ap.add_argument("--out", default="", help="where to write (default stdout)")
     args = ap.parse_args()
 
-    # okno pre vrstvy z DEM. `BORDER_BUFFER_M` je 0, takže je to presne bbox
-    # regiónu a hranicu z neho vyreže `-cutline`. Volanie ostáva preto, že keby
-    # sa presah zase zapol, okno sa musí zväčšiť spolu s ním.
+    # the window of the DEM layers; `-cutline` cuts the outline out of it
     region = pad_bbox([float(v) for v in args.region_bbox.split(",")],
                       BORDER_BUFFER_M)
     raw = (args.area or "").strip()
-    # vo formulári sa „celý región" nedá vyjadriť prázdnou položkou výberu
-    if raw == "cely_region":
+    # a form choice can't be empty, so “the whole region” is a word; the former one too
+    if raw in ("whole_region", "cely_region"):
         raw = ""
 
     if not raw:
-        key, name, bbox = "cely", "celý región", region
+        key, name, bbox = "whole", "whole region", region
     elif "," in raw:
-        # hash v kľúči, lebo kľúč ide do mien cache aj assetov: dva rôzne
-        # vlastné výrezy sa pod spoločným „vyrez" prepisovali navzájom
+        # a hash in the key: two own cut-outs under one name overwrote each other
         h = hashlib.sha1(raw.encode()).hexdigest()[:6]
-        key, name = f"vyrez_{h}", f"vlastný výrez {raw}"
+        key, name = f"cutout_{h}", f"own cut-out {raw}"
         bbox = [float(v) for v in raw.split(",")]
     else:
         areas = json.load(open(args.areas))
         if raw not in areas or raw.startswith("_"):
             known = ", ".join(k for k in areas if not k.startswith("_"))
-            print(f"::error::Neznámy výrez '{raw}'. Známe výrezy "
-                  f"({args.areas}): {known}. Alebo zadaj bbox W,S,E,N.",
+            print(f"::error::Unknown cut-out '{raw}'. Known cut-outs "
+                  f"({args.areas}): {known}. Or give a bbox W,S,E,N.",
                   file=sys.stderr)
             return 1
         key = re.sub(r"[^a-zA-Z0-9]", "_", raw)
         name = areas[raw]["name"]
         bbox = areas[raw]["bbox"]
 
-    # prienik s regiónom – mimo neho nie sú ani dáta, ani mapa
+    # the intersection with the region – outside it there is neither data nor map
     w, s = max(region[0], bbox[0]), max(region[1], bbox[1])
     e, n = min(region[2], bbox[2]), min(region[3], bbox[3])
     if e <= w or n <= s:
-        print(f"::error::Výrez '{raw}' neleží v regióne ({args.region_bbox}) – "
-              f"neprekrývajú sa. Vyber iný región alebo iný výrez.",
+        print(f"::error::Cut-out '{raw}' doesn't lie in the region ({args.region_bbox}) – "
+              f"they don't overlap. Pick another region or cut-out.",
               file=sys.stderr)
         return 1
 
     out = []
     if args.test_km2 > 0:
-        # celý výrez ide von tiež: obrázok „kde to je" potrebuje okolie
+        # the whole cut-out goes out too: the “where it is” picture needs the surroundings
         out.append(f"full_bbox={w},{s},{e},{n}")
         out.append(f"full_km2={bbox_km2(w, s, e, n):.0f}")
         try:
@@ -140,10 +121,8 @@ def main():
         except ValueError as exc:
             print(f"::error::{exc}", file=sys.stderr)
             return 1
-        # do kľúča, nie len do mena: testovací výsledok sa nesmie tváriť ako
-        # ostrý. `cely` je ale sentinel („žiadny výrez"), nie meno územia –
-        # prípona by z neho spravila meno a prepla podobu výškového modelu.
-        if key != "cely":
+        # into the key, not only the name; `whole` is a sentinel, no area name
+        if key != "whole":
             key = f"{key}_test{args.test_km2:g}"
             if args.test_at.strip():
                 key += "_" + hashlib.sha1(args.test_at.encode()).hexdigest()[:4]

@@ -291,41 +291,40 @@ def _kluce_cache(text):
 
 
 def balik():
-    """Sieť ide v mape a v `cesty`; vlastný balík `navigacia` je zrušený."""
+    """Routing rides in the map and in `roads`; its own `routing` package is retired."""
     if not os.path.exists(CISELNIK):
-        err("workers/data/packages.json", "číselník balíkov neexistuje.")
+        err("workers/data/packages.json", "the package registry doesn't exist.")
         return
     with open(CISELNIK, encoding="utf-8") as f:
-        cis = json.load(f)
-    baliky = {b["kluc"]: b for b in cis.get("baliky") or []}
-    if "navigacia" in baliky:
+        reg = json.load(f)
+    packages = {p["key"]: p for p in reg.get("packages") or []}
+    retired = {r["key"] for r in reg.get("retired") or []}
+    if "routing" in packages:
         err("workers/data/packages.json",
-            "balík `navigacia` je zase medzi živými. Sieť ide v mape a v "
-            "`cesty`; tretí ZIP by sa sťahoval nadarmo – a človek s mapou sa "
-            "o ňom nedozvedel.")
-    if "navigacia" not in (cis.get("zrusene") or []):
+            "package `routing` is alive again. Routing rides in the map and in "
+            "`roads`; a third ZIP would be downloaded for nothing.")
+    if "routing" not in retired:
         err("workers/data/packages.json",
-            "`navigacia` nie je v `zrusene`, takže starý `-navigacia.zip` "
-            "ostane na Drive ležať a katalóg ho bude ponúkať.")
-    cesty = baliky.get("cesty")
-    if not cesty:
+            "`routing` isn't in `retired`, so the old `-navigacia.zip` stays on "
+            "Drive and the catalog keeps offering it.")
+    roads = packages.get("roads")
+    if not roads:
         err("workers/data/packages.json",
-            "balík `cesty` v číselníku nie je. Bez neho ostane otázka „chcem "
-            "siete, po ktorých sa dá cestovať, a nie zvyšok mapy“ bez odpovede "
-            "– a smerovacia sieť je odpoveď na inú otázku.")
-    elif "transport" not in (cesty.get("manifest") or []):
+            "package `roads` isn't in the registry – “the networks to travel on, "
+            "not the rest of the map” has no answer.")
+    elif "transport" not in (roads.get("manifest") or []):
         err("workers/data/packages.json",
-            "balík `cesty` neberie `transport` z manifestu. Bez dopravnej "
-            "siete je to prázdny balík so sľubom v mene.")
-    elif "routing" not in (cesty.get("manifest") or []):
+            "package `roads` doesn't take `transport` from the manifest – an empty "
+            "package with a promise in its name.")
+    elif "routing" not in (roads.get("manifest") or []):
         err("workers/data/packages.json",
-            "balík `cesty` neberie `routing` z manifestu. Kto si berie len "
-            "siete, má dostať aj tú, po ktorej sa počíta trasa.")
-    elif "-routing.pmtiles" not in (cesty.get("pripony") or []):
+            "package `roads` doesn't take `routing` from the manifest. Who takes "
+            "only the networks must get the one routes are computed on.")
+    elif "-routing.pmtiles" not in (roads.get("suffixes") or []):
         err("workers/data/packages.json",
-            "balík `cesty` nemá zálohu podľa prípony (`-routing.pmtiles`). "
-            "Pregenerovanie jednej vrstvy beží bez manifestu, takže by z neho "
-            "vyšiel balík bez siete.")
+            "package `roads` has no suffix fallback (`-routing.pmtiles`). "
+            "Regenerating one layer runs without a manifest, so it would come out "
+            "without the network.")
 
 
 def formular(areas):

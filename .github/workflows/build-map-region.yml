@@ -1,18 +1,16 @@
-name: Mapa · Build map region
+name: Map · Build map region
 
-# PBF export zvoleného regiónu z osm.fr → Planetiler → PMTiles → GitHub Pages.
+# PBF export of the chosen region from osm.fr → Planetiler → PMTiles → GitHub Pages.
 #
-# Planetiler má tvrdý limit `maxzoom <= 16`; vyššie zoomy rieši MapLibre
-# overzoomom, preto sa najvyšší zoom generuje bez simplifikácie.
-# Iný región: `custom_pbf_url` + `custom_name`.
+# Planetiler caps `maxzoom <= 16`; MapLibre overzooms past it, so the top zoom
+# is made without simplification. Another region: `custom_pbf_url` + `custom_name`.
 
 on:
   workflow_dispatch:
     inputs:
-      # default je kraj, na ktorom sa reálne pracuje – formulár sa po otvorení
-      # vracia na predvolené hodnoty, takže default je to, čo netreba prekliknúť
+      # the default is the region being worked on – the form resets on opening
       region:
-        description: "Región (ignoruje sa, ak je vyplnené custom_pbf_url)"
+        description: "Region (ignored when custom_pbf_url is set)"
         required: true
         default: bratislavsky
         type: choice
@@ -26,16 +24,14 @@ on:
           - banskobystricky
           - presovsky
           - kosicky
-      # celý kraj ~40 min, jedno pohorie ~2. Predvolene `cely_region`: inak
-      # dostal ten, kto tento riadok prehliadol, mapu bez vrstevníc skoro všade.
-      # Zmenšovanie behu má jednu páku – switch `test`.
+      # a whole region ~40 min, one range ~2; shrinking a run has one lever – `test`
       area:
-        description: "Pohorie, na ktorom sa počítajú vrstevnice a skaly"
+        description: "Range on which contours and rocks are computed"
         required: false
-        default: cely_region
+        default: whole_region
         type: choice
         options:
-          - cely_region
+          - whole_region
           - tatry
           - vysoke_tatry
           - belianske_tatry
@@ -51,24 +47,19 @@ on:
           - vihorlat
           - strazovske_vrchy
           - male_karpaty
-      # zaškrtávatko, nie číslo: veľkosť sa mení zriedka (`test_km2=4`), test
-      # sa zapína pri každom behu. Predvolene vypnuté – predvolený beh je ten,
-      # čo naozaj vyrobí mapu na nasadenie.
-      # Kľúč testu má príponu `_test4`, takže si nesadne do cache ostrého behu
-      # a jeho položka ide do `maps-test.json`.
-      # Zmenší celý beh na štvorec zo stredu výrezu – terén aj mapu (PBF sa oreže).
+      # a checkbox, not a number: the size rarely changes (`test_km2=4`); the
+      # test key carries `_test4`, so it never lands in a real run's cache and
+      # its entry goes to `maps-test.json`
       test:
-        description: "Rýchly test: celý beh (mapa aj terén) len na 4 km² zo stredu výrezu"
+        description: "Quick test: the whole run (map and terrain) only on 4 km² in the middle of the cut-out"
         required: false
         default: false
         type: boolean
-      # tri výbery zdroja, jeden na vrstvu: skaly chcú najjemnejší model (aj
-      # keď je len na výrez), tieňovanie ten, čo pokrýva celý región.
-      # `ziadne` vrstvu vypne – zapínač je v tom istom poli ako zdroj.
-      # Zoznam drží workers/data/dem-sources.json. sonny = 20 m, dmr35 = 10 m,
-      # dmr5 = LiDAR (s `area` plné 1 m, bez neho dlaždice na 5 m).
+      # one source choice per layer; `none` turns the layer off.
+      # The list is workers/data/dem-sources.json. sonny = 20 m, dmr35 = 10 m,
+      # dmr5 = LiDAR (with `area` the full 1 m, without it 5 m tiles).
       contour_source:
-        description: "Vrstevnice – z ktorého modelu terénu (ziadne = negenerovať)"
+        description: "Contours – which terrain model (none = don't make)"
         required: false
         default: dmr5
         type: choice
@@ -77,11 +68,11 @@ on:
           - sonny1
           - dmr35
           - dmr5
-          - ziadne
-      # buď zo sklonu modelu, alebo `tienovanie` = hotové polygóny z workflowu
-      # „Skaly z tieňovaných dlaždíc", ktorý si build v prípade potreby zavolá
+          - none
+      # from the model's slope, or `shading` = polygons from the workflow
+      # “Rocks from hillshading”, which the build calls when needed
       rock_source:
-        description: "Skaly – zo sklonu modelu, alebo z tieňovania (ziadne = negenerovať)"
+        description: "Rocks – from the model's slope, or from hillshading (none = don't make)"
         required: false
         default: dmr5
         type: choice
@@ -90,11 +81,11 @@ on:
           - sonny1
           - dmr35
           - dmr5
-          - tienovanie
-          - ziadne
-      # tieňovanie je vždy na celý región, takže tu `dmr5` vyjde na 5 m
+          - shading
+          - none
+      # hillshading is always the whole region, so `dmr5` comes out at 5 m here
       shading_source:
-        description: "Tieňovanie a 3D terén – z ktorého modelu (ziadne = negenerovať)"
+        description: "Hillshading and 3D terrain – which model (none = don't make)"
         required: false
         default: dmr5
         type: choice
@@ -103,43 +94,40 @@ on:
           - sonny1
           - dmr35
           - dmr5
-          - ziadne
-      # `workflow_dispatch` dovolí najviac 10 inputov a nad tým GitHub workflow
-      # ticho neprijme. Interval vrstevníc sa preto píše ako voľba
-      # (`options: contour_interval=10`) – mení sa zriedka.
+          - none
+      # `workflow_dispatch` takes 10 inputs at most; the contour interval is an
+      # option (`options: contour_interval=10`)
       rock_slope:
-        description: "Od akého sklonu (°) je terén skala (50 = steny, 40 = aj strmé svahy)"
+        description: "From which slope (°) terrain is rock (50 = faces, 40 = steep slopes too)"
         required: false
         default: "50"
         type: string
-      # zmaže cache aj uloženú verziu v sklade; `nic` neprepočíta nič a hotové
-      # vrstvy sa vezmú. Pri zapnutom `test` sa pregenerúva vždy všetko. Staré
-      # meno `teren` ostáva prijímané (`REBUILD_ALIAS`); strážca je
-      # `workers/lint/rebuild.py`.
+      # deletes the cache and the stored version; `nothing` takes finished
+      # layers. A test always rebuilds everything. Former values are still
+      # taken (`REBUILD_ALIAS`); the guard is `workers/lint/rebuild.py`.
       rebuild:
-        description: "Čo pregenerovať nanovo, aj keď to už je v cache"
+        description: "What to rebuild even when it is cached"
         required: false
-        default: nic
+        default: nothing
         type: choice
         options:
-          - nic
-          - vrstevnice
-          - skaly
-          - tienovanie
-          - clanky
-          - vsetko
-      # desiaty a posledný input – ďalší prepínač musí ísť do `options`.
-      # Vypnuté neznamená, že sa mapa nepostaví: `_site` vznikne rovnako, len sa
-      # nenahrá na Pages. Drive je nezávislá páka (`options: publish=false`).
+          - nothing
+          - contours
+          - rocks
+          - terrain
+          - articles
+          - everything
+      # the tenth and last input – another switch goes into `options`.
+      # Off still builds `_site`, just doesn't upload it; Drive is `options: publish=false`.
       publish_pages:
-        description: "Nasadiť hotovú mapu na GitHub Pages (odškrtnuté = len na Drive)"
+        description: "Deploy the finished map to GitHub Pages (unticked = Drive only)"
         required: false
         default: false
         type: boolean
-      # napr. `crop_bbox=18.9,49.1,19.2,49.3 size_limit_mb=1200`.
-      # Celý zoznam je vo workers/plan/options.py; neznámy kľúč je chyba.
+      # e.g. `crop_bbox=18.9,49.1,19.2,49.3 size_limit_mb=1200`;
+      # the list is workers/plan/options.py, an unknown key is an error
       options:
-        description: "Zriedka menené nastavenia ako kľúč=hodnota (viď workers/plan/options.py)"
+        description: "Rarely changed settings as key=value (see workers/plan/options.py)"
         required: false
         default: ""
         type: string
@@ -154,53 +142,43 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # prihlásenie na Drive pre celý build, nie po jobe: číta sa z neho na štyroch
-  # miestach aj cache. Keby token stál pri jobe, stačí na jeden zabudnúť.
+  # Drive sign-in for the whole build, not per job – one forgotten job is enough
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
   DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
   DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
   OSMFR_BASE: https://download.openstreetmap.fr/extracts
-  # glyfy si hostíme sami – verejná fonts.openmaptiles.org je jediný bod
-  # zlyhania, pri ktorom sa mapa vykreslí bez nápisov
+  # glyphs are hosted by us – public fonts.openmaptiles.org would be a single point of failure
   GLYPHS_ZIP: https://github.com/openmaptiles/fonts/releases/download/v2.0/noto-sans.zip
-  # rozpočet stránky si joby delia podielom, nie „čo zvýšilo": bežia súbežne,
-  # takže v čase rozhodovania ešte nikto nevie, aké veľké budú vrstevnice
+  # jobs share the site budget by share: they run in parallel, nobody knows sizes yet
   BUDGET_CONTOURS_PCT: "25"
-  # skaly majú vlastný .pmtiles, takže aj vlastný podiel – predtým sa delili
-  # o podiel vrstevníc a musel ísť dole maxzoom obom
+  # rocks have their own .pmtiles, so their own share
   BUDGET_ROCKS_PCT: "12"
   BUDGET_TERRAIN_PCT: "12"
-  # značené trasy sú len línie s pár atribútmi
+  # waymarked trails are just lines with a few attributes
   BUDGET_TRAILS_PCT: "3"
-  # krajinné prvky: plotov je veľa, ale idú až od z15 a lepia sa
+  # landscape features: many fences, but from z15 on and merged
   BUDGET_FEATURES_PCT: "4"
-  # hranice: číta to job `tiles` aj `boundaries.yml` (inputom, `env` sa nededí)
+  # boundaries: read by job `tiles` and by `boundaries.yml` (as an input, `env` isn't inherited)
   BUDGET_BOUNDARIES_PCT: "3"
-  # vodstvo: jarkov je veľa, ale idú až od z13 a lepia sa
+  # water: many ditches, but from z13 on and merged
   BUDGET_WATER_PCT: "5"
-  # železnice: tratí je málo, ale nesú aj koľajovú sieť na navigáciu
+  # railways: few lines, but they carry the track network for navigation
   BUDGET_RAIL_PCT: "3"
-  # sídla: budov je veľa a idú bez zjednodušenia
+  # settlements: many buildings, not simplified
   BUDGET_BUILDINGS_PCT: "6"
-  # dopravná sieť je najhustejšia vrstva, akú pipeline stavia vlastnou schémou;
-  # keď to prestane stačiť, povie to `workers/transport/build.sh`
+  # the road network is the densest layer with our own schema (`workers/transport/build.sh`)
   BUDGET_TRANSPORT_PCT: "8"
-  # smerovacia sieť sú dlaždice so značkami, nie graf – jednotky MB na kraj;
-  # keď to prestane platiť, povie to `workers/routing/build.sh`
+  # routing tiles with signs, not a graph – single-digit MB per region
   BUDGET_ROUTING_PCT: "3"
   BUDGET_ASSETS_MB: "40"
 
-# Žiadny job nemá `timeout-minutes` a je to zámer: drahé fázy sa nedajú prerušiť
-# a nadviazať, takže timeout neznamenal „skonči skôr", ale „zahoď hodinu a pol".
-# Prácu stráži sklad (`.part` + premenovanie), strop pamäte a plán s odhadom.
-# Úplne bez stropu to nie je – GitHub dáva jobu najviac 360 minút a počíta ich
-# na job, nie na beh.
+# No job has `timeout-minutes` on purpose: the expensive phases can't resume,
+# so a timeout meant "throw away an hour and a half". GitHub still caps a job at 360 min.
 jobs:
-  # prvý job: vypíše formulár, `env:` workflowu a to, čo z volieb vyšlo
-  # (rozpis vo `workers/plan/settings.sh`)
+  # first job: prints the form, the workflow `env:` and what the options gave
   settings:
-    name: Nastavenia behu (formulár a voľby)
+    name: Run settings (form and options)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -208,9 +186,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Vypíš nastavenia behu
+      - name: Print the run settings
         env:
-          # celý formulár naraz – po jednom by sa na nové pole zabudlo
+          # the whole form at once – one by one, a new field would be forgotten
           INPUTS_JSON: ${{ toJSON(inputs) }}
           OPT_OPTIONS: ${{ inputs.options }}
           OPT_REBUILD: ${{ inputs.rebuild }}
@@ -221,16 +199,14 @@ jobs:
           OPT_PUBLISH_PAGES: ${{ inputs.publish_pages }}
         run: workers/plan/settings.sh
 
-  # vrstevnice, skaly a tieňovanie sú vo vlastnom súbore (`dem-layers.yml`):
-  # jedenásť jobov, z ktorých sa sem vracia len to, čo naozaj vzniklo.
-  # Von preto, že ich potrebuje aj „Pregeneruj vrstvu kraja" – a preto, že
-  # tento súbor bol 466 B pod stropom 128 KiB.
+  # contours, rocks and hillshading live in `dem-layers.yml`: “Regenerate
+  # region layer” needs them too
   dem:
-    name: Vrstvy z výškového modelu
+    name: Height-model layers
     needs: plan
     if: ${{ !cancelled() }}
     uses: ./.github/workflows/dem-layers.yml
-    secrets: inherit                      # Drive (sklady aj cache); `env` sa nededí
+    secrets: inherit                      # Drive (stores and cache); `env` isn't inherited
     with:
       region_key: ${{ needs.plan.outputs.key }}
       area: ${{ inputs.area }}
@@ -258,8 +234,8 @@ jobs:
       rock_slope: ${{ inputs.rock_slope }}
       opt_rock_maxzoom: ${{ needs.plan.outputs.opt_rock_maxzoom }}
       opt_rock_res: ${{ needs.plan.outputs.opt_rock_res }}
-      opt_rock_plne: ${{ needs.plan.outputs.opt_rock_plne }}
-      opt_rock_zapln_diery: ${{ needs.plan.outputs.opt_rock_zapln_diery }}
+      opt_rock_solid: ${{ needs.plan.outputs.opt_rock_solid }}
+      opt_rock_fill_holes: ${{ needs.plan.outputs.opt_rock_fill_holes }}
       opt_rock_img_asset: ${{ needs.plan.outputs.opt_rock_img_asset }}
       opt_rock_img_zoom: ${{ needs.plan.outputs.opt_rock_img_zoom }}
       opt_rock_img_options: ${{ needs.plan.outputs.opt_rock_img_options }}
@@ -273,9 +249,9 @@ jobs:
       budget_rocks_pct: ${{ needs.plan.outputs.budget_rocks_pct }}
       budget_terrain_pct: ${{ needs.plan.outputs.budget_terrain_pct }}
 
-  # články len tam, kde nie sú v cache a v katalógu; test ich neťahá
+  # articles only where neither cache nor catalog has them; a test doesn't fetch them
   wiki:
-    name: Články z Wikipédie
+    name: Wikipedia articles
     needs: plan
     if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.opt_wikipedia == 'true' && needs.plan.outputs.test_km2 == '0' }}
     uses: ./.github/workflows/wiki.yml
@@ -291,50 +267,48 @@ jobs:
       custom_pbf_url: ${{ needs.plan.outputs.opt_custom_pbf_url }}
       custom_name: ${{ needs.plan.outputs.opt_custom_name }}
 
-  # krátky job, ktorý zistí všetko, čo ostatné potrebujú, a stiahne PBF
+  # a short job finding everything the others need, and downloading the PBF
   plan:
-    name: Príprava (región, kľúče, PBF)
+    name: Preparation (region, keys, PBF)
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # `write`: príprava Pages zdroj aj prepína na Actions, nech na stránke
-      # skončí mapa a nie README
+      # `write`: the preparation also switches the Pages source to Actions
       pages: write
     outputs:
       key: ${{ steps.region.outputs.key }}
       name: ${{ steps.region.outputs.name }}
-      # ISO krajiny kraja – vstup pre diaľničnú známku v smerovacej sieti
+      # the region's country ISO – input for the vignette in the routing network
       iso: ${{ steps.region.outputs.iso }}
-      # územie, nad ktorým je poradie uzlov pre CCH
+      # the area the CCH node order is over
       routing_area: ${{ steps.region.outputs.routing_area }}
-      # `bbox` je územie mapy, `dem_bbox` územie vrstiev z DEM. Pri rýchlom
-      # teste sú to tie isté 4 km²; líšia sa, len keď je výrez menší než región.
+      # `bbox` is the map's area, `dem_bbox` the DEM layers'; they differ only
+      # when the cut-out is smaller than the region
       bbox: ${{ steps.region.outputs.bbox }}
       dem_bbox: ${{ steps.region.outputs.dem_bbox }}
       dem_bboxkey: ${{ steps.region.outputs.dem_bboxkey }}
-      # testovací štvorec (prázdny pri ostrom behu)
+      # the test square (empty on a real run)
       test_bbox: ${{ steps.region.outputs.test_bbox }}
       day: ${{ steps.day.outputs.d }}
-      # `legacy` = zdroj Pages je vetva a mapu prepíše najbližší push
+      # `legacy` = the Pages source is a branch and the next push overwrites the map
       pages_build_type: ${{ steps.pages-src.outputs.build_type }}
-      # testovací režim: bbox pred orezaním a odkaz do hotovej mapy
+      # test mode: the bbox before cropping, and a link into the finished map
       full_bbox: ${{ steps.region.outputs.full_bbox }}
       test_km2: ${{ steps.opts.outputs.opt_test_km2 }}
       area_key: ${{ steps.area.outputs.key }}
       area_name: ${{ steps.area.outputs.name }}
       area_bbox: ${{ steps.area.outputs.bbox }}
       area_km2: ${{ steps.area.outputs.km2 }}
-      # `opt_contours` je brána jobu, nie vrstva – obe idú do jedného .pmtiles.
-      # Čo sa kreslí, hovoria `opt_contour_lines` a `opt_rocks`.
+      # `opt_contours` gates the job, not a layer – both go into one .pmtiles
       opt_contours: ${{ steps.opts.outputs.opt_contours }}
       opt_contour_lines: ${{ steps.opts.outputs.opt_contour_lines }}
       opt_terrain: ${{ steps.opts.outputs.opt_terrain }}
       opt_trails: ${{ steps.opts.outputs.opt_trails }}
       opt_features: ${{ steps.opts.outputs.opt_features }}
-      # smerovacia sieť – ide v základnej mape aj v balíku `cesty`
-      opt_navigacia: ${{ steps.opts.outputs.opt_navigacia }}
-      # `opt_rock_dem` je zdroj skál, len keď je to výškový model – pri
-      # `tienovanie` a `ziadne` je prázdny
+      # the routing network – in the base map and in package `roads`
+      opt_routing: ${{ steps.opts.outputs.opt_routing }}
+      # `opt_rock_dem` is the rock source only when it is a height model –
+      # empty for `shading` and `none`
       opt_contour_source: ${{ steps.opts.outputs.opt_contour_source }}
       opt_rock_source: ${{ steps.opts.outputs.opt_rock_source }}
       opt_rock_dem: ${{ steps.opts.outputs.opt_rock_dem }}
@@ -342,15 +316,15 @@ jobs:
       opt_crop_bbox: ${{ steps.opts.outputs.opt_crop_bbox }}
       opt_size_limit_mb: ${{ steps.opts.outputs.opt_size_limit_mb }}
       opt_auto_shrink: ${{ steps.opts.outputs.opt_auto_shrink }}
-      # orez potrebujú tri joby (`tiles`, `trails`, `features`) a musí byť rovnaký
+      # three jobs clip (`tiles`, `trails`, `features`) and must clip alike
       opt_region_clip: ${{ steps.opts.outputs.opt_region_clip }}
       opt_ugkk_fallback: ${{ steps.opts.outputs.opt_ugkk_fallback }}
       opt_ugkk_urls: ${{ steps.opts.outputs.opt_ugkk_urls }}
       opt_contour_interval: ${{ steps.opts.outputs.opt_contour_interval }}
       opt_contour_maxzoom: ${{ steps.opts.outputs.opt_contour_maxzoom }}
       opt_rock_maxzoom: ${{ steps.opts.outputs.opt_rock_maxzoom }}
-      opt_rock_plne: ${{ steps.opts.outputs.opt_rock_plne }}
-      opt_rock_zapln_diery: ${{ steps.opts.outputs.opt_rock_zapln_diery }}
+      opt_rock_solid: ${{ steps.opts.outputs.opt_rock_solid }}
+      opt_rock_fill_holes: ${{ steps.opts.outputs.opt_rock_fill_holes }}
       opt_contour_smoothing: ${{ steps.opts.outputs.opt_contour_smoothing }}
       opt_trails_maxzoom: ${{ steps.opts.outputs.opt_trails_maxzoom }}
       opt_features_maxzoom: ${{ steps.opts.outputs.opt_features_maxzoom }}
@@ -370,8 +344,7 @@ jobs:
       opt_buildings: ${{ steps.opts.outputs.opt_buildings }}
       opt_buildings_maxzoom: ${{ steps.opts.outputs.opt_buildings_maxzoom }}
       budget_buildings_pct: ${{ env.BUDGET_BUILDINGS_PCT }}
-      # `env` sa vo `with:` volaného workflowu čítať nesmie, tak ide cez výstup
-      # prípravy; tie isté čísla si odpočítava job `tiles`
+      # `env` can't be read in a called workflow's `with:`, so it goes as an output
       budget_contours_pct: ${{ env.BUDGET_CONTOURS_PCT }}
       budget_rocks_pct: ${{ env.BUDGET_ROCKS_PCT }}
       budget_terrain_pct: ${{ env.BUDGET_TERRAIN_PCT }}
@@ -395,27 +368,25 @@ jobs:
       opt_terrain_rebuild: ${{ steps.opts.outputs.opt_terrain_rebuild }}
       opt_wikipedia: ${{ steps.opts.outputs.opt_wikipedia }}
       opt_wiki_rebuild: ${{ steps.opts.outputs.opt_wiki_rebuild }}
-      # `reuse_layers`: nepočítať vrstvu, ktorá s týmito nastaveniami už vznikla
+      # `reuse_layers`: don't compute a layer already made with these settings
       opt_reuse_layers: ${{ steps.opts.outputs.opt_reuse_layers }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # na stránke má byť mapa, nie README – rozpis vo
-      # `workers/deploy/pages-source.sh`
-      - name: Zapni GitHub Pages a prepni zdroj na Actions
+      # the site must be the map, not the README (`workers/deploy/pages-source.sh`)
+      - name: Turn GitHub Pages on and switch the source to Actions
         id: pages-src
         env:
           GH_TOKEN: ${{ github.token }}
         run: workers/deploy/pages-source.sh
 
-      # PBF sa mení denne, tak je v kľúči dátum. Voľby sa rozložia raz, tu,
-      # nech ostatné joby čítajú hotové hodnoty a nie surový reťazec.
-      - name: Rozlož voľby
+      # options are split once, here, so other jobs read finished values
+      - name: Split the options
         id: opts
         run: |
           set -euo pipefail
-          # bez `--summary`: formulár aj voľby vypisuje job `settings`
+          # no `--summary`: the `settings` job prints the form and options
           python3 workers/plan/options.py \
             --options='${{ inputs.options }}' \
             --rebuild='${{ inputs.rebuild }}' \
@@ -426,37 +397,28 @@ jobs:
             --publish-pages='${{ inputs.publish_pages }}' \
             --out="$GITHUB_OUTPUT"
 
-      - name: Dnešný dátum do kľúča cache
+      - name: Today's date for the cache key
         id: day
         run: |
           echo "d=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
-          # meranie krokov: joby bežia súbežne, tak sa v súhrne zoradia podľa
-          # poradia, nie podľa času
+          # step timing: jobs run in parallel, so the summary sorts by order, not time
           mkdir -p steps-out
           : > steps-out/plan.tsv
 
-      # hranica kraja sa počíta až v kroku „Stiahni PBF": presná hranica je
-      # v samotných OSM dátach, takže najprv rodičovský extrakt, z neho hranica
-      # a až ňou rez. Volá si to `workers/plan/pbf.sh` samo.
-      # Ostatným jobom ide artefaktom `region-poly` – keby si ju každý počítal
-      # sám a jednému zlyhala, rezal by na bboxe.
+      # the region outline is computed in “Download the PBF” (`workers/plan/pbf.sh`)
+      # and shared as artifact `region-poly`, so no job cuts on the bbox alone
 
-      # restore hore, save hneď po tom, čo dáta vzniknú, s `if: always()`:
-      # `actions/cache` ukladá až v post-kroku a len pri úspešnom jobe
-      - name: Cache PBF regiónu (restore)
+      # restore up top, save right after the data exists, with `if: always()`
+      - name: Region PBF cache (restore)
         id: pbf-cache
         uses: ./.github/actions/cache-restore
         with:
           path: data/region.osm.pbf
-          # verzia v kľúči: pod starými verziami ležia PBF, ktoré by mapu
-          # vrátili po starom (orezané bez `crop_bbox`, hotové exporty z osm.fr
-          # bez členov plôch, rez rozšíreným `.poly` namiesto presnej hranice).
-          # Testovací štvorec je v kľúči tiež – inak by si ostrý beh v ten istý
-          # deň vzal uložené 4 km² ako celý kraj.
+          # the version guards against older PBFs; the test square is in the
+          # key too, or a real run would take the stored 4 km² as the region
           key: pbf-v6-${{ inputs.region }}-${{ steps.opts.outputs.opt_custom_pbf_url }}-${{ steps.opts.outputs.opt_crop_bbox }}-t${{ steps.opts.outputs.opt_test_km2 }}-a${{ inputs.area }}${{ steps.opts.outputs.opt_area_bbox }}-at${{ steps.opts.outputs.opt_test_at }}-${{ steps.day.outputs.d }}
 
-      # bash je vo `workers/plan/pbf.sh` – tento súbor má strop 128 kB
-      - name: Stiahni PBF iba daného regiónu
+      - name: Download the PBF of the region only
         id: region
         env:
           AREA_IN: ${{ inputs.area }}
@@ -470,24 +432,21 @@ jobs:
           REGION: ${{ inputs.region }}
         run: workers/plan/pbf.sh
 
-      - name: Vyrieš testovací výrez
+      - name: Resolve the cut-out
         id: area
         run: |
           set -euo pipefail
-          # rýchly test už výrez vyriešil, odpoveď sa preberá a neráta znova:
-          # druhý výpočet by dal ten istý bbox, ale kľúč bez prípony `_test4`,
-          # takže by 4 km² sadli v sklade pod meno sľubujúce celé pohorie
-          if [ -s /tmp/vyrez.txt ]; then
-            RESOLVED=$(cat /tmp/vyrez.txt)
-            cat /tmp/vyrez.txt >> "$GITHUB_OUTPUT"
-            echo "Výrez z rýchleho testu (spočítaný v pláne):"
+          # a quick test resolved the cut-out already; a second answer would lack
+          # the `_test4` suffix and 4 km² would be stored as the whole range
+          if [ -s /tmp/cutout.txt ]; then
+            RESOLVED=$(cat /tmp/cutout.txt)
+            cat /tmp/cutout.txt >> "$GITHUB_OUTPUT"
+            echo "Cut-out of the quick test (computed in the plan):"
           else
-            # vlastný bbox z options prebije výber pohoria
+            # an own bbox from options beats the range picked
             AREA='${{ inputs.area }}'
             AREA_BBOX='${{ steps.opts.outputs.opt_area_bbox }}'
             [ -n "$AREA_BBOX" ] && AREA="$AREA_BBOX"
-            # stdout aj do premennej: kľúč treba hneď na kontrolu nižšie.
-            # Bez testu sú `dem_bbox` a `bbox` to isté.
             RESOLVED=$(python3 workers/plan/area.py \
               --region-bbox='${{ steps.region.outputs.dem_bbox }}' \
               --area="$AREA" --out="$GITHUB_OUTPUT")
@@ -495,21 +454,17 @@ jobs:
           echo "$RESOLVED"
           AREA_KEY=$(printf '%s\n' "$RESOLVED" | sed -n 's/^key=//p')
 
-          # `dmr5` si podobu vyberá podľa rozsahu sám, takže na celý kraj vždy
-          # vyjde 5 m verzia. V testovacom režime je „celý región" pár km².
-          if [ "$AREA_KEY" = 'cely' ] && [ '${{ steps.opts.outputs.opt_test_km2 }}' = '0' ]; then
-            # skaly z tieňovania sú hotové dlaždice z cudzieho servera; na celý
-            # kraj by ich boli státisíce, tak pipeline pozná len pohoria
-            if [ '${{ inputs.rock_source }}' = 'tienovanie' ]; then
-              echo "::error::rock_source: tienovanie sťahuje hotové tieňované dlaždice a to má zmysel len na výrez. Vyplň input „area“ (napr. vysoke_tatry), alebo vyber výškový model (sonny / dmr35 / dmr5)."
+          if [ "$AREA_KEY" = 'whole' ] && [ '${{ steps.opts.outputs.opt_test_km2 }}' = '0' ]; then
+            # rocks from hillshading are foreign server tiles – hundreds of
+            # thousands for a whole region, so only ranges
+            if [ '${{ steps.opts.outputs.opt_rock_source }}' = 'shading' ]; then
+              echo "::error::rock_source: shading downloads finished hillshading tiles, which makes sense only for a cut-out. Fill in the input “area” (e.g. vysoke_tatry), or pick a height model (sonny / dmr35 / dmr5)."
               exit 1
             fi
           fi
 
-
-      # z čísel sa nedá povedať, či testovací štvorec padol na hrebeň, alebo na
-      # lúku – obrázok ide do stránky, nech ho súhrn vie ukázať
-      - name: Kde je testovací výrez
+      # numbers can't tell whether the test square hit a ridge or a meadow
+      - name: Where the test cut-out is
         if: ${{ steps.opts.outputs.opt_test_km2 != '0' }}
         continue-on-error: true
         run: |
@@ -520,12 +475,12 @@ jobs:
             --bbox='${{ steps.region.outputs.test_bbox }}' \
             --full-bbox='${{ steps.region.outputs.full_bbox }}' \
             --name='${{ steps.region.outputs.name }}' \
-            --layers="vrstevnice: ${{ inputs.contour_source }} · skaly: ${{ inputs.rock_source }} · tieňovanie: ${{ inputs.shading_source }}" \
-            --png=_site/kde-to-je.png --md=/tmp/kde-to-je.md
-          cat /tmp/kde-to-je.md >> "$GITHUB_STEP_SUMMARY"
+            --layers="contours: ${{ inputs.contour_source }} · rocks: ${{ inputs.rock_source }} · hillshading: ${{ inputs.shading_source }}" \
+            --png=_site/where-it-is.png --md=/tmp/where-it-is.md
+          cat /tmp/where-it-is.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Odlož obrázok testovacieho výrezu
-        if: ${{ always() && hashFiles('_site/kde-to-je.png') != '' }}
+      - name: Keep the test cut-out picture
+        if: ${{ always() && hashFiles('_site/where-it-is.png') != '' }}
         uses: actions/upload-artifact@v7
         with:
           name: site-plan
@@ -533,7 +488,7 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-      - name: Cache PBF regiónu (save)
+      - name: Region PBF cache (save)
         if: ${{ always() && steps.pbf-cache.outputs.cache-hit != 'true' && hashFiles('data/region.osm.pbf') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
@@ -541,9 +496,8 @@ jobs:
           path: data/region.osm.pbf
           key: ${{ steps.pbf-cache.outputs.cache-primary-key }}
 
-      # oboje: `.geojson` čítajú vrstvy z DEM a `deploy`, surový `.poly`
-      # Planetiler v jobe `tiles`, `trails` a `features`
-      - name: Odlož polygón kraja
+      # both: DEM layers and `deploy` read `.geojson`, Planetiler the raw `.poly`
+      - name: Keep the region polygon
         uses: actions/upload-artifact@v7
         with:
           name: region-poly
@@ -552,8 +506,8 @@ jobs:
             data/region.poly
           retention-days: 1
 
-      # artefaktom, nie cache: v rámci behu je to isté, cache by sa mohla minúť
-      - name: Odlož PBF pre job s dlaždicami
+      # an artifact, not a cache: within a run it's the same, a cache could miss
+      - name: Keep the PBF for the tile job
         uses: actions/upload-artifact@v7
         with:
           name: pbf
@@ -561,7 +515,7 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-      - name: Odlož meranie krokov
+      - name: Keep the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -570,11 +524,10 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # trasa nie je cesta: `type=route` relácia so značením, ktorú schéma
-  # OpenMapTiles nepozná. Vlastný job (vlastný `.pmtiles`, beží súbežne).
-  # Necachuje sa – závisí na PBF, ktoré sa mení denne.
+  # a waymarked route is no road: a `type=route` relation OpenMapTiles doesn't
+  # know. Its own job and `.pmtiles`; not cached, the PBF changes daily.
   trails:
-    name: Značené trasy
+    name: Waymarked trails
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.opt_trails == 'true' }}
     runs-on: ubuntu-latest
@@ -586,19 +539,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      # meranie musí byť v pracovnom priečinku – `hashFiles` inam nevidí
-      - name: Priprav priečinok na meranie
+      # timing must sit in the workspace – `hashFiles` sees nothing else
+      - name: Prepare the timing folder
         run: mkdir -p steps-out
 
-      - name: Stiahni PBF z prípravy
+      - name: Download the PBF from the preparation
         uses: actions/download-artifact@v8
         with:
           name: pbf
           path: data
 
-      # polygón regiónu z prípravy je `--polygon` pre Planetiler; bez neho by
-      # dlaždice vznikali na celom obdĺžniku bboxu
-      - name: Stiahni polygón regiónu
+      # the region polygon is Planetiler's `--polygon`
+      - name: Download the region polygon
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
@@ -611,16 +563,16 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Cache Planetileru (restore)
+      - name: Planetiler cache (restore)
         id: planetiler-cache
         uses: ./.github/actions/cache-restore
         with:
           path: planetiler.jar
           key: planetiler-latest-${{ needs.plan.outputs.day }}
 
-      - name: Stiahni Planetiler
+      - name: Download Planetiler
         run: workers/lib/planetiler.sh
-      - name: Cache Planetileru (save)
+      - name: Planetiler cache (save)
         if: ${{ always() && steps.planetiler-cache.outputs.cache-hit != 'true' && hashFiles('planetiler.jar') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
@@ -628,8 +580,7 @@ jobs:
           path: planetiler.jar
           key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
 
-      # bash je vo `workers/trails/build.sh`
-      - name: Trasy z OSM relácií → PMTiles
+      - name: Trails from OSM relations → PMTiles
         id: trails
         env:
           OPT_TRAILS_MAXZOOM: ${{ needs.plan.outputs.opt_trails_maxzoom }}
@@ -639,17 +590,16 @@ jobs:
           SIZE_LIMIT_MB: ${{ needs.plan.outputs.opt_size_limit_mb }}
         run: workers/trails/build.sh
 
-      - name: Odlož trasy do skladu
+      - name: Store the trails
         if: ${{ always() && hashFiles('data/trails.geojson') != '' }}
         continue-on-error: true
         env:
-          CO: trasy
-          NAZOV: trasy-${{ needs.plan.outputs.key }}
+          KIND: trails
+          NAME: trails-${{ needs.plan.outputs.key }}
         run: workers/deploy/publish-results.sh
 
-      # každý job vyrobí svoj kus `_site`; compression-level 0, .pmtiles je
-      # už komprimované
-      - name: Odlož časť stránky
+      # each job makes its piece of `_site`; compression-level 0, .pmtiles is compressed
+      - name: Keep the site piece
         if: ${{ always() && hashFiles('_site/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -659,7 +609,7 @@ jobs:
           compression-level: 0
           if-no-files-found: ignore
 
-      - name: Odlož meranie krokov
+      - name: Keep the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -668,11 +618,10 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # krajinné prvky mimo schémy OpenMapTiles (násypy, múry, ploty, vedenia,
-  # prieseky, pramene, rozhľadne, zjazdovky) – z toho istého PBF druhýkrát.
-  # Vlastný job z rovnakého dôvodu ako trasy.
+  # landscape features outside the OpenMapTiles schema (embankments, walls,
+  # fences, power lines, springs, lookouts, pistes) – a job of its own like trails
   features:
-    name: Krajinné prvky
+    name: Landscape features
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.opt_features == 'true' }}
     runs-on: ubuntu-latest
@@ -680,25 +629,22 @@ jobs:
       enabled: ${{ steps.features.outputs.enabled }}
       maxzoom: ${{ steps.features.outputs.maxzoom }}
       size_mb: ${{ steps.features.outputs.size_mb }}
-      # body (`points.yml`) sú druhý výstup toho istého kroku – vlastný archív
-      # pre balík `body`, maxzoom zdieľajú
+      # points (`points.yml`) are the same step's second output – package `points`
       points_enabled: ${{ steps.features.outputs.points_enabled }}
       points_size_mb: ${{ steps.features.outputs.points_size_mb }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Priprav priečinok na meranie
+      - name: Prepare the timing folder
         run: mkdir -p steps-out
 
-      - name: Stiahni PBF z prípravy
+      - name: Download the PBF from the preparation
         uses: actions/download-artifact@v8
         with:
           name: pbf
           path: data
 
-      # polygón regiónu je `--polygon` pre Planetiler; bez neho by dlaždice
-      # vznikali na celom obdĺžniku bboxu
-      - name: Stiahni polygón regiónu
+      - name: Download the region polygon
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
@@ -711,16 +657,16 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Cache Planetileru (restore)
+      - name: Planetiler cache (restore)
         id: planetiler-cache
         uses: ./.github/actions/cache-restore
         with:
           path: planetiler.jar
           key: planetiler-latest-${{ needs.plan.outputs.day }}
 
-      - name: Stiahni Planetiler
+      - name: Download Planetiler
         run: workers/lib/planetiler.sh
-      - name: Cache Planetileru (save)
+      - name: Planetiler cache (save)
         if: ${{ always() && steps.planetiler-cache.outputs.cache-hit != 'true' && hashFiles('planetiler.jar') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
@@ -728,8 +674,7 @@ jobs:
           path: planetiler.jar
           key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
 
-      # bash je vo `workers/features/build.sh`
-      - name: Krajinné prvky z OSM → PMTiles
+      - name: Landscape features from OSM → PMTiles
         id: features
         env:
           OPT_FEATURES_MAXZOOM: ${{ needs.plan.outputs.opt_features_maxzoom }}
@@ -739,7 +684,7 @@ jobs:
           SIZE_LIMIT_MB: ${{ needs.plan.outputs.opt_size_limit_mb }}
         run: workers/features/build.sh
 
-      - name: Odlož časť stránky
+      - name: Keep the site piece
         if: ${{ always() && hashFiles('_site/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -749,7 +694,7 @@ jobs:
           compression-level: 0
           if-no-files-found: ignore
 
-      - name: Odlož meranie krokov
+      - name: Keep the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -758,15 +703,13 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # celá dopravná sieť, vo vlastnom súbore (tento je pri strope 128 KiB).
-  # Rozpis je v hlavičke `workers/transport/transport.yml`; je to jadro balíka
-  # `cesty`.
+  # the whole road network, the core of package `roads` (`workers/transport/transport.yml`)
   transport:
-    name: Dopravná sieť
+    name: Road network
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.opt_transport == 'true' }}
     uses: ./.github/workflows/transport.yml
-    secrets: inherit                      # cache na Drive; `env` sa nededí
+    secrets: inherit                      # cache on Drive; `env` isn't inherited
     with:
       region_key: ${{ needs.plan.outputs.key }}
       region_bbox: ${{ needs.plan.outputs.bbox }}
@@ -776,14 +719,13 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_transport_pct }}
       day: ${{ needs.plan.outputs.day }}
 
-  # hranice území, vo vlastnom súbore. Vrstva `boundary` OpenMapTiles je čiara
-  # bez mena územia, ktoré ohraničuje – rozpis v `workers/boundaries/boundaries.yml`.
-  hranice:
-    name: Hranice území
+  # area boundaries with the names OpenMapTiles' `boundary` lacks (`workers/boundaries/boundaries.yml`)
+  boundaries:
+    name: Area boundaries
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.opt_boundaries == 'true' }}
     uses: ./.github/workflows/boundaries.yml
-    secrets: inherit                      # cache na Drive; `env` sa nededí
+    secrets: inherit                      # cache on Drive; `env` isn't inherited
     with:
       region_key: ${{ needs.plan.outputs.key }}
       region_bbox: ${{ needs.plan.outputs.bbox }}
@@ -793,14 +735,13 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_boundaries_pct }}
       day: ${{ needs.plan.outputs.day }}
 
-  # vodstvo, vo vlastnom súbore. V OpenMapTiles je voda v troch vrstvách a meno
-  # leží mimo geometrie – rozpis v `workers/water/water.yml`.
-  vodstvo:
-    name: Vodstvo
+  # water: three OpenMapTiles layers with names off the geometry (`workers/water/water.yml`)
+  water:
+    name: Water
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.opt_water == 'true' }}
     uses: ./.github/workflows/water.yml
-    secrets: inherit                      # cache na Drive; `env` sa nededí
+    secrets: inherit                      # cache on Drive; `env` isn't inherited
     with:
       region_key: ${{ needs.plan.outputs.key }}
       region_bbox: ${{ needs.plan.outputs.bbox }}
@@ -810,13 +751,13 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_water_pct }}
       day: ${{ needs.plan.outputs.day }}
 
-  # železnice aj s koľajovou sieťou na navigáciu – `workers/rail/rail.yml`
-  zeleznice:
-    name: Železnice a lanovky
+  # railways with the track network for navigation – `workers/rail/rail.yml`
+  railways:
+    name: Railways and cable cars
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.opt_rail == 'true' }}
     uses: ./.github/workflows/rail.yml
-    secrets: inherit                      # cache na Drive; `env` sa nededí
+    secrets: inherit                      # cache on Drive; `env` isn't inherited
     with:
       region_key: ${{ needs.plan.outputs.key }}
       region_name: ${{ needs.plan.outputs.name }}
@@ -827,13 +768,13 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_rail_pct }}
       day: ${{ needs.plan.outputs.day }}
 
-  # budovy s výmerou a menom – `workers/buildings/buildings.yml`
-  sidla:
-    name: Sídla
+  # buildings with floor area and name – `workers/buildings/buildings.yml`
+  settlements:
+    name: Settlements
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.opt_buildings == 'true' }}
     uses: ./.github/workflows/buildings.yml
-    secrets: inherit                      # cache na Drive; `env` sa nededí
+    secrets: inherit                      # cache on Drive; `env` isn't inherited
     with:
       region_key: ${{ needs.plan.outputs.key }}
       region_bbox: ${{ needs.plan.outputs.bbox }}
@@ -843,13 +784,13 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_buildings_pct }}
       day: ${{ needs.plan.outputs.day }}
 
-  # smerovacia sieť vo vlastnom súbore; rozpis je v `navigation-region.yml`
-  navigacia:
-    name: Smerovacia sieť
+  # the routing network in its own file (`navigation-region.yml`)
+  routing:
+    name: Routing network
     needs: plan
-    if: ${{ !cancelled() && needs.plan.outputs.opt_navigacia == 'true' }}
+    if: ${{ !cancelled() && needs.plan.outputs.opt_routing == 'true' }}
     uses: ./.github/workflows/navigation-region.yml
-    secrets: inherit                      # cache s poradím uzlov na Drive
+    secrets: inherit                      # cache with the node order on Drive
     with:
       region_key: ${{ needs.plan.outputs.key }}
       region_name: ${{ needs.plan.outputs.name }}
@@ -859,9 +800,9 @@ jobs:
       size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
       budget_pct: ${{ needs.plan.outputs.budget_routing_pct }}
 
-  # beží súbežne s vrstevnicami, trasami aj tieňovaním – potrebuje len PBF
+  # runs beside contours, trails and hillshading – it needs only the PBF
   tiles:
-    name: Mapové dlaždice (Planetiler)
+    name: Map tiles (Planetiler)
     needs: plan
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -871,25 +812,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      # meranie musí byť v pracovnom priečinku – `hashFiles` inam nevidí
-      - name: Priprav priečinok na meranie
+      - name: Prepare the timing folder
         run: mkdir -p steps-out
 
-      - name: Stiahni PBF z prípravy
+      - name: Download the PBF from the preparation
         uses: actions/download-artifact@v8
         with:
           name: pbf
           path: data
 
-      # polygón regiónu je `--polygon` pre Planetiler; bez neho by dlaždice
-      # vznikali na celom obdĺžniku bboxu
-      - name: Stiahni polygón regiónu
+      - name: Download the region polygon
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           name: region-poly
           path: data
-
 
       - name: Setup Java 21
         uses: actions/setup-java@v5
@@ -897,25 +834,24 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      # dva kroky, nie jeden: ukladá sa hneď po stiahnutí a nie až vtedy,
-      # keď job dobehne úspešne
-      - name: Cache – zdrojové dáta Planetileru (restore)
+      # two steps, not one: saved right after the download, not only on success
+      - name: Planetiler source data cache (restore)
         id: sources-cache
         uses: ./.github/actions/cache-restore
         with:
           path: data/sources
           key: planetiler-sources-v1
 
-      - name: Cache Planetileru (restore)
+      - name: Planetiler cache (restore)
         id: planetiler-cache
         uses: ./.github/actions/cache-restore
         with:
           path: planetiler.jar
           key: planetiler-latest-${{ needs.plan.outputs.day }}
 
-      - name: Stiahni Planetiler
+      - name: Download Planetiler
         run: workers/lib/planetiler.sh
-      - name: Cache Planetileru (save)
+      - name: Planetiler cache (save)
         if: ${{ always() && steps.planetiler-cache.outputs.cache-hit != 'true' && hashFiles('planetiler.jar') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
@@ -923,8 +859,8 @@ jobs:
           path: planetiler.jar
           key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
 
-      # bash je vo `workers/tiles/build.sh`; podiely `BUDGET_*` z env workflowu
-      - name: PBF → PMTiles (Planetiler, OpenMapTiles schéma)
+      # the `BUDGET_*` shares come from the workflow env
+      - name: PBF → PMTiles (Planetiler, OpenMapTiles schema)
         id: tiles
         env:
           OPT_AUTO_SHRINK: ${{ needs.plan.outputs.opt_auto_shrink }}
@@ -935,8 +871,8 @@ jobs:
           SIZE_LIMIT_MB: ${{ needs.plan.outputs.opt_size_limit_mb }}
         run: workers/tiles/build.sh
 
-      # zdrojové dáta si Planetiler stiahol počas behu (water polygons ~700 MB)
-      - name: Cache – zdrojové dáta Planetileru (save)
+      # Planetiler downloaded its source data during the run (water polygons ~700 MB)
+      - name: Planetiler source data cache (save)
         if: ${{ always() && steps.sources-cache.outputs.cache-hit != 'true' && hashFiles('data/sources/**') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
@@ -944,7 +880,7 @@ jobs:
           path: data/sources
           key: ${{ steps.sources-cache.outputs.cache-primary-key }}
 
-      - name: Odlož časť stránky
+      - name: Keep the site piece
         if: ${{ always() && hashFiles('_site/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -954,7 +890,7 @@ jobs:
           compression-level: 0
           if-no-files-found: ignore
 
-      - name: Odlož meranie krokov
+      - name: Keep the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -963,9 +899,9 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # nezávisí od ničoho okrem kódu, takže beží od začiatku súbežne so všetkým
+  # depends on nothing but code, so it runs from the start beside everything
   assets:
-    name: Ikonky a fonty
+    name: Icons and fonts
     runs-on: ubuntu-latest
     outputs:
       name: ${{ steps.sprite.outputs.name }}
@@ -973,14 +909,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      # meranie musí byť v pracovnom priečinku – `hashFiles` inam nevidí
-      - name: Priprav priečinok na meranie
+      - name: Prepare the timing folder
         run: mkdir -p steps-out
 
-
-      # `glyphs.sh` je v kľúči: rozhoduje aj o tom, ktoré rozsahy znakov
-      # v `_site/fonts` ostanú
-      - name: Cache glyfov a spritov (restore)
+      # `glyphs.sh` is in the key: it also decides which ranges stay in `_site/fonts`
+      - name: Glyph and sprite cache (restore)
         id: assets-cache
         uses: ./.github/actions/cache-restore
         with:
@@ -989,16 +922,15 @@ jobs:
             _site/sprites
           key: assets-${{ hashFiles('poc/web/icon-sources.js', 'poc/web/shields.js', 'poc/web/marks.js', 'poc/web/style-overrides.json', 'workers/assets/sprite.mjs', 'workers/assets/shields.mjs', 'workers/assets/marks.mjs', 'workers/assets/custom-icons.mjs', 'workers/lib/sprite-bake.mjs', 'workers/assets/glyphs.sh') }}-${{ env.GLYPHS_ZIP }}
 
-      # bash je vo `workers/assets/icons.sh`
-      - name: Stiahni a priprav sady ikoniek
+      - name: Download and prepare the icon sets
         id: sprite
         run: workers/assets/icons.sh
 
-      # vo `workers/assets/glyphs.sh`; `GLYPHS_ZIP` z env workflowu
-      - name: Stiahni glyfy (fonty) k sebe na Pages
+      # `GLYPHS_ZIP` from the workflow env
+      - name: Download glyphs (fonts) onto our Pages
         run: workers/assets/glyphs.sh
 
-      - name: Cache glyfov a spritov (save)
+      - name: Glyph and sprite cache (save)
         if: ${{ always() && steps.assets-cache.outputs.cache-hit != 'true' && hashFiles('_site/sprites/**') != '' }}
         continue-on-error: true
         uses: ./.github/actions/cache-save
@@ -1008,9 +940,7 @@ jobs:
             _site/sprites
           key: ${{ steps.assets-cache.outputs.cache-primary-key }}
 
-      # každý job vyrobí svoj kus `_site`; compression-level 0, obsah je
-      # už komprimovaný
-      - name: Odlož časť stránky
+      - name: Keep the site piece
         if: ${{ always() && hashFiles('_site/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -1020,7 +950,7 @@ jobs:
           compression-level: 0
           if-no-files-found: ignore
 
-      - name: Odlož meranie krokov
+      - name: Keep the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -1029,37 +959,34 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # pozbiera kusy `_site`, dogeneruje štýly a manifest, skontroluje a nasadí.
-  # `!cancelled()`, nie `success()`: keď vrstvy z DEM spadnú alebo sú vypnuté,
-  # mapa sa má nasadiť aj tak.
+  # collects the `_site` pieces, builds styles and manifest, checks and deploys.
+  # `!cancelled()`, not `success()`: with DEM layers failed or off the map still deploys.
   deploy:
-    name: Zloženie a nasadenie
-    needs: [plan, dem, trails, features, transport, hranice, vodstvo, zeleznice, sidla, navigacia, tiles, assets]
+    name: Assembly and deploy
+    needs: [plan, dem, trails, features, transport, boundaries, water, railways, settlements, routing, tiles, assets]
     if: ${{ !cancelled() && needs.tiles.result == 'success' && needs.assets.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
-      # `write` je tu jediné miesto, kde do repozitára niečo ide: `maps.json`.
-      # Nezacyklí sa – `Build map` sa spúšťa len ručne.
+      # `write` is the one place anything reaches the repository: `maps.json`
       contents: write
       pages: write
       id-token: write
-      actions: read     # súhrn číta joby a ich logy, keď niečo spadne
+      actions: read     # the summary reads jobs and their logs when something fails
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      # `merge-multiple` rozbalí kusy do jedného stromu. Vzor `site-*`, nie
-      # mená: vypnutý alebo spadnutý job svoj artefakt jednoducho nemá.
-      - name: Pozbieraj kusy stránky
+      # the pattern `site-*`, not names: a job off or failed simply has no artifact
+      - name: Collect the site pieces
         uses: actions/download-artifact@v8
         with:
           pattern: site-*
           path: _site
           merge-multiple: true
 
-      - name: Stiahni meranie krokov od ostatných jobov
+      - name: Download the step timing of the other jobs
         if: ${{ always() }}
         uses: actions/download-artifact@v8
         with:
@@ -1067,28 +994,24 @@ jobs:
           path: steps-out
           merge-multiple: true
 
-      - name: Čo prišlo od ostatných jobov
+      - name: What came from the other jobs
         run: |
           set -uo pipefail
-          echo "Výsledky jobov: vrstevnice=${{ needs.dem.outputs.res_contours }}, trasy=${{ needs.trails.result }}, prvky=${{ needs.features.result }}, doprava=${{ needs.transport.result }}, hranice=${{ needs.hranice.result }}, vodstvo=${{ needs.vodstvo.result }}, železnice=${{ needs.zeleznice.result }}, sídla=${{ needs.sidla.result }}, navigácia=${{ needs.navigacia.result }}, terén=${{ needs.dem.outputs.res_terrain }}, dlaždice=${{ needs.tiles.result }}, ikonky=${{ needs.assets.result }}"
+          echo "Job results: contours=${{ needs.dem.outputs.res_contours }}, trails=${{ needs.trails.result }}, features=${{ needs.features.result }}, transport=${{ needs.transport.result }}, boundaries=${{ needs.boundaries.result }}, water=${{ needs.water.result }}, railways=${{ needs.railways.result }}, settlements=${{ needs.settlements.result }}, routing=${{ needs.routing.result }}, terrain=${{ needs.dem.outputs.res_terrain }}, tiles=${{ needs.tiles.result }}, icons=${{ needs.assets.result }}"
           find _site -maxdepth 2 -mindepth 1 -type d -exec du -sh {} \; 2>/dev/null || true
-          du -sm _site | cut -f1 | xargs -I{} echo "_site spolu: {} MB"
+          du -sm _site | cut -f1 | xargs -I{} echo "_site in total: {} MB"
 
-
-      # hranica regiónu: dlaždice sú orezané po celých dlaždiciach, takže môžu
-      # presahovať. Presnú hranicu dokreslí štýl z tohto súboru – ide do `_site`,
-      # teda aj do ZIPu na Drive.
-      - name: Stiahni polygón regiónu
+      # tiles are cut per whole tile; the style draws the exact outline from this file
+      - name: Download the region polygon
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           name: region-poly
           path: data
 
-      - name: Hranica regiónu pre viewer
+      - name: Region outline for the viewer
         run: |
-          # `--pad-m`: `--bbox` je tesný obdĺžnik okolo pôvodného polygónu, kým
-          # `region.geojson` je už nafúknutý o prekryv so susedom
+          # `--pad-m`: `--bbox` is tight around the original polygon, `region.geojson` buffered
           python3 workers/deploy/region-mask.py \
             --poly=data/region.geojson \
             --bbox='${{ needs.plan.outputs.bbox }}' \
@@ -1099,7 +1022,7 @@ jobs:
         id: pages
         uses: actions/configure-pages@v6
 
-      - name: Vygeneruj statické style.json (web + iOS)
+      - name: Build static style.json (web + iOS)
         run: |
           node workers/styles/build.mjs \
             --base-url='${{ steps.pages.outputs.base_url }}' \
@@ -1118,12 +1041,12 @@ jobs:
             --points-maxzoom='${{ needs.features.outputs.maxzoom || '15' }}' \
             --transport='${{ needs.transport.outputs.enabled || 'false' }}' \
             --transport-maxzoom='${{ needs.transport.outputs.maxzoom || '14' }}' \
-            --boundaries='${{ needs.hranice.outputs.enabled || 'false' }}' \
-            --boundaries-maxzoom='${{ needs.hranice.outputs.maxzoom || '12' }}' \
-            --water='${{ needs.vodstvo.outputs.enabled || 'false' }}' \
-            --water-maxzoom='${{ needs.vodstvo.outputs.maxzoom || '14' }}' \
-            --buildings='${{ needs.sidla.outputs.enabled || 'false' }}' \
-            --buildings-maxzoom='${{ needs.sidla.outputs.maxzoom || '14' }}' \
+            --boundaries='${{ needs.boundaries.outputs.enabled || 'false' }}' \
+            --boundaries-maxzoom='${{ needs.boundaries.outputs.maxzoom || '12' }}' \
+            --water='${{ needs.water.outputs.enabled || 'false' }}' \
+            --water-maxzoom='${{ needs.water.outputs.maxzoom || '14' }}' \
+            --buildings='${{ needs.settlements.outputs.enabled || 'false' }}' \
+            --buildings-maxzoom='${{ needs.settlements.outputs.maxzoom || '14' }}' \
             --dem-source='${{ needs.dem.outputs.contours_dem_source || 'sonny' }}' \
             --dem-tiles-source='${{ needs.dem.outputs.terrain_dem_source || needs.dem.outputs.contours_dem_source || 'sonny' }}' \
             --dem-bounds='${{ needs.plan.outputs.test_bbox }}' \
@@ -1135,17 +1058,15 @@ jobs:
             --fonts-dir=_site/fonts \
             --out=_site/styles
 
-      - name: Dopeč vzory plôch a čiar do spritu
+      - name: Bake area and line patterns into the sprite
         run: |
-          # web si vzory dokreslí sám, statický štýl pre iOS ich potrebuje
-          # priamo v sprite
+          # the web draws patterns itself, the static iOS style needs them in the sprite
           for id in ${{ needs.assets.outputs.available }}; do
             node workers/styles/patterns.mjs \
               --sprite="_site/sprites/$id" --styles=_site/styles
           done
 
-      # bash a jq sú vo `workers/deploy/site.sh` (strop súboru 128 kB)
-      - name: Poskladaj web (viewer + manifest)
+      - name: Assemble the web (viewer + manifest)
         env:
           BASE_URL: ${{ steps.pages.outputs.base_url }}
           CONTOURS_DEM_SOURCE: ${{ needs.dem.outputs.contours_dem_source || 'sonny' }}
@@ -1160,16 +1081,16 @@ jobs:
           POINTS_ENABLED: ${{ needs.features.outputs.points_enabled || 'false' }}
           TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
           TRANSPORT_MAXZOOM: ${{ needs.transport.outputs.maxzoom || '14' }}
-          ROUTING_ENABLED: ${{ needs.navigacia.outputs.enabled || 'false' }}
-          BOUNDARIES_ENABLED: ${{ needs.hranice.outputs.enabled || 'false' }}
-          BOUNDARIES_MAXZOOM: ${{ needs.hranice.outputs.maxzoom || '12' }}
-          WATER_ENABLED: ${{ needs.vodstvo.outputs.enabled || 'false' }}
-          WATER_MAXZOOM: ${{ needs.vodstvo.outputs.maxzoom || '14' }}
-          RAIL_ENABLED: ${{ needs.zeleznice.outputs.enabled || 'false' }}
-          RAIL_MAXZOOM: ${{ needs.zeleznice.outputs.maxzoom || '15' }}
-          RAIL_ROUTING: ${{ needs.zeleznice.outputs.routing || 'false' }}
-          BUILDINGS_ENABLED: ${{ needs.sidla.outputs.enabled || 'false' }}
-          BUILDINGS_MAXZOOM: ${{ needs.sidla.outputs.maxzoom || '14' }}
+          ROUTING_ENABLED: ${{ needs.routing.outputs.enabled || 'false' }}
+          BOUNDARIES_ENABLED: ${{ needs.boundaries.outputs.enabled || 'false' }}
+          BOUNDARIES_MAXZOOM: ${{ needs.boundaries.outputs.maxzoom || '12' }}
+          WATER_ENABLED: ${{ needs.water.outputs.enabled || 'false' }}
+          WATER_MAXZOOM: ${{ needs.water.outputs.maxzoom || '14' }}
+          RAIL_ENABLED: ${{ needs.railways.outputs.enabled || 'false' }}
+          RAIL_MAXZOOM: ${{ needs.railways.outputs.maxzoom || '15' }}
+          RAIL_ROUTING: ${{ needs.railways.outputs.routing || 'false' }}
+          BUILDINGS_ENABLED: ${{ needs.settlements.outputs.enabled || 'false' }}
+          BUILDINGS_MAXZOOM: ${{ needs.settlements.outputs.maxzoom || '14' }}
           ICONS_AVAILABLE: ${{ needs.assets.outputs.available }}
           ICONS_NAME: ${{ needs.assets.outputs.name }}
           REGION_BBOX: ${{ needs.plan.outputs.bbox }}
@@ -1189,17 +1110,17 @@ jobs:
           TRAILS_MAXZOOM: ${{ needs.trails.outputs.maxzoom || '14' }}
         run: workers/deploy/site.sh
 
-      - name: Skontroluj, že štýl odkazuje len na existujúce súbory
-        id: kontrola
+      - name: Check the style points only at existing files
+        id: check
         env:
           SPRITE: ${{ needs.assets.outputs.name }}
           REGION_KEY: ${{ needs.plan.outputs.key }}
           LIMIT_MB: ${{ needs.plan.outputs.opt_size_limit_mb }}
         run: workers/deploy/check.sh
-      # štýly, viewer, `manifest.json` a dopečený sprite – čo `_site` dostalo
-      # až tu a v `site-*` teda nie je (viď `workers/deploy/apple-archive.sh`)
-      - name: Odlož zloženú časť webu pre ďalšie joby
-        if: ${{ always() && steps.kontrola.outcome == 'success' }}
+      # styles, viewer, `manifest.json` and the baked sprite – what `_site` got
+      # only here, so not in `site-*` (see `workers/deploy/apple-archive.sh`)
+      - name: Keep the assembled site part for later jobs
+        if: ${{ always() && steps.check.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: deploy-site
@@ -1210,21 +1131,20 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-      # `publish_pages=false` vypne len nasadenie – `_site` sa postaví
-      # a skontroluje rovnako. Drive je nezávislá páka.
+      # `publish_pages=false` only turns the deploy off; Drive is its own lever
       - name: Upload Pages artifact
         if: ${{ needs.plan.outputs.opt_publish_pages == 'true' }}
         uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
-      - name: Deploy na GitHub Pages
+      - name: Deploy to GitHub Pages
         id: deployment
         if: ${{ needs.plan.outputs.opt_publish_pages == 'true' }}
         uses: actions/deploy-pages@v5
 
-      # bez nasadenia niet čo overovať – `page_url` by bol prázdny
-      - name: Smoke test nasadenej mapy
+      # without a deploy there is nothing to check – `page_url` would be empty
+      - name: Smoke test of the deployed map
         if: ${{ needs.plan.outputs.opt_publish_pages == 'true' }}
         env:
           BASE: ${{ steps.deployment.outputs.page_url }}
@@ -1235,19 +1155,19 @@ jobs:
           TRAILS: ${{ needs.trails.outputs.enabled }}
           FEATURES: ${{ needs.features.outputs.enabled }}
           POINTS: ${{ needs.features.outputs.points_enabled }}
-          BOUNDARIES: ${{ needs.hranice.outputs.enabled }}
-          WATER: ${{ needs.vodstvo.outputs.enabled }}
-          RAIL: ${{ needs.zeleznice.outputs.enabled }}
-          BUILDINGS: ${{ needs.sidla.outputs.enabled }}
+          BOUNDARIES: ${{ needs.boundaries.outputs.enabled }}
+          WATER: ${{ needs.water.outputs.enabled }}
+          RAIL: ${{ needs.railways.outputs.enabled }}
+          BUILDINGS: ${{ needs.settlements.outputs.enabled }}
           PAGES_BUILD_TYPE: ${{ needs.plan.outputs.pages_build_type }}
         run: workers/deploy/smoke-test.sh
 
-      - name: Publikuj mapu na Drive
+      - name: Publish the map to Drive
         id: publish
-        if: ${{ always() && needs.plan.outputs.opt_publish == 'true' && steps.kontrola.outcome == 'success' }}
+        if: ${{ always() && needs.plan.outputs.opt_publish == 'true' && steps.check.outcome == 'success' }}
         env:
           AREA_KEY: ${{ needs.plan.outputs.area_key }}
-          # bbox výrezu vedľa bboxu mapy: mapa je celý región, terén len tu
+          # the cut-out's bbox beside the map's: the map is the region, terrain only here
           AREA_BBOX: ${{ needs.plan.outputs.area_bbox }}
           CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
           CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
@@ -1256,10 +1176,10 @@ jobs:
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           FEATURES_ENABLED: ${{ needs.features.outputs.enabled || 'false' }}
           TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
-          BOUNDARIES_ENABLED: ${{ needs.hranice.outputs.enabled || 'false' }}
-          WATER_ENABLED: ${{ needs.vodstvo.outputs.enabled || 'false' }}
-          RAIL_ENABLED: ${{ needs.zeleznice.outputs.enabled || 'false' }}
-          BUILDINGS_ENABLED: ${{ needs.sidla.outputs.enabled || 'false' }}
+          BOUNDARIES_ENABLED: ${{ needs.boundaries.outputs.enabled || 'false' }}
+          WATER_ENABLED: ${{ needs.water.outputs.enabled || 'false' }}
+          RAIL_ENABLED: ${{ needs.railways.outputs.enabled || 'false' }}
+          BUILDINGS_ENABLED: ${{ needs.settlements.outputs.enabled || 'false' }}
           REGION_KEY: ${{ needs.plan.outputs.key }}
           ROCKS_ENABLED: ${{ needs.dem.outputs.rocks_enabled || 'false' }}
           ROCKS_SOURCE: ${{ needs.dem.outputs.rock_source }}
@@ -1274,21 +1194,17 @@ jobs:
             --maps=maps.json \
             --summary="$GITHUB_STEP_SUMMARY"
 
-      # `maps.json` je jediný zoznam hotových máp a kde na Drive ležia.
-      # Dopisuje ho krok vyššie (len ten pozná id súborov), tu sa už len uloží.
-      # Až za publikovaním a `if: success()`: katalóg nesmie ukazovať na súbory,
-      # ktoré sa nenahrali. Ktorý súbor to je, povie krok vyššie (`maps_file`).
-      - name: Zapíš mapu do maps.json
+      # the step above writes the catalog (only it knows the file ids); saved
+      # here only after a successful publish, and the step says which file
+      - name: Write the map into maps.json
         if: ${{ steps.publish.outcome == 'success' }}
         env:
           MAPS_JSON: ${{ steps.publish.outputs.maps_file || 'maps.json' }}
           BRANCH: ${{ github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: workers/deploy/catalog.sh
-      # súhrn: riadky si každý job odložil do svojho `steps-*` artefaktu, tu sa
-      # zlejú a zoradia podľa poradového čísla (joby bežia súbežne).
-      # Text je vo `workers/deploy/summary.sh` – workflow má strop 128 KiB.
-      - name: Súhrn buildu
+      # every job kept its lines in its `steps-*` artifact; merged and sorted here
+      - name: Build summary
         if: ${{ always() }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1298,19 +1214,19 @@ jobs:
           R_SHADING_ROCKS: ${{ needs.dem.outputs.res_shading_rocks }}
           R_TRAILS: ${{ needs.trails.result }}
           R_FEATURES: ${{ needs.features.result }}
-          R_HRANICE: ${{ needs.hranice.result }}
-          R_VODSTVO: ${{ needs.vodstvo.result }}
-          R_ZELEZNICE: ${{ needs.zeleznice.result }}
-          R_SIDLA: ${{ needs.sidla.result }}
+          R_BOUNDARIES: ${{ needs.boundaries.result }}
+          R_WATER: ${{ needs.water.result }}
+          R_RAILWAYS: ${{ needs.railways.result }}
+          R_SETTLEMENTS: ${{ needs.settlements.result }}
           R_TERRAIN: ${{ needs.dem.outputs.res_terrain }}
           R_TILES: ${{ needs.tiles.result }}
           R_ASSETS: ${{ needs.assets.result }}
           SRC_CONTOURS: ${{ needs.plan.outputs.opt_contour_source }}
           SRC_ROCKS: ${{ needs.plan.outputs.opt_rock_source }}
           SRC_SHADING: ${{ needs.plan.outputs.opt_shading_source }}
-          USED_CONTOURS: ${{ needs.dem.outputs.contours_dem_source || '(nebežalo)' }}
-          USED_ROCKS: ${{ needs.dem.outputs.rock_source || '(nebežalo)' }}
-          USED_SHADING: ${{ needs.dem.outputs.terrain_dem_source || '(nebežalo)' }}
+          USED_CONTOURS: ${{ needs.dem.outputs.contours_dem_source || '(did not run)' }}
+          USED_ROCKS: ${{ needs.dem.outputs.rock_source || '(did not run)' }}
+          USED_SHADING: ${{ needs.dem.outputs.terrain_dem_source || '(did not run)' }}
           SIZE_LIMIT_MB: ${{ needs.plan.outputs.opt_size_limit_mb }}
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
           PUBLISH_PAGES: ${{ needs.plan.outputs.opt_publish_pages }}
@@ -1319,43 +1235,37 @@ jobs:
           TEST_KM2: ${{ needs.plan.outputs.test_km2 }}
           TEST_BBOX: ${{ needs.plan.outputs.test_bbox }}
           TEST_FULL_BBOX: ${{ needs.plan.outputs.full_bbox }}
-          # celý formulár naraz: `toJSON(inputs)` sa nemá ako rozísť so zoznamom
+          # the whole form at once: `toJSON(inputs)` can't drift from a list
           INPUTS_JSON: ${{ toJSON(inputs) }}
         run: bash workers/deploy/summary.sh
 
-  # ten istý obsah ešte raz ako `.aar` (Apple Archive, LZFSE) – iOS a macOS ho
-  # rozbalia systémovo. ZIP tým nezaniká, `.aar` je navyše.
-  #
-  # Vlastný job na macOS, lebo nástroj `aa` je súčasť macOS; `_site` si preto
-  # sťahuje z tých istých artefaktov ako `deploy`.
-  # Beží až po `deploy` a len keď publikoval – katalóg sa najprv naplní ZIPmi
-  # a tento job k nim `.aar` dopíše. Keď spadne, mapa tým netrpí.
+  # the same contents once more as `.aar` (Apple Archive, LZFSE), unpacked
+  # natively by iOS and macOS; a job of its own on macOS, where `aa` lives.
+  # After `deploy`, only when it published; a failure doesn't hurt the map.
   apple-archive:
-    name: Balíky ako Apple Archive (.aar)
-    needs: [plan, deploy, dem, trails, features, transport, hranice, vodstvo, zeleznice, sidla, tiles]
+    name: Packages as Apple Archive (.aar)
+    needs: [plan, deploy, dem, trails, features, transport, boundaries, water, railways, settlements, tiles]
     if: ${{ !cancelled() && needs.deploy.result == 'success' && needs.plan.outputs.opt_publish == 'true' && needs.plan.outputs.opt_apple_archive == 'true' }}
     runs-on: macos-latest
     permissions:
-      contents: write     # `maps.json` – to isté, čo robí `deploy`
+      contents: write     # `maps.json` – as `deploy` does
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      # tie isté kusy, z akých `deploy` skladal `_site`
-      - name: Pozbieraj kusy stránky
+      # the same pieces `deploy` assembled `_site` from
+      - name: Collect the site pieces
         uses: actions/download-artifact@v8
         with:
           pattern: site-*
           path: _site
           merge-multiple: true
-      # články z Wikipédie majú vlastnú pipeline, ktorá si `.aar` vyrába sama.
-      # Až po `site-*`: sprite je v oboch a vyhrať musí ten dopečený – poradie
-      # krokov je jediné, čo to zaručuje.
-      - name: Pozbieraj zloženú časť webu
+      # after `site-*`: both hold the sprite and the baked one must win
+      - name: Collect the assembled part of the site
         uses: actions/download-artifact@v8
         with:
           name: deploy-site
           path: _site
-      - name: Zabaľ a nahraj .aar na Drive
+      - name: Pack and upload .aar to Drive
         id: publish
         env:
           AREA_KEY: ${{ needs.plan.outputs.area_key }}
@@ -1367,10 +1277,10 @@ jobs:
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           FEATURES_ENABLED: ${{ needs.features.outputs.enabled || 'false' }}
           TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
-          BOUNDARIES_ENABLED: ${{ needs.hranice.outputs.enabled || 'false' }}
-          WATER_ENABLED: ${{ needs.vodstvo.outputs.enabled || 'false' }}
-          RAIL_ENABLED: ${{ needs.zeleznice.outputs.enabled || 'false' }}
-          BUILDINGS_ENABLED: ${{ needs.sidla.outputs.enabled || 'false' }}
+          BOUNDARIES_ENABLED: ${{ needs.boundaries.outputs.enabled || 'false' }}
+          WATER_ENABLED: ${{ needs.water.outputs.enabled || 'false' }}
+          RAIL_ENABLED: ${{ needs.railways.outputs.enabled || 'false' }}
+          BUILDINGS_ENABLED: ${{ needs.settlements.outputs.enabled || 'false' }}
           REGION_KEY: ${{ needs.plan.outputs.key }}
           ROCKS_ENABLED: ${{ needs.dem.outputs.rocks_enabled || 'false' }}
           ROCKS_SOURCE: ${{ needs.dem.outputs.rock_source }}
@@ -1379,12 +1289,11 @@ jobs:
           TEST_KM2: ${{ needs.plan.outputs.test_km2 }}
           TILES_MAXZOOM: ${{ needs.tiles.outputs.maxzoom }}
           TRAILS_ENABLED: ${{ needs.trails.outputs.enabled || 'false' }}
-          # z ktorej vetvy si vypýtať čerstvý `maps.json`
+          # which branch to fetch a fresh `maps.json` from
           BRANCH: ${{ github.ref_name }}
         run: workers/deploy/apple-archive.sh
-      # `deploy` doň zapísal ZIPy, tento krok pridá `.aar`; `git pull --rebase`
-      # v skripte je nutnosť, nie poistka
-      - name: Zapíš .aar do maps.json
+      # `deploy` wrote the ZIPs into it, this adds `.aar`
+      - name: Write .aar into maps.json
         if: ${{ steps.publish.outcome == 'success' }}
         env:
           MAPS_JSON: ${{ steps.publish.outputs.maps_file || 'maps.json' }}

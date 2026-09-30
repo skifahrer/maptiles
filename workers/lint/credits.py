@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Kontrola: každý balík má autorov dát a katalóg ich zapíše."""
+"""Check: every package names its data authors and the catalog writes them."""
 import importlib.util
 import json
 import sys
@@ -7,15 +7,15 @@ import sys
 CREDITS = "workers/data/credits.json"
 PACKAGES = "workers/data/packages.json"
 DEM = "workers/data/dem-sources.json"
-POUZITIA = ("contours", "rocks", "shading")
-KLUCE = {"holder", "work", "license", "license_url", "source_url", "changes",
-         "copyright"}
+USES = ("contours", "rocks", "shading")
+KEYS = {"holder", "work", "license", "license_url", "source_url", "changes",
+        "copyright"}
 
 
-def nacitaj(meno, cesta):
-    spec = importlib.util.spec_from_file_location(meno, cesta)
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules[meno] = mod
+    sys.modules[name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -23,63 +23,64 @@ def nacitaj(meno, cesta):
 def main():
     bad = []
     with open(CREDITS, encoding="utf-8") as f:
-        kredity = {k: v for k, v in json.load(f).items() if not k.startswith("_")}
+        credits = {k: v for k, v in json.load(f).items() if not k.startswith("_")}
     with open(PACKAGES, encoding="utf-8") as f:
-        baliky = json.load(f)["baliky"]
+        packages = json.load(f)["packages"]
     with open(DEM, encoding="utf-8") as f:
-        modely = [k for k, v in json.load(f).items()
+        models = [k for k, v in json.load(f).items()
                   if not k.startswith("_") and isinstance(v, dict)]
 
-    for kluc, kredit in kredity.items():
-        if not kredit.get("holder"):
-            bad.append(f"{CREDITS}: `{kluc}` nemá `holder`")
-        if set(kredit) - KLUCE:
-            bad.append(f"{CREDITS}: `{kluc}` má neznáme kľúče "
-                       f"{sorted(set(kredit) - KLUCE)} – appka ich nečíta")
-        if "copyright" in kredit and not isinstance(kredit["copyright"], bool):
-            bad.append(f"{CREDITS}: `{kluc}` – `copyright` musí byť true/false")
+    for key, credit in credits.items():
+        if not credit.get("holder"):
+            bad.append(f"{CREDITS}: `{key}` has no `holder`")
+        if set(credit) - KEYS:
+            bad.append(f"{CREDITS}: `{key}` has unknown keys "
+                       f"{sorted(set(credit) - KEYS)} – the app doesn't read them")
+        if "copyright" in credit and not isinstance(credit["copyright"], bool):
+            bad.append(f"{CREDITS}: `{key}` – `copyright` must be true/false")
 
-    for model in modely:
-        if model not in kredity:
-            bad.append(f"{CREDITS}: model `{model}` z {DEM} nemá autora")
+    for model in models:
+        if model not in credits:
+            bad.append(f"{CREDITS}: model `{model}` of {DEM} has no author")
 
-    for b in baliky:
-        zdroje = b.get("zdroje")
-        if not zdroje:
-            bad.append(f"{PACKAGES}: balík `{b['kluc']}` nemá `zdroje`")
+    for p in packages:
+        sources = p.get("sources")
+        if not sources:
+            bad.append(f"{PACKAGES}: package `{p['key']}` has no `sources`")
             continue
-        # zmenu výškového modelu (CC BY) hovorí autor výpočtu pred ním
-        dem = [i for i, z in enumerate(zdroje) if z.startswith("dem:")]
-        if dem and (zdroje[0] != "autor" or min(dem) == 0):
-            bad.append(f"{PACKAGES}: `{b['kluc']}` – `autor` musí ísť pred `dem:*`")
-        for z in zdroje:
-            if z.startswith("dem:"):
-                if z[4:] not in POUZITIA:
-                    bad.append(f"{PACKAGES}: `{b['kluc']}` – `{z}` nie je "
-                               f"{', '.join('dem:' + p for p in POUZITIA)}")
-            elif z not in kredity:
-                bad.append(f"{PACKAGES}: `{b['kluc']}` – zdroj `{z}` nie je v {CREDITS}")
+        # the author of the computation states the change to the height model (CC BY)
+        dem = [i for i, s in enumerate(sources) if s.startswith("dem:")]
+        if dem and (sources[0] != "author" or min(dem) == 0):
+            bad.append(f"{PACKAGES}: `{p['key']}` – `author` must come before `dem:*`")
+        for s in sources:
+            if s.startswith("dem:"):
+                if s[4:] not in USES:
+                    bad.append(f"{PACKAGES}: `{p['key']}` – `{s}` is not "
+                               f"{', '.join('dem:' + u for u in USES)}")
+            elif s not in credits:
+                bad.append(f"{PACKAGES}: `{p['key']}` – source `{s}` isn't in {CREDITS}")
 
-    baliky_mod = nacitaj("deploy_baliky", "workers/deploy/baliky.py")
-    # autor výpočtu ide pred dáta, z ktorých počítal
-    relief = [kredity.get("autor"), kredity.get("dmr5")]
-    if baliky_mod.kredity("tienovanie", {"shading": "dmr5"}) != relief:
-        bad.append("baliky.kredity: tieňovanie nemenuje autora a potom ÚGKK SR")
-    if baliky_mod.kredity("vrstevnice-skaly", {}) != relief:
-        bad.append("baliky.kredity: kraj bez modelu nemenuje autora a predvolený DMR 5.0")
-    if baliky_mod.kredity("mapa") != [kredity.get("osm")]:
-        bad.append("baliky.kredity: základná mapa nemenuje OpenStreetMap")
+    packages_mod = load("deploy_packages", "workers/deploy/packages.py")
+    # the author of the computation comes before the data computed from
+    relief = [credits.get("author"), credits.get("dmr5")]
+    if packages_mod.credits("terrain", {"shading": "dmr5"}) != relief:
+        bad.append("packages.credits: terrain doesn't name the author, then ÚGKK SR")
+    if packages_mod.credits("contours-rocks", {}) != relief:
+        bad.append("packages.credits: a region without a model doesn't name the author "
+                   "and the default DMR 5.0")
+    if packages_mod.credits("base") != [credits.get("osm")]:
+        bad.append("packages.credits: the base map doesn't name OpenStreetMap")
 
     catalog = open("workers/deploy/catalog.py", encoding="utf-8").read()
-    if catalog.count("modely=modely_kraja(man, reg)") < 2:
-        bad.append("workers/deploy/catalog.py: niektorý zápis balíka nepodáva "
-                   "`modely_kraja` – autori výšok by boli predvolení, nie skutoční")
+    if catalog.count("models=region_models(man, reg)") < 2:
+        bad.append("workers/deploy/catalog.py: some package write doesn't pass "
+                   "`region_models` – height authors would be defaults, not the real ones")
 
     for b in bad:
         print(f"::error::{b}")
     if bad:
         sys.exit(1)
-    print(f"✔ {len(baliky)} balíkov, každý s autormi dát")
+    print(f"✔ {len(packages)} packages, each with data authors")
 
 
 if __name__ == "__main__":

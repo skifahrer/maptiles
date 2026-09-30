@@ -447,8 +447,8 @@ def write_summary(path, state):
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--area", default="cele_slovensko",
-                    help="kľúč z workers/data/areas.json, `cele_slovensko`, alebo bbox W,S,E,N")
+    ap.add_argument("--area", default="whole_country",
+                    help="a key from workers/data/areas.json, `whole_country`, or a bbox W,S,E,N")
     ap.add_argument("--grid-m", type=float, default=1.0)
     ap.add_argument("--out", default="out")
     ap.add_argument("--work", default="drive-work")
@@ -459,7 +459,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=12,
                     help="koľko blokov sa číta naraz; nad ~16 začne Drive "
                          "odpovedať 403 a čakanie zožerie viac, než sa získa")
-    ap.add_argument("--geoid", choices=("egm2008", "elipsoid"), default="egm2008")
+    ap.add_argument("--geoid", choices=("egm2008", "ellipsoid", "elipsoid"), default="egm2008")
     ap.add_argument("--tiles", action="store_true",
                     help="výstup sú 1° dlaždice (dem-dmr5) aj pri zadanom "
                          "výreze – okno sa rozšíri na celé stupne. Bez toho "

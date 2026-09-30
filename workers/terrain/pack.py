@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Výškové dlaždice → jeden `.pmtiles` (raster, terrarium PNG).
+"""Terrain tiles → one `.pmtiles` (raster, terrarium PNG).
 
-Jeden súbor namiesto stromu tisícov PNG: rovnaká podoba na Pages aj v sklade,
-rozsah a zoomy si nesie v hlavičke. Rovnaké dlaždice (rovina, hladina) sa
-vďaka hashovaniu uložia raz. Zapisuje sa v Hilbertovom poradí, aby bol archív
-„clustered".
+One file instead of a tree of thousands of PNGs: the same shape on Pages and in
+the store, extent and zooms in its header. Identical tiles (plane, water level)
+are stored once thanks to hashing. Written in Hilbert order so the archive is
+"clustered".
 
     python3 workers/terrain/pack.py --in=terrain-out \\
         --out=_site/tiles/presovsky-terrain.pmtiles --name=presovsky
@@ -21,7 +21,7 @@ TILE = 256
 
 
 def tile_bounds(z, x, y):
-    """Zemepisný obdĺžnik dlaždice XYZ (west, south, east, north)."""
+    """The geographic rectangle of an XYZ tile (west, south, east, north)."""
     n = 2.0**z
     w = x / n * 360.0 - 180.0
     e = (x + 1) / n * 360.0 - 180.0
@@ -30,12 +30,12 @@ def tile_bounds(z, x, y):
     return w, south, e, north
 
 
-def zbierka(src):
-    """Nájde `{z}/{x}/{y}.png` a vráti [(tileid, z, x, y, cesta)] zoradené."""
+def collect(src):
+    """Find `{z}/{x}/{y}.png` and return sorted [(tileid, z, x, y, path)]."""
     out = []
     for zd in os.listdir(src):
         if not zd.isdigit():
-            continue                      # `maxzoom.txt` a spol.
+            continue                      # `maxzoom.txt` and the like
         z = int(zd)
         zpath = os.path.join(src, zd)
         if not os.path.isdir(zpath):
@@ -59,60 +59,57 @@ def zbierka(src):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--in", dest="src", required=True,
-                    help="adresár s dlaždicami {z}/{x}/{y}.png")
-    ap.add_argument("--out", dest="dst", required=True, help="cieľový .pmtiles")
-    ap.add_argument("--name", default="terrain", help="meno do metadát")
+                    help="directory of {z}/{x}/{y}.png tiles")
+    ap.add_argument("--out", dest="dst", required=True, help="target .pmtiles")
+    ap.add_argument("--name", default="terrain", help="name for the metadata")
     ap.add_argument("--clip-bbox", default="",
-                    help="west,south,east,north – rozsah, na ktorý sa hlavička "
-                         "oreže (bbox behu). Bez neho sa berie celý rozsah "
-                         "dlaždíc, čiže na nízkom zoome pol Európy.")
+                    help="west,south,east,north – the extent the header is "
+                         "clipped to (the run's bbox). Without it the tiles' "
+                         "whole extent, half of Europe at a low zoom.")
     ap.add_argument("--source", default="",
-                    help="kľúč výškového modelu (`sonny`, `dmr5`…) do metadát")
+                    help="elevation model key (`sonny`, `dmr5`…) for the metadata")
     args = ap.parse_args()
 
-    dlazdice = zbierka(args.src)
-    if not dlazdice:
-        print(f"::error::V {args.src} nie je ani jedna dlaždica – "
-              f"nie je čo zabaliť.", file=sys.stderr)
+    tiles = collect(args.src)
+    if not tiles:
+        print(f"::error::Not a single tile in {args.src} – "
+              f"nothing to pack.", file=sys.stderr)
         return 1
 
-    minz = min(d[1] for d in dlazdice)
-    maxz = max(d[1] for d in dlazdice)
-    # rozsah z dlaždíc, ktoré naozaj vznikli – a zo všetkých zoomov: tiles.py
-    # vynecháva aj dlaždice bez reliéfu, takže maxzoom by opísal len hory
+    minz = min(d[1] for d in tiles)
+    maxz = max(d[1] for d in tiles)
+    # extent from tiles really made, over all zooms: maxzoom alone skips flat tiles
     w = s = e = n = None
-    for _tid, z, x, y, _p in dlazdice:
+    for _tid, z, x, y, _p in tiles:
         tw, ts, te, tn = tile_bounds(z, x, y)
         w = tw if w is None else min(w, tw)
         s = ts if s is None else min(s, ts)
         e = te if e is None else max(e, te)
         n = tn if n is None else max(n, tn)
 
-    # orez na bbox behu: dlaždica na z5 má 11,25°, takže by sa jeden kraj
-    # vykázal ako pol Európy. MapLibre porovnáva bounds prienikom, takže sa
-    # tým nestratí ani jedna dlaždica.
+    # a z5 tile spans 11.25°; MapLibre intersects bounds, so no tile is lost
     if args.clip_bbox:
         cw, cs, ce, cn = (float(v) for v in args.clip_bbox.split(","))
         w, s = max(w, cw), max(s, cs)
         e, n = min(e, ce), min(n, cn)
         if e <= w or n <= s:
-            print(f"::error::Orez hlavičky na {args.clip_bbox} nepretína "
-                  f"rozsah dlaždíc – to znamená, že dlaždice sú z iného "
-                  f"územia, než hovorí bbox behu.", file=sys.stderr)
+            print(f"::error::Clipping the header to {args.clip_bbox} misses "
+                  f"the tiles' extent – the tiles are from another area than "
+                  f"the run's bbox says.", file=sys.stderr)
             return 1
 
-    surovo = 0
+    raw = 0
     with open(args.dst, "wb") as f:
         wr = Writer(f)
-        for _tid, _z, _x, _y, p in dlazdice:
+        for _tid, _z, _x, _y, p in tiles:
             with open(p, "rb") as t:
                 data = t.read()
-            surovo += len(data)
+            raw += len(data)
             wr.write_tile(_tid, data)
         wr.finalize(
             {
                 "tile_type": TileType.PNG,
-                # PNG je už komprimovaný
+                # PNG is already compressed
                 "tile_compression": Compression.NONE,
                 "min_zoom": minz,
                 "max_zoom": maxz,
@@ -127,24 +124,24 @@ def main():
             {
                 "name": args.name,
                 "format": "png",
-                # bez toho `raster-dem` vykreslí farebný šum namiesto reliéfu
+                # without it `raster-dem` draws coloured noise instead of relief
                 "encoding": "terrarium",
-                "description": "Terrarium PNG – nadmorská výška v RGB "
+                "description": "Terrarium PNG – elevation in RGB "
                                "(v = R*256 + G + B/256 − 32768)",
-                # archív sa dá stiahnuť aj sám – inde model napísaný nie je
+                # the archive can be downloaded on its own – the model is named nowhere else
                 **({"source": args.source} if args.source else {}),
             },
         )
 
-    velkost = os.path.getsize(args.dst)
-    usetrene = surovo - velkost
-    print(f"{args.dst}: {len(dlazdice)} dlaždíc z{minz}–z{maxz}, "
-          f"{velkost / 1048576:.1f} MB "
-          f"(z {surovo / 1048576:.1f} MB v samostatných súboroch – "
-          f"{'ušetrené' if usetrene >= 0 else 'navyše'} "
-          f"{abs(usetrene) / 1048576:.1f} MB na zhodných dlaždiciach "
-          f"a réžii súborov)")
-    print(f"  rozsah {w:.4f},{s:.4f},{e:.4f},{n:.4f}", flush=True)
+    size = os.path.getsize(args.dst)
+    saved = raw - size
+    print(f"{args.dst}: {len(tiles)} tiles z{minz}–z{maxz}, "
+          f"{size / 1048576:.1f} MB "
+          f"(from {raw / 1048576:.1f} MB in separate files – "
+          f"{'saved' if saved >= 0 else 'extra'} "
+          f"{abs(saved) / 1048576:.1f} MB on identical tiles "
+          f"and file overhead)")
+    print(f"  extent {w:.4f},{s:.4f},{e:.4f},{n:.4f}", flush=True)
     return 0
 
 

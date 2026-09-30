@@ -1,29 +1,29 @@
-name: Mapa · Wiki state
+name: Map · Wiki state
 
-# „Build wiki" nad každým krajom krajiny, štafetou ako „Build map state".
-# Týždenne, aby balíky niesli nové a upravené články.
+# “Build wiki” over every region of a country, a relay like “Build map state”.
+# Weekly, so packages carry new and edited articles.
 
 on:
   schedule:
-    # sobota 02:40 UTC, deň pred upratovaním
+    # Saturday 02:40 UTC, the day before cleanup
     - cron: "40 2 * * 6"
   workflow_dispatch:
     inputs:
-      # zoznam drží workers/data/regions.json
+      # the list is workers/data/regions.json
       country:
-        description: "Krajina – články sa postavia v každom jej kraji"
+        description: "Country – articles are built in every region of it"
         required: true
         default: slovensko
         type: choice
         options:
           - slovensko
       rebuild:
-        description: "Stiahnuť články odznova (obíde cache na Drive)"
+        description: "Download articles anew (skips the Drive cache)"
         required: false
         default: false
         type: boolean
-      pokracovanie:
-        description: "Nevypĺňaj – kolík štafety, dávka si ho podáva sama"
+      continuation:
+        description: "Leave empty – the relay baton, the batch passes it itself"
         required: false
         default: ""
         type: string
@@ -32,23 +32,23 @@ permissions:
   contents: read
   actions: write
 
-# bez `concurrency`, inak by GitHub zrušil prostredný článok štafety
+# no `concurrency`, or GitHub cancels the middle leg of the relay
 
 jobs:
-  estafeta:
-    name: Úsek štafety
+  relay:
+    name: Relay leg
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Počkaj na kraj, spusti ďalší a odovzdaj štafetu
+      - name: Wait for the region, start the next and hand over the relay
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           REF: ${{ github.ref_name }}
-          # plán nemá formulár, preto predvoľby
+          # a schedule has no form, hence defaults
           COUNTRY: ${{ inputs.country || 'slovensko' }}
           REBUILD: ${{ inputs.rebuild || false }}
-          POKRACOVANIE: ${{ inputs.pokracovanie }}
+          CONTINUATION: ${{ inputs.continuation }}
         run: workers/state/wiki.sh

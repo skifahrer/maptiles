@@ -263,9 +263,9 @@ def area_cut(vsi, bbox_wgs, grid_m, dest, work, log, info, expect=None):
 
 
 def resolve_area(area, areas_path):
-    key = (area or "cele").strip()
-    if key.lower() in ("", "cele", "cele_slovensko", "all", "vsetko"):
-        return "celé Slovensko", None
+    key = (area or "whole_country").strip()
+    if key.lower() in ("", "whole", "whole_country", "cele", "cele_slovensko", "all"):
+        return "whole country", None
     if "," in key:
         vals = [float(v) for v in key.split(",")]
         if len(vals) != 4:

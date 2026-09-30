@@ -1,88 +1,67 @@
 #!/usr/bin/env bash
-# Jeden úsek štafety dávky „Build map state": počkaj na kraj, ktorý beží,
-# spusti ďalší a odovzdaj štafetu sám sebe.
+# One relay leg of “Build map state”: wait for the running region, start the
+# next, hand the relay to itself. The core is `workers/state/relay-core.sh`.
 #
-# Samotná štafeta je vo `workers/state/estafeta.sh` – to isté jadro, aké
-# používa „Regenerate state". Tu ostáva len to, čím sa táto dávka líši.
+# How the batch differs from one region:
+#   area          always `whole_region` – one range for eight regions makes no sense
+#   publish_pages always off – Pages holds one map, eight runs would overwrite it
+#   reuse_layers  added as `true` unless the user wrote their own
 #
-# Čím sa dávka líši od jedného kraja:
-#   area          natvrdo `cely_region` – vyberať jedno pohorie pre osem
-#                 krajov nedáva zmysel
-#   publish_pages natvrdo vypnuté – na Pages je jedna mapa a osem behov by ju
-#                 osemkrát prepísalo
-#   reuse_layers  dopĺňa sa ako `true`, keď si ho tam človek nenapísal sám
+# Everything else is passed on whole every time; `workers/lint/state.py` guards it.
 #
-# Všetko ostatné sa podáva ďalej nezmenené, celé a zakaždým – články štafety sú
-# samostatné behy. Stráži to `workers/lint/state.py`.
-#
-# Prečo dávka nepočíta vrstvy, ktoré už raz vznikli: vrstevnice, skaly
-# a tieňovanie sú hodiny na kraj a krajov je osem, čiže väčšina toho dňa. Medzi
-# dvomi dávkami sa pritom málokedy zmení niečo, čo by ich zmenilo. Kto chce
-# prepočet, povie to – `rebuild` alebo `options: reuse_layers=false`; napísané
-# prebíja doplnené.
-#
-# Z prostredia (viď `.github/workflows/build-map-state.yml`):
-#   COUNTRY POKRACOVANIE REF SELF REGION_WF REPO SUMMARY GH_TOKEN
+# From the environment (see `.github/workflows/build-map-state.yml`):
+#   COUNTRY CONTINUATION REF SELF REGION_WF REPO SUMMARY GH_TOKEN
 #   CONTOUR_SOURCE ROCK_SOURCE SHADING_SOURCE ROCK_SLOPE REBUILD TEST OPTIONS
 set -euo pipefail
 
 SELF="${SELF:-build-map-state.yml}"
 REGION_WF="${REGION_WF:-build-map-region.yml}"
-REGION_MENO="Mapa · Build map region"
+REGION_NAME="Map · Build map region"
 
-# `options` pre beh kraja: to, čo si zadal, plus hotové vrstvy, keď si o nich
-# nepovedal nič (rozpis v hlavičke). Ďalšiemu článku štafety sa podáva PÔVODNÉ
-# `OPTIONS` – kolík má niesť to, čo je vo formulári, a doplnenie si každý
-# článok spraví sám a rovnako.
-OPTIONS_KRAJ="${OPTIONS:-}"
-case "$OPTIONS_KRAJ" in
-  *reuse_layers=*) echo "options nesie vlastné reuse_layers – nechávam ho tak." ;;
-  *) OPTIONS_KRAJ="reuse_layers=true${OPTIONS_KRAJ:+ $OPTIONS_KRAJ}" ;;
+# the next leg gets the ORIGINAL `OPTIONS`; each leg adds reuse_layers itself
+OPTIONS_REGION="${OPTIONS:-}"
+case "$OPTIONS_REGION" in
+  *reuse_layers=*) echo "options carry their own reuse_layers – leaving it." ;;
+  *) OPTIONS_REGION="reuse_layers=true${OPTIONS_REGION:+ $OPTIONS_REGION}" ;;
 esac
-echo "Kraj dostane options: $OPTIONS_KRAJ"
+echo "The region gets options: $OPTIONS_REGION"
 
-TITUL="Dávka máp · ${COUNTRY:-?}"
-POPIS="Kraj je vlastný beh **Mapa · Build map region**;
-dávka ich spúšťa jeden po druhom a po každom si spustí ďalší svoj beh –
-job má strop 6 h, dávka trvá aj deň, a tak ju nemá čo zabiť."
+TITLE="Map batch · ${COUNTRY:-?}"
+DESCRIPTION="Each region is its own run of **Map · Build map region**;
+the batch starts them one by one and dispatches its own next run after each –
+a job has a 6 h cap, a batch takes a day, so nothing can kill it."
 
-# ---------- odovzdanie štafety ----------
-# Ten istý workflow, tie isté nastavenia, iný kolík. Nastavenia sa podávajú
-# CELÉ a zakaždým: reťaz je séria samostatných behov a beh, ktorý by si ich
-# nepodal, by postavil kraj s predvolenými hodnotami – čiže tichú inú mapu.
-odovzdaj() {
-  local kolik="$1"
-  echo "Odovzdávam štafetu: pokracovanie=$kolik"
+# same workflow, same settings, another baton; settings go whole every time
+hand_over() {
+  local baton="$1"
+  echo "Handing the relay over: continuation=$baton"
   gh workflow run "$SELF" --repo "$REPO" --ref "$REF" \
     -f country="$COUNTRY" \
     -f contour_source="${CONTOUR_SOURCE:-dmr5}" \
     -f rock_source="${ROCK_SOURCE:-dmr5}" \
     -f shading_source="${SHADING_SOURCE:-dmr5}" \
     -f rock_slope="${ROCK_SLOPE:-50}" \
-    -f rebuild="${REBUILD:-nic}" \
+    -f rebuild="${REBUILD:-nothing}" \
     -f test="${TEST:-false}" \
     -f options="${OPTIONS:-}" \
-    -f pokracovanie="$kolik"
+    -f continuation="$baton"
 }
 
-# ---------- spustenie jedného kraja ----------
-# `area` je natvrdo `cely_region` a `publish_pages` natvrdo vypnuté – to sú
-# tie dve veci, ktorými sa dávka od jedného kraja líši (rozpis vyššie).
-spusti_kraj() {
-  local kraj="$1"
+start_region() {
+  local region="$1"
   gh workflow run "$REGION_WF" --repo "$REPO" --ref "$REF" \
-    -f region="$kraj" \
-    -f area=cely_region \
+    -f region="$region" \
+    -f area=whole_region \
     -f test="${TEST:-false}" \
     -f contour_source="${CONTOUR_SOURCE:-dmr5}" \
     -f rock_source="${ROCK_SOURCE:-dmr5}" \
     -f shading_source="${SHADING_SOURCE:-dmr5}" \
     -f rock_slope="${ROCK_SLOPE:-50}" \
-    -f rebuild="${REBUILD:-nic}" \
+    -f rebuild="${REBUILD:-nothing}" \
     -f publish_pages=false \
-    -f options="$OPTIONS_KRAJ"
+    -f options="$OPTIONS_REGION"
 }
 
-# shellcheck source=workers/state/estafeta.sh
-. workers/state/estafeta.sh
-estafeta_hlavna
+# shellcheck source=workers/state/relay-core.sh
+. workers/state/relay-core.sh
+relay_main
