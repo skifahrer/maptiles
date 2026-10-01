@@ -269,8 +269,8 @@ def tidy(maps, retired=(), live=None, protected=()):
     """Drop what no longer belongs in an entry – and say so."""
     for kind in retired:
         if maps.pop(kind, None) is not None:
-            log(f"Package `{kind}` no longer exists (its contents are in the base map) – "
-                f"dropped from the catalog entry.")
+            log(f"Package `{kind}` no longer exists (its contents moved to other "
+                f"packages) – dropped from the catalog entry.")
     if live is None:
         return
     fixed, dropped = prune_dead(maps, live, protected)

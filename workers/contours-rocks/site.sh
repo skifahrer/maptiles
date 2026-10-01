@@ -37,7 +37,7 @@ if [ "$OPT_ROCKS" = 'true' ] && [ "$FAILED" != 'true' ] && [ -s "$RPM" ]; then
 else
   echo "rocks_enabled=false" >> "$GITHUB_OUTPUT"
   if [ "$FAILED" = 'true' ]; then
-    echo "::warning::The rock computation failed – the map and the \`contours-rocks\` package go with contours only. The reason is in the Rocks job's log; the next run computes them again."
+    echo "::warning::The rock computation failed – the map goes without rocks and no \`rocks\` package is made. The reason is in the Rocks job's log; the next run computes them again."
   elif [ "$WANT_ROCKS" = 'true' ]; then
     echo "::warning::No rocks were made – the map goes without them."
   fi

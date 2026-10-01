@@ -76,8 +76,8 @@ kraja (manuálne, jeden kraj) aby sa prestavala mapa:
                                hranice    ─► {kraj}-hranice.zip
                                vodstvo    ─► {kraj}-vodstvo.zip
                                sidla      ─► {kraj}-sidla.zip
-                               vrstevnice ┐ {kraj}-vrstevnice-skaly.zip
-                               skaly      ┘ (druhá polovica ide z cache)
+                               vrstevnice ─► {kraj}-contours.zip
+                               skaly      ─► {kraj}-rocks.zip
                                tieňovanie ─► {kraj}-tienovanie.zip
                              ▲ na Drive sa prepíše LEN ten balík a v
                                `maps.json` sa položka DOPLNÍ, nie prepíše
@@ -1994,7 +1994,8 @@ Priečinok hovorí, čoho sa mapa týka, a čo chýba, sa vyrobí:
                                                   dlaždice (.pmtiles); klient si
                                                   z nich kreslí tieňovanie
                                                   reliéfu AJ 3D terén
-    presovsky-vysoke_tatry-vrstevnice-skaly.zip   len tie dve vrstvy (.pmtiles)
+    presovsky-vysoke_tatry-contours.zip           len vrstevnice (.pmtiles)
+    presovsky-vysoke_tatry-rocks.zip              len skaly (.pmtiles)
     presovsky-vysoke_tatry-cesty.zip              CELÁ DOPRAVNÁ SIEŤ (cesty od
                                                   diaľnice po schody, železnice,
                                                   trajekty, lanovky) AJ
@@ -3791,8 +3792,8 @@ nad krajom nespúšťa celý build, ale to jedno, čo si vyberieš (`co`):
 | `cesty` | `{kraj}-cesty.zip` (dopravná sieť aj s obmedzeniami na ceste a smerovacia sieť) | **minúty** – z toho istého PBF ako mapa |
 | `hranice` | `{kraj}-hranice.zip` (hranice území a ich mená) | **minúty** – z toho istého PBF ako mapa |
 | `vodstvo` | `{kraj}-vodstvo.zip` (rieky, jazerá, more) | **minúty** – z toho istého PBF ako mapa |
-| `vrstevnice` | `{kraj}-vrstevnice-skaly.zip` | desiatky minút až hodiny – z výškového modelu |
-| `skaly` | `{kraj}-vrstevnice-skaly.zip` | desiatky minút až hodiny – z výškového modelu |
+| `vrstevnice` | `{kraj}-contours.zip` | desiatky minút až hodiny – z výškového modelu |
+| `skaly` | `{kraj}-rocks.zip` | desiatky minút až hodiny – z výškového modelu |
 | `tienovanie` | `{kraj}-tienovanie.zip` (výškový model – tieňovanie aj 3D terén) | desiatky minút až hodiny – z výškového modelu |
 
 Nad krajom to **vždy** robí „Mapa · Pregeneruj vrstvu kraja" – aj pri vrstvách
@@ -3842,10 +3843,9 @@ Proti celému buildu kraja sa aj tak ušetrí všetko ostatné: mapové dlaždic
 (Planetiler nad celým PBF), ikonky a fonty, štýl, kontrola webu, Pages —
 a hlavne prepísanie **ostatných balíkov** na Drive.
 
-**Vrstevnice a skaly sú jeden balík** (`-vrstevnice-skaly.zip`), takže sa pri
-oboch voľbách počítajú obe; pregeneruje sa ale len tá vybraná a druhá príde
-z cache za sekundy. Balík sa prepisuje celý a polovica nová s polovicou
-chýbajúcou by bola balík, ktorý sľubuje vrstvu, ktorú nenesie.
+**Vrstevnice a skaly sú dva balíky** (`-contours.zip`, `-rocks.zip`, predtým
+spolu `-vrstevnice-skaly.zip`), takže sa počíta a prepisuje len tá vybraná
+vrstva.
 
 Vrstevnice, skaly a tieňovanie potrebujú sklad výškového modelu, prípadne ho
 doplniť, prečítať a nad ním trasovať. Robí to **`dem-layers.yml`** — jedenásť
@@ -3859,10 +3859,9 @@ Proti celému buildu kraja sa aj tak ušetrí všetko ostatné: mapové dlaždic
 (Planetiler nad celým PBF), ikonky a fonty, štýl, kontrola webu, Pages —
 a hlavne prepísanie **ostatných balíkov** na Drive.
 
-**Vrstevnice a skaly sú jeden balík** (`-vrstevnice-skaly.zip`), takže sa pri
-oboch voľbách počítajú obe; pregeneruje sa ale len tá vybraná a druhá príde
-z cache za sekundy. Balík sa prepisuje celý a polovica nová s polovicou
-chýbajúcou by bola balík, ktorý sľubuje vrstvu, ktorú nenesie.
+**Vrstevnice a skaly sú dva balíky** (`-contours.zip`, `-rocks.zip`, predtým
+spolu `-vrstevnice-skaly.zip`), takže sa počíta a prepisuje len tá vybraná
+vrstva.
 
 ### Čo sa na Drive stane a čo nie
 
