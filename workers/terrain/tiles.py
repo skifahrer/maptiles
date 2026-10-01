@@ -124,7 +124,7 @@ def webp_rgb(arr):
     buf = io.BytesIO()
     # `exact` keeps every RGB value, which is the height
     Image.fromarray(np.ascontiguousarray(arr)).save(
-        buf, "WEBP", lossless=True, quality=100, method=6, exact=True)
+        buf, "WEBP", lossless=True, quality=100, method=2, exact=True)
     return buf.getvalue()
 
 
