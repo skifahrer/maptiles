@@ -3,7 +3,7 @@
 
 Also adds speed change points (`rail_speed`, `rail_speed_prev`), the track bearing
 at a signal (`rail_bearing`), the widest gauge in mm (`rail_gauge`) and the track section
-(`rail_section`), splitting a way at the switches that bound one.
+(`rail_section`, its extent `rail_section_box`), splitting a way at the switches that bound one.
 """
 import argparse
 import math
@@ -177,6 +177,9 @@ class Rewrite(osmium.SimpleHandler):
         self.split += len(pieces) > 1
         for k, (refs, section) in enumerate(pieces):
             tags = dict(new_tags, rail_section=str(section))
+            box = self.lines.sections.box(section)
+            if box:
+                tags["rail_section_box"] = box
             if k == 0:
                 self.w.add_way(w.replace(tags=tags, nodes=refs))
             else:

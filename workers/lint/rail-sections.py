@@ -45,6 +45,8 @@ def main():
         bad.append("the branch shares a section with the line it leaves")
     if s.split(5)[0][1] == s.split(4)[0][1]:
         bad.append("another voltage stayed in the same section")
+    if s.box(one[1][1]) != "0.00300,0.00000,0.00700,0.00000":
+        bad.append(f"a section's box doesn't span all its pieces: {s.box(one[1][1])}")
     tram_a, tram_b = s.split(6), s.split(7)
     if len({sec for _, sec in tram_a}) != 1 or len({sec for _, sec in tram_b}) != 1:
         bad.append("a diamond crossing cut a track that runs straight over it")

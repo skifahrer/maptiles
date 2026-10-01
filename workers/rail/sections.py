@@ -1,5 +1,6 @@
 """Track sections: one kind of track from a switch of that kind to the next."""
 import math
+from array import array
 from collections import defaultdict
 
 KINDS = {"rail", "narrow_gauge", "light_rail", "subway", "tram", "monorail", "funicular",
@@ -35,15 +36,20 @@ class Sections:
         self.crossings = set(crossings)
         self.ways = {}
         self.places = {}
+        self.coords = {}
         self.parent = {}
         self.pieces = {}
+        self.spans = {}
+        self.boxes = {}
 
     def add(self, way_id, tags, refs, places=None):
-        """`places` are (lon, lat) per ref, kept only around diamond crossings."""
+        """`places` are (lon, lat) per ref, or None where the location is unknown."""
         what = kind(tags)
         if what is None or len(refs) < 2:
             return
         self.ways[way_id] = (what, list(refs))
+        places = places or [None] * len(refs)
+        self.coords[way_id] = array("d", (c for p in places for c in (p or (math.nan,) * 2)))
         for i, ref in enumerate(refs):
             if ref in self.crossings and places:
                 for j in (i - 1, i, i + 1):
@@ -65,6 +71,7 @@ class Sections:
             for k, run in enumerate(runs):
                 piece = way_id * STRIDE + min(k, STRIDE - 1)
                 self.parent[piece] = piece
+                self.spans[piece] = (way_id, bounds[k], bounds[k + 1])
                 ends[run[0], what].append((piece, run[1]))
                 ends[run[-1], what].append((piece, run[-2]))
 
@@ -73,6 +80,17 @@ class Sections:
                 self.join(out[0][0], out[1][0])
             elif len(out) == 4 and node in self.crossings:
                 self.cross(node, out)
+
+        for piece, (way_id, start, end) in self.spans.items():
+            xy = self.coords[way_id][2 * start:2 * end + 2]
+            lons = [v for v in xy[0::2] if not math.isnan(v)]
+            lats = [v for v in xy[1::2] if not math.isnan(v)]
+            if not lons:
+                continue
+            section = self.root(piece)
+            box = self.boxes.get(section, (math.inf, math.inf, -math.inf, -math.inf))
+            self.boxes[section] = (min(box[0], *lons), min(box[1], *lats),
+                                   max(box[2], *lons), max(box[3], *lats))
 
     def cross(self, node, out):
         """A diamond crossing is no switch: each track runs on straight over it."""
@@ -93,6 +111,11 @@ class Sections:
         a, b = self.root(a), self.root(b)
         if a != b:
             self.parent[max(a, b)] = min(a, b)
+
+    def box(self, section):
+        """West, south, east and north of the whole section, for the app to frame it."""
+        box = self.boxes.get(section)
+        return ",".join(f"{v:.5f}" for v in box) if box else None
 
     def split(self, way_id):
         """The way's pieces as (refs, section), or None for a way without one."""

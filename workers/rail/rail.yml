@@ -34,6 +34,10 @@ definitions:
       type: long
       value:
         tag_value: rail_section
+    # west,south,east,north of the whole section
+    - key: _section_box
+      value:
+        tag_value: rail_section_box
     - key: electrified
     - key: voltage
     - key: frequency
@@ -440,6 +444,7 @@ examples:
         railway: rail
         usage: main
         rail_section: "1234567000"
+        rail_section_box: "17.10000,48.10000,17.20000,48.15000"
     output:
       - layer: railway
         geometry: line
@@ -448,6 +453,7 @@ examples:
           class: rail
           usage: main
           _section: 1234567000
+          _section_box: "17.10000,48.10000,17.20000,48.15000"
 
   - name: A siding only from z12
     input:
