@@ -34,8 +34,8 @@ DEFAULTS = {
     "ugkk_urls": ("", "direct URLs to ÚGKK data (last resort)"),
     "contour_maxzoom": ("14", "max zoom of contour tiles"),
     # contours climb while the budget has room, so the floor alone caps nothing
-    "contour_maxzoom_cap": ("16", "highest zoom contours may climb to"),
-    "contour_lowland_m": ("0", "below this height contours keep every second "
+    "contour_maxzoom_cap": ("14", "highest zoom contours may climb to"),
+    "contour_lowland_m": ("300", "below this height contours keep every second "
                                "line (0 = off)"),
     # 16 is Planetiler's hard cap; overzoom does the rest
     "rock_maxzoom": ("16", "max zoom of rock tiles (Planetiler caps at 16)"),
@@ -53,7 +53,7 @@ DEFAULTS = {
     "terrain_frac_bits": ("auto", "fraction bits of a height (auto = by the pixel, "
                                   "0 = whole metres)"),
     # MapLibre is the only reader and iOS 14+ decodes WebP
-    "terrain_format": ("png", "image format of height tiles: png or webp (lossless)"),
+    "terrain_format": ("webp", "image format of height tiles: png or webp (lossless)"),
     # public AWS tiles are global and coarse, so no 3D on them
     "terrain_3d": ("auto", "3D terrain in the style (auto = when we have our own height tiles)"),
     # trails have no source choice – the same PBF as the map
@@ -98,10 +98,10 @@ DEFAULTS = {
     "rock_img_zoom": ("auto", "zoom of hillshading tiles (auto = the highest under the cap)"),
     "rock_img_options": ("", "switches for rocks from hillshading, e.g. \"fill=40 min_hole=5\""),
     "maxzoom": ("16", "max zoom of map tiles – Planetiler goes to 16 at most"),
-    "map_simplify": ("false", "Planetiler's default simplification and minimum "
+    "map_simplify": ("true", "Planetiler's default simplification and minimum "
                               "feature size at max zoom (false = keep everything)"),
     # the style draws house numbers from z17, overzoomed from z16
-    "housenumber_minzoom": ("14", "lowest zoom with house numbers in map tiles"),
+    "housenumber_minzoom": ("16", "lowest zoom with house numbers in map tiles"),
     "custom_pbf_url": ("", "own region – URL of a .osm.pbf"),
     "custom_name": ("", "own region – display name"),
     "custom_bbox": ("", "own region – bbox W,S,E,N"),

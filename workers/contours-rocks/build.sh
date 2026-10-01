@@ -269,7 +269,7 @@ PY
   fi
 
   # lowland lines are long and wavy, so every second one costs a lot and says little
-  LOWLAND="${OPT_CONTOUR_LOWLAND_M:-0}"
+  LOWLAND="${OPT_CONTOUR_LOWLAND_M:-300}"
   LOWLAND_SQL=""
   if [ "$LOWLAND" != 0 ]; then
     LOWLAND_SQL="AND NOT (ele < $LOWLAND AND CAST(ele AS INTEGER) % $(( INTERVAL * 2 )) != 0)"
@@ -315,7 +315,7 @@ fi
 CZ="$OPT_CONTOUR_MAXZOOM"
 case "$CZ" in ''|*[!0-9]*) CZ=14 ;; esac
 if [ "$CZ" -gt 16 ]; then CZ=16; fi
-CCAP="${OPT_CONTOUR_MAXZOOM_CAP:-16}"
+CCAP="${OPT_CONTOUR_MAXZOOM_CAP:-14}"
 case "$CCAP" in ''|*[!0-9]*) CCAP=16 ;; esac
 if [ "$CCAP" -gt 16 ]; then CCAP=16; fi
 if [ "$CZ" -gt "$CCAP" ]; then CZ="$CCAP"; fi

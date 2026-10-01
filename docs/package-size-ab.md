@@ -2,8 +2,19 @@
 
 Measured on 2026-10-01 from the packages on Drive (`maps.json` of 2026-09-29)
 and from local re-runs of the pipeline's own code. Every lever is an option in
-`workers/plan/options.py` with today's behaviour as the default, so a CI test
-build in both versions is one `options` field apart.
+`workers/plan/options.py`. The defaults are the space-saving ones (below);
+the old value of each option gives the old output back.
+
+## Defaults
+
+| option | default | old value | saves | why not the bigger saving |
+|---|---|---|---|---|
+| `contour_maxzoom_cap` | 14 | 16 | −54 to −73 % of contours | z13 shows contour steps (≈1.5 m) zoomed in |
+| `contour_lowland_m` | 300 | 0 | −30 % (trnavsky) | 500 m thins hill country too |
+| `terrain_format` | webp | png | −30 to −38 % of terrain | – (bit-exact) |
+| `map_simplify` | true | false | −0.7 % of map tiles | – |
+| `housenumber_minzoom` | 16 | 14 | −10.7 % of map tiles | – (drawn from z17) |
+| `terrain_frac_bits` | auto | auto | – | 0 saves −65 to −77 %, but hillshade gets a regular weave; `lint/terrain.py` forbids it |
 
 ## Contours vs rocks (measure first)
 
@@ -63,10 +74,3 @@ Notes:
   extract with the pipeline's flags, then `workers/tiles/drop-layer.py`.
   `velkost-balikov.md` guessed 10–25 % for the simplification flags; it is
   under 1 %.
-
-## Running the A/B in CI
-
-`Map · Build map region` twice on one region, the second with the option in
-`options`, `publish=false` and the `publish_pages` switch off; the step summary of each job names the size.
-`contour_*` and `terrain_*` options are in the layer cache keys, so the
-variant never returns the default's tiles.
