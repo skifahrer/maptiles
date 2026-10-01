@@ -1,56 +1,51 @@
 #!/usr/bin/env node
 /**
- * Kontroly hotového štýlu. Volá ich `Kontrola · lint workflowov`.
+ * Checks of the finished style. Run by `Check · workflow lint`.
  *
- * Štyri veci, všetky tiché:
- *   1. `fill` nad zmiešanou geometriou musí mať stráž. MapLibre čiary
- *      nepreskočí – otvorenú lomenú čiaru pošle earcutu a vyjde z nej
- *      sebaprekrývajúci sa mnohouholník. Takto sa `pedestrian-area` od z13
- *      kreslila cez chodníky a vyzeralo to ako diera do podkladu.
- *   2. Odvodená vrstva (vzor, okraj) musí byť vidieť práve vtedy, keď je
- *      vidieť jej predloha.
- *   3. Vzor, ktorý má byť rozsyp, nesmie mať prázdny šev dlaždice – inak je
- *      z opakovania mriežka prázdnych uličiek.
- *   4. Dôležitejšia cesta musí byť nad menej dôležitou; obrysy priechodu
- *      patria celé pod jeho výplne a priechody idú tunel → povrch → most.
+ * Quiet things:
+ *   1. a `fill` over mixed geometry needs a guard. MapLibre doesn't skip lines –
+ *      it hands an open polyline to earcut and gets a self-overlapping polygon.
+ *   2. a derived layer (pattern, edge) is visible exactly when its base is.
+ *   3. a scatter pattern mustn't have an empty tile seam – repeated, it becomes a
+ *      grid of empty alleys.
+ *   4. a more important road lies above a less important one; a pass's casings
+ *      lie wholly under its fills and passes go tunnel → surface → bridge.
+ *   5. the region mask stays on top and filters on the kinds `region-mask.py` writes.
  *
- * Kontroluje sa každý typ mapy × téma – profil typu mapy vrstvy pridáva aj
- * vypína, takže chyba môže byť len v jednom z nich.
+ * Every map type × theme is checked – a map type profile adds and hides layers.
  *
  *   node workers/lint/style.mjs
  */
 import { THEMES, buildStyle, ROAD_DEFS, ROAD_PASSES } from "../../poc/web/themes.js";
 import { MAP_TYPE_IDS, MAP_TYPES, applyMapType } from "../../poc/web/map-types.js";
 import { PATTERNS, renderPattern } from "../../poc/web/patterns.js";
+import { readFileSync } from "node:fs";
 
 /**
- * Vrstvy dlaždíc, v ktorých NIE JE len jeden typ geometrie – a čím to je.
- * Kým tu niečo je, každá `fill` nad tým musí mať v filtri `geometry-type`.
+ * Tile layers with more than one geometry type – and why.
+ * Every `fill` over them needs `geometry-type` in its filter.
  */
 const MIXED = {
   transportation:
-    "cesty a chodníky sú čiary, ale pešia zóna, mólo a teleso mosta polygóny",
-  aeroway: "dráhy a rolovacie dráhy sú čiary, odbavovacie plochy polygóny",
-  park: "obrys je polygón, k nemu ide bod pre popisok (pointOnSurface)",
-  piste: "workers/features/features.yml púšťa zjazdovku ako plochu AJ ako os (čiaru)",
-  mountain_peak: "vrcholy sú body, ale `cliff`, `ridge` a `arete` čiary"
+    "roads and paths are lines, but pedestrian areas, piers and bridge bodies polygons",
+  aeroway: "runways and taxiways are lines, aprons polygons",
+  park: "the outline is a polygon, with a point for the label (pointOnSurface)",
+  piste: "workers/features/features.yml passes a piste as an area AND an axis (line)",
+  mountain_peak: "peaks are points, but `cliff`, `ridge` and `arete` lines"
 };
 
-/** Výplňové typy vrstiev – tie, ktoré earcut naozaj triangulujú. */
+/** Fill layer types – the ones earcut really triangulates. */
 const FILL = new Set(["fill", "fill-extrusion"]);
 
-/**
- * Náhrada za `_site/region.geojson` – tvar je jedno, ide o to, že vrstvy
- * masky v štýle vzniknú. Vyrába ho `workers/deploy/region-mask.py`.
- */
+/** A stand-in for `_site/region.geojson` (`workers/deploy/region-mask.py`); only the kinds matter. */
+const MASK_KINDS = [...readFileSync("workers/deploy/region-mask.py", "utf8")
+  .matchAll(/"kind":\s*"([a-z]+)"/g)].map((m) => m[1]);
 const OUTLINE = {
   type: "FeatureCollection",
-  features: [
-    { type: "Feature", properties: { kind: "mimo" },
-      geometry: { type: "MultiPolygon", coordinates: [] } },
-    { type: "Feature", properties: { kind: "hranica" },
-      geometry: { type: "MultiPolygon", coordinates: [] } }
-  ]
+  features: MASK_KINDS.map((kind) => ({
+    type: "Feature", properties: { kind },
+    geometry: { type: "MultiPolygon", coordinates: [] }
+  }))
 };
 
 function styles() {
@@ -58,21 +53,21 @@ function styles() {
   for (const theme of Object.keys(THEMES)) {
     for (const mapType of MAP_TYPE_IDS) {
       out.push({
-        kde: `${mapType} / ${theme}`,
+        where: `${mapType} / ${theme}`,
         style: buildStyle({
           theme,
           mapType,
           tilesUrl: "https://x/tiles.pmtiles",
           spriteUrl: "https://x/sprite",
           glyphsUrl: "https://x/fonts/{fontstack}/{range}.pbf",
-          // vrstvy z vlastných .pmtiles pridá štýl len keď archívy existujú
+          // layers from own .pmtiles appear only when the archives exist
           contoursUrl: "https://x/contours.pmtiles",
           rocksUrl: "https://x/rocks.pmtiles",
           trailsUrl: "https://x/trails.pmtiles",
           featuresUrl: "https://x/features.pmtiles",
           pointsUrl: "https://x/points.pmtiles",
           transportUrl: "https://x/transport.pmtiles",
-          // bez hranice regiónu by vrstvy masky v štýle vôbec neboli
+          // without the region border the mask layers wouldn't exist
           regionOutline: OUTLINE
         })
       });
@@ -84,13 +79,10 @@ function styles() {
 let bad = 0;
 let checked = 0;
 let derived = 0;
-const videne = new Set();
+const seen = new Set();
 
-// 2. odvodená vrstva drží s predlohou
-// Vzor nad plochou je vlastná vrstva (MapLibre nevie výplň a vzor naraz),
-// pravidlá typu mapy sa trafia podľa `id` – vzor tak ostával visieť nad
-// vypnutou plochou. Skúša sa na vyrobenej dvojici, nie na dnešnom štýle:
-// pravidlo `/^rock-/` je predpona a chytilo by ju aj bez opravy.
+// 2. a derived layer follows its base – tried on a made-up pair, since today's
+// `/^rock-/` rule is a prefix and would match even without the fix
 for (const type of MAP_TYPES) {
   const rule = (type.rules || []).find(
     (r) => r.visible === false && Array.isArray(r.match?.id) && r.match.id.length
@@ -113,75 +105,70 @@ for (const type of MAP_TYPES) {
   derived += 1;
   if (hidden(probe.layers[0]) && !hidden(probe.layers[1])) {
     console.log(
-      `::error file=poc/web/map-types.js::typ mapy \`${type.id}\` vypína ` +
-      `\`${parentId}\`, ale vrstvu \`${parentId}__pattern\` odvodenú od nej ` +
-      `nechal zapnutú. Vzor bez svojej plochy visí nad prázdnym podkladom ` +
-      `a nikto to nepovie – \`matchesLayer\` sa musí na odvodenú vrstvu pýtať ` +
-      `id jej predlohy (\`frico:derived\`).`
+      `::error file=poc/web/map-types.js::map type \`${type.id}\` hides ` +
+      `\`${parentId}\` but leaves the derived \`${parentId}__pattern\` on. A ` +
+      `pattern without its area hangs over an empty background and nobody says so ` +
+      `– \`matchesLayer\` must ask a derived layer for its base's id ` +
+      `(\`frico:derived\`).`
     );
     bad += 1;
   }
 }
 
-// a to isté nad hotovými štýlmi
-for (const { kde, style } of styles()) {
-  const podla = new Map(style.layers.map((l) => [l.id, l]));
+// and the same over finished styles
+for (const { where, style } of styles()) {
+  const byId = new Map(style.layers.map((l) => [l.id, l]));
   for (const layer of style.layers) {
     const parentId = (layer.metadata || {})["frico:derived"];
     if (!parentId) continue;
     derived += 1;
-    const parent = podla.get(parentId);
-    const vis = (l) => ((l.layout || {}).visibility === "none" ? "vypnutá" : "zapnutá");
+    const parent = byId.get(parentId);
+    const vis = (l) => ((l.layout || {}).visibility === "none" ? "hidden" : "visible");
     if (!parent) {
       console.log(
-        `::error file=poc/web/themes.js::odvodená vrstva \`${layer.id}\` ` +
-        `(${kde}) sa odkazuje na predlohu \`${parentId}\`, ktorá v štýle nie je.`
+        `::error file=poc/web/themes.js::derived layer \`${layer.id}\` ` +
+        `(${where}) refers to base \`${parentId}\`, which isn't in the style.`
       );
       bad += 1;
     } else if (vis(parent) !== vis(layer)) {
       console.log(
-        `::error file=poc/web/map-types.js::odvodená vrstva \`${layer.id}\` ` +
-        `je ${vis(layer)}, ale jej predloha \`${parentId}\` je ${vis(parent)} ` +
-        `(${kde}).`
+        `::error file=poc/web/map-types.js::derived layer \`${layer.id}\` ` +
+        `is ${vis(layer)}, but its base \`${parentId}\` is ${vis(parent)} ` +
+        `(${where}).`
       );
       bad += 1;
     }
   }
 }
 
-// 1. výplň nad zmiešanou geometriou
-for (const { kde, style } of styles()) {
+// 1. a fill over mixed geometry
+for (const { where, style } of styles()) {
   for (const layer of style.layers) {
     const src = layer["source-layer"];
     if (!FILL.has(layer.type) || !MIXED[src]) continue;
     checked += 1;
     if (JSON.stringify(layer.filter ?? null).includes("geometry-type")) continue;
-    // tá istá vrstva vyjde v každej téme rovnako
-    if (videne.has(layer.id)) continue;
-    videne.add(layer.id);
+    // the same layer comes out alike in every theme
+    if (seen.has(layer.id)) continue;
+    seen.add(layer.id);
     console.log(
-      `::error file=poc/web/themes.js::vrstva \`${layer.id}\` (${layer.type} ` +
-      `nad \`${src}\`, ${kde}) nemá v filtri \`geometry-type\`. Vo vrstve ` +
-      `\`${src}\` ${MIXED[src]}, a MapLibre pustí do výplne aj čiaru – ` +
-      `earcutom z nej vyrobí nezmyselný mnohouholník, ktorý v mape vyzerá ` +
-      `ako plocha prerezaná cez krajinu. Obaľ filter do \`polygonOnly(…)\`.`
+      `::error file=poc/web/themes.js::layer \`${layer.id}\` (${layer.type} ` +
+      `over \`${src}\`, ${where}) has no \`geometry-type\` in its filter. In ` +
+      `\`${src}\` ${MIXED[src]}, and MapLibre lets a line into the fill – earcut ` +
+      `makes a nonsense polygon of it that looks like an area cut across the ` +
+      `land. Wrap the filter in \`polygonOnly(…)\`.`
     );
     bad += 1;
   }
 }
 
-// 3. vzor sa nesmie prezradiť švom
-// Keď všetky tvary ležia vnútri dlaždice, má dlaždica prázdny okraj a
-// z opakovania je mriežka uličiek – jedna dlaždica pritom vyzerá v poriadku.
-// Meria sa krytie na šve proti priemeru dlaždice. Čiarové vzory sú vynechané:
-// tie sa opakujú pozdĺž čiary a zvislé okraje majú prázdne zámerne.
-const SEAM_MIN = 0.25;   // aspoň štvrtina priemerného krytia
-let vzorov = 0;
+// 3. a pattern mustn't give itself away at the seam – seam coverage against the tile mean
+const SEAM_MIN = 0.25;   // at least a quarter of the mean coverage
+let patterns = 0;
 for (const pat of PATTERNS) {
-  // len vzory, ktoré o sebe hlásia, že sú rozsyp – pravidelný motív
-  // (bodky, stromčeky) má prázdny okraj zámerne
+  // scatter patterns only – a regular motif has an empty edge on purpose
   if (pat.line || !pat.scatter) continue;
-  vzorov += 1;
+  patterns += 1;
   const size = 24;
   const { data } = renderPattern(
     { id: pat.id, color: "#000000", size, weight: 1 }, 1
@@ -198,136 +185,138 @@ for (const pat of PATTERNS) {
   const seam = (rows[0] + rows[size - 1] + cols[0] + cols[size - 1]) / 4;
   if (ink > 0 && seam < ink * SEAM_MIN) {
     console.log(
-      `::error file=poc/web/patterns.js::vzor \`${pat.id}\` má na šve dlaždice ` +
-      `${(seam * 100).toFixed(1)} % inku proti ${(ink * 100).toFixed(1)} % ` +
-      `v celej dlaždici. Z opakovania bude mriežka prázdnych uličiek každých ` +
-      `\`size\` pixelov – v ploche to vyzerá ako raster. Posuň časť tvarov tak, ` +
-      `aby PREČNIEVALI za hranu (súradnice mimo 0–1); rasterizér dokreslí ` +
-      `druhú polovicu na opačnej strane sám.`
+      `::error file=poc/web/patterns.js::pattern \`${pat.id}\` has ` +
+      `${(seam * 100).toFixed(1)} % ink at the tile seam against ${(ink * 100).toFixed(1)} % ` +
+      `in the whole tile. Repeated, it becomes a grid of empty alleys every ` +
+      `\`size\` pixels. Move some shapes so they STICK OUT past the edge ` +
+      `(coordinates outside 0–1); the rasteriser draws the other half opposite.`
     );
     bad += 1;
   }
 }
 
-// 5. dôležitejšia cesta je nad menej dôležitou
-// MapLibre kreslí navrchu poslednú vrstvu; kým sa cesty pridávali od diaľnice
-// nadol, bol na každej križovatke cez diaľničný pás prúžok účelovej cesty.
-// Poradie dôležitosti je `ROAD_DEFS`; v štýle musia ísť presne naopak,
-// v každom priechode zvlášť a pre výplne aj obrysy.
-let cestnychDvojic = 0;
-for (const { kde, style } of styles()) {
-  const poradie = new Map(style.layers.map((l, i) => [l.id, i]));
+// 4. a more important road lies above a less important one – `ROAD_DEFS` reversed,
+// per pass, for fills and casings
+let roadPairs = 0;
+for (const { where, style } of styles()) {
+  const order = new Map(style.layers.map((l, i) => [l.id, i]));
   for (const suffix of ROAD_PASSES) {
     for (const casing of ["", "-casing"]) {
-      // od najmenej dôležitej po najdôležitejšiu – index v štýle musí rásť
-      const rad = [...ROAD_DEFS]
+      // least to most important – the style index must grow
+      const chain = [...ROAD_DEFS]
         .reverse()
         .map(([id]) => [`road-${id}${casing}${suffix}`, id])
-        .filter(([layerId]) => poradie.has(layerId));
-      for (let i = 0; i + 1 < rad.length; i += 1) {
-        const [nizsiId, nizsi] = rad[i];
-        const [vyssiId, vyssi] = rad[i + 1];
-        cestnychDvojic += 1;
-        if (poradie.get(nizsiId) < poradie.get(vyssiId)) continue;
+        .filter(([layerId]) => order.has(layerId));
+      for (let i = 0; i + 1 < chain.length; i += 1) {
+        const [lowerId, lower] = chain[i];
+        const [higherId, higher] = chain[i + 1];
+        roadPairs += 1;
+        if (order.get(lowerId) < order.get(higherId)) continue;
         console.log(
-          `::error file=poc/web/themes.js::v štýle (${kde}) je \`${nizsiId}\` ` +
-          `NAD \`${vyssiId}\`. \`${nizsi}\` je menej dôležitá cesta než ` +
-          `\`${vyssi}\` (poradie hovorí ROAD_DEFS), takže sa v mape kreslí ` +
-          `cez ňu a na križovatkách ju prerušuje. Vrstvy ciest sa pridávajú ` +
-          `OD KONCA ROAD_DEFS – viď \`roadPass\`.`
+          `::error file=poc/web/themes.js::in the style (${where}) \`${lowerId}\` ` +
+          `is ABOVE \`${higherId}\`. \`${lower}\` is a less important road than ` +
+          `\`${higher}\` (by ROAD_DEFS), so it draws over it and breaks it at ` +
+          `junctions. Road layers are added FROM THE END of ROAD_DEFS – see \`roadPass\`.`
         );
         bad += 1;
       }
     }
   }
-  // obrysy priechodu patria celé pod jeho výplne, nie po dvojiciach:
-  // striedavo preložené obrysy a výplne sedia po dvojiciach a casing diaľnice
-  // pritom prereže účelovú cestu. Preto najnižšia výplň proti najvyššiemu obrysu.
+  // a pass's casings lie wholly under its fills: the lowest fill against the highest casing
   for (const suffix of ROAD_PASSES) {
     const idx = (pre) => ROAD_DEFS
-      .map(([id]) => poradie.get(`road-${id}${pre}${suffix}`))
+      .map(([id]) => order.get(`road-${id}${pre}${suffix}`))
       .filter((i) => i !== undefined);
-    const obrysy = idx("-casing");
-    const vyplne = idx("");
-    if (!obrysy.length || !vyplne.length) continue;
-    cestnychDvojic += 1;
-    const najvyssiObrys = Math.max(...obrysy);
-    const najnizsiaVypln = Math.min(...vyplne);
-    if (najvyssiObrys < najnizsiaVypln) continue;
-    const vinnik = ROAD_DEFS
+    const casings = idx("-casing");
+    const fills = idx("");
+    if (!casings.length || !fills.length) continue;
+    roadPairs += 1;
+    const topCasing = Math.max(...casings);
+    const lowestFill = Math.min(...fills);
+    if (topCasing < lowestFill) continue;
+    const culprit = ROAD_DEFS
       .map(([id]) => id)
-      .find((id) => poradie.get(`road-${id}-casing${suffix}`) === najvyssiObrys);
+      .find((id) => order.get(`road-${id}-casing${suffix}`) === topCasing);
     console.log(
-      `::error file=poc/web/themes.js::v štýle (${kde}) sa obrysy a výplne ` +
-      `ciest priechodu \`${suffix || "(povrch)"}\` prekladajú – obrys ` +
-      `\`road-${vinnik}-casing${suffix}\` je nad niektorou výplňou toho istého ` +
-      `priechodu. Obrysy patria CELÉ pod výplne (v \`roadPass\` sú preto dve ` +
-      `slučky, nie jedna), inak ich prekryjú križovatky.`
+      `::error file=poc/web/themes.js::in the style (${where}) road casings and ` +
+      `fills of pass \`${suffix || "(surface)"}\` interleave – casing ` +
+      `\`road-${culprit}-casing${suffix}\` is above some fill of the same pass. ` +
+      `Casings lie WHOLLY under fills (hence two loops in \`roadPass\`), or ` +
+      `junctions cover them.`
     );
     bad += 1;
   }
 
-  // priechody idú tunel → povrch → most: to je úroveň, nie trieda. Kontrola
-  // vyššie beží v každom priechode zvlášť, takže by prehodené volania prešli.
-  const urovne = ROAD_PASSES
+  // passes go tunnel → surface → bridge – a level, not a class
+  const levels = ROAD_PASSES
     .map((suffix) => {
       const idx = ROAD_DEFS
         .flatMap(([id]) => [`road-${id}-casing${suffix}`, `road-${id}${suffix}`])
-        .map((l) => poradie.get(l))
+        .map((l) => order.get(l))
         .filter((i) => i !== undefined);
-      return idx.length ? { suffix, od: Math.min(...idx), po: Math.max(...idx) } : null;
+      return idx.length ? { suffix, from: Math.min(...idx), to: Math.max(...idx) } : null;
     })
     .filter(Boolean);
-  for (let i = 0; i + 1 < urovne.length; i += 1) {
-    const nizsi = urovne[i];
-    const vyssi = urovne[i + 1];
-    cestnychDvojic += 1;
-    if (nizsi.po < vyssi.od) continue;
-    const meno = (s) => s === "-tunnel" ? "tunely" : s === "-bridge" ? "mosty" : "povrch";
+  for (let i = 0; i + 1 < levels.length; i += 1) {
+    const lower = levels[i];
+    const higher = levels[i + 1];
+    roadPairs += 1;
+    if (lower.to < higher.from) continue;
+    const name = (s) => s === "-tunnel" ? "tunnels" : s === "-bridge" ? "bridges" : "surface";
     console.log(
-      `::error file=poc/web/themes.js::v štýle (${kde}) nie sú priechody ciest ` +
-      `v poradí tunel → povrch → most: \`${meno(nizsi.suffix)}\` ` +
-      `(${nizsi.od}–${nizsi.po}) zasahuje nad \`${meno(vyssi.suffix)}\` ` +
-      `(od ${vyssi.od}). Poradie hovorí ROAD_PASSES a je to úroveň, nie trieda ` +
-      `– cesta na moste patrí nad každú cestu na povrchu.`
+      `::error file=poc/web/themes.js::in the style (${where}) road passes aren't ` +
+      `ordered tunnel → surface → bridge: \`${name(lower.suffix)}\` ` +
+      `(${lower.from}–${lower.to}) reaches above \`${name(higher.suffix)}\` ` +
+      `(from ${higher.from}). ROAD_PASSES sets the order and it's a level, not a ` +
+      `class – a road on a bridge lies above every surface road.`
     );
     bad += 1;
   }
 }
 
-// 4. maska regiónu ostáva úplne navrchu
-// Vodstvo a Natural Earth kreslí Planetiler na celom obdĺžniku bboxu, ďaleko
-// za stiahnutým regiónom; prekrýva to `region-outside` a jej jediná podmienka
-// je, že je posledná. Platí to pre každý typ mapy.
-let masiek = 0;
-for (const { kde, style } of styles()) {
+// 5. the region mask stays on top – water and Natural Earth cover the whole bbox
+let masks = 0;
+for (const { where, style } of styles()) {
   const ids = style.layers.map((l) => l.id);
-  masiek += 1;
+  masks += 1;
   if (!ids.includes("region-outside")) {
     console.log(
-      `::error file=poc/web/themes.js::v štýle (${kde}) nie je vrstva ` +
-      `\`region-outside\`, hoci hranica regiónu prišla. Mapa by v aplikácii ` +
-      `siahala za stiahnutý región.`
+      `::error file=poc/web/themes.js::the style (${where}) has no ` +
+      `\`region-outside\` layer though a region border came. The map would ` +
+      `reach beyond the downloaded region in the app.`
     );
     bad += 1;
     continue;
   }
-  const posledne = ids.slice(-2);
-  if (!posledne.includes("region-outside") || !posledne.includes("region-border")) {
+  const last = ids.slice(-2);
+  if (!last.includes("region-outside") || !last.includes("region-border")) {
     console.log(
-      `::error file=poc/web/themes.js::maska regiónu nie je navrchu (${kde}): ` +
-      `posledné vrstvy sú [${ids.slice(-3)}]. Vrstva za \`region-outside\` ` +
-      `sa kreslí aj mimo stiahnutého regiónu – pridávaj ju PRED masku.`
+      `::error file=poc/web/themes.js::the region mask isn't on top (${where}): ` +
+      `the last layers are [${ids.slice(-3)}]. A layer after \`region-outside\` ` +
+      `draws outside the downloaded region too – add it BEFORE the mask.`
     );
     bad += 1;
+  }
+  // the mask must match what `region-mask.py` writes, or it covers nothing
+  for (const id of ["region-outside", "region-border"]) {
+    const layer = style.layers.find((l) => l.id === id);
+    const filter = JSON.stringify(layer?.filter ?? null);
+    if (layer && !MASK_KINDS.some((kind) => filter.includes(`"${kind}"`))) {
+      console.log(
+        `::error file=poc/web/themes.js::\`${id}\` (${where}) filters ${filter}, ` +
+        `but workers/deploy/region-mask.py writes kinds ${MASK_KINDS.join(", ")}. ` +
+        `The mask would match nothing and the map would reach past the region.`
+      );
+      bad += 1;
+    }
   }
 }
 
 console.log(
-  `štýl: ${bad} chýb (${checked} výplní nad zmiešanou geometriou, ` +
-  `${derived} skúšok odvodených vrstiev, ${vzorov} vzorov plôch na šev, ` +
-  `${cestnychDvojic} dvojíc ciest na poradie, ` +
-  `${masiek} štýlov s maskou regiónu, ` +
-  `${Object.keys(THEMES).length} tém × ${MAP_TYPE_IDS.length} typov mapy)`
+  `style: ${bad} errors (${checked} fills over mixed geometry, ` +
+  `${derived} derived layer checks, ${patterns} area patterns at the seam, ` +
+  `${roadPairs} road pairs in order, ` +
+  `${masks} styles with a region mask, ` +
+  `${Object.keys(THEMES).length} themes × ${MAP_TYPE_IDS.length} map types)`
 );
 process.exit(bad ? 1 : 0);

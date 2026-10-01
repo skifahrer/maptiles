@@ -1,185 +1,147 @@
 #!/usr/bin/env python3
-"""Každá cesta na worker musí ukazovať na súbor, ktorý existuje.
+"""Every path to a worker must point at a file that exists.
 
-Pri presune `workers/` do priečinkov podľa jobu sa prepísali cesty napísané
-celé, ale nie tie, ktoré si skript skladá až za behu (`$HERE/x`). `bash -n`
-vidí syntax, nie cesty, a lokálne to nikto nespustí – spadlo to až na runneri,
-na štyroch joboch naraz.
+`bash -n` sees syntax, not paths. Guarded: `$HERE/x`, `$WORKERS/x`,
+`$(dirname \"$0\")/x` and full `workers/…` paths in workers and workflows;
+comments are dropped (error texts name wrong paths on purpose).
 
-Stráži sa `$HERE/x`, `$WORKERS/x`, `$(dirname \"$0\")/x` a celé `workers/…`
-cesty vo workeroch aj workflowoch; komentáre sa vyhadzujú (texty o chybách
-píšu o zlých cestách zámerne).
-
-Druhá polovica tej istej otázky: skript bez `+x` vráti „Permission denied"
-a kód 126, súrodenca 127 od chýbajúceho súboru. Výnimkou sú kusy, ktoré si iný
-skript číta cez `.` – tie nie sú krok, ale kus toho skriptu.
+The other half: a script without `+x` gives "Permission denied" and code 126.
+Pieces another script reads through `.` are exempt – they aren't steps.
 """
 import glob
 import os
 import re
 import sys
 
-PRIP = r"(?:py|sh|mjs|json|txt|yml)"
+EXT = r"(?:py|sh|mjs|json|txt|yml)"
 
 
-def bez_komentarov(text, styl):
-    """`#` pre shell a python, `//` a `/* */` pre JS. Reťazce sa nerozlišujú –
-    na cesty to stačí a je to o rád menej kódu než parser."""
-    if styl == "js":
+def no_comments(text, style):
+    """`#` for shell and python, `//` and `/* */` for JS; strings aren't told apart."""
+    if style == "js":
         text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
         return "\n".join(re.sub(r"//.*$", "", r) for r in text.split("\n"))
-    von = []
+    out = []
     for r in text.split("\n"):
-        # `#` v strede riadku býva aj v reťazci; berieme len celoriadkové
-        # komentáre a koncové za medzerou, čo pokrýva, ako sa tu píše.
+        # whole-line comments and trailing ones after a space only
         r = re.sub(r"(^|\s)#.*$", r"\1", r)
-        von.append(r)
-    return "\n".join(von)
+        out.append(r)
+    return "\n".join(out)
 
 
-def chyby_v(path, text, styl):
+def errors_in(path, text, style):
     here = os.path.dirname(path)
     workers = os.path.dirname(here)
-    t = bez_komentarov(text, styl)
-    zle = []
+    t = no_comments(text, style)
+    wrong = []
 
-    # --- shell: $HERE/x, $WORKERS/x, $(dirname "$0")/x ---
-    prem = {"HERE": here, "WORKERS": workers}
-    for m in re.finditer(r'\$\{?(HERE|WORKERS)\}?/([\w./-]+\.' + PRIP + r')', t):
-        cesta = os.path.normpath(os.path.join(prem[m.group(1)], m.group(2)))
-        if not os.path.exists(cesta):
-            zle.append((f"${m.group(1)}/{m.group(2)}", cesta))
-    for m in re.finditer(r'\$\(dirname "\$0"\)/([\w./-]+\.' + PRIP + r')', t):
-        cesta = os.path.normpath(os.path.join(here, m.group(1)))
-        if not os.path.exists(cesta):
-            zle.append((f'$(dirname "$0")/{m.group(1)}', cesta))
+    # shell: $HERE/x, $WORKERS/x, $(dirname "$0")/x
+    base_vars = {"HERE": here, "WORKERS": workers}
+    for m in re.finditer(r'\$\{?(HERE|WORKERS)\}?/([\w./-]+\.' + EXT + r')', t):
+        target = os.path.normpath(os.path.join(base_vars[m.group(1)], m.group(2)))
+        if not os.path.exists(target):
+            wrong.append((f"${m.group(1)}/{m.group(2)}", target))
+    for m in re.finditer(r'\$\(dirname "\$0"\)/([\w./-]+\.' + EXT + r')', t):
+        target = os.path.normpath(os.path.join(here, m.group(1)))
+        if not os.path.exists(target):
+            wrong.append((f'$(dirname "$0")/{m.group(1)}', target))
 
-    # --- python: os.path.join(_HERE | _WORKERS | _DATA | _DRIVE, "…") ---
-    # Toto bola druhá polovica tej istej chyby: cesty sa skladajú aj tu a pri
-    # presune sa im zmenil základ. Kontroluje sa doslovné volanie – premenná
-    # v argumente sa staticky rozlúsknuť nedá a nikto ju tu ani nepoužíva.
-    baza = {"_HERE": here, "_WORKERS": workers,
+    # python: os.path.join(_HERE | _WORKERS | _DATA | _DRIVE, "…")
+    # literal calls only – a variable argument can't be resolved statically
+    base = {"_HERE": here, "_WORKERS": workers,
             "_DATA": os.path.join(workers, "data"),
             "_DRIVE": os.path.join(workers, "drive")}
     for m in re.finditer(
             r'os\.path\.join\(\s*(_HERE|_WORKERS|_DATA|_DRIVE)\s*,\s*'
-            r'((?:"[\w.-]+"\s*,\s*)*"[\w.-]+\.' + PRIP + r'")\s*\)', t):
-        casti = re.findall(r'"([^"]+)"', m.group(2))
-        cesta = os.path.normpath(os.path.join(baza[m.group(1)], *casti))
-        if not os.path.exists(cesta):
-            zle.append((f"os.path.join({m.group(1)}, {m.group(2)})", cesta))
+            r'((?:"[\w.-]+"\s*,\s*)*"[\w.-]+\.' + EXT + r'")\s*\)', t):
+        parts = re.findall(r'"([^"]+)"', m.group(2))
+        target = os.path.normpath(os.path.join(base[m.group(1)], *parts))
+        if not os.path.exists(target):
+            wrong.append((f"os.path.join({m.group(1)}, {m.group(2)})", target))
 
-    # --- JS: join(<základ odvodený z import.meta.url>, "…") ---
-    # Základ býva aj v premennej (`SELF`, `root`), a tá si k nemu môže pridať
-    # `".."` – takže sa NEDÁ predpokladať, že je to vlastný priečinok. Najprv
-    # sa prečíta, ako je tá premenná definovaná, a až potom sa cesta skladá.
-    # Koreň repozitára je odteraz o DVE úrovne vyššie než `workers/<job>/` –
-    # práve na tom spadol beh 31413580102.
-    if styl == "js":
-        SAM = r'dirname\(\s*fileURLToPath\(\s*import\.meta\.url\s*\)\s*\)'
-        zaklady = {}
-        for m in re.finditer(r'(?:const|let|var)\s+(\w+)\s*=\s*' + SAM + r'\s*;', t):
-            zaklady[m.group(1)] = here
+    # JS: join(<a base derived from import.meta.url>, "…")
+    # the base may sit in a variable that adds `".."`, so its definition is read first
+    if style == "js":
+        SELF_DIR = r'dirname\(\s*fileURLToPath\(\s*import\.meta\.url\s*\)\s*\)'
+        bases = {}
+        for m in re.finditer(r'(?:const|let|var)\s+(\w+)\s*=\s*' + SELF_DIR + r'\s*;', t):
+            bases[m.group(1)] = here
         for m in re.finditer(
-                r'(?:const|let|var)\s+(\w+)\s*=\s*join\(\s*' + SAM + r'\s*,\s*'
+                r'(?:const|let|var)\s+(\w+)\s*=\s*join\(\s*' + SELF_DIR + r'\s*,\s*'
                 r'((?:"[\w.-]+"\s*,?\s*)+)\)\s*;', t):
-            zaklady[m.group(1)] = os.path.normpath(
+            bases[m.group(1)] = os.path.normpath(
                 os.path.join(here, *re.findall(r'"([^"]+)"', m.group(2))))
-        vzory = [(SAM, here)] + [(re.escape(k), v) for k, v in zaklady.items()]
-        for vzor, baza in vzory:
+        patterns = [(SELF_DIR, here)] + [(re.escape(k), v) for k, v in bases.items()]
+        for pattern, base in patterns:
             for m in re.finditer(
-                    r'join\(\s*' + vzor + r'\s*,\s*'
-                    r'((?:"[\w.-]+"\s*,\s*)*"[\w.-]+\.' + PRIP + r'")\s*\)', t):
-                casti = re.findall(r'"([^"]+)"', m.group(1))
-                cesta = os.path.normpath(os.path.join(baza, *casti))
-                if not os.path.exists(cesta):
-                    zle.append((f"join(…, {m.group(1)})", cesta))
+                    r'join\(\s*' + pattern + r'\s*,\s*'
+                    r'((?:"[\w.-]+"\s*,\s*)*"[\w.-]+\.' + EXT + r'")\s*\)', t):
+                parts = re.findall(r'"([^"]+)"', m.group(1))
+                target = os.path.normpath(os.path.join(base, *parts))
+                if not os.path.exists(target):
+                    wrong.append((f"join(…, {m.group(1)})", target))
 
-    # --- python: load("meno", "modul.py") ---
-    # Moduly sa kvôli pomlčke v mene načítavajú cez `importlib` a `load()` si
-    # cestu vnútri sám lepí na `_HERE`. Volanie teda vyzerá ako holé meno –
-    # a keď sused skončí v inom priečinku, neexistuje. `os.pardir` sa berie
-    # tiež: tak sa volá do vedľajšieho jobu.
-    if styl == "py":
+    # python: load("name", "module.py")
+    # `load()` joins onto `_HERE`; `os.pardir` reaches a sibling job
+    if style == "py":
         for m in re.finditer(
                 r'load\(\s*"[\w_]+"\s*,\s*((?:os\.path\.join\(\s*)?'
                 r'(?:os\.pardir\s*,\s*)?(?:"[\w.-]+"\s*,?\s*)+\)?)\s*\)', t):
             arg = m.group(1)
-            casti = re.findall(r'"([^"]+)"', arg)
-            if not casti or not casti[-1].endswith(".py"):
+            parts = re.findall(r'"([^"]+)"', arg)
+            if not parts or not parts[-1].endswith(".py"):
                 continue
-            baza = os.path.join(here, os.pardir) if "os.pardir" in arg else here
-            cesta = os.path.normpath(os.path.join(baza, *casti))
-            if not os.path.exists(cesta):
-                zle.append((f"load(…, {arg})", cesta))
+            base = os.path.join(here, os.pardir) if "os.pardir" in arg else here
+            target = os.path.normpath(os.path.join(base, *parts))
+            if not os.path.exists(target):
+                wrong.append((f"load(…, {arg})", target))
 
-    # --- celé `workers/…` cesty ---
-    for m in re.finditer(r'(?<![\w/.])workers/[\w./-]+\.' + PRIP, t):
+    # full `workers/…` paths
+    for m in re.finditer(r'(?<![\w/.])workers/[\w./-]+\.' + EXT, t):
         if not os.path.exists(m.group(0)):
-            zle.append((m.group(0), m.group(0)))
-    return zle
+            wrong.append((m.group(0), m.group(0)))
+    return wrong
 
 
-def citane():
-    """`.sh`, ktoré si iný skript ČÍTA cez `.` (source), nie púšťa.
-
-    Nie je to spustiteľný krok, ale KUS INÉHO SKRIPTU: beží v jeho shelli,
-    berie si jeho premenné a svoje mu podáva späť. Také súbory vznikajú tam,
-    kde skript prerástol strop 800 riadkov (`contours-rocks/rocks.sh` je druhá
-    polovica `build.sh`), alebo kde tú istú vec robia dve pipeline
-    (`state/estafeta.sh` je jadro oboch štafiet). Spustiť sa nedajú – bez
-    premenných volajúceho by spadli na prvom riadku – takže `+x` na nich nie
-    je záruka, ale sľub, ktorý sa nedá dodržať.
-
-    Hľadá sa `. workers/…` a `source workers/…` v skriptoch bez komentárov:
-    zakomentované volanie nie je volanie.
-    """
+def sourced():
+    """`.sh` another script READS through `.` (source) – a piece of that script, not a step."""
     out = set()
     for f in glob.glob("workers/**/*.sh", recursive=True):
-        t = bez_komentarov(open(f, encoding="utf-8").read(), "sh")
+        t = no_comments(open(f, encoding="utf-8").read(), "sh")
         for m in re.finditer(r"(?:^|\s)(?:\.|source)\s+(workers/[\w./-]+\.sh)",
                              t, re.M):
             out.add(m.group(1))
     return out
 
 
-def nespustitelne():
-    """`workers/**/*.sh` bez príznaku `+x` – workflow ich púšťa priamo.
-
-    Vracia zoznam ciest. Kontroluje sa KAŽDÝ skript, nielen ten, na ktorý sa
-    dá nájsť `run:` vo workflowe: skripty si volajú aj samy navzájom
-    (`world/build.sh` púšťa `lib/planetiler.sh` aj `assets/glyphs.sh`) a
-    „zatiaľ ho nikto nevolá" je stav, ktorý o priečinok ďalej prestane platiť.
-    Výnimkou sú kusy, ktoré sa `source`-ujú (viď `citane`) – tie sa nepúšťajú
-    a nemajú sa ani dať.
-    """
-    fragmenty = citane()
+def not_executable():
+    """`workers/**/*.sh` without `+x` – every one, since scripts call each other too."""
+    fragments = sourced()
     return sorted(f for f in glob.glob("workers/**/*.sh", recursive=True)
-                  if f not in fragmenty and not os.access(f, os.X_OK))
+                  if f not in fragments and not os.access(f, os.X_OK))
 
 
 def main():
     bad = 0
-    for f in nespustitelne():
-        print(f"::error file={f}::skript nemá príznak `+x`, takže `run: {f}` "
-              f"skončí na „Permission denied“ (kód 126). Priečinok je job, "
-              f"súbor je krok a kroky sa púšťajú priamo – naprav to cez "
-              f"`git update-index --chmod=+x {f}` (samotný `chmod` mimo git "
-              f"index nestačí).")
+    for f in not_executable():
+        print(f"::error file={f}::the script lacks `+x`, so `run: {f}` ends in "
+              f"“Permission denied” (code 126). Steps run directly – fix it with "
+              f"`git update-index --chmod=+x {f}` (a plain `chmod` outside the "
+              f"git index isn't enough).")
         bad += 1
-    subory = ([(f, "sh") for f in glob.glob("workers/**/*.sh", recursive=True)]
+    files = ([(f, "sh") for f in glob.glob("workers/**/*.sh", recursive=True)]
               + [(f, "py") for f in glob.glob("workers/**/*.py", recursive=True)]
               + [(f, "js") for f in glob.glob("workers/**/*.mjs", recursive=True)]
               + [(f, "sh") for f in glob.glob(".github/workflows/*.yml")]
               + [(f, "sh") for f in glob.glob(".github/actions/*/action.yml")])
-    for path, styl in sorted(subory):
-        for zapis, cesta in chyby_v(path, open(path, encoding="utf-8").read(), styl):
-            print(f"::error file={path}::`{zapis}` ukazuje na `{cesta}`, "
-                  f"a taký súbor nie je. Priečinok je job, súbor je krok – "
-                  f"sused sa volá `$HERE/<krok>`, iný job "
-                  f"`$WORKERS/<job>/<krok>`.")
+    for path, style in sorted(files):
+        for written, target in errors_in(path, open(path, encoding="utf-8").read(), style):
+            print(f"::error file={path}::`{written}` points at `{target}`, "
+                  f"and no such file exists. Folder = job, file = step – a "
+                  f"sibling is `$HERE/<step>`, another job "
+                  f"`$WORKERS/<job>/<step>`.")
             bad += 1
-    print(f"cesty na workery: {bad} chýb")
+    print(f"worker paths: {bad} errors")
     return 1 if bad else 0
 
 

@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""Kontrola: výber `rebuild` naozaj prepočíta to, čo sľubuje.
+"""The `rebuild` choice really recomputes what it promises.
 
-Jediná páka na „nepoužívaj cache". Keď sľúbi vrstvu a tá sa aj tak vráti
-z cache, beh je zelený a výsledok starý. Rozíde sa to trojako:
+The one lever for "don't use the cache". When it promises a layer and the layer
+still comes from the cache, the run is green and the result old. It drifts three ways:
 
-  * hodnota vo formulári, ktorú `plan/options.py` nepozná (alebo naopak);
-  * príznak v `REBUILD`, ktorý nikto nevydá ako výstup jobu `plan`;
-  * `rebuild: skaly` pri `rock_source: tienovanie` – vtedy počíta skaly
-    podpipeline, ktorá si odkladá rozrobené obrysy, a bez `fresh=1` na ne
-    nadviaže.
+  * a form value `plan/options.py` doesn't know (or the reverse);
+  * a `REBUILD` flag no `plan` job output carries;
+  * `rebuild: rocks` with `rock_source: shading` – then a sub-pipeline that keeps
+    half-done outlines computes rocks and resumes them without `fresh=1`.
 
-Meno vo formulári je slovenské meno vrstvy: staré `teren` ostáva prijímané ako
-alias, ale nesmie sa ponúkať – dve mená pre jednu vec sú horšie než jedno.
+Former names stay accepted as aliases but mustn't be offered.
 """
 import importlib.util
 import sys
@@ -19,11 +17,8 @@ import sys
 import yaml
 
 WORKFLOW = ".github/workflows/build-map-region.yml"
-# Vrstvy z výškového modelu (a s nimi podpipeline skál z tieňovania) sa
-# z buildu presťahovali do vlastného workflowu – volá ho aj pregenerovanie
-# jednej vrstvy, takže by druhá kópia bola druhá pravda o tom, či sa cache
-# naozaj zahodí.
-VRSTVY = ".github/workflows/dem-layers.yml"
+# elevation layers (and the shaded-rocks sub-pipeline) live in their own workflow
+LAYERS = ".github/workflows/dem-layers.yml"
 OPTIONS = "workers/plan/options.py"
 
 bad = []
@@ -39,80 +34,78 @@ def load(name, path):
 
 try:
     opts = load("plan_options", OPTIONS)
-except Exception as exc:                      # noqa: BLE001 – čokoľvek je chyba
-    print(f"::error::{OPTIONS} sa nedá načítať: {exc!r}")
+except Exception as exc:                      # noqa: BLE001 – anything is an error
+    print(f"::error::{OPTIONS} can't be loaded: {exc!r}")
     sys.exit(1)
 
 try:
     wf = yaml.safe_load(open(WORKFLOW, encoding="utf-8"))
-    vrstvy = yaml.safe_load(open(VRSTVY, encoding="utf-8"))
-    # Príznak musí byť ČÍTANÝ, a číta ho ktorýkoľvek z tých dvoch súborov:
-    # build ho podáva ďalej, vrstvy ho používajú.
+    layers = yaml.safe_load(open(LAYERS, encoding="utf-8"))
+    # a flag must be READ, by either file: the build passes it on, the layers use it
     text = (open(WORKFLOW, encoding="utf-8").read()
-            + open(VRSTVY, encoding="utf-8").read())
+            + open(LAYERS, encoding="utf-8").read())
 except (OSError, ValueError) as exc:
-    print(f"::error::{WORKFLOW} alebo {VRSTVY} sa nedá prečítať: {exc}")
+    print(f"::error::{WORKFLOW} or {LAYERS} can't be read: {exc}")
     sys.exit(1)
 
-# `on` je v YAMLe pravdivostná hodnota `True` – preto sa hľadá oboje.
+# YAML reads `on` as `True`, so both are tried
 on = wf.get("on") or wf.get(True) or {}
 inputs = ((on.get("workflow_dispatch") or {}).get("inputs") or {})
-vo_formulari = list((inputs.get("rebuild") or {}).get("options") or [])
+in_form = list((inputs.get("rebuild") or {}).get("options") or [])
 
-if not vo_formulari:
-    bad.append(f"{WORKFLOW}: input `rebuild` nemá výber hodnôt – nedá sa "
-               f"z formulára povedať, čo prepočítať nanovo.")
+if not in_form:
+    bad.append(f"{WORKFLOW}: input `rebuild` has no choice of values – the form "
+               f"can't say what to recompute.")
 
-zname = set(opts.REBUILD)
+known = set(opts.REBUILD)
 alias = set(getattr(opts, "REBUILD_ALIAS", {}))
 
-for v in vo_formulari:
+for v in in_form:
     if v in alias:
-        bad.append(f"{WORKFLOW}: `rebuild` ponúka `{v}`, čo je staré meno pre "
-                   f"`{opts.REBUILD_ALIAS[v]}`. Prijímať sa má (beh sa opakuje "
-                   f"tlačidlom Re-run s pôvodnými hodnotami), ponúkať nie – "
-                   f"dve mená pre jednu vec sú vo formulári horšie než jedno.")
-    elif v not in zname:
-        bad.append(f"{WORKFLOW}: `rebuild` ponúka `{v}`, ktoré {OPTIONS} "
-                   f"nepozná (pozná {sorted(zname)}) – beh by spadol hneď "
-                   f"v prípravnom jobe.")
+        bad.append(f"{WORKFLOW}: `rebuild` offers `{v}`, a former name for "
+                   f"`{opts.REBUILD_ALIAS[v]}`. It must be accepted (Re-run "
+                   f"repeats the old values), not offered – two names for one "
+                   f"thing in a form are worse than one.")
+    elif v not in known:
+        bad.append(f"{WORKFLOW}: `rebuild` offers `{v}`, which {OPTIONS} "
+                   f"doesn't know (it knows {sorted(known)}) – the run would "
+                   f"fail right in the plan job.")
 
-for v in sorted(zname - set(vo_formulari)):
-    bad.append(f"{OPTIONS}: `REBUILD` pozná `{v}`, ale formulár v {WORKFLOW} "
-               f"to neponúka – hodnotu, ktorá sa nedá vybrať, nikto "
-               f"nepoužije.")
+for v in sorted(known - set(in_form)):
+    bad.append(f"{OPTIONS}: `REBUILD` knows `{v}`, but the form in {WORKFLOW} "
+               f"doesn't offer it – a value that can't be picked is never used.")
 
-# ---- príznak sa musí dostať z `plan` do jobu, ktorý prepočítava ----
+# the flag must get from `plan` to the job that recomputes
 plan_outputs = ((wf.get("jobs") or {}).get("plan") or {}).get("outputs") or {}
 for flag in opts.REBUILD_FLAGS:
     if f"opt_{flag}" not in plan_outputs:
-        bad.append(f"{WORKFLOW}: job `plan` nevydáva `opt_{flag}`, takže sa "
-                   f"príznak k jobu, ktorý má prepočítať, nedostane – "
-                   f"pregenerovanie by ticho nespravilo nič.")
+        bad.append(f"{WORKFLOW}: job `plan` doesn't output `opt_{flag}`, so the "
+                   f"flag never reaches the job that should recompute – a "
+                   f"rebuild would quietly do nothing.")
     elif f"needs.plan.outputs.opt_{flag}" not in text:
-        bad.append(f"{WORKFLOW}: `opt_{flag}` nikto nečíta "
-                   f"(`needs.plan.outputs.opt_{flag}`) – výber v formulári by "
-                   f"sľúbil prepočet, ktorý sa nekoná.")
+        bad.append(f"{WORKFLOW}: nobody reads `opt_{flag}` "
+                   f"(`needs.plan.outputs.opt_{flag}`) – the form would promise "
+                   f"a recompute that never happens.")
 
-# ---- skaly z tieňovania: `rebuild: skaly` musí zahodiť aj rozrobené obrysy ----
-sr = ((vrstvy.get("jobs") or {}).get("shading-rocks") or {}).get("with") or {}
+# rocks from shading: `rebuild: rocks` must drop half-done outlines too
+sr = ((layers.get("jobs") or {}).get("shading-rocks") or {}).get("with") or {}
 sr_options = str(sr.get("options", ""))
 if not sr_options:
-    bad.append(f"{VRSTVY}: job `shading-rocks` nedostáva `options`, takže mu "
-               f"nemá ako povedať `fresh=1`.")
+    bad.append(f"{LAYERS}: job `shading-rocks` gets no `options`, so it can't "
+               f"be told `fresh=1`.")
 else:
     if "fresh=1" not in sr_options:
-        bad.append(f"{VRSTVY}: `shading-rocks` nedostáva `fresh=1` nikdy – "
-                   f"nadviaže na rozrobené obrysy z predošlého behu aj vtedy, "
-                   f"keď si vyberieš pregenerovanie.")
+        bad.append(f"{LAYERS}: `shading-rocks` never gets `fresh=1` – it resumes "
+                   f"the previous run's half-done outlines even when a rebuild "
+                   f"is picked.")
     if "opt_rocks_rebuild" not in sr_options:
-        bad.append(f"{VRSTVY}: `rebuild: skaly` sa do `shading-rocks` "
-                   f"nedostane (`options` nespomína `opt_rocks_rebuild`). Pri "
-                   f"`rock_source: tienovanie` sa sklon nepočíta vôbec – obrysy "
-                   f"robí táto podpipeline a bez `fresh=1` vráti tie staré. "
-                   f"Beh je pri tom zelený.")
+        bad.append(f"{LAYERS}: `rebuild: rocks` doesn't reach `shading-rocks` "
+                   f"(`options` doesn't mention `opt_rocks_rebuild`). With "
+                   f"`rock_source: shading` no slope is computed – this "
+                   f"sub-pipeline makes the outlines and without `fresh=1` "
+                   f"returns the old ones, on a green run.")
 
 for b in bad:
     print(f"::error::{b}")
-print(f"výber `rebuild`: {len(bad)} chýb")
+print(f"the `rebuild` choice: {len(bad)} errors")
 sys.exit(1 if bad else 0)

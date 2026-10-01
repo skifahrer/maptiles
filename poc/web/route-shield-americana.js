@@ -1,11 +1,11 @@
 /**
- * GENEROVANÉ – `node workers/tools/americana-shields.mjs --americana=<checkout>`.
- * Needituj ručne; vlastné siete patria do `route-shield-defs.js`.
+ * GENERATED – `node workers/tools/americana-shields.mjs --americana=<checkout>`.
+ * Don't edit by hand; our own networks belong in `route-shield-defs.js`.
  *
- * Tvary a farby štítkov čísel ciest z OSM Americana (`src/js/shield_defs.js`,
- * CC0): 74 receptov, 1447 sietí.
- * Vynechané sú siete kreslené hotovým obrázkom (`spriteBlank`, 453 sietí)
- * – tým ostáva záloha podľa triedy cesty.
+ * Route number shield shapes and colours from OSM Americana (`src/js/shield_defs.js`,
+ * CC0): 74 recipes, 1447 networks.
+ * Networks drawn from a ready image (`spriteBlank`, 453 networks) are
+ * skipped – they keep the road-class fallback.
  */
 
 export const AMERICANA_SHAPES = [

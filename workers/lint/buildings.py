@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sídla: filter pustí, čo schéma chce, a výmeru na budovu naozaj niekto zapíše."""
+"""Settlements: the filter passes what the schema wants, and someone really writes a building's area."""
 import os
 import sys
 
@@ -12,8 +12,8 @@ FILTER = os.path.join(_WORKERS, "buildings", "filter.txt")
 BUILD = os.path.join(_WORKERS, "buildings", "build.sh")
 AREAS = os.path.join(_WORKERS, "buildings", "areas.py")
 
-# kľúče, ktoré podmienke stačia, lebo prídu s objektom, ktorý filter pustil
-SPOLU = {"name"}
+# keys a condition may use, since they come with an object the filter passed
+ALONG = {"name"}
 
 
 def filter_keys(path):
@@ -29,11 +29,11 @@ def filter_keys(path):
     return out
 
 
-def podmienky(when):
+def conditions(when):
     if not when:
         return []
     if "__all__" in when:
-        return [p for c in when["__all__"] for p in podmienky(c)]
+        return [p for c in when["__all__"] for p in conditions(c)]
     return list(when)
 
 
@@ -41,39 +41,39 @@ def main():
     bad = []
     with open(SCHEMA, encoding="utf-8") as f:
         schema = yaml.safe_load(f)
-    vrstvy = {v["id"]: v for v in schema.get("layers") or []}
-    pusta = filter_keys(FILTER)
-    for v in vrstvy.values():
+    layers = {v["id"]: v for v in schema.get("layers") or []}
+    passes = filter_keys(FILTER)
+    for v in layers.values():
         for b in v.get("features") or []:
-            kluce = set(podmienky(b.get("include_when"))) - SPOLU
-            if kluce - pusta:
-                bad.append(f"{FILTER}: schéma sa pýta na {', '.join(sorted(kluce - pusta))}, "
-                           f"predfilter to nepúšťa.")
+            keys = set(conditions(b.get("include_when"))) - ALONG
+            if keys - passes:
+                bad.append(f"{FILTER}: the schema asks for {', '.join(sorted(keys - passes))}, "
+                           f"the prefilter doesn't pass it.")
 
-    for vrstva in ("building", "building_name", "settlement"):
-        if vrstva not in vrstvy:
-            bad.append(f"{SCHEMA}: chýba vrstva `{vrstva}`, balík ju sľubuje.")
+    for layer in ("building", "building_name", "settlement"):
+        if layer not in layers:
+            bad.append(f"{SCHEMA}: layer `{layer}` is missing, the package promises it.")
 
-    atributy = {a.get("key") for a in schema["definitions"][0]}
-    for kluc in ("name", "area"):
-        if kluc not in atributy:
-            bad.append(f"{SCHEMA}: budova nenesie `{kluc}` – kvôli tomu balík je.")
+    attributes = {a.get("key") for a in schema["definitions"][0]}
+    for key in ("name", "area"):
+        if key not in attributes:
+            bad.append(f"{SCHEMA}: a building doesn't carry `{key}` – that's what the package is for.")
 
     if "local_path: data/buildings-area.osm.pbf" not in open(SCHEMA, encoding="utf-8").read():
-        bad.append(f"{SCHEMA}: planetiler nečíta PBF s výmerou z `areas.py`.")
+        bad.append(f"{SCHEMA}: planetiler doesn't read the PBF with areas from `areas.py`.")
     with open(BUILD, encoding="utf-8") as f:
         build = f.read()
     if "areas.py" not in build or "buildings-area.osm.pbf" not in build:
-        bad.append(f"{BUILD}: nevolá `areas.py` – budovy by boli bez výmery.")
+        bad.append(f"{BUILD}: doesn't call `areas.py` – buildings would have no area.")
     if " -R" in build or "--omit-referenced" in build:
-        bad.append(f"{BUILD}: `-R` vyhodí členov relácií – multipolygóny budov zmiznú.")
+        bad.append(f"{BUILD}: `-R` drops relation members – building multipolygons vanish.")
     if not os.path.exists(AREAS):
-        bad.append(f"{AREAS} neexistuje.")
+        bad.append(f"{AREAS} doesn't exist.")
 
     for b in bad:
         print(f"::error::{b}")
     if not bad:
-        print(f"sídla ✓ ({len(vrstvy)} vrstvy)")
+        print(f"settlements ✓ ({len(layers)} layers)")
     return 1 if bad else 0
 
 

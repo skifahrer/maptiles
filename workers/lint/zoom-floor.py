@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Vrstevnice a skaly sa nedláždia pod tým zoomom, od ktorého ich štýl kreslí.
+"""Contours and rocks aren't tiled below the zoom the style draws them from.
 
-Dno zoomu je na dvoch miestach a inak to nejde: schéma rozhoduje, čo sa
-vyrobí, štýl, čo sa nakreslí. Schéma nižšie = dlaždice, ktoré nikto nekreslí;
-štýl nižšie = diera v mape. Ani jedno nikto nepovie.
+The zoom floor lives in two places by necessity: the schema decides what is
+made, the style what is drawn. A lower schema = tiles nobody draws; a lower
+style = a hole in the map. Nobody says either.
 """
 import os
 import re
@@ -19,19 +19,12 @@ THEMES = os.path.join(_ROOT, "poc", "web", "themes.js")
 CONTOURS = os.path.join(_WORKERS, "contours-rocks", "contours.yml")
 ROCKS = os.path.join(_WORKERS, "contours-rocks", "rocks.yml")
 
-# Pod týmto zoomom nemá byť v mape ani vrstevnica, ani skala: na tej mierke sa
-# nedá prečítať ani jedna čiara a zo skál je sivá škvrna – a dlaždice s nimi si
-# prehliadač aj tak stiahne. Nad ním je z vrstevníc povolená LEN hlavná trieda
-# (`major`), ostatné dve majú vlastné, vyššie dno.
+# below this no contour or rock is readable; above it only `major` contours, the rest higher
 FLOOR = 11
 
 
 def schema_min_zoom(path, layer, include=None):
-    """`min_zoom` prvku vrstvy zo schémy Planetilera.
-
-    `include` vyberá spomedzi viacerých prvkov ten, ktorý má daný
-    `include_when` (vrstevnice majú tri triedy v jednej vrstve).
-    """
+    """A layer feature's `min_zoom` in a Planetiler schema; `include` picks by `include_when`."""
     doc = yaml.safe_load(open(path))
     for lay in doc.get("layers", []):
         if lay.get("id") != layer:
@@ -44,12 +37,7 @@ def schema_min_zoom(path, layer, include=None):
 
 
 def named_z(text, token):
-    """Číslo z výrazu v štýle – buď literál, alebo meno konštanty.
-
-    Dno zoomu je v štýle napísané ako `TERRAIN_MIN_Z` (jedno miesto pre obe
-    vrstvy), takže sa meno musí dať rozviazať na hodnotu – inak by kontrola
-    strážila text a nie číslo.
-    """
+    """A number from a style expression – a literal or a constant name (`TERRAIN_MIN_Z`)."""
     token = token.strip()
     if token.isdigit():
         return int(token)
@@ -58,7 +46,7 @@ def named_z(text, token):
 
 
 def style_min_zoom(text, layer_id):
-    """`minzoom` vrstvy štýlu – hľadá sa za jej `id`."""
+    """A style layer's `minzoom`, searched after its `id`."""
     m = re.search(r'id:\s*"' + re.escape(layer_id) + r'"', text)
     if not m:
         return None
@@ -67,11 +55,7 @@ def style_min_zoom(text, layer_id):
 
 
 def contour_line_min_zoom(text, level):
-    """`contourLine("major", …, TERRAIN_MIN_Z, …)` – dno triedy v štýle.
-
-    Vrstvy vrstevníc štýl neskladá po jednej, ale jednou funkciou pre všetky
-    tri triedy, takže sa číta jej volanie a nie `minzoom:`.
-    """
+    """A contour class floor from its `contourLine("major", …, TERRAIN_MIN_Z, …)` call."""
     m = re.search(r'contourLine\(\s*"[^"]+"\s*,\s*"[^"]*"\s*,\s*"'
                   + re.escape(level) + r'"\s*,\s*([A-Za-z_0-9]+)', text, re.S)
     return named_z(text, m.group(1)) if m else None
@@ -82,57 +66,55 @@ def main():
     bad = []
 
     checks = [
-        ("vrstevnice (trieda major)",
+        ("contours (class major)",
          schema_min_zoom(CONTOURS, "contour", include="major"),
          contour_line_min_zoom(text, "major"),
-         'workers/contours-rocks/contours.yml (min_zoom triedy major) '
+         'workers/contours-rocks/contours.yml (min_zoom of class major) '
          'vs poc/web/themes.js (contourLine("major", …))'),
-        ("skaly",
+        ("rocks",
          schema_min_zoom(ROCKS, "rock"),
          style_min_zoom(text, "rock-area"),
          "workers/contours-rocks/rocks.yml (min_zoom) vs "
-         "poc/web/themes.js (vrstva rock-area)"),
+         "poc/web/themes.js (layer rock-area)"),
     ]
 
-    for what, schema, style, kde in checks:
+    for what, schema, style, where in checks:
         if schema is None or style is None:
-            bad.append(f"{what}: dno zoomu sa nedá prečítať "
-                       f"(schéma={schema}, štýl={style}) – {kde}. "
-                       f"Keď sa tie miesta prepisujú, uprav aj túto kontrolu.")
+            bad.append(f"{what}: the zoom floor can't be read "
+                       f"(schema={schema}, style={style}) – {where}. "
+                       f"When those places change, update this check too.")
             continue
         if schema != style:
-            bad.append(f"{what}: schéma vyrába od z{schema}, štýl kreslí od "
-                       f"z{style} – to je buď platenie za dlaždice, ktoré "
-                       f"nikto nevidí, alebo diera v mape. Zrovnaj {kde}.")
+            bad.append(f"{what}: the schema makes from z{schema}, the style draws "
+                       f"from z{style} – either paying for tiles nobody sees or a "
+                       f"hole in the map. Align {where}.")
         elif schema < FLOOR:
-            bad.append(f"{what}: dno je z{schema}, ale pod z{FLOOR} sa "
-                       f"vrstevnice ani skaly nekreslia (nedá sa tam prečítať "
-                       f"ani jedna čiara a podklady sú za to väčšie). "
-                       f"Zdvihni ho v {kde}.")
+            bad.append(f"{what}: the floor is z{schema}, but below z{FLOOR} "
+                       f"neither contours nor rocks are drawn (no line is readable "
+                       f"there and the data grows). Raise it in {where}.")
         else:
-            print(f"  ✓ {what}: od z{schema} v schéme aj v štýle")
+            print(f"  ✓ {what}: from z{schema} in schema and style")
 
-    # Druhá polovica želania „pod z12 nech je LEN jedna vrstevnica": zvyšné dve
-    # triedy musia mať dno vyššie než hlavná, inak sa na malej mierke zlejú.
+    # the other two classes must start above the major one, or they smear at small scale
     major = contour_line_min_zoom(text, "major")
     for level in ("mid", "minor"):
         z = contour_line_min_zoom(text, level)
         if z is None:
-            bad.append(f"vrstevnice: triedu {level} sa v štýle nepodarilo "
-                       f"nájsť – uprav kontrolu alebo štýl.")
+            bad.append(f"contours: class {level} can't be found in the style "
+                       f"– update the check or the style.")
         elif major is not None and z <= major:
-            bad.append(f"vrstevnice: trieda {level} sa kreslí od z{z}, teda "
-                       f"nie vyššie než hlavná (z{major}). Na malej mierke má "
-                       f"byť v mape LEN hlavná vrstevnica, inak je z nich "
-                       f"šmuha a podklady sú dvojnásobné.")
+            bad.append(f"contours: class {level} is drawn from z{z}, no higher "
+                       f"than the major one (z{major}). At small scale ONLY the "
+                       f"major contour belongs in the map, or they smear and the "
+                       f"data doubles.")
         else:
-            print(f"  ✓ vrstevnice (trieda {level}): od z{z}, nad hlavnou")
+            print(f"  ✓ contours (class {level}): from z{z}, above major")
 
     if bad:
         for b in bad:
             print(f"::error::{b}")
         return 1
-    print("Dno zoomu vrstevníc a skál je v schéme aj v štýle rovnaké ✓")
+    print("The contour and rock zoom floor matches in schema and style ✓")
     return 0
 
 

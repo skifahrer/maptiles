@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
-"""„V tomto stupni terén nie je" sa nesmie povedať od oka ani bez podpisu.
+"""“This degree has no terrain” must not be said by eye or without a stamp.
 
-Prázdna dlaždica je doživotná odpoveď: kým leží v sklade, `dem/check.sh` vidí
-jej meno a nikto ju už neprečíta. Vzorkovaná štatistika (`-approx_stats`) raz
-v `N48E016.tif` netrafila ani jeden platný pixel a vrstevnice, skaly aj
-tieňovanie Bratislavského kraja skončili rovnou líniou na 17. poludníku.
+An empty tile is a lifelong answer: while it's in the store `dem/check.sh` sees
+its name and nobody reads it again. Sampled statistics (`-approx_stats`) once
+missed every valid pixel in a tile and a region's layers ended in a straight line.
 
-  1. `dem/tiles.py` pozná `EMPTY_PX`, `EMPTY_TAG` aj `EMPTY_CHECK`;
-  2. prázdna dlaždica sa podpíše (`-mo EMPTY_CHECK=…`);
-  3. o zahodení nerozhoduje vzorkovanie – ide sa cez `has_elevations(`;
-  4. `dem/coverage.py` si prázdnu dlaždicu nedefinuje druhýkrát;
-  5. `check.sh` púšťa `dem/trust.py` a ten posudzuje podpis funkciou
-     `coverage.empty_stamp` – inak sa „je to meno v sklade?" rozíde s tým,
-     čo v tých súboroch naozaj je.
+  1. `dem/tiles.py` knows `EMPTY_PX`, `EMPTY_TAG` and `EMPTY_CHECK`;
+  2. an empty tile is stamped (`-mo EMPTY_CHECK=…`);
+  3. sampling doesn't decide a drop – it goes through `has_elevations(`;
+  4. `dem/coverage.py` doesn't define an empty tile a second time;
+  5. `check.sh` runs `dem/trust.py`, which judges the stamp with
+     `coverage.empty_stamp`.
 """
 import os
 import re
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-# Priečinok = job, súbor = krok; susedné joby ležia o úroveň vyššie.
+# folder = job, file = step; sibling jobs are one level up
 _WORKERS = os.path.dirname(_HERE)
 TILES = os.path.join(_WORKERS, "dem", "tiles.py")
 COVERAGE = os.path.join(_WORKERS, "dem", "coverage.py")
@@ -34,70 +32,66 @@ def main():
 
     for const in ("EMPTY_PX", "EMPTY_TAG", "EMPTY_CHECK"):
         if not re.search(rf"^{const}\s*=", tiles, re.M):
-            bad.append(f"workers/dem/tiles.py nemá konštantu {const} – prázdna "
-                       f"dlaždica sa potom nedá ani podpísať, ani spoznať.")
+            bad.append(f"workers/dem/tiles.py lacks the constant {const} – an empty "
+                       f"tile can then be neither stamped nor recognised.")
 
     if not re.search(r"^EMPTY_MAX_BYTES\s*=", tiles, re.M):
-        bad.append("workers/dem/tiles.py nemá prah EMPTY_MAX_BYTES – "
-                   "`workers/dem/trust.py` ho číta a kontrola skladu "
-                   "spadne na AttributeError (beh 33944842274).")
+        bad.append("workers/dem/tiles.py lacks the EMPTY_MAX_BYTES threshold – "
+                   "`workers/dem/trust.py` reads it and the store check "
+                   "fails on AttributeError.")
 
     if 'f"{EMPTY_TAG}={EMPTY_CHECK}"' not in tiles:
-        bad.append("workers/dem/tiles.py nepodpisuje prázdnu dlaždicu "
-                   "(`gdal_translate -mo EMPTY_CHECK=…`). Bez podpisu sa "
-                   "odpoveď starej kontroly tvári ako dnešná a stupeň "
-                   "s terénom ostane v sklade navždy prázdny.")
+        bad.append("workers/dem/tiles.py doesn't stamp an empty tile "
+                   "(`gdal_translate -mo EMPTY_CHECK=…`). Unstamped, an old "
+                   "check's answer passes for today's and a degree with "
+                   "terrain stays empty in the store for good.")
 
-    # Zakázaná je VZORKOVANÁ podoba nad hotovou dlaždicou, teda volanie bez
-    # `exact=True`. `elevation_range(dst, exact=True)` je v poriadku – tak si
-    # `empty_tile()` overuje, že prázdna dlaždica naozaj vyšla prázdna.
+    # banned: the SAMPLED form on a finished tile; `exact=True` is fine
     if re.search(r"elevation_range\(\s*dst\s*\)", tiles):
-        bad.append("workers/dem/tiles.py rozhoduje o dlaždici priamo cez "
-                   "`elevation_range(dst)`. Vzorkovaná štatistika smie "
-                   "povedať len „výšky sú“; jej „nie sú“ znamená zahodiť "
-                   "hotovú dlaždicu, a to musí prejsť cez `has_elevations()` "
-                   "(presný priechod, beh 31526268289).")
+        bad.append("workers/dem/tiles.py decides on a tile directly through "
+                   "`elevation_range(dst)`. Sampled statistics may only say "
+                   "“heights exist”; their “none” means dropping a finished "
+                   "tile, which must go through `has_elevations()` (an exact pass).")
 
     if "def has_elevations(" not in tiles:
-        bad.append("workers/dem/tiles.py nemá `has_elevations()` – práve ona "
-                   "overuje „prázdny stupeň“ presným priechodom.")
+        bad.append("workers/dem/tiles.py lacks `has_elevations()` – it verifies "
+                   "an “empty degree” with an exact pass.")
 
     for const in ("EMPTY_PX", "EMPTY_TAG", "EMPTY_CHECK"):
         if re.search(rf"^{const}\s*=", coverage, re.M):
-            bad.append(f"workers/dem/coverage.py si definuje vlastné {const}. "
-                       f"Ako vyzerá prázdna dlaždica vie ten, kto ju píše "
-                       f"(workers/dem/tiles.py) – dve predstavy o tom istom sa "
-                       f"raz rozídu.")
+            bad.append(f"workers/dem/coverage.py defines its own {const}. "
+                       f"What an empty tile looks like is known by its writer "
+                       f"(workers/dem/tiles.py) – two ideas of one thing drift.")
     if "tiles.EMPTY_TAG" not in coverage or "tiles.EMPTY_PX" not in coverage:
-        bad.append("workers/dem/coverage.py neberie podpis prázdnej dlaždice "
-                   "z workers/dem/tiles.py – nepoctivú prázdnu dlaždicu potom "
-                   "zo skladu nevyhodí a stupeň sa už nikdy neprečíta.")
+        bad.append("workers/dem/coverage.py doesn't take the empty-tile stamp "
+                   "from workers/dem/tiles.py – a false empty tile then stays "
+                   "in the store and the degree is never read again.")
 
-    # ---- kontrola sa musí pýtať to isté, čo stiahnutie ----
+    # the check must ask what the download asks
     try:
         check = open(CHECK, encoding="utf-8").read()
         trust = open(TRUST, encoding="utf-8").read()
     except OSError as exc:
-        bad.append(f"{exc} – bez `dem/trust.py` sa kontrola skladu vráti "
-                   f"k „meno v sklade stačí“ (beh 31781263921).")
+        bad.append(f"{exc} – without `dem/trust.py` the store check falls back "
+                   f"to “a name in the store will do”.")
         check = trust = ""
 
     if check and "trust.py" not in check:
-        bad.append("workers/dem/check.sh nepúšťa workers/dem/trust.py – "
-                   "kontrola by opäť verila menu súboru a prázdna dlaždica "
-                   "od starej kontroly by prešla ako hotový model.")
+        bad.append("workers/dem/check.sh doesn't run workers/dem/trust.py – "
+                   "the check would trust a file name again and an old empty "
+                   "tile would pass as a finished model.")
     if trust and "empty_stamp" not in trust:
-        bad.append("workers/dem/trust.py neposudzuje podpis cez "
-                   "`coverage.empty_stamp` – tretia predstava o tom, čo je "
-                   "prázdna dlaždica, sa raz rozíde s tými dvoma.")
+        bad.append("workers/dem/trust.py doesn't judge the stamp through "
+                   "`coverage.empty_stamp` – a third idea of an empty tile "
+                   "will drift from the other two.")
     if trust and "EMPTY_MAX_BYTES" not in trust:
-        bad.append("workers/dem/trust.py nemá prah `tiles.EMPTY_MAX_BYTES` – "
-                   "bez neho by otváral aj skutočné dlaždice (stovky MB) "
-                   "a kontrola skladu by sťahovala celý sklad.")
+        bad.append("workers/dem/trust.py lacks the `tiles.EMPTY_MAX_BYTES` "
+                   "threshold – without it it would open real tiles (hundreds "
+                   "of MB) and the store check would download the whole store.")
 
     for m in bad:
         print(f"::error::{m}")
-    print(f"Prázdna dlaždica: {'chyby ' + str(len(bad)) if bad else 'v poriadku ✓'}")
+    print(f"Empty tile: {str(len(bad)) + ' errors' if bad else 'fine ✓'}")
     return 1 if bad else 0
 
 

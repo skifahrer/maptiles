@@ -1,20 +1,19 @@
 #!/usr/bin/env node
 /**
- * 3D terén: sľub o výškovom modeli musí platiť až do štýlu. Volá to
- * `Kontrola · lint workflowov`.
+ * 3D terrain: the elevation model promise holds all the way into the style. Run by
+ * `Check · workflow lint`.
  *
- * 3D terén je jediný riadok v štýle (`terrain: { source, exaggeration }`)
- * a všetko na ňom je ticho: bez neho je mapa plochá, s odkazom na neexistujúci
- * zdroj MapLibre odmietne celý štýl, a zdroj iného typu než `raster-dem` dá
- * terén poskladaný z náhodných hodnôt.
+ * 3D terrain is one style line (`terrain: { source, exaggeration }`) and all of it
+ * is quiet: without it the map is flat, pointing at a missing source makes MapLibre
+ * refuse the whole style, and a source other than `raster-dem` gives random terrain.
  *
- *   1. bez výškových dlaždíc `terrain` v štýle byť nesmie,
- *   2. s dlaždicami a `terrain3d` musí – a ukazovať na `raster-dem` zdroj,
- *   3. prevýšenie je kladné konečné číslo (0 je najtichšia podoba vypnutého 3D),
- *   4. vypnuté 3D nesmie zobrať tieňovanie – sú to tie isté dlaždice.
+ *   1. without elevation tiles the style mustn't have `terrain`,
+ *   2. with tiles and `terrain3d` it must – pointing at a `raster-dem` source,
+ *   3. the exaggeration is a positive finite number (0 is the quietest 3D-off),
+ *   4. 3D off mustn't take the hillshading – they're the same tiles.
  *
- * A mimo štýlu: `deploy/site.sh` musí písať `terrain_3d` podľa hotového
- * štýlu, nie podľa prepínača (`auto` sám o výsledku nehovorí).
+ * Outside the style: `deploy/site.sh` writes `terrain_3d` from the finished
+ * style, not the switch (`auto` says nothing about the result).
  *
  *   node workers/lint/terrain3d.mjs
  */
@@ -24,15 +23,15 @@ import path from "node:path";
 import { THEMES, buildStyle } from "../../poc/web/themes.js";
 import { MAP_TYPE_IDS } from "../../poc/web/map-types.js";
 
-const KOREN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-/** Vlastné dlaždice z `workers/terrain/pack.py` – jeden `.pmtiles`. */
-const VLASTNE_DLAZDICE = "pmtiles://https://x/tiles/region-terrain.pmtiles";
+/** Own tiles from `workers/terrain/pack.py` – one `.pmtiles`. */
+const OWN_TILES = "pmtiles://https://x/tiles/region-terrain.pmtiles";
 
 const problems = [];
 let checks = 0;
 
-function styl(opts) {
+function style(opts) {
   return buildStyle({
     tilesUrl: "https://x/tiles.pmtiles",
     spriteUrl: "https://x/sprite",
@@ -43,112 +42,112 @@ function styl(opts) {
 
 for (const theme of Object.keys(THEMES)) {
   for (const mapType of MAP_TYPE_IDS) {
-    const kde = `${theme}/${mapType}`;
+    const where = `${theme}/${mapType}`;
 
-    // 1. bez dlaždíc žiadne 3D
+    // 1. no tiles, no 3D
     checks += 1;
-    const bezDlazdic = styl({ theme, mapType, demTiles: null, terrain3d: true });
-    if (bezDlazdic.terrain) {
+    const noTiles = style({ theme, mapType, demTiles: null, terrain3d: true });
+    if (noTiles.terrain) {
       problems.push(
-        `${kde}: štýl bez výškových dlaždíc nesie \`terrain\` – ` +
-          "ukazuje na zdroj, ktorý v ňom nie je, a MapLibre odmietne celý štýl."
+        `${where}: a style without elevation tiles carries \`terrain\` – ` +
+          "it points at a missing source and MapLibre refuses the whole style."
       );
     }
 
-    // 2. s dlaždicami a zapnutým 3D musí byť, a musí ukazovať na raster-dem
+    // 2. with tiles and 3D on it must exist and point at raster-dem
     checks += 1;
-    const s3d = styl({
+    const s3d = style({
       theme,
       mapType,
-      demTiles: VLASTNE_DLAZDICE,
+      demTiles: OWN_TILES,
       hillshade: true,
       terrain3d: true
     });
     if (!s3d.terrain) {
       problems.push(
-        `${kde}: výškové dlaždice v štýle sú a \`terrain3d\` je zapnuté, ale ` +
-          "štýl `terrain` nenesie – klient z neho nakreslí plochú mapu a nikto " +
-          "nepovie nič."
+        `${where}: the style has elevation tiles and \`terrain3d\` is on, but ` +
+          "it carries no `terrain` – the client draws a flat map and nobody " +
+          "says anything."
       );
     } else {
       const id = s3d.terrain.source;
-      const zdroj = (s3d.sources || {})[id];
-      if (!zdroj) {
-        problems.push(`${kde}: \`terrain.source\` = "${id}", taký zdroj v štýle nie je.`);
-      } else if (zdroj.type !== "raster-dem") {
+      const source = (s3d.sources || {})[id];
+      if (!source) {
+        problems.push(`${where}: \`terrain.source\` = "${id}", the style has no such source.`);
+      } else if (source.type !== "raster-dem") {
         problems.push(
-          `${kde}: \`terrain\` ukazuje na zdroj "${id}" typu "${zdroj.type}" – ` +
-            "výška sa dá čítať len z `raster-dem`."
+          `${where}: \`terrain\` points at source "${id}" of type "${source.type}" – ` +
+            "heights can only be read from `raster-dem`."
         );
       }
 
-      // 3. prevýšenie
+      // 3. exaggeration
       const exag = s3d.terrain.exaggeration;
       if (!Number.isFinite(exag) || exag <= 0) {
         problems.push(
-          `${kde}: prevýšenie 3D terénu je ${JSON.stringify(exag)} – ` +
-            "plochá mapa so zapnutým 3D je najtichšia podoba vypnutého 3D."
+          `${where}: the 3D terrain exaggeration is ${JSON.stringify(exag)} – ` +
+            "a flat map with 3D on is the quietest form of 3D off."
         );
       }
     }
 
-    // 4. vypnuté 3D nesmie zobrať tieňovanie
+    // 4. 3D off mustn't take the hillshading
     checks += 1;
-    const bez3d = styl({
+    const no3d = style({
       theme,
       mapType,
-      demTiles: VLASTNE_DLAZDICE,
+      demTiles: OWN_TILES,
       hillshade: true,
       terrain3d: false
     });
-    if (bez3d.terrain) {
-      problems.push(`${kde}: \`terrain3d\` je vypnuté, ale štýl \`terrain\` nesie.`);
+    if (no3d.terrain) {
+      problems.push(`${where}: \`terrain3d\` is off, but the style carries \`terrain\`.`);
     }
-    if (!(bez3d.sources || {}).dem) {
+    if (!(no3d.sources || {}).dem) {
       problems.push(
-        `${kde}: vypnuté 3D zobralo aj zdroj \`dem\` – sú to tie isté dlaždice ` +
-          "a tieňovanie je ich druhé použitie."
+        `${where}: 3D off took the \`dem\` source too – they're the same tiles ` +
+          "and hillshading is their second use."
       );
     }
-    if (!(bez3d.layers || []).some((l) => l.type === "hillshade")) {
-      problems.push(`${kde}: vypnuté 3D zobralo aj vrstvu \`hillshade\`.`);
+    if (!(no3d.layers || []).some((l) => l.type === "hillshade")) {
+      problems.push(`${where}: 3D off took the \`hillshade\` layer too.`);
     }
   }
 }
 
-// 5. manifest hovorí o 3D podľa hotového štýlu, nie podľa prepínača
+// 5. the manifest speaks of 3D from the finished style, not the switch
 checks += 1;
-const site = fs.readFileSync(path.join(KOREN, "workers/deploy/site.sh"), "utf8");
+const site = fs.readFileSync(path.join(ROOT, "workers/deploy/site.sh"), "utf8");
 if (!site.includes("terrain_3d:")) {
   problems.push(
-    "workers/deploy/site.sh: manifest nenesie `terrain_3d` – appka nemá odkiaľ " +
-      "vedieť, ktorý región má 3D, a musela by si rozoberať štýl."
+    "workers/deploy/site.sh: the manifest has no `terrain_3d` – the app can't " +
+      "know which region has 3D and would have to take the style apart."
   );
 } else if (!/_site\/styles/.test(site.slice(0, site.indexOf("terrain_3d:")))) {
   problems.push(
-    "workers/deploy/site.sh: `terrain_3d` sa neberie z hotového štýlu v " +
-      "`_site/styles`. Prepínač je `auto` („zapni, ak máme z čoho\"), takže sám " +
-      "o výsledku nehovorí – dve odpovede na jednu otázku sa raz rozídu."
+    "workers/deploy/site.sh: `terrain_3d` isn't taken from the finished style in " +
+      "`_site/styles`. The switch is `auto` (“on if we have the data”), so it says " +
+      "nothing about the result – two answers to one question drift."
   );
 }
 
-// 6. beh mapy prepínač vôbec podáva ďalej
+// 6. the map run passes the switch on at all
 checks += 1;
 const workflow = fs.readFileSync(
-  path.join(KOREN, ".github/workflows/build-map-region.yml"),
+  path.join(ROOT, ".github/workflows/build-map-region.yml"),
   "utf8"
 );
 if (!workflow.includes("--terrain-3d=")) {
   problems.push(
-    ".github/workflows/build-map-region.yml: `workers/styles/build.mjs` nedostáva " +
-      "`--terrain-3d`, takže voľba z formulára do štýlu nedôjde."
+    ".github/workflows/build-map-region.yml: `workers/styles/build.mjs` doesn't get " +
+      "`--terrain-3d`, so the form choice never reaches the style."
   );
 }
 
-console.log(`kontrol: ${checks}`);
+console.log(`checks: ${checks}`);
 if (problems.length) {
   for (const p of problems) console.log(`::error::${p}`);
-  console.log(`3D terén: ${problems.length} problémov`);
+  console.log(`3D terrain: ${problems.length} problems`);
   process.exit(1);
 }
-console.log("3D terén: v poriadku");
+console.log("3D terrain: fine");

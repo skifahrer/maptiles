@@ -1,64 +1,64 @@
 name: Map · railways
 
-# železnice z OSM do vlastného `.pmtiles` aj s koľajovou sieťou na navigáciu –
-# balík `zeleznice`; samostatný súbor, lebo `build-map-region.yml` má strop 128 KiB
+# railways from OSM into their own `.pmtiles` with a rail network for routing –
+# the `railways` package; its own file, since `build-map-region.yml` caps at 128 KiB
 
 on:
   workflow_call:
     inputs:
       region_key:
-        description: "Kľúč regiónu – z neho je meno `{region}-rail.pmtiles`"
+        description: "Region key – it names `{region}-rail.pmtiles`"
         required: true
         type: string
       region_name:
-        description: "Meno regiónu do metadát koľajovej siete"
+        description: "Region name for the rail network metadata"
         required: false
         default: ""
         type: string
       region_bbox:
-        description: "Bbox regiónu pre orez dlaždíc (workers/lib/region-clip.sh)"
+        description: "Region bbox for clipping tiles (workers/lib/region-clip.sh)"
         required: true
         type: string
       maxzoom:
-        description: "Najvyšší zoom dlaždíc so železnicami"
+        description: "Highest zoom of the railway tiles"
         required: false
         default: "15"
         type: string
       region_clip:
-        description: "Orezať dlaždice na hranicu regiónu"
+        description: "Clip tiles to the region border"
         required: false
         default: "false"
         type: string
       size_limit_mb:
-        description: "Rozpočet celej stránky v MB"
+        description: "The whole page budget in MB"
         required: false
         default: "900"
         type: string
       budget_pct:
-        description: "Podiel železníc na rozpočte stránky v percentách"
+        description: "The railways' share of the page budget in percent"
         required: false
         default: "5"
         type: string
       day:
-        description: "Dátum pre kľúč cache Planetileru"
+        description: "Date for the Planetiler cache key"
         required: false
         default: ""
         type: string
     outputs:
       enabled:
-        description: "Vznikla vrstva? (vo výreze nemusí byť ani jedna koľaj)"
+        description: "Was the layer made? (a cutout may hold no track)"
         value: ${{ jobs.rail.outputs.enabled }}
       maxzoom:
-        description: "Zoom, po ktorý dlaždice naozaj sú"
+        description: "The zoom tiles really go up to"
         value: ${{ jobs.rail.outputs.maxzoom }}
       routing:
-        description: "Vznikla koľajová sieť na navigáciu?"
+        description: "Was a rail network for routing made?"
         value: ${{ jobs.rail.outputs.routing }}
       size_mb:
-        description: "Veľkosť vrstvy v MB"
+        description: "Layer size in MB"
         value: ${{ jobs.rail.outputs.size_mb }}
-    # `workflow_call` nededí secrets sám. Bez nich sa cache na Drive nemá ako
-    # otvoriť a Planetiler (93 MB) sa ťahá pri každom behu.
+    # `workflow_call` doesn't inherit secrets; without them the Drive cache can't
+    # open and Planetiler (93 MB) is downloaded on every run.
     secrets:
       GDRIVE_CREDENTIALS:
         required: false
@@ -67,10 +67,9 @@ on:
       DRIVE_REFRESH:
         required: false
 
-# Prihlásenie na Drive pre celý workflow, nie po kroku: cache-restore
-# a cache-save sú dva kroky a keby token stál pri jednom z nich, druhý by sa
-# ticho vrátil k sťahovaniu všetkého odznova. Stráži to „Kontrola · lint
-# workflowov".
+# Drive sign-in for the whole workflow, not per step: cache-restore and
+# cache-save are two steps, and with the token on only one of them the other
+# would quietly go back to downloading everything. Guarded by “Check · workflow lint”.
 env:
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
@@ -79,7 +78,7 @@ env:
 
 jobs:
   rail:
-    name: Železnice a lanovky
+    name: Railways and aerialways
     runs-on: ubuntu-latest
     outputs:
       enabled: ${{ steps.rail.outputs.enabled }}
@@ -89,18 +88,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Priprav priečinok na meranie
+      - name: Prepare the timing folder
         run: mkdir -p steps-out
 
-      - name: Stiahni PBF z prípravy
+      - name: Download the PBF from the plan
         uses: actions/download-artifact@v8
         with:
           name: pbf
           path: data
 
-      # polygón regiónu je `--polygon` pre Planetiler; `continue-on-error`,
-      # lebo aj bez neho sa beh dokončiť dá (dlaždice budú na bboxe)
-      - name: Stiahni polygón regiónu
+      # the region polygon is Planetiler's `--polygon`; `continue-on-error`, since
+      # the run finishes without it too (tiles then follow the bbox)
+      - name: Download the region polygon
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
@@ -130,13 +129,13 @@ jobs:
           path: planetiler.jar
           key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
 
-      # testy schémy pred stavbou (`examples`) – jediná vec, ktorá o schéme
-      # povie pravdu bez celého behu. Beží ako prvé.
-      - name: Testy schémy železníc
+      # schema tests before the build (`examples`) – the one thing that tells the
+      # truth about a schema without a whole run. They go first.
+      - name: Railway schema tests
         run: java -jar planetiler.jar verify workers/rail/rail.yml
 
-      # rozpis je vo `workers/rail/build.sh`
-      - name: Železnice a lanovky z OSM → PMTiles
+      # described in `workers/rail/build.sh`
+      - name: Railways and aerialways from OSM → PMTiles
         id: rail
         env:
           OPT_RAIL_MAXZOOM: ${{ inputs.maxzoom }}
@@ -148,7 +147,7 @@ jobs:
           BUDGET_RAIL_PCT: ${{ inputs.budget_pct }}
         run: workers/rail/build.sh
 
-      - name: Odlož časť stránky
+      - name: Upload the site part
         if: ${{ always() && hashFiles('_site/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -158,7 +157,7 @@ jobs:
           compression-level: 0
           if-no-files-found: ignore
 
-      - name: Odlož meranie krokov
+      - name: Upload the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:

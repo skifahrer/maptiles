@@ -1,40 +1,40 @@
 name: Maintenance · Drive sign-in
 
-# Vyrobí refresh token vlastníka dát na Google Drive a uloží ho priamo do
-# secretu. Spúšťa sa raz – potom už len keby účet prístup odvolal.
+# Makes the Drive data owner's refresh token and stores it straight in a
+# secret. Run once – afterwards only if the account revokes access.
 #
-# `workers/drive/auth.py --login` potrebuje prehliadač aj loopback server na
-# tom istom stroji; tento workflow tú rolu rozdelí (prehliadač je telefón,
-# shell je runner).
+# `workers/drive/auth.py --login` needs a browser and a loopback server on the
+# same machine; this workflow splits the roles (the browser is a phone, the
+# shell is the runner).
 #
-# Rozsah práv je aj zápis (`drive`, nie `drive.readonly`): cache buildu leží
-# na Drive, takže sa tam musí dať ukladať.
+# The scope includes writing (`drive`, not `drive.readonly`): the build cache
+# lives on Drive, so it must be writable.
 #
-# Token sa nikde nevypisuje – repozitár je public a refresh token je prístup
-# na celý Drive. Zapíše sa do súboru s právami 600 a z neho do secretu.
+# The token is never printed – the repository is public and a refresh token is
+# access to the whole Drive. It goes into a 600 file and from there into a secret.
 #
-# Zápis secretu `GITHUB_TOKEN` nevie, tak treba dočasný fine-grained PAT
-# v secrete `DRIVE_PAT` (Repository permissions: Secrets → Read and write).
-# Po úspešnom behu ho zmaž.
+# `GITHUB_TOKEN` can't write secrets, so a temporary fine-grained PAT is needed
+# in the `DRIVE_PAT` secret (Repository permissions: Secrets → Read and write).
+# Delete it after a successful run.
 #
-# Ďalej treba `DRIVE_CLIENT` (repository VARIABLE, nie secret) a `DRIVE_SECRET`.
+# It also needs `DRIVE_CLIENT` (a repository VARIABLE, not a secret) and `DRIVE_SECRET`.
 #
-# Ako to ide: spusti bez `code` → v súhrne je odkaz → otvor ho v telefóne
-# a prihlás sa účtom, ktorý DMR 5.0 vlastní → prehliadač skončí na
-# `http://127.0.0.1:8731/?code=…` a nemá to kde otvoriť (to je v poriadku,
-# tá adresa je celý zmysel kroku) → spusti znova a adresu vlož do `code`.
-# Kód platí pár minút a je jednorazový.
+# How it goes: run without `code` → the summary has a link → open it on a phone
+# and sign in with the account that owns DMR 5.0 → the browser ends on
+# `http://127.0.0.1:8731/?code=…` with nothing to open (that's fine, that
+# address is the whole point) → run again with the address in `code`.
+# The code is valid for a few minutes and only once.
 
 on:
   workflow_dispatch:
     inputs:
       code:
-        description: "Adresa s ?code=… z prehliadača (prázdne = daj mi odkaz na prihlásenie)"
+        description: "The ?code=… address from the browser (empty = give me a sign-in link)"
         required: false
         default: ""
         type: string
       secret_name:
-        description: "Do ktorého secretu token zapísať"
+        description: "Which secret to write the token to"
         required: false
         default: DRIVE_REFRESH
         type: string
@@ -43,13 +43,13 @@ permissions:
   contents: read
 
 concurrency:
-  # dva behy naraz by si vymieňali kód, ktorý je jednorazový
+  # two runs at once would trade a one-time code
   group: drive-login
   cancel-in-progress: false
 
 jobs:
   login:
-    name: Refresh token vlastníka Drive
+    name: Drive owner's refresh token
     runs-on: ubuntu-latest
     env:
       DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
@@ -58,63 +58,63 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # prvý beh skončí tu. Odkaz sa vypisuje na dve miesta naschvál: mobilná
-      # appka GitHubu súhrny nezobrazuje, tam je vidieť len log kroku.
-      # Tajné na ňom nie je nič – `client_id` je verejná časť OAuth klienta.
-      - name: Odkaz na prihlásenie
+      # the first run ends here. The link goes to two places on purpose: GitHub's
+      # mobile app shows no summaries, only the step log. Nothing in it is
+      # secret – `client_id` is the OAuth client's public part.
+      - name: Sign-in link
         if: ${{ inputs.code == '' }}
         run: |
           set -euo pipefail
           URL=$(python3 workers/drive/auth.py --auth-url)
           echo
-          echo "Otvor v prehliadači tento odkaz (celý jeden riadok):"
+          echo "Open this link in a browser (the whole single line):"
           echo
           echo "$URL"
           echo
-          echo "Prihlás sa účtom, ktorý DMR 5.0 na Drive VLASTNÍ, a povoľ prístup."
-          echo "Prehliadač potom skončí na http://127.0.0.1:8731/?code=… , čo sa"
-          echo "nemá kde otvoriť – to je správne. Skopíruj tú adresu z adresného"
-          echo "riadku celú a spusti tento workflow znova s ňou v políčku 'code'."
+          echo "Sign in with the account that OWNS DMR 5.0 on Drive and allow access."
+          echo "The browser then ends on http://127.0.0.1:8731/?code=… , which has"
+          echo "nothing to open – that's right. Copy the whole address from the address"
+          echo "bar and run this workflow again with it in the 'code' field."
           {
-            echo "## Prihlás sa na Drive"
+            echo "## Sign in to Drive"
             echo
-            echo "1. Otvor **[tento odkaz]($URL)** a prihlás sa účtom, ktorý DMR 5.0 na Drive **vlastní**."
-            echo "2. Neoverenú appku preklikaj cez „Advanced → Go to … (unsafe)“."
-            echo "3. Prehliadač skončí na adrese \`http://127.0.0.1:8731/?code=…\`,"
-            echo "   ktorú nemá kde otvoriť – **to je správne**. Skopíruj ju z adresného riadku celú."
-            echo "4. Spusti tento workflow znova a tú adresu vlož do políčka \`code\`."
+            echo "1. Open **[this link]($URL)** and sign in with the account that **owns** DMR 5.0 on Drive."
+            echo "2. Click past the unverified app via “Advanced → Go to … (unsafe)”."
+            echo "3. The browser ends on \`http://127.0.0.1:8731/?code=…\`,"
+            echo "   which has nothing to open – **that's right**. Copy the whole address from the address bar."
+            echo "4. Run this workflow again with that address in the \`code\` field."
             echo
-            echo "Kód v tej adrese platí pár minút a dá sa použiť raz."
+            echo "The code in that address is valid for a few minutes and only once."
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Odkaz je v súhrne behu (Summary)."
+          echo "The link is in the run summary (Summary)."
 
-      # bez práva zapísať secret by beh token vyrobil a nemal ho kam dať.
-      # Nech to padne tu, kým je kód ešte použiteľný na ďalší pokus.
-      - name: Skontroluj právo zapísať secret
+      # without the right to write a secret the run would make a token with nowhere
+      # to put it; fail here while the code is still good for another try
+      - name: Check the right to write a secret
         if: ${{ inputs.code != '' }}
         env:
           GH_TOKEN: ${{ secrets.DRIVE_PAT }}
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::error::Chýba secret DRIVE_PAT. Bez práva zapísať secret by som token vyrobil a nemal ho kam dať – a vypísať ho nesmiem, lebo log tohto public repozitára vidí ktokoľvek. Rozpis, aký PAT treba, je v hlavičke .github/workflows/drive-login.yml."
+            echo "::error::The DRIVE_PAT secret is missing. Without the right to write a secret the token would have nowhere to go – and it mustn't be printed, since anyone can read this public repository's log. Which PAT is needed is in the .github/workflows/drive-login.yml header."
             exit 1
           fi
           gh api "repos/$GITHUB_REPOSITORY/actions/secrets/public-key" >/dev/null
-          echo "PAT vie so secrets tohto repozitára pracovať ✓"
+          echo "The PAT can work with this repository's secrets ✓"
 
-      - name: Vymeň kód za refresh token
+      - name: Exchange the code for a refresh token
         if: ${{ inputs.code != '' }}
         env:
-          # cez `env`, nie rozvinuté do príkazu: v tom, čo sa vloží do
-          # formulára, môže byť čokoľvek a v `run:` by to bol kus shellu
+          # through `env`, not expanded into the command: a form value can be
+          # anything, and inside `run:` it would be shell
           CODE: ${{ inputs.code }}
         run: |
           set -euo pipefail
           python3 workers/drive/auth.py --exchange \
             --code="$CODE" --out=refresh-token.txt
 
-      - name: Zapíš ho do secretu
+      - name: Write it into the secret
         id: save
         if: ${{ inputs.code != '' }}
         env:
@@ -122,14 +122,14 @@ jobs:
           NAME: ${{ inputs.secret_name }}
         run: |
           set -euo pipefail
-          # po stdine zo súboru – nie cez argument ani `echo`, nech sa hodnota
-          # neocitne v `set -x` ani v zozname procesov
+          # on stdin from a file – not an argument or `echo`, so the value shows
+          # neither in `set -x` nor in the process list
           gh secret set "$NAME" --repo "$GITHUB_REPOSITORY" < refresh-token.txt
-          echo "Secret $NAME je nastavený ✓"
+          echo "Secret $NAME is set ✓"
 
-      # overenie tým istým kódom, ktorým sa prihlasuje celá pipeline. Token sa
-      # podáva zo súboru – secret sa v už bežiacom behu ešte neprejaví.
-      - name: Over, že tým účtom sa dá čítať
+      # checked by the same code the whole pipeline signs in with; the token comes
+      # from the file – a secret doesn't show in a run already going
+      - name: Check the account can read
         if: ${{ inputs.code != '' }}
         env:
           DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
@@ -138,10 +138,9 @@ jobs:
           DRIVE_REFRESH="$(cat refresh-token.txt)" \
             python3 workers/drive/dmr5.py --auth-check
 
-      # a druhá polovica: cache sa na Drive ukladá, takže tam token musí vedieť
-      # aj zapisovať. Readonly token vyzerá rovnako a rozdiel by sa ukázal až
-      # tým, že sa cache prestane ukladať.
-      - name: Over, že tým účtom sa dá aj zapisovať (cache)
+      # and the other half: the cache is saved on Drive, so the token must write
+      # too; a readonly one looks the same until the cache stops being saved
+      - name: Check the account can write too (cache)
         if: ${{ inputs.code != '' }}
         env:
           DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
@@ -150,27 +149,27 @@ jobs:
           DRIVE_REFRESH="$(cat refresh-token.txt)" \
             python3 workers/drive/cache.py --check
 
-      - name: Ukliď a povedz, čo ešte
+      - name: Clean up and say what's left
         if: ${{ always() && inputs.code != '' }}
         run: |
           set -uo pipefail
           shred -u refresh-token.txt 2>/dev/null || rm -f refresh-token.txt
-          # súhrn musí povedať pravdu o tom, či token niekde je
+          # the summary must tell the truth about whether the token is anywhere
           {
-            echo "## Čo ešte spraviť"
+            echo "## What's left to do"
             echo
             if [ '${{ steps.save.outcome }}' = 'success' ]; then
-              echo "Token je v secrete \`${{ inputs.secret_name }}\`; v logu tohto behu nikde neostal."
+              echo "The token is in the \`${{ inputs.secret_name }}\` secret; nothing of it stayed in this run's log."
               echo
-              echo "1. **Zmaž secret \`DRIVE_PAT\`** – už netreba a je to právo zapisovať secrets."
-              echo "2. Skús \`Dáta · DMR 5.0\` v režime *len sonda*: krok"
-              echo "   *Prihlásenie na Drive* má vypísať tvoj účet a pri oboch súboroch \`✓\`."
-              echo "3. Kroky *Over…* vyššie hovoria, či ten účet vidí na priečinok s DMR 5.0"
-              echo "   a či vie zapisovať do priečinka s cache. Bez zápisu sa cache neuloží"
-              echo "   a build počíta všetko odznova – vtedy spusti toto prihlásenie znova."
+              echo "1. **Delete the \`DRIVE_PAT\` secret** – it's no longer needed and it can write secrets."
+              echo "2. Try \`Data · DMR 5.0\` in *probe only* mode: the *Drive sign-in*"
+              echo "   step should print your account and \`✓\` for both files."
+              echo "3. The *Check…* steps above say whether the account sees the DMR 5.0 folder"
+              echo "   and can write to the cache folder. Without writing the cache isn't saved"
+              echo "   and the build recomputes everything – then run this sign-in again."
             else
-              echo "**Token sa neuložil** – secret \`${{ inputs.secret_name }}\` je taký, aký bol."
-              echo "Dôvod je v logu vyššie. Kód od Googlu je jednorazový, tak"
-              echo "prihlásenie treba spustiť odznova (beh bez \`code\`)."
+              echo "**The token wasn't saved** – the \`${{ inputs.secret_name }}\` secret is as it was."
+              echo "The reason is in the log above. Google's code is one-time, so"
+              echo "start the sign-in again (a run without \`code\`)."
             fi
           } >> "$GITHUB_STEP_SUMMARY"

@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Hranice území: filter pustí, čo schéma chce, v dlaždici je meno – a nič cudzie.
+"""Area boundaries: the filter passes what the schema wants, the tile has the name – and nothing foreign.
 
-Štyri tiché veci:
+Four quiet things:
 
-  1. predfilter (`filter.txt`) a schéma (`boundaries.yml`) sa rozídu;
-  2. filter prestane doťahovať členov relácií – hranica obce je relácia,
-     ktorej členmi sú cesty bez `boundary=administrative`, takže s `-R`
-     nemá Planetiler z čoho zložiť polygón a vrstva je prázdna;
-  3. z dlaždice zmizne `name` – kvôli tomu vrstva existuje (vrstva `boundary`
-     v OpenMapTiles je čiara bez mena územia);
-  4. balík kraja začne niesť hranice celého štátu – relácia štátnej hranice
-     príde z `plan/pbf.sh` celá, takže bez rezu PBF a orezu dlaždíc mal balík
-     Bratislavského kraja na z12 dlaždice od Bratislavy po Užhorod.
+  1. the prefilter (`filter.txt`) and schema (`boundaries.yml`) drift;
+  2. the filter stops pulling relation members – a municipality border is a
+     relation of ways without `boundary=administrative`, so with `-R`
+     Planetiler has nothing to build a polygon from and the layer is empty;
+  3. `name` leaves the tile – the layer exists for it (OpenMapTiles' `boundary`
+     is a line without the area's name);
+  4. a region's package carries the whole state's borders – the state border
+     relation comes whole from `plan/pbf.sh`, so without cutting and clipping
+     one region's package spans the country.
 """
 import os
 import sys
@@ -24,9 +24,8 @@ SCHEMA = os.path.join(_WORKERS, "boundaries", "boundaries.yml")
 FILTER = os.path.join(_WORKERS, "boundaries", "filter.txt")
 BUILD = os.path.join(_WORKERS, "boundaries", "build.sh")
 
-# Úrovne, ktoré vrstva SĽUBUJE. Číslo → čo to je u nás (inde iné – preto ide
-# do dlaždice číslo a nie naše meno; rozpis v hlavičke schémy).
-UROVNE = {"2": "štát", "4": "kraj", "6": "okres", "8": "obec"}
+# levels the layer PROMISES; the tile carries the number, since the meaning varies by country
+LEVELS = {"2": "state", "4": "region", "6": "district", "8": "municipality"}
 
 bad = []
 
@@ -36,7 +35,7 @@ def err(msg):
 
 
 def filter_keys(path):
-    """Holé kľúče z `osmium tags-filter --expressions` (bez `n/`, `w/`, `r/`)."""
+    """Bare keys from `osmium tags-filter --expressions` (without `n/`, `w/`, `r/`)."""
     out = set()
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -49,126 +48,119 @@ def filter_keys(path):
     return out
 
 
-def prepinace_filtra(build):
-    """Prepínače SKUTOČNÉHO `osmium tags-filter`, nie zmienok v komentároch.
-
-    Číta sa celý príkaz aj s pokračovaním na ďalších riadkoch (`\\`), lebo
-    prepínač môže stáť aj tam. Hľadať len prvý výskyt slova v súbore je málo:
-    prvá zmienka je dnes v hlavičke a kontrola by potom čítala komentár.
-    """
-    riadky = build.splitlines()
-    for i, r in enumerate(riadky):
+def filter_switches(build):
+    """Switches of the REAL `osmium tags-filter` call, continuation lines included."""
+    lines = build.splitlines()
+    for i, r in enumerate(lines):
         if r.lstrip().startswith("#") or "osmium tags-filter" not in r:
             continue
-        prikaz = [r]
-        while prikaz[-1].rstrip().endswith("\\") and i + 1 < len(riadky):
+        command = [r]
+        while command[-1].rstrip().endswith("\\") and i + 1 < len(lines):
             i += 1
-            prikaz.append(riadky[i])
-        return " " + " ".join(prikaz) + " "
+            command.append(lines[i])
+        return " " + " ".join(command) + " "
     return ""
 
 
 def main():
     for path in (SCHEMA, FILTER, BUILD):
         if not os.path.exists(path):
-            print(f"::error::{path} neexistuje.")
+            print(f"::error::{path} doesn't exist.")
             return 1
 
     with open(SCHEMA, encoding="utf-8") as f:
         schema = yaml.safe_load(f)
-    bloky = [b for v in (schema.get("layers") or [])
+    blocks = [b for v in (schema.get("layers") or [])
              for b in (v.get("features") or [])]
-    if not bloky:
-        err(f"{SCHEMA}: schéma nemá ani jeden blok – vrstva by bola prázdna.")
-        return hotovo()
+    if not blocks:
+        err(f"{SCHEMA}: the schema has not a single block – the layer would be empty.")
+        return done()
 
-    # ---- 1. predfilter pustí, čo schéma chce ----
-    pusta = filter_keys(FILTER)
-    chce = set()
-    for b in bloky:
-        podmienka = b.get("include_when") or {}
-        for kus in podmienka.get("__all__", [podmienka]):
-            chce |= set(kus.keys()) if isinstance(kus, dict) else set()
-    chce.discard("admin_level")     # je to spresnenie, nie výber objektu
-    chyba = sorted(chce - pusta)
-    if chyba:
-        err(f"{FILTER}: schéma sa pýta na {', '.join(chyba)}, ale predfilter "
-            f"to nepúšťa (pozná {', '.join(sorted(pusta))}). Planetiler by "
-            f"dostal PBF, v ktorom ten tag už nie je – dlaždice by vznikli, "
-            f"beh by bol zelený a tá časť hraníc by v nich jednoducho nebola.")
+    # 1. the prefilter passes what the schema wants
+    passes = filter_keys(FILTER)
+    wants = set()
+    for b in blocks:
+        condition = b.get("include_when") or {}
+        for part in condition.get("__all__", [condition]):
+            wants |= set(part.keys()) if isinstance(part, dict) else set()
+    wants.discard("admin_level")     # a refinement, not object selection
+    missing = sorted(wants - passes)
+    if missing:
+        err(f"{FILTER}: the schema asks for {', '.join(missing)}, but the prefilter "
+            f"doesn't pass it (it knows {', '.join(sorted(passes))}). Planetiler "
+            f"would get a PBF without that tag – tiles made, run green, and that "
+            f"part of the boundaries simply missing.")
 
-    # ---- 2. filter doťahuje členov relácií ----
+    # 2. the filter pulls relation members
     with open(BUILD, encoding="utf-8") as f:
         build = f.read()
-    prepinace = prepinace_filtra(build)
-    if not prepinace:
-        err(f"{BUILD}: `osmium tags-filter` tu nie je – bez predfiltra číta "
-            f"Planetiler celý región a táto kontrola nemá čo overiť.")
-    # `-r` NEEXISTUJE. osmium pozná len `-R`/`--omit-referenced` (opačný
-    # význam), na `-r` skončí s „unrecognised option“ a job padne hneď.
-    if " -r " in prepinace:
-        err(f"{BUILD}: `osmium tags-filter -r` – taký prepínač osmium nemá "
-            f"a skončí na ňom s „unrecognised option“. Členov relácií "
-            f"doťahuje sám, netreba o ne žiadať.")
-    if " -R " in prepinace or "--omit-referenced" in prepinace:
-        err(f"{BUILD}: `osmium tags-filter` beží s `-R`/`--omit-referenced`, "
-            f"takže z PBF vypadnú ČLENOVIA relácií. Hranica obce je relácia, "
-            f"ktorej členovia `boundary=administrative` nemajú – Planetiler by "
-            f"nemal z čoho zložiť polygón a vrstva by bola prázdna pri "
-            f"zelenom behu. Bez toho prepínača ich osmium doťahuje sám.")
+    switches = filter_switches(build)
+    if not switches:
+        err(f"{BUILD}: no `osmium tags-filter` here – without a prefilter "
+            f"Planetiler reads the whole region and this check has nothing to verify.")
+    # `-r` doesn't exist; osmium only knows `-R` (the opposite) and fails on `-r`
+    if " -r " in switches:
+        err(f"{BUILD}: `osmium tags-filter -r` – osmium has no such switch and "
+            f"fails with “unrecognised option”. It pulls relation members "
+            f"itself, no need to ask.")
+    if " -R " in switches or "--omit-referenced" in switches:
+        err(f"{BUILD}: `osmium tags-filter` runs with `-R`/`--omit-referenced`, "
+            f"so relation MEMBERS drop out of the PBF. A municipality border is a "
+            f"relation whose members lack `boundary=administrative` – Planetiler "
+            f"would have nothing to build a polygon from and the layer would be "
+            f"empty on a green run. Without the switch osmium pulls them.")
     if "r/boundary=administrative" not in open(FILTER, encoding="utf-8").read():
-        err(f"{FILTER}: `r/boundary=administrative` tu nie je. Meno aj úroveň "
-            f"územia nesie RELÁCIA, nie jej cesty – bez nej sú v dlaždici "
-            f"čiary bez toho, kvôli čomu vrstva existuje.")
+        err(f"{FILTER}: `r/boundary=administrative` is missing. The RELATION "
+            f"carries an area's name and level, not its ways – without it the "
+            f"tile has lines without what the layer exists for.")
 
-    # ---- 2b. z PBF aj z dlaždíc ide preč, čo je mimo regiónu ----
+    # 2b. what lies outside the region leaves the PBF and the tiles
     if "region-cut.sh" not in build:
-        err(f"{BUILD}: PBF sa nereže na región (`workers/lib/region-cut.sh`). "
-            f"Relácia štátnej hranice je v ňom celá, takže balík jedného kraja "
-            f"nesie hranice cez celé Slovensko – a na najnižších zoomoch, kde "
-            f"je dlaždica široká tisíce kilometrov, ich aj nakreslí.")
+        err(f"{BUILD}: the PBF isn't cut to the region (`workers/lib/region-cut.sh`). "
+            f"The state border relation is in it whole, so one region's package "
+            f"carries borders across the country – and draws them at the lowest "
+            f"zooms, where a tile spans thousands of kilometres.")
     if "region-clip.sh" not in build:
-        err(f"{BUILD}: dlaždice sa neorezávajú na región "
-            f"(`workers/lib/region-clip.sh`). Okres sa tým nerozpadne – obec "
-            f"leží v okrese a okres v kraji –, ale bez orezu vyrobí balík "
-            f"kraja dlaždice na ploche celého štátu.")
+        err(f"{BUILD}: tiles aren't clipped to the region "
+            f"(`workers/lib/region-clip.sh`). Without the clip a region's "
+            f"package makes tiles over the whole state.")
 
-    # ---- 3. každý blok nesie meno ----
-    for i, b in enumerate(bloky, start=1):
-        atr = {a.get("key") for a in (b.get("attributes") or [])
+    # 3. every block carries a name
+    for i, b in enumerate(blocks, start=1):
+        attrs = {a.get("key") for a in (b.get("attributes") or [])
                if isinstance(a, dict)}
-        if "name" not in atr:
-            err(f"{SCHEMA}: blok {i} nedáva `name`. Presne to je rozdiel proti "
-                f"vrstve `boundary` v základnej mape – bez mena je to zase len "
-                f"čiara a otázka „v ktorej obci som“ ostane bez odpovede.")
+        if "name" not in attrs:
+            err(f"{SCHEMA}: block {i} gives no `name`. That's the difference from "
+                f"the base map's `boundary` layer – without a name it's just a "
+                f"line and “which municipality am I in” has no answer.")
 
-    # ---- 3b. všetky štyri úrovne v schéme sú ----
-    uroven_v_scheme = set()
-    for b in bloky:
-        podmienka = b.get("include_when") or {}
-        for kus in podmienka.get("__all__", [podmienka]):
-            if isinstance(kus, dict) and "admin_level" in kus:
-                hodnoty = kus["admin_level"]
-                uroven_v_scheme |= set(map(
-                    str, hodnoty if isinstance(hodnoty, list) else [hodnoty]))
-    for uroven, co in UROVNE.items():
-        if uroven not in uroven_v_scheme:
-            err(f"{SCHEMA}: úroveň `admin_level={uroven}` ({co}) v schéme nie "
-                f"je. Balík sľubuje hranice štátu, kraja, okresu aj obce – "
-                f"chýbajúca úroveň sa pozná až vtedy, keď sa niekto spýta, "
-                f"v ktorom okrese je.")
-    return hotovo()
+    # 3b. all four levels are in the schema
+    schema_levels = set()
+    for b in blocks:
+        condition = b.get("include_when") or {}
+        for part in condition.get("__all__", [condition]):
+            if isinstance(part, dict) and "admin_level" in part:
+                values = part["admin_level"]
+                schema_levels |= set(map(
+                    str, values if isinstance(values, list) else [values]))
+    for level, what in LEVELS.items():
+        if level not in schema_levels:
+            err(f"{SCHEMA}: level `admin_level={level}` ({what}) isn't in the "
+                f"schema. The package promises state, region, district and "
+                f"municipality borders – a missing level shows only when someone "
+                f"asks which district they're in.")
+    return done()
 
 
-def hotovo():
+def done():
     for b in bad:
         print(f"::error::{b}")
     if bad:
-        print(f"\n{len(bad)} problém(ov) v hraniciach území.")
+        print(f"\n{len(bad)} problem(s) in the area boundaries.")
         return 1
-    print("Hranice území: predfilter pustí, čo schéma chce, doťahuje členov "
-          "relácií, v dlaždici je meno, všetky štyri úrovne sú v schéme "
-          "a mimo región sa nechodí.")
+    print("Area boundaries: the prefilter passes what the schema wants and pulls "
+          "relation members, the tile has the name, all four levels are in the "
+          "schema and nothing goes outside the region.")
     return 0
 
 

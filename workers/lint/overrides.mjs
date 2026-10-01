@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 /**
- * Kontrola úprav z developer módu. Volá ju `Kontrola · lint workflowov`.
+ * Checks developer-mode overrides. Run by `Check · workflow lint`.
  *
- * Drží štyri veci, ktoré sa pokazili ticho (štýl ostal platný, mapa sa
- * načítala, nikto nič nepovedal):
+ * Guards things that broke quietly (the style stayed valid, the map loaded,
+ * nobody said anything):
  *
- *   1. `line-width: 0` je tvrdá chyba – šípka dole v prázdnom políčku inak
- *      zhasla celú vrstvu. `text-halo-width: 0` chybou nie je.
- *   2. Kopírovanie štýlu medzi vrstvami musí prejsť `normalizeOverrides`
- *      celé, inak by pipeline úpravu pri zápise zahodila.
- *   3. Prerušovanie zo štýlu sa dá vrátiť aj vypnúť (`frico:dash`, „solid“
- *      cez normalizáciu, `applyLayerOverrides` vlastnosť zmaže).
- *   4. Tmavý variant sa nesmie počítať stlmením svetlej farby – porovnáva sa
- *      váha dvojice, nie farby. Vo vlastnom súbore `overrides-kontrast.mjs`.
+ *   1. `line-width: 0` is a hard error – a down-arrow in an empty field once
+ *      blanked a whole layer. `text-halo-width: 0` isn't an error.
+ *   2. Copying a style between layers must pass `normalizeOverrides` whole,
+ *      or the pipeline would drop the override on write.
+ *   3. A style's dash can be restored and turned off (`frico:dash`, “solid”
+ *      through normalisation, `applyLayerOverrides` deletes the property).
+ *   4. A dark variant mustn't be made by dimming the light colour – the pair's
+ *      weight is compared, not the colours. In its own `overrides-contrast.mjs`.
  *
  *   node workers/lint/overrides.mjs
  */
@@ -38,59 +38,59 @@ import { execFileSync } from "node:child_process";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const TARGET = join(ROOT, "poc", "web", "style-overrides.json");
 import { snapshotStyle, pasteStyle, valueAtZoom } from "../../poc/web/layer-style.js";
-import { vahyUprav } from "./overrides-kontrast.mjs";
-import { percentaVPasmach } from "./overrides-pasma.mjs";
+import { darkWeights } from "./overrides-contrast.mjs";
+import { bandPercentages } from "./overrides-bands.mjs";
 
-/** Najmenšie platné PNG (1 × 1 px) – na skúšanie vlastných ikon. */
+/** The smallest valid PNG (1 × 1 px) – for trying own icons. */
 const PNG_1PX = "data:image/png;base64,"
   + "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 let bad = 0;
-const chyba = (subor, text) => {
-  console.log(`::error file=${subor}::${text}`);
+const error = (file, text) => {
+  console.log(`::error file=${file}::${text}`);
   bad += 1;
 };
 
-// 1. nulová hrúbka
+// 1. zero width
 const width = (prop, value) =>
   normalizeOverrides({ layers: { x: { paint: { [prop]: value } } } });
 
-for (const [prop, musiSpadnut] of [
+for (const [prop, mustFail] of [
   ["line-width", true],
   ["text-halo-width", false],
   ["icon-halo-width", false],
   ["circle-stroke-width", false]
 ]) {
   const { overrides, problems } = width(prop, 0);
-  const prijate = overrides.layers.x?.paint?.[prop] === 0;
-  if (musiSpadnut && (prijate || !problems.length)) {
-    chyba(
+  const accepted = overrides.layers.x?.paint?.[prop] === 0;
+  if (mustFail && (accepted || !problems.length)) {
+    error(
       "poc/web/themes.js",
-      `\`${prop}: 0\` prešlo cez normalizeOverrides. Čiara s nulovou hrúbkou ` +
-      `sa nekreslí a v mape to vyzerá ako chýbajúce dáta – vrstva sa má vypínať ` +
-      `cez \`visible\`, nie hrúbkou.`
+      `\`${prop}: 0\` passed normalizeOverrides. A zero-width line isn't drawn ` +
+      `and looks like missing data in the map – a layer is turned off through ` +
+      `\`visible\`, not its width.`
     );
   }
-  if (!musiSpadnut && !prijate) {
-    chyba(
+  if (!mustFail && !accepted) {
+    error(
       "poc/web/themes.js",
-      `\`${prop}: 0\` normalizeOverrides odmietol, hoci nula tam znamená ` +
-      `„bez lemu" – to je bežná hodnota zo štýlu, nie chyba.`
+      `normalizeOverrides refused \`${prop}: 0\`, though zero there means ` +
+      `“no halo” – a common style value, not an error.`
     );
   }
 }
 
-// kladná hrúbka musí prejsť ďalej
+// a positive width must pass
 if (width("line-width", 1.5).overrides.layers.x?.paint?.["line-width"] !== 1.5) {
-  chyba("poc/web/themes.js", "`line-width: 1.5` sa cez normalizeOverrides nedostalo.");
+  error("poc/web/themes.js", "`line-width: 1.5` didn't get through normalizeOverrides.");
 }
 
-// 2. kopírovanie štýlu
+// 2. copying a style
 const styles = [];
 for (const theme of Object.keys(THEMES)) {
   for (const mapType of MAP_TYPE_IDS) {
     styles.push({
-      kde: `${theme} × ${mapType}`,
+      where: `${theme} × ${mapType}`,
       style: buildStyle({
         theme,
         mapType,
@@ -103,29 +103,29 @@ for (const theme of Object.keys(THEMES)) {
         featuresUrl: "pmtiles://x/f.pmtiles",
         pointsUrl: "pmtiles://x/p.pmtiles",
         roadsUrl: "pmtiles://x/r.pmtiles",
-        // naschvál: `hillshade` je jediná vrstva s `hillshade-exaggeration`
+        // on purpose: `hillshade` is the one layer with `hillshade-exaggeration`
         hillshade: true
       })
     });
   }
 }
 
-let skusok = 0;
-let odfotenych = 0;
+let pastes = 0;
+let snapshots = 0;
 
-/** Vloží odfotený štýl do vrstvy a overí, že to `normalizeOverrides` prijme. */
-function skus(snap, target, kde) {
+/** Pastes a snapshot style into a layer and checks `normalizeOverrides` accepts it. */
+function tryPaste(snap, target, where) {
   const { patch } = pasteStyle(snap, target);
   if (!Object.keys(patch).length) return;
-  skusok += 1;
+  pastes += 1;
   const raw = emptyOverrides();
   raw.layers[target.id] = patch;
   const { overrides, problems } = normalizeOverrides(raw);
   if (problems.length) {
-    chyba(
+    error(
       "poc/web/layer-style.js",
-      `kopírovanie štýlu \`${snap.from}\` → \`${target.id}\` (${kde}) vyrobilo ` +
-      `úpravu, ktorú normalizeOverrides odmieta: ${problems[0]}`
+      `copying style \`${snap.from}\` → \`${target.id}\` (${where}) made an ` +
+      `override normalizeOverrides refuses: ${problems[0]}`
     );
     return;
   }
@@ -133,213 +133,203 @@ function skus(snap, target, kde) {
   for (const key of Object.keys(patch)) {
     if (key === "paint") continue;
     if (clean[key] === undefined) {
-      chyba(
+      error(
         "poc/web/layer-style.js",
-        `kopírovanie štýlu \`${snap.from}\` → \`${target.id}\` (${kde}): ` +
-        `\`${key}\` sa cez normalizeOverrides nedostalo – v prehliadači by ` +
-        `platilo, v hotovej mape nie.`
+        `copying style \`${snap.from}\` → \`${target.id}\` (${where}): ` +
+        `\`${key}\` didn't get through normalizeOverrides – it would hold in ` +
+        `the browser, not in the finished map.`
       );
     }
   }
   for (const prop of Object.keys(patch.paint || {})) {
     if ((clean.paint || {})[prop] === undefined) {
-      chyba(
+      error(
         "poc/web/layer-style.js",
-        `kopírovanie štýlu \`${snap.from}\` → \`${target.id}\` (${kde}): ` +
-        `vlastnosť \`${prop}\` normalizeOverrides zahodil.`
+        `copying style \`${snap.from}\` → \`${target.id}\` (${where}): ` +
+        `normalizeOverrides dropped property \`${prop}\`.`
       );
     }
   }
 }
 
-for (const { kde, style } of styles) {
-  // zástupca každého druhu vrstvy – vkladá sa naprieč druhmi
-  const zastupca = new Map();
-  for (const layer of style.layers) if (!zastupca.has(layer.type)) zastupca.set(layer.type, layer);
+for (const { where, style } of styles) {
+  // one representative per layer type – pasted across types
+  const representative = new Map();
+  for (const layer of style.layers) if (!representative.has(layer.type)) representative.set(layer.type, layer);
 
   for (const layer of style.layers) {
     const snap = snapshotStyle(layer, {});
-    odfotenych += 1;
-    skus(snap, layer, kde);
-    for (const target of zastupca.values()) if (target.id !== layer.id) skus(snap, target, kde);
+    snapshots += 1;
+    tryPaste(snap, layer, where);
+    for (const target of representative.values()) if (target.id !== layer.id) tryPaste(snap, target, where);
   }
 }
 
-// 3. „čo to robí na tomto zoome": napĺňaná hodnota musí sedieť so štýlom
-// aspoň v zlomoch
-const krivka = ["interpolate", ["exponential", 1.5], ["zoom"], 11, 0.4, 16, 2.2];
-for (const [z, cakane] of [[8, 0.4], [11, 0.4], [16, 2.2], [20, 2.2]]) {
-  const dostal = valueAtZoom(krivka, z);
-  if (dostal !== cakane) {
-    chyba(
+// 3. “what it does at this zoom”: the filled value matches the style at the breaks
+const curve = ["interpolate", ["exponential", 1.5], ["zoom"], 11, 0.4, 16, 2.2];
+for (const [z, expected] of [[8, 0.4], [11, 0.4], [16, 2.2], [20, 2.2]]) {
+  const got = valueAtZoom(curve, z);
+  if (got !== expected) {
+    error(
       "poc/web/layer-style.js",
-      `valueAtZoom pri z${z} vrátilo ${dostal}, čakalo sa ${cakane}.`
+      `valueAtZoom at z${z} returned ${got}, expected ${expected}.`
     );
   }
 }
 if (valueAtZoom(["match", ["get", "x"], "a", 1, 2], 14) !== null) {
-  chyba(
+  error(
     "poc/web/layer-style.js",
-    "valueAtZoom vrátilo číslo pre výraz podľa atribútu prvku – to sa jedným " +
-    "zoomom povedať nedá a vymyslená hodnota je horšia než žiadna."
+    "valueAtZoom returned a number for a feature-attribute expression – one zoom " +
+    "can't say that, and an invented value is worse than none."
   );
 }
 
-// 4. zoomové pásma: rad musí byť súvislý – medzera aj prekryv sú tvrdá chyba,
-// inak by „do 11" neplatilo a nikto by to nespozoroval
-const pasma = (value) =>
+// 4. zoom bands must be contiguous – a gap or overlap is a hard error
+const bands = (value) =>
   normalizeOverrides({ layers: { x: { paint: { "line-width": value } } } });
 
-for (const [popis, value, musiPrejst] of [
-  ["súvislé pásma", [[9, 11, 2], [12, 12, 4], [13, 17, 6]], true],
-  ["jedno pásmo", [[9, 17, 2]], true],
-  ["medzera medzi pásmami", [[9, 11, 2], [14, 17, 6]], false],
-  ["prekryv pásiem", [[9, 11, 2], [11, 17, 6]], false],
-  ["zmiešaná krivka a pásmo", [[9, 2], [12, 13, 4]], false],
-  ["desatinný zoom v pásme", [[9, 11.5, 2], [12, 17, 6]], false],
-  ["pásmo naopak", [[13, 11, 2]], false]
+for (const [label, value, mustPass] of [
+  ["contiguous bands", [[9, 11, 2], [12, 12, 4], [13, 17, 6]], true],
+  ["one band", [[9, 17, 2]], true],
+  ["a gap between bands", [[9, 11, 2], [14, 17, 6]], false],
+  ["overlapping bands", [[9, 11, 2], [11, 17, 6]], false],
+  ["a curve mixed with a band", [[9, 2], [12, 13, 4]], false],
+  ["a fractional zoom in a band", [[9, 11.5, 2], [12, 17, 6]], false],
+  ["a reversed band", [[13, 11, 2]], false]
 ]) {
-  const { overrides, problems } = pasma(value);
-  const prijate = overrides.layers.x?.paint?.["line-width"] !== undefined;
-  if (musiPrejst && (!prijate || problems.length)) {
-    chyba("poc/web/themes.js",
-      `zoomové pásma (${popis}) neprešli cez normalizeOverrides: ${problems[0] || "zahodené bez dôvodu"}`);
+  const { overrides, problems } = bands(value);
+  const accepted = overrides.layers.x?.paint?.["line-width"] !== undefined;
+  if (mustPass && (!accepted || problems.length)) {
+    error("poc/web/themes.js",
+      `zoom bands (${label}) didn't pass normalizeOverrides: ${problems[0] || "dropped without a reason"}`);
   }
-  if (!musiPrejst && (prijate || !problems.length)) {
-    chyba("poc/web/themes.js",
-      `zoomové pásma (${popis}) prešli cez normalizeOverrides. Rad pásiem musí ` +
-      `byť súvislý a v jednom tvare – inak platí niečo iné, než čo je napísané.`);
-  }
-}
-
-// hranica pásma platí vrátane desatinných zoomov pod ňou („do 11" = aj z11,9)
-const schodisko = paintValue([[9, 11, 2], [12, 12, 4], [13, 17, 6]]);
-for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6], [20, 6]]) {
-  const dostal = valueAtZoom(schodisko, z);
-  if (dostal !== cakane) {
-    chyba("poc/web/layer-style.js",
-      `pásma pri z${z} vrátili ${dostal}, čakalo sa ${cakane} – hranica pásma ` +
-      `nie je tam, kde ju úprava sľubuje.`);
+  if (!mustPass && (accepted || !problems.length)) {
+    error("poc/web/themes.js",
+      `zoom bands (${label}) passed normalizeOverrides. Bands must be contiguous ` +
+      `and of one shape – otherwise something else holds than what is written.`);
   }
 }
 
-// čo sa zo `step` vrstvy odfotí, musí normalizácia prijať celé
+// a band edge covers fractional zooms below it (“up to 11” = z11.9 too)
+const staircase = paintValue([[9, 11, 2], [12, 12, 4], [13, 17, 6]]);
+for (const [z, expected] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6], [20, 6]]) {
+  const got = valueAtZoom(staircase, z);
+  if (got !== expected) {
+    error("poc/web/layer-style.js",
+      `bands at z${z} returned ${got}, expected ${expected} – the band edge ` +
+      `isn't where the override promises.`);
+  }
+}
+
+// what a `step` layer snapshots, normalisation must accept whole
 {
-  const vrstva = {
-    id: "schody",
+  const layerDef = {
+    id: "stairs",
     type: "line",
-    paint: { "line-width": schodisko, "line-color": paintValue([[0, 9, "#112233"], [10, MAX_DISPLAY_Z, "#445566"]]) }
+    paint: { "line-width": staircase, "line-color": paintValue([[0, 9, "#112233"], [10, MAX_DISPLAY_Z, "#445566"]]) }
   };
-  const snap = snapshotStyle(vrstva, {});
+  const snap = snapshotStyle(layerDef, {});
   if (snap.dropped.length) {
-    chyba("poc/web/layer-style.js",
-      `odfotenie \`step\` vrstvy zahodilo ${snap.dropped.join(", ")} – schodisko ` +
-      `podľa zoomu sa má odfotiť ako zoomové pásma.`);
+    error("poc/web/layer-style.js",
+      `snapshotting a \`step\` layer dropped ${snap.dropped.join(", ")} – a zoom ` +
+      `staircase must snapshot as zoom bands.`);
   }
   const raw = emptyOverrides();
-  raw.layers.schody = { paint: snap.paint };
+  raw.layers.stairs = { paint: snap.paint };
   const { overrides, problems } = normalizeOverrides(raw);
   if (problems.length) {
-    chyba("poc/web/layer-style.js",
-      `odfotené \`step\` vrstvy normalizeOverrides odmieta: ${problems[0]}`);
+    error("poc/web/layer-style.js",
+      `normalizeOverrides refuses a \`step\` layer snapshot: ${problems[0]}`);
   }
   for (const prop of Object.keys(snap.paint)) {
-    if ((overrides.layers.schody?.paint || {})[prop] === undefined) {
-      chyba("poc/web/layer-style.js",
-        `odfotená vlastnosť \`${prop}\` zo \`step\` vrstvy sa cez normalizeOverrides nedostala.`);
+    if ((overrides.layers.stairs?.paint || {})[prop] === undefined) {
+      error("poc/web/layer-style.js",
+        `snapshot property \`${prop}\` of a \`step\` layer didn't get through normalizeOverrides.`);
     }
   }
 }
 
-// 5. čo developer mode nastaví, to sa aj uloží
-// workers/styles/overrides.mjs skladá súbor po kľúčoch a raz na `trails`
-// zabudol: zapísaný súbor bol platný, len o polovicu chudobnejší. Skúša sa
-// tak, ako to chodí – cez ten skript do dočasného repozitára.
+// 5. what developer mode sets is also saved – tried through the real script
 {
-  const ukazka = {
+  const sample = {
     trails: {
       gap: { road: 8 },
       types: { hiking: { dash: "dotted", icon: "", mark: "triangle" } },
       marks: { spacing: 300, size: 1.2 }
     },
     shields: { motorway: { shape: "shield-round" } },
-    // vlastná sada aj ikona ovplyvňujú build, musia prejsť celé aj s obrázkom
+    // an own set and icon affect the build, so they pass whole with the image
     iconSets: [
       { id: "own-test", label: "Test", sprite: "https://example.org/sprites/test", suffix: "_11" }
     ],
     customIcons: [{ name: "own:test", png: PNG_1PX, pixelRatio: 2 }],
     palette: {},
-    // poradie je vlastný kľúč (`order`), nie vlastnosť vrstvy
+    // the order is its own key (`order`), not a layer property
     order: [{ id: "feature-embankment", before: "road-minor" }],
-    // `poi` sa zapisuje ako celok – dá sa zabudnúť na polovicu
+    // `poi` is written whole – half of it can be forgotten
     poi: { hidden: ["fuel"], icons: { restaurant: "bar_11", spring: "" } },
-    // `layout` je druhá polica vedľa `paint`
+    // `layout` is the second shelf beside `paint`
     layers: {
       "trail-hiking-mark": {
         layout: { "icon-size": 1.2, "symbol-spacing": [[12, 13, 120], [14, 20, 260]] }
       },
-      // vzor z vlastného obrázka má dve polovice: meno vo vrstve aj PNG
+      // a pattern from an own image has two halves: the name and the PNG
       "landcover-wood": { pattern: { image: "own:test", opacity: 0.8 } }
     }
   };
-  const { overrides } = normalizeOverrides(ukazka);
+  const { overrides } = normalizeOverrides(sample);
   const dir = mkdtempSync(join(tmpdir(), "overrides-lint-"));
   try {
-    // skript zapisuje do koreňa repozitára, tak dostane kópiu potrebných súborov
-    const vstup = join(dir, "in.json");
-    writeFileSync(vstup, JSON.stringify(ukazka));
-    const zaloha = readFileSync(TARGET, "utf8");
+    // the script writes into the repository root; the original is restored after
+    const input = join(dir, "in.json");
+    writeFileSync(input, JSON.stringify(sample));
+    const backup = readFileSync(TARGET, "utf8");
     try {
-      execFileSync("node", ["workers/styles/overrides.mjs", `--file=${vstup}`], {
+      execFileSync("node", ["workers/styles/overrides.mjs", `--file=${input}`], {
         stdio: "pipe",
         cwd: ROOT
       });
-      const zapisane = normalizeOverrides(JSON.parse(readFileSync(TARGET, "utf8"))).overrides;
-      const chyba_ak = (cesta, a, b) => {
+      const written = normalizeOverrides(JSON.parse(readFileSync(TARGET, "utf8"))).overrides;
+      const errorIf = (path, a, b) => {
         if (JSON.stringify(a) !== JSON.stringify(b)) {
-          chyba(
+          error(
             "workers/styles/overrides.mjs",
-            `zápis do style-overrides.json stratil \`${cesta}\`: ` +
-              `${JSON.stringify(a)} → ${JSON.stringify(b)}. V prehliadači to platí, ` +
-              `v repozitári nie – mapa na Pages bude iná než developer mode.`
+            `writing style-overrides.json lost \`${path}\`: ` +
+              `${JSON.stringify(a)} → ${JSON.stringify(b)}. It holds in the browser, ` +
+              `not in the repository – the map on Pages will differ from developer mode.`
           );
         }
       };
-      chyba_ak("trails.gap", overrides.trails.gap, zapisane.trails.gap);
-      chyba_ak("order", overrides.order, zapisane.order);
-      chyba_ak("poi.icons", overrides.poi.icons, zapisane.poi.icons);
-      chyba_ak(
+      errorIf("trails.gap", overrides.trails.gap, written.trails.gap);
+      errorIf("order", overrides.order, written.order);
+      errorIf("poi.icons", overrides.poi.icons, written.poi.icons);
+      errorIf(
         "layers[landcover-wood].pattern",
         overrides.layers["landcover-wood"]?.pattern,
-        zapisane.layers["landcover-wood"]?.pattern
+        written.layers["landcover-wood"]?.pattern
       );
-      chyba_ak("iconSets", overrides.iconSets, zapisane.iconSets);
-      chyba_ak("customIcons", overrides.customIcons, zapisane.customIcons);
-      chyba_ak(
+      errorIf("iconSets", overrides.iconSets, written.iconSets);
+      errorIf("customIcons", overrides.customIcons, written.customIcons);
+      errorIf(
         "layers[trail-hiking-mark].layout",
         overrides.layers["trail-hiking-mark"]?.layout,
-        zapisane.layers["trail-hiking-mark"]?.layout
+        written.layers["trail-hiking-mark"]?.layout
       );
-      chyba_ak("trails.types", overrides.trails.types, zapisane.trails.types);
-      chyba_ak("trails.marks", overrides.trails.marks, zapisane.trails.marks);
-      chyba_ak("shields", overrides.shields, zapisane.shields);
+      errorIf("trails.types", overrides.trails.types, written.trails.types);
+      errorIf("trails.marks", overrides.trails.marks, written.trails.marks);
+      errorIf("shields", overrides.shields, written.shields);
     } finally {
-      writeFileSync(TARGET, zaloha);
+      writeFileSync(TARGET, backup);
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-// 6. prerušovanie čiary sa dá aj vrátiť
-// Panel ukazoval pri železnici „Plná" (predvoľbu čítal z prázdnej úpravy)
-// a voľbu „Plná" zahadzoval, takže sa čiarkovanie nedalo ani zmeniť, ani
-// vypnúť. Držia to tri veci a kontrola je na všetky: `frico:dash`,
-// `normalizeOverrides` (nezahodí „solid") a `applyLayerOverrides` (zmaže
-// vlastnosť, nedá `null`).
+// 6. a line dash can be restored – `frico:dash`, `normalizeOverrides` and `applyLayerOverrides`
 {
-  let sChiarkou = 0;
-  for (const { kde, style } of styles) {
+  let dashed = 0;
+  for (const { where, style } of styles) {
     for (const layer of style.layers) {
       if (layer.type !== "line") continue;
       if ((layer.metadata || {})["frico:derived"]) continue;
@@ -347,82 +337,79 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
       const meta = (layer.metadata || {})["frico:dash"];
       if (!Array.isArray(arr)) {
         if (meta !== undefined) {
-          chyba("poc/web/themes.js",
-            `vrstva \`${layer.id}\` (${kde}) nesie \`frico:dash\`, hoci plnú čiaru ` +
-            `– panel by ponúkal návrat na prerušovanie, ktoré v štýle nie je.`);
+          error("poc/web/themes.js",
+            `layer \`${layer.id}\` (${where}) carries \`frico:dash\` on a solid line ` +
+            `– the panel would offer to restore a dash the style doesn't have.`);
         }
         continue;
       }
-      sChiarkou += 1;
-      const rovnake = typeof meta === "string"
+      dashed += 1;
+      const same = typeof meta === "string"
         ? JSON.stringify(dashArray(meta)) === JSON.stringify(arr)
         : JSON.stringify(meta) === JSON.stringify(arr);
-      if (!rovnake) {
-        chyba("poc/web/themes.js",
-          `vrstva \`${layer.id}\` (${kde}) má v štýle \`line-dasharray: ` +
-          `${JSON.stringify(arr)}\`, ale v metadátach \`${JSON.stringify(meta)}\`. ` +
-          `Developer mode číta prerušovanie odtiaľ – ukazoval by inú čiaru, ` +
-          `než je v mape, a „späť na pôvodnú" by ju nevrátilo.`);
+      if (!same) {
+        error("poc/web/themes.js",
+          `layer \`${layer.id}\` (${where}) has \`line-dasharray: ` +
+          `${JSON.stringify(arr)}\` in the style but \`${JSON.stringify(meta)}\` in ` +
+          `its metadata. Developer mode reads the dash from there – it would show ` +
+          `another line than the map, and “back to the original” wouldn't restore it.`);
       }
     }
   }
-  if (!sChiarkou) {
-    chyba("workers/lint/overrides.mjs",
-      "v štýle nie je ani jedna čiara s prerušovaním – kontrola nemá čo strážiť.");
+  if (!dashed) {
+    error("workers/lint/overrides.mjs",
+      "the style has not a single dashed line – the check has nothing to guard.");
   }
 
-  // „solid" musí prežiť normalizáciu…
-  const { overrides: soVolbou } = normalizeOverrides({
+  // “solid” must survive normalisation…
+  const { overrides: withChoice } = normalizeOverrides({
     layers: { "rail-hatch": { dash: "solid" } }
   });
-  if (soVolbou.layers["rail-hatch"]?.dash !== "solid") {
-    chyba("poc/web/themes.js",
-      "`dash: \"solid\"` normalizeOverrides zahodil. Vrstva, ktorá má " +
-      "prerušovanie zo štýlu (železnica, brod), sa potom nedá vrátiť na plnú " +
-      "čiaru – voľba sa prijme a v mape sa nestane nič.");
+  if (withChoice.layers["rail-hatch"]?.dash !== "solid") {
+    error("poc/web/themes.js",
+      "normalizeOverrides dropped `dash: \"solid\"`. A layer with a style dash " +
+      "(railway, ford) then can't go back to a solid line – the choice is " +
+      "accepted and nothing happens in the map.");
   }
 
-  // …a v hotovom štýle prerušovanie naozaj zmazať
-  const spolu = (o) => buildStyle({
+  // …and really delete the dash in the finished style
+  const build = (o) => buildStyle({
     theme: "svetla",
     tilesUrl: "pmtiles://x/t.pmtiles",
     spriteUrl: "https://x/sprite",
     glyphsUrl: "https://x/{fontstack}/{range}.pbf",
     overrides: o
   });
-  const zaklad = spolu(null).layers.find((l) => l.id === "rail-hatch");
-  if (!zaklad || builtinDash(zaklad) !== "rail") {
-    chyba("poc/web/themes.js",
-      "`rail-hatch` nemá zabudované prerušovanie `rail` – čiarkovanie železnice " +
-      "je práve tá vrstva, na ktorej sa to celé ukázalo.");
+  const base = build(null).layers.find((l) => l.id === "rail-hatch");
+  if (!base || builtinDash(base) !== "rail") {
+    error("poc/web/themes.js",
+      "`rail-hatch` has no built-in `rail` dash – the railway hatching is the " +
+      "very layer this showed on.");
   }
-  const plna = spolu(soVolbou).layers.find((l) => l.id === "rail-hatch");
-  if (plna && (plna.paint || {})["line-dasharray"] !== undefined) {
-    chyba("poc/web/themes.js",
-      `\`dash: "solid"\` nechalo na \`rail-hatch\` \`line-dasharray: ` +
-      `${JSON.stringify(plna.paint["line-dasharray"])}\`. Plná čiara znamená ` +
-      `vlastnosť ZMAZAŤ – \`null\` by MapLibre neprijal.`);
+  const solid = build(withChoice).layers.find((l) => l.id === "rail-hatch");
+  if (solid && (solid.paint || {})["line-dasharray"] !== undefined) {
+    error("poc/web/themes.js",
+      `\`dash: "solid"\` left \`line-dasharray: ` +
+      `${JSON.stringify(solid.paint["line-dasharray"])}\` on \`rail-hatch\`. A solid ` +
+      `line means DELETING the property – MapLibre wouldn't accept \`null\`.`);
   }
-  const ine = spolu(normalizeOverrides({ layers: { "rail-hatch": { dash: "ties" } } }).overrides)
+  const other = build(normalizeOverrides({ layers: { "rail-hatch": { dash: "ties" } } }).overrides)
     .layers.find((l) => l.id === "rail-hatch");
-  if (JSON.stringify((ine.paint || {})["line-dasharray"]) !== JSON.stringify(dashArray("ties"))) {
-    chyba("poc/web/themes.js",
-      "zmena prerušovania na `ties` sa na `rail-hatch` neprejavila.");
+  if (JSON.stringify((other.paint || {})["line-dasharray"]) !== JSON.stringify(dashArray("ties"))) {
+    error("poc/web/themes.js",
+      "changing the dash to `ties` didn't show on `rail-hatch`.");
   }
-  // `dashIdOf` nesmie tvrdiť, že vlastné prerušovanie je niektorá predvoľba
+  // `dashIdOf` mustn't claim an own dash is a preset
   if (dashIdOf([0.35, 2.2]) !== null) {
-    chyba("poc/web/patterns.js",
-      "`dashIdOf` pomenovalo vlastné prerušovanie predvoľbou – panel by ho " +
-      "pri prvom uložení prepísal na inú čiaru.");
+    error("poc/web/patterns.js",
+      "`dashIdOf` named an own dash after a preset – the panel would rewrite " +
+      "it to another line on the first save.");
   }
 }
 
-// 7. poradie kreslenia
-// Jediná úprava, ktorá mení štruktúru štýlu. Ticho sa dá pokaziť trojako:
-// vrstva sa stratí alebo zdvojí; odvodená vrstva či druhá polovica dvojice
-// ostane, kde bola; niekto presunie vrstvu za masku regiónu.
+// 7. drawing order – the one override changing the style's structure
 {
-  const postav = (order) => buildStyle({
+  const buildWith = (order) => buildStyle({
     theme: "svetla",
     tilesUrl: "pmtiles://x/t.pmtiles",
     spriteUrl: "https://x/sprite",
@@ -434,138 +421,134 @@ for (const [z, cakane] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13, 6
     overrides: normalizeOverrides({ order }).overrides
   });
 
-  const bez = postav([]).layers.map((l) => l.id);
-  const skus = (popis, order, over) => {
-    const layers = postav(order).layers;
+  const plain = buildWith([]).layers.map((l) => l.id);
+  const tryMove = (label, order, over) => {
+    const layers = buildWith(order).layers;
     const ids = layers.map((l) => l.id);
-    if (ids.length !== bez.length || new Set(ids).size !== ids.length) {
-      chyba("poc/web/themes.js",
-        `presun vrstiev (${popis}) zmenil počet vrstiev: ${bez.length} → ${ids.length} ` +
-        `(z toho ${new Set(ids).size} rôznych). Vrstva, ktorá sa pri presune stratí, ` +
-        `nie je v mape a štýl je pritom platný.`);
+    if (ids.length !== plain.length || new Set(ids).size !== ids.length) {
+      error("poc/web/themes.js",
+        `moving layers (${label}) changed the layer count: ${plain.length} → ${ids.length} ` +
+        `(${new Set(ids).size} distinct). A layer lost in a move isn't in the map ` +
+        `while the style stays valid.`);
     }
-    const posledne = ids.slice(-2);
-    if (JSON.stringify(posledne) !== JSON.stringify(["region-outside", "region-border"])) {
-      chyba("poc/web/themes.js",
-        `presun vrstiev (${popis}) nechal navrchu ${posledne.join(", ")} namiesto masky ` +
-        `regiónu. Vrstva za maskou kreslí aj mimo stiahnutého regiónu.`);
+    const last = ids.slice(-2);
+    if (JSON.stringify(last) !== JSON.stringify(["region-outside", "region-border"])) {
+      error("poc/web/themes.js",
+        `moving layers (${label}) left ${last.join(", ")} on top instead of the region ` +
+        `mask. A layer above the mask draws outside the downloaded region too.`);
     }
     over(ids);
   };
 
-  skus("násyp pod cesty", [{ id: "feature-embankment", before: "road-minor" }], (ids) => {
+  tryMove("embankment under roads", [{ id: "feature-embankment", before: "road-minor" }], (ids) => {
     if (!(ids.indexOf("feature-embankment") < ids.indexOf("road-minor"))) {
-      chyba("poc/web/themes.js", "presun `feature-embankment` pod `road-minor` sa neprejavil.");
+      error("poc/web/themes.js", "moving `feature-embankment` under `road-minor` didn't take effect.");
     }
-    // zúbky sú druhá polovica tej istej hrany (`frico:with`)
+    // the teeth are the other half of the same edge (`frico:with`)
     if (ids.indexOf("feature-embankment-teeth") - ids.indexOf("feature-embankment") !== 1) {
-      chyba("poc/web/themes.js",
-        "`feature-embankment-teeth` ostali pri presune na mieste – hrana by bola pod " +
-        "cestou a jej zúbky nad ňou.");
+      error("poc/web/themes.js",
+        "`feature-embankment-teeth` stayed put in the move – the edge would be under " +
+        "the road and its teeth above it.");
     }
   });
 
-  skus("železnica navrch", [{ id: "rail-bg", before: null }], (ids) => {
+  tryMove("railway on top", [{ id: "rail-bg", before: null }], (ids) => {
     if (ids.indexOf("rail-hatch") - ids.indexOf("rail-bg") !== 1) {
-      chyba("poc/web/themes.js",
-        "`rail-hatch` sa nepresunul s `rail-bg` – z čiarkovanej železnice by bola " +
-        "tmavá čiara na jednom mieste a biele čiarky na druhom.");
+      error("poc/web/themes.js",
+        "`rail-hatch` didn't move with `rail-bg` – the hatched railway would be a " +
+        "dark line in one place and white dashes in another.");
     }
   });
 
-  skus("vrstva, ktorú tento štýl nemá", [
-    { id: "neexistuje", before: "water" },
-    { id: "water", before: "tiez-neexistuje" }
+  tryMove("a layer this style lacks", [
+    { id: "missing", before: "water" },
+    { id: "water", before: "also-missing" }
   ], () => {});
 
-  // presun za masku sa nesmie dať
-  skus("pokus prekryť masku", [{ id: "background", before: null }], () => {});
+  // moving above the mask mustn't work
+  tryMove("trying to cover the mask", [{ id: "background", before: null }], () => {});
 }
 
-// 8. každá záložka panela sa aj kreslí
-// `TABS` a prepínač v `renderBody` sú dve miesta; chýbajúca vetva prepadne
-// do `renderFile` a vyzerá to, že panel nefunguje.
+// 8. every panel tab is drawn – `TABS` and the `renderBody` switch are two places
 {
-  const zdroj = readFileSync(join(ROOT, "poc", "web", "devmode.js"), "utf8");
-  const blok = zdroj.match(/const TABS = \[([\s\S]*?)\];/);
-  if (!blok) {
-    chyba("poc/web/devmode.js", "zoznam záložiek `TABS` sa nenašiel – kontrola nemá čo strážiť.");
+  const source = readFileSync(join(ROOT, "poc", "web", "devmode.js"), "utf8");
+  const block = source.match(/const TABS = \[([\s\S]*?)\];/);
+  if (!block) {
+    error("poc/web/devmode.js", "the `TABS` list wasn't found – the check has nothing to guard.");
   } else {
-    const ids = [...blok[1].matchAll(/\["([a-z]+)",/g)].map((m) => m[1]);
+    const ids = [...block[1].matchAll(/\["([a-z]+)",/g)].map((m) => m[1]);
     if (ids.length < 2) {
-      chyba("poc/web/devmode.js", "zo zoznamu `TABS` sa nedali prečítať id záložiek.");
+      error("poc/web/devmode.js", "tab ids couldn't be read from the `TABS` list.");
     }
-    // posledná záložka je zámerne bez podmienky – je to koncová vetva
+    // the last tab has no condition on purpose – it's the final branch
     for (const id of ids.slice(0, -1)) {
-      if (!zdroj.includes(`tab === "${id}"`)) {
-        chyba(
+      if (!source.includes(`tab === "${id}"`)) {
+        error(
           "poc/web/devmode.js",
-          `záložka "${id}" je v zozname, ale \`renderBody\` ju nekreslí – ` +
-          `ťuknutie na ňu otvorí poslednú vetvu prepínača (záložku „Súbor").`
+          `tab "${id}" is listed, but \`renderBody\` doesn't draw it – tapping ` +
+          `it opens the switch's last branch (the file tab).`
         );
       }
     }
   }
 }
 
-// 8. relatívna hodnota `{scale, add}`
-// `scaleExpr` musí vedieť aj pásma (obrys nad pásmovou čiarou inak vyšiel
-// rovnako široký ako čiara), a `{scale: 1, add: 0}` nesmie prejsť.
-const rel = (value, prop = "line-width") =>
+// 9. a relative value `{scale, add}` – `scaleExpr` handles bands; `{scale: 1, add: 0}` is refused
+const relative = (value, prop = "line-width") =>
   normalizeOverrides({ layers: { x: { paint: { [prop]: value } } } });
 
-for (const [popis, value, prop, musiPrejst] of [
-  ["percento", { scale: 1.4 }, "line-width", true],
-  ["konštanta", { add: 0.5 }, "line-width", true],
-  ["oboje", { scale: 1.4, add: 0.5 }, "line-width", true],
-  ["nič nemení", { scale: 1, add: 0 }, "line-width", false],
-  ["nula ako násobok", { scale: 0 }, "line-width", false],
-  ["mimo medze", { scale: 99 }, "line-width", false],
-  ["nečíslo", { scale: "hodne" }, "line-width", false],
-  ["nad farbou", { scale: 1.4 }, "line-color", false]
+for (const [label, value, prop, mustPass] of [
+  ["a percentage", { scale: 1.4 }, "line-width", true],
+  ["a constant", { add: 0.5 }, "line-width", true],
+  ["both", { scale: 1.4, add: 0.5 }, "line-width", true],
+  ["changes nothing", { scale: 1, add: 0 }, "line-width", false],
+  ["zero as a factor", { scale: 0 }, "line-width", false],
+  ["out of bounds", { scale: 99 }, "line-width", false],
+  ["not a number", { scale: "lots" }, "line-width", false],
+  ["on a colour", { scale: 1.4 }, "line-color", false]
 ]) {
-  const { overrides, problems } = rel(value, prop);
-  const prijate = overrides.layers.x?.paint?.[prop] !== undefined;
-  if (musiPrejst && (!prijate || problems.length)) {
-    chyba("poc/web/themes.js",
-      `relatívna hodnota (${popis}) neprešla cez normalizeOverrides: ` +
-      `${problems[0] || "zahodená bez dôvodu"}`);
+  const { overrides, problems } = relative(value, prop);
+  const accepted = overrides.layers.x?.paint?.[prop] !== undefined;
+  if (mustPass && (!accepted || problems.length)) {
+    error("poc/web/themes.js",
+      `a relative value (${label}) didn't pass normalizeOverrides: ` +
+      `${problems[0] || "dropped without a reason"}`);
   }
-  if (!musiPrejst && (prijate || !problems.length)) {
-    chyba("poc/web/themes.js",
-      `relatívna hodnota (${popis}) prešla cez normalizeOverrides – a nemala.`);
+  if (!mustPass && (accepted || !problems.length)) {
+    error("poc/web/themes.js",
+      `a relative value (${label}) passed normalizeOverrides – and shouldn't have.`);
   }
 }
 
-// krivka si musí nechať druh interpolácie – lineárna náhrada posunie šírky
-const skalovana = scaleExpr(
+// a curve keeps its interpolation kind – a linear stand-in shifts the widths
+const scaled = scaleExpr(
   ["interpolate", ["exponential", 1.5], ["zoom"], 11, 0.4, 16, 2.2], { scale: 2 }
 );
-if (JSON.stringify(skalovana.slice(0, 3)) !== JSON.stringify(["interpolate", ["exponential", 1.5], ["zoom"]])) {
-  chyba("poc/web/themes.js", "scaleExpr zmenil druh interpolácie – šírky medzi zlomami by sedeli inde.");
+if (JSON.stringify(scaled.slice(0, 3)) !== JSON.stringify(["interpolate", ["exponential", 1.5], ["zoom"]])) {
+  error("poc/web/themes.js", "scaleExpr changed the interpolation kind – widths between breaks would land elsewhere.");
 }
-for (const [z, cakane] of [[11, 0.8], [16, 4.4]]) {
-  if (valueAtZoom(skalovana, z) !== cakane) {
-    chyba("poc/web/themes.js",
-      `scaleExpr nad krivkou dal pri z${z} ${valueAtZoom(skalovana, z)}, čakalo sa ${cakane}.`);
+for (const [z, expected] of [[11, 0.8], [16, 4.4]]) {
+  if (valueAtZoom(scaled, z) !== expected) {
+    error("poc/web/themes.js",
+      `scaleExpr over a curve gave ${valueAtZoom(scaled, z)} at z${z}, expected ${expected}.`);
   }
 }
-// a to isté nad pásmami – tie `widenExpr` kedysi prepustil nezmenené
-const pasmaSkalovane = scaleExpr(paintValue([[9, 11, 2], [12, 17, 5]]), { add: 3 });
-for (const [z, cakane] of [[9, 5], [12, 8]]) {
-  if (valueAtZoom(pasmaSkalovane, z) !== cakane) {
-    chyba("poc/web/themes.js",
-      `scaleExpr nad pásmami dal pri z${z} ${valueAtZoom(pasmaSkalovane, z)}, ` +
-      `čakalo sa ${cakane} – obrys nad takou čiarou by bol presne taký široký ako ona.`);
+// and the same over bands
+const scaledBands = scaleExpr(paintValue([[9, 11, 2], [12, 17, 5]]), { add: 3 });
+for (const [z, expected] of [[9, 5], [12, 8]]) {
+  if (valueAtZoom(scaledBands, z) !== expected) {
+    error("poc/web/themes.js",
+      `scaleExpr over bands gave ${valueAtZoom(scaledBands, z)} at z${z}, ` +
+      `expected ${expected} – an outline over such a line would be exactly as wide.`);
   }
 }
-// výraz podľa atribútu prvku sa prepisovať nesmie
-const podlaDat = ["match", ["get", "x"], "a", 1, 2];
-if (JSON.stringify(scaleExpr(podlaDat, { scale: 2 })) !== JSON.stringify(podlaDat)) {
-  chyba("poc/web/themes.js", "scaleExpr prepísal výraz podľa atribútu prvku.");
+// a feature-attribute expression mustn't be rewritten
+const byData = ["match", ["get", "x"], "a", 1, 2];
+if (JSON.stringify(scaleExpr(byData, { scale: 2 })) !== JSON.stringify(byData)) {
+  error("poc/web/themes.js", "scaleExpr rewrote a feature-attribute expression.");
 }
 
-// obrys nad pásmovou čiarou musí byť naozaj širší
+// an outline over a banded line must really be wider
 {
   const { overrides } = normalizeOverrides({
     layers: {
@@ -577,110 +560,107 @@ if (JSON.stringify(scaleExpr(podlaDat, { scale: 2 })) !== JSON.stringify(podlaDa
   });
   const s = buildStyle({ theme: Object.keys(THEMES)[0], tilesUrl: "pmtiles://x/t.pmtiles",
                          spriteUrl: "https://x/sprite", overrides });
-  const ciara = s.layers.find((l) => l.id === "road-path");
-  const obrys = s.layers.find((l) => l.id === "road-path__outline");
-  if (!ciara || !obrys) {
-    chyba("poc/web/themes.js", "obrys nad čiarou s pásmami vôbec nevznikol.");
+  const line = s.layers.find((l) => l.id === "road-path");
+  const outline = s.layers.find((l) => l.id === "road-path__outline");
+  if (!line || !outline) {
+    error("poc/web/themes.js", "no outline was made over the banded line at all.");
   } else {
     for (const z of [12, 16]) {
-      const a = valueAtZoom(ciara.paint["line-width"], z);
-      const b = valueAtZoom(obrys.paint["line-width"], z);
+      const a = valueAtZoom(line.paint["line-width"], z);
+      const b = valueAtZoom(outline.paint["line-width"], z);
       if (!(b > a)) {
-        chyba("poc/web/themes.js",
-          `obrys pri z${z} je ${b}, čiara ${a} – obrys, ktorý nie je širší, nie je vidieť.`);
+        error("poc/web/themes.js",
+          `the outline at z${z} is ${b}, the line ${a} – an outline that isn't wider can't be seen.`);
       }
     }
   }
 }
 
-// 9. rozlíšenie podľa atribútu OSM: prvok sa smie nakresliť raz – predloha
-// si k filtru pridá negáciu hodnôt variantu
-let variantov = 0;
+// 10. variants by OSM attribute: a feature is drawn once – the base negates variant values
+let variantLayers = 0;
 {
   const test = (v) => normalizeOverrides({ layers: { "road-track": { variants: v } } });
-  for (const [popis, v, musiPrejst] of [
-    ["jeden variant", [{ attr: "surface", values: ["paved"] }], true],
-    ["bez hodnôt", [{ attr: "surface", values: [] }], false],
-    ["bez atribútu", [{ values: ["paved"] }], false],
-    ["neplatné meno atribútu", [{ attr: "s urface!", values: ["paved"] }], false],
-    ["dva varianty nad tou istou hodnotou",
+  for (const [label, v, mustPass] of [
+    ["one variant", [{ attr: "surface", values: ["paved"] }], true],
+    ["no values", [{ attr: "surface", values: [] }], false],
+    ["no attribute", [{ values: ["paved"] }], false],
+    ["an invalid attribute name", [{ attr: "s urface!", values: ["paved"] }], false],
+    ["two variants over one value",
      [{ attr: "surface", values: ["paved"] }, { attr: "surface", values: ["paved"] }], false],
-    ["viac než strop", Array.from({ length: MAX_VARIANTS + 1 },
+    ["over the cap", Array.from({ length: MAX_VARIANTS + 1 },
       (_, i) => ({ attr: "surface", values: [`v${i}`] })), false]
   ]) {
     const { overrides, problems } = test(v);
-    const prijate = (overrides.layers["road-track"]?.variants || []).length === v.length;
-    if (musiPrejst && (!prijate || problems.length)) {
-      chyba("poc/web/themes.js",
-        `variant (${popis}) neprešiel cez normalizeOverrides: ${problems[0] || "zahodený bez dôvodu"}`);
+    const accepted = (overrides.layers["road-track"]?.variants || []).length === v.length;
+    if (mustPass && (!accepted || problems.length)) {
+      error("poc/web/themes.js",
+        `variant (${label}) didn't pass normalizeOverrides: ${problems[0] || "dropped without a reason"}`);
     }
-    if (!musiPrejst && (prijate || !problems.length)) {
-      chyba("poc/web/themes.js", `variant (${popis}) prešiel cez normalizeOverrides – a nemal.`);
+    if (!mustPass && (accepted || !problems.length)) {
+      error("poc/web/themes.js", `variant (${label}) passed normalizeOverrides – and shouldn't have.`);
     }
   }
 
   const { overrides } = normalizeOverrides({
     layers: {
       "road-track": {
-        variants: [{ attr: "surface", values: ["paved", "asphalt"], label: "spevnené",
+        variants: [{ attr: "surface", values: ["paved", "asphalt"], label: "paved",
                      dash: "solid", outline: { color: "#8a7a6a", width: { scale: 1.6 } } }]
       }
     }
   });
   const s = buildStyle({ theme: Object.keys(THEMES)[0], tilesUrl: "pmtiles://x/t.pmtiles",
                          spriteUrl: "https://x/sprite", overrides });
-  const predloha = s.layers.find((l) => l.id === "road-track");
+  const base = s.layers.find((l) => l.id === "road-track");
   const variant = s.layers.find((l) => l.id === "road-track__var1");
-  const obrys = s.layers.find((l) => l.id === "road-track__var1__outline");
-  variantov = [predloha, variant, obrys].filter(Boolean).length;
+  const outline = s.layers.find((l) => l.id === "road-track__var1__outline");
+  variantLayers = [base, variant, outline].filter(Boolean).length;
   const testExpr = JSON.stringify(["in", ["coalesce", ["get", "surface"], ""],
                                    ["literal", ["paved", "asphalt"]]]);
   if (!variant) {
-    chyba("poc/web/themes.js", "variant vrstvy sa v štýle nevyrobil.");
+    error("poc/web/themes.js", "the layer variant wasn't made in the style.");
   } else if (!JSON.stringify(variant.filter).includes(testExpr)) {
-    chyba("poc/web/themes.js", "filter variantu neobsahuje test atribútu.");
+    error("poc/web/themes.js", "the variant filter lacks the attribute test.");
   }
-  if (!predloha || !JSON.stringify(predloha.filter).includes(`["!",${testExpr}]`)) {
-    chyba("poc/web/themes.js",
-      "filter predlohy nie je zúžený o negáciu variantu – prvok by sa nakreslil " +
-      "dvakrát cez seba a v mape by to vyzeralo len „nejako hrubšie“.");
+  if (!base || !JSON.stringify(base.filter).includes(`["!",${testExpr}]`)) {
+    error("poc/web/themes.js",
+      "the base filter isn't narrowed by the variant's negation – a feature would " +
+      "draw twice over itself and just look “somehow thicker” in the map.");
   }
-  // obrys variantu sa musí hlásiť ku koreňu, inak ho presun poradia opustí
-  if (!obrys || (obrys.metadata || {})["frico:derived"] !== "road-track") {
-    chyba("poc/web/themes.js",
-      "obrys variantu sa nehlási k predlohe – presun poradia by ho nechal za ňou.");
+  // a variant outline must belong to its root, or an order move leaves it behind
+  if (!outline || (outline.metadata || {})["frico:derived"] !== "road-track") {
+    error("poc/web/themes.js",
+      "the variant outline doesn't belong to the base – an order move would leave it behind.");
   }
-  // obrys je 1,6× čiara, teda širší na každom zoome
-  if (variant && obrys) {
+  // the outline is 1.6× the line, so wider at every zoom
+  if (variant && outline) {
     for (const z of [11, 16, 20]) {
       const a = valueAtZoom(variant.paint["line-width"], z);
-      const b = valueAtZoom(obrys.paint["line-width"], z);
+      const b = valueAtZoom(outline.paint["line-width"], z);
       if (!(b > a)) {
-        chyba("poc/web/themes.js",
-          `obrys variantu pri z${z} je ${b}, čiara ${a} – percento má držať pomer na všetkých zoomoch.`);
+        error("poc/web/themes.js",
+          `the variant outline at z${z} is ${b}, the line ${a} – a percentage keeps the ratio at every zoom.`);
       }
     }
   }
-  const idcka = s.layers.map((l) => l.id);
-  if (new Set(idcka).size !== idcka.length) {
-    chyba("poc/web/themes.js", "varianty vyrobili dve vrstvy s tým istým id – MapLibre taký štýl odmietne.");
+  const ids2 = s.layers.map((l) => l.id);
+  if (new Set(ids2).size !== ids2.length) {
+    error("poc/web/themes.js", "variants made two layers with one id – MapLibre refuses such a style.");
   }
 }
 
-// 4. tmavý variant sa nepočíta z bielej – vo vlastnom súbore, tento prerástol
-// strop 800 riadkov
-const dvojic = vahyUprav(JSON.parse(readFileSync(TARGET, "utf8")), chyba);
+// 4. a dark variant isn't made from white – in its own file
+const pairs = darkWeights(JSON.parse(readFileSync(TARGET, "utf8")), error);
 
-// 5. percento v zoomovom pásme – tiež vo vlastnom súbore; nedá sa zapísať
-// výrazom nad krivkou, takže sa vyčísluje
-const zoomov = percentaVPasmach(chyba);
+// 5. a percentage in a zoom band – in its own file too
+const zooms = bandPercentages(error);
 
 console.log(
-  `úpravy: ${bad} chýb (${odfotenych} odfotených vrstiev, ${skusok} vložení, ` +
-  `7 tvarov zoomových pásiem, 8 tvarov relatívnej hodnoty, ` +
-  `6 tvarov variantu, ${variantov} vrstiev z variantu, ` +
-  `${zoomov} zoomov s percentom v pásme, ` +
-  `${dvojic} dvojíc svetlá/tmavá farba, ` +
-  `${Object.keys(THEMES).length} tém × ${MAP_TYPE_IDS.length} typov mapy)`
+  `overrides: ${bad} errors (${snapshots} layer snapshots, ${pastes} pastes, ` +
+  `7 zoom band shapes, 8 relative value shapes, ` +
+  `6 variant shapes, ${variantLayers} variant layers, ` +
+  `${zooms} zooms with a band percentage, ` +
+  `${pairs} light/dark colour pairs, ` +
+  `${Object.keys(THEMES).length} themes × ${MAP_TYPE_IDS.length} map types)`
 );
 process.exit(bad ? 1 : 0);

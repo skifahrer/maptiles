@@ -5,7 +5,7 @@
     "osm_name": "World",
     "admin_level": 2,
     "bbox": [-180, -85.05, 180, 85.05],
-    "note": "Základná mapa sveta z vlastnej pipeline (world-map.yml). `osmfr` tu zámerne NIE JE: nestavia sa z regionálneho PBF, ale z pobrežných čiar OSM, Natural Earth a indexu Geofabriku (workers/world/sources.py). `admin_level: 2` znamená, že balík leží na Drive rovno v `svet/`, bez úrovne kraja."
+    "note": "The base world map from its own pipeline (world-map.yml). `osmfr` is deliberately ABSENT: it's built not from a regional PBF but from OSM coastlines, Natural Earth and the Geofabrik index (workers/world/sources.py). `admin_level: 2` means the package sits on Drive directly in `svet/`, with no region level."
   },
   "svet_basic": {
     "name": "Svet – basic",
@@ -13,7 +13,7 @@
     "osm_name": "World",
     "admin_level": 2,
     "bbox": [-180, -85.05, 180, 85.05],
-    "note": "Mapa sveta v podobe `basic` – iba hranice štátov a regióny sťahovania, bez vodstva a jazier (input `variant` vo world-map.yml, číselník workers/data/world-variants.json). VLASTNÝ KĽÚČ, nie prípona k `svet`, a je to pravidlo 2 z CLAUDE.md: meno je sľub o rozsahu, takže `basic` nesmie sadnúť na `svet.zip` ani na jeho uzol v `maps.json` – kto si podľa katalógu stiahne „mapu sveta“, nesmie dostať mapu bez morí. `country` je preto tiež `svet_basic`: balík leží vo vlastnom priečinku na Drive a v katalógu je vlastným koreňovým uzlom, vedľa `svet`."
+    "note": "The world map in its `basic` form – state borders and download regions only, no water or lakes (input `variant` in world-map.yml, lookup workers/data/world-variants.json). ITS OWN KEY, not a suffix to `svet`, by rule 2 of CLAUDE.md: a name is a promise about extent, so `basic` must not land on `svet.zip` or its node in `maps.json` – whoever downloads “the world map” from the catalog must not get a map without seas. So `country` is `svet_basic` too: the package sits in its own Drive folder and is its own root node in the catalog, beside `svet`."
   },
   "navigacia_slovensko": {
     "name": "Navigácia – Slovensko",
@@ -21,7 +21,7 @@
     "osm_name": "Slovensko",
     "admin_level": 2,
     "bbox": [16.83, 47.73, 22.57, 49.61],
-    "note": "Navigačný GRAF (Valhalla), nie mapa – `navigation.yml`, rozsah podľa workers/data/routing-areas.json. `osmfr` tu zámerne NIE JE: PBF si sťahuje `workers/routing/pbf.sh` podľa toho číselníka, lebo rozsah grafu je iná otázka než rozsah mapy – graf sa NEDELÍ po krajoch (rozpis tam). `admin_level: 2` znamená, že balík leží na Drive rovno v `navigacia_slovensko/`, bez úrovne kraja: kraj v ňom nie je a nemá byť. A `country` je ROVNAKÉ ako kľúč – nie spoločné `navigacia` pre všetky rozsahy: `admin_level: 2` spraví z krajiny aj uzol v katalógu, takže dva rozsahy pod jedným `navigacia` by si položku navzájom PREPISOVALI (balíky na Drive by ležali oba, katalóg by poznal ten druhý). To isté rozhodnutie a z toho istého dôvodu ako `svet_basic`."
+    "note": "The routing GRAPH (Valhalla), not a map – `navigation.yml`, extent from workers/data/routing-areas.json. `osmfr` is deliberately ABSENT: `workers/routing/pbf.sh` downloads the PBF by that lookup, since the graph's extent is another question than the map's – the graph is NOT split by region (see there). `admin_level: 2` means the package sits on Drive directly in `navigacia_slovensko/`, with no region level. And `country` EQUALS the key – not a shared `navigacia` for every scope: `admin_level: 2` makes the country a catalog node too, so two scopes under one `navigacia` would OVERWRITE each other's item (both packages on Drive, the catalog knowing the second). The same decision for the same reason as `svet_basic`."
   },
   "navigacia_slovensko_susedia": {
     "name": "Navigácia – Slovensko a susedia",
@@ -29,7 +29,7 @@
     "osm_name": "Slovensko + CZ, AT, HU, PL, UA",
     "admin_level": 2,
     "bbox": [9.47, 45.38, 40.23, 55.05],
-    "note": "To isté ako `navigacia_slovensko`, len s grafom cez hranice – bez neho sa nedá jazdiť do Rakúska, teda ani vyhnúť sa tomu, že tam nemám diaľničnú známku. VLASTNÝ KĽÚČ, nie prípona (pravidlo 2): kto si podľa katalógu stiahne `navigacia_slovensko`, nesmie dostať graf, ktorý na hranici končí – ani naopak. Vlastné `country` (a teda vlastný uzol v katalógu) z toho istého dôvodu ako pri `navigacia_slovensko`."
+    "note": "The same as `navigacia_slovensko`, with a graph across borders – without it one can't drive to Austria, so neither avoid lacking a vignette there. ITS OWN KEY, not a suffix (rule 2): whoever downloads `navigacia_slovensko` from the catalog must not get a graph that ends at the border – nor the reverse. Its own `country` (and so its own catalog node) for the same reason as `navigacia_slovensko`."
   },
   "slovensko": {
     "name": "Slovensko",
@@ -40,7 +40,7 @@
     "routing_area": "slovensko",
     "bbox": [16.815, 47.71, 22.585, 49.635],
     "osmfr": { "dir": "europe", "slugs": ["slovakia-latest"] },
-    "note": "Celé Slovensko ako jeden región – a zároveň RODIČ krajov: každý kraj má `osmfr.parent: slovensko` a `workers/plan/pbf.sh` si ho z tohto súboru vyreže (`osmium extract -s smart`). Hotový `{kraj}-latest.osm.pbf` na osm.fr sa NEPOUŽÍVA – nie je referenčne úplný, takže plocha presahujúca do susedného kraja (CHKO Malé Karpaty, CHKO Záhorie, lesy Záhoria) v ňom nemá všetkých členov a Planetiler ju zahodí CELÚ, aj tú časť, čo v kraji leží. Namerané aj s číslami v hlavičke pbf.sh. `iso` je dvojpísmenový kód krajiny a je tu kvôli SMEROVANIU: hrana v archíve nesie krajinu, lebo bez nej nemá diaľničná známka na čom stáť (`workers/data/vignettes.json`). Kraje si ho berú cez svoje `country`, takže je napísaný raz. `routing_area` je kľúč vo `workers/data/routing-areas.json`, nad ktorým sa počíta PORADIE UZLOV pre CCH – všetky kraje krajiny musia stáť na tom istom, inak sa ich archívy v telefóne nesmú spojiť."
+    "note": "All of Slovakia as one region – and the PARENT of its regions: each has `osmfr.parent: slovensko` and `workers/plan/pbf.sh` cuts it out of this file (`osmium extract -s smart`). osm.fr's ready `{region}-latest.osm.pbf` is NOT USED – it isn't referentially complete, so an area reaching into a neighbouring region (CHKO Malé Karpaty, CHKO Záhorie, the Záhorie forests) lacks members and Planetiler drops it WHOLE, the in-region part too. Measured, with figures in the pbf.sh header. `iso` is the two-letter country code, here for ROUTING: an archive edge carries its country, or the vignette has nothing to stand on (`workers/data/vignettes.json`). Regions take it through their `country`, so it's written once. `routing_area` is the key in `workers/data/routing-areas.json` the CCH NODE ORDER is computed over – every region of a country must stand on the same one, or their archives must not be joined on the phone."
   },
   "bratislavsky": {
     "name": "Bratislavský kraj",

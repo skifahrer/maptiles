@@ -1,28 +1,28 @@
-name: Ulož cache na Google Drive
+name: Save cache to Google Drive
 description: >-
-  Náhrada za actions/cache/save. Ukladá sa hneď, ako dáta vzniknú, nie
-  v post-kroku – zrušený beh tak nezahodí hotovú prácu.
+  Stand-in for actions/cache/save. It saves as soon as the data exists, not in
+  a post step – so a cancelled run doesn't throw finished work away.
 
-# ROVNAKÁ SÉMANTIKA AKO V GITHUBE: existujúci kľúč sa NEPREPISUJE. Preto majú
-# kľúče, ktoré sa majú dať dopĺňať (sklad častí sklonu, dlaždice tieňovania),
-# v sebe `github.run_id` a hľadajú sa cez `restore-keys`.
+# THE SAME SEMANTICS AS GITHUB: an existing key is NOT OVERWRITTEN. So keys meant
+# to be topped up (the slope part store, shading tiles) carry `github.run_id`
+# and are found through `restore-keys`.
 #
-# Keď uloženie zlyhá, krok SPADNE – volajúce miesta majú `continue-on-error`,
-# takže beh na tom neskončí, ale v logu je to červené. Cache, ktorá sa ticho
-# neuloží, stojí ďalší beh hodiny výpočtu a nikde inde to vidieť nie je.
+# When saving fails the step FAILS – callers have `continue-on-error`, so the run
+# goes on, but the log shows red. A cache that quietly isn't saved costs the next
+# run hours of compute and shows nowhere else.
 
 inputs:
   path:
-    description: "Čo sa ukladá – jedna cesta na riadok, ako pri actions/cache"
+    description: "What is saved – one path per line, as with actions/cache"
     required: true
   key:
-    description: "Kľúč záznamu"
+    description: "Entry key"
     required: true
 
 runs:
   using: composite
   steps:
-    - id: uloz
+    - id: save
       shell: bash
       env:
         CACHE_KEY: ${{ inputs.key }}

@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
 """
-Upratovanie GitHub cache: zmaže VŠETKY záznamy, lebo sa už nepoužívajú.
+GitHub cache cleanup: deletes EVERY entry, since none is used any more.
 
-PREČO TO EXISTUJE. GitHubová cache má na repozitár strop **10 GB** a keď sa
-naplní, nič nepovie – ticho vyhodí najstaršie záznamy (LRU). Táto pipeline do
-nej ukladala DEM dlaždice, sklad častí sklonu, vrstevnice, tieňovanie
-a dlaždice tieňovania, čo sú na jeden výrez desiatky GB. Výsledok bol, že si
-záznamy vyhadzovali navzájom a hodinové výpočty sa rátali odznova bez toho,
-aby bolo na čom to vidieť.
+WHY IT EXISTS. GitHub's cache caps a repository at **10 GB** and when full it
+says nothing – it quietly evicts the oldest entries (LRU). This pipeline stored
+DEM tiles, the slope part store, contours and shading there, tens of GB per
+cutout, so entries evicted each other and hour-long computations reran unseen.
 
-Odteraz cache leží na Google Drive (`workers/drive/cache.py`), takže tá
-GitHubová je len zvyšok, ktorý zaberá miesto. Tento skript ju vyprázdni.
+The cache now lives on Google Drive (`workers/drive/cache.py`), so GitHub's is
+just leftovers taking space. This script empties it.
 
-PREČO TO NEJDE INAK: cache nie je súbor v repozitári, takže sa nedá zmazať
-pull requestom. `gh cache delete` mimo Actions síce ide, ale s tokenom, ktorý
-na to má právo – vnútri behu ho `GITHUB_TOKEN` má, keď mu workflow dá
-`actions: write`. Preto je to workflow.
+WHY IT CAN'T BE DONE OTHERWISE: a cache entry isn't a file in the repository,
+so no pull request can delete it; inside a run `GITHUB_TOKEN` can, given
+`actions: write`. Hence a workflow.
 
-Beží ako `workers/tools/cleanup-cache.py`; čo robiť, hovorí prostredie:
+Runs as `workers/tools/cleanup-cache.py`; the environment says what to do:
     DRY_RUN=true | false           (default: false)
-    KEEP=<predpona>                nemazať kľúče s touto predponou (default: nič)
-Očakáva `gh` a GITHUB_REPOSITORY od runnera.
+    KEEP=<prefix>                  keep keys with this prefix (default: none)
+Expects `gh` and GITHUB_REPOSITORY from the runner.
 """
 import json
 import os
@@ -38,26 +35,21 @@ def human(n):
 
 
 def gh(path, method=None):
-    """Jedno volanie API. Vráti rozparsovaný JSON, alebo None pri chybe."""
+    """One API call. Parsed JSON, or None on error."""
     cmd = ["gh", "api", "-H", "Accept: application/vnd.github+json"]
     if method:
         cmd += ["-X", method]
     cmd.append(path)
     p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode:
-        # Chyba jedného volania nemá zhodiť celé upratovanie – vypíše sa
-        # a ide sa ďalej. Pri mazaní je 404 dokonca v poriadku (už je preč).
+        # one failed call mustn't stop the cleanup; a 404 on delete is fine
         print(f"::warning::{method or 'GET'} {path}: {p.stderr.strip()[:160]}")
         return None
     return json.loads(p.stdout) if p.stdout.strip() else {}
 
 
 def pages(path, key, cap=50):
-    """Postránkovo stiahne zoznam; `cap` je poistka proti nekonečnu.
-
-    Mazanie počas listovania posúva stránky pod rukami, preto sa NAJPRV
-    načíta celý zoznam a až potom sa maže.
-    """
+    """A list page by page – all of it before deleting, which shifts the pages."""
     out, page = [], 1
     sep = "&" if "?" in path else "?"
     while page <= cap:
@@ -73,67 +65,67 @@ def pages(path, key, cap=50):
 
 
 def usage():
-    """Koľko cache repozitár práve drží (podľa GitHubu, nie podľa nášho súčtu)."""
+    """How much cache the repository holds, by GitHub's count, not ours."""
     d = gh(f"/repos/{REPO}/actions/cache/usage") or {}
     return (int(d.get("active_caches_size_in_bytes") or 0),
             int(d.get("active_caches_count") or 0))
 
 
 def main():
-    print(f"Repozitár: {REPO}   "
-          f"{'LEN VÝPIS (nič sa nemaže)' if DRY else 'ostro'}"
-          + (f"   nechávam kľúče s predponou `{KEEP}`" if KEEP else ""))
+    print(f"Repository: {REPO}   "
+          f"{'DRY RUN (nothing deleted)' if DRY else 'for real'}"
+          + (f"   keeping keys prefixed `{KEEP}`" if KEEP else ""))
 
-    pred_b, pred_n = usage()
-    print(f"\nGitHub cache pred: {pred_n} záznamov, {human(pred_b)} "
-          f"(strop na repozitár je 10 GB)")
+    before_b, before_n = usage()
+    print(f"\nGitHub cache before: {before_n} entries, {human(before_b)} "
+          f"(the repository cap is 10 GB)")
 
     caches = pages(f"/repos/{REPO}/actions/caches", "actions_caches")
-    smeti = [c for c in caches if not (KEEP and c["key"].startswith(KEEP))]
-    nechane = len(caches) - len(smeti)
-    velkost = sum(int(c.get("size_in_bytes") or 0) for c in smeti)
+    rubbish = [c for c in caches if not (KEEP and c["key"].startswith(KEEP))]
+    kept = len(caches) - len(rubbish)
+    size = sum(int(c.get("size_in_bytes") or 0) for c in rubbish)
 
-    print(f"\nZáznamov na zmazanie: {len(smeti)} z {len(caches)}, "
-          f"{human(velkost)}")
-    for c in sorted(smeti, key=lambda c: -int(c.get("size_in_bytes") or 0)):
+    print(f"\nEntries to delete: {len(rubbish)} of {len(caches)}, "
+          f"{human(size)}")
+    for c in sorted(rubbish, key=lambda c: -int(c.get("size_in_bytes") or 0)):
         print(f"  {human(int(c.get('size_in_bytes') or 0)):>9}  "
               f"{(c.get('last_accessed_at') or '')[:19]}  {c['key']}")
-    if nechane:
-        print(f"  (nechávam {nechane} záznamov s predponou `{KEEP}`)")
+    if kept:
+        print(f"  (keeping {kept} entries prefixed `{KEEP}`)")
 
-    zmazane = 0
+    deleted = 0
     if not DRY:
-        for c in smeti:
+        for c in rubbish:
             if gh(f"/repos/{REPO}/actions/caches/{c['id']}",
                   method="DELETE") is not None:
-                zmazane += 1
+                deleted += 1
             else:
-                print(f"::warning::záznam `{c['key']}` sa nepodarilo zmazať")
-        po_b, po_n = usage()
-        print(f"\nZmazaných: {zmazane} z {len(smeti)}. "
-              f"GitHub cache po: {po_n} záznamov, {human(po_b)}")
+                print(f"::warning::entry `{c['key']}` couldn't be deleted")
+        after_b, after_n = usage()
+        print(f"\nDeleted: {deleted} of {len(rubbish)}. "
+              f"GitHub cache after: {after_n} entries, {human(after_b)}")
 
     if SUMMARY:
         with open(SUMMARY, "a") as f:
             f.write("### GitHub cache\n\n")
-            f.write("Len výpis, nič sa nemazalo.\n\n" if DRY else "")
-            f.write("| vec | hodnota |\n|---|--:|\n")
-            f.write(f"| záznamov pred | {pred_n} |\n")
-            f.write(f"| veľkosť pred | {human(pred_b)} (strop 10 GB) |\n")
-            f.write(f"| {'na zmazanie' if DRY else 'zmazaných'} | "
-                    f"{len(smeti) if DRY else zmazane} |\n")
-            f.write(f"| {'uvoľnilo by sa' if DRY else 'uvoľnené'} | "
-                    f"{human(velkost)} |\n")
-            if smeti:
-                f.write("\n<details><summary>Zoznam záznamov</summary>\n\n")
-                for c in sorted(smeti,
+            f.write("Dry run, nothing was deleted.\n\n" if DRY else "")
+            f.write("| what | value |\n|---|--:|\n")
+            f.write(f"| entries before | {before_n} |\n")
+            f.write(f"| size before | {human(before_b)} (cap 10 GB) |\n")
+            f.write(f"| {'to delete' if DRY else 'deleted'} | "
+                    f"{len(rubbish) if DRY else deleted} |\n")
+            f.write(f"| {'would free' if DRY else 'freed'} | "
+                    f"{human(size)} |\n")
+            if rubbish:
+                f.write("\n<details><summary>Entries</summary>\n\n")
+                for c in sorted(rubbish,
                                 key=lambda c: -int(c.get("size_in_bytes") or 0)):
                     f.write(f"- `{c['key']}` – "
                             f"{human(int(c.get('size_in_bytes') or 0))}\n")
                 f.write("\n</details>\n")
-            f.write("\nBuild si cache berie z Google Drive "
-                    "(`workers/drive/cache.py`), takže tieto záznamy už nikto "
-                    "nehľadá.\n\n")
+            f.write("\nBuilds take their cache from Google Drive "
+                    "(`workers/drive/cache.py`), so nobody looks for these "
+                    "entries any more.\n\n")
     return 0
 
 

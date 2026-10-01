@@ -1,63 +1,64 @@
 name: Map · boundaries
 
-# HRANICE ÚZEMÍ A ICH NÁZVY z OSM do vlastného `.pmtiles`: štát, kraj, okres
-# a obec ako plochy aj čiary, s menom a úrovňou, plus body sídel. Vrstva
-# `boundary` OpenMapTiles je čiara BEZ MENA územia, ktoré ohraničuje – rozpis
-# v hlavičke `workers/boundaries/boundaries.yml`. Je to balík `hranice`.
+# AREA BOUNDARIES AND THEIR NAMES from OSM into their own `.pmtiles`: state,
+# region, district and municipality as areas and lines, with name and level,
+# plus settlement points. OpenMapTiles' `boundary` layer is a line WITHOUT THE
+# NAME of the area it bounds – see the `workers/boundaries/boundaries.yml`
+# header. It's the `boundaries` package.
 #
-# Jeden rozdiel oproti ostatným vrstvám: predfilter musí doťahovať aj členov
-# relácií, lebo hranica obce je relácia, ktorej členovia
-# `boundary=administrative` nemajú.
+# One difference from other layers: the prefilter must pull relation members
+# too, since a municipality border is a relation whose members lack
+# `boundary=administrative`.
 #
-# Samostatný súbor preto, že `build-map-region.yml` je pri strope 128 KiB.
+# A file of its own because `build-map-region.yml` is near the 128 KiB cap.
 on:
   workflow_call:
     inputs:
       region_key:
-        description: "Kľúč regiónu – z neho je meno `{region}-boundaries.pmtiles`"
+        description: "Region key – it names `{region}-boundaries.pmtiles`"
         required: true
         type: string
       region_bbox:
-        description: "Bbox regiónu pre orez dlaždíc (workers/lib/region-clip.sh)"
+        description: "Region bbox for clipping tiles (workers/lib/region-clip.sh)"
         required: true
         type: string
       maxzoom:
-        description: "Najvyšší zoom dlaždíc s hranicami"
+        description: "Highest zoom of the boundary tiles"
         required: false
         default: "12"
         type: string
       region_clip:
-        description: "Orezať dlaždice na hranicu regiónu"
+        description: "Clip tiles to the region border"
         required: false
         default: "false"
         type: string
       size_limit_mb:
-        description: "Rozpočet celej stránky v MB"
+        description: "The whole page budget in MB"
         required: false
         default: "900"
         type: string
       budget_pct:
-        description: "Podiel hraníc na rozpočte stránky v percentách"
+        description: "The boundaries' share of the page budget in percent"
         required: false
         default: "3"
         type: string
       day:
-        description: "Dátum pre kľúč cache Planetileru"
+        description: "Date for the Planetiler cache key"
         required: false
         default: ""
         type: string
     outputs:
       enabled:
-        description: "Vznikla vrstva? (vo výreze nemusí byť ani jedna hranica)"
+        description: "Was the layer made? (a cutout may hold no boundary)"
         value: ${{ jobs.boundaries.outputs.enabled }}
       maxzoom:
-        description: "Zoom, po ktorý dlaždice naozaj sú"
+        description: "The zoom tiles really go up to"
         value: ${{ jobs.boundaries.outputs.maxzoom }}
       size_mb:
-        description: "Veľkosť vrstvy v MB"
+        description: "Layer size in MB"
         value: ${{ jobs.boundaries.outputs.size_mb }}
-    # `workflow_call` nededí secrets sám. Bez nich sa cache na Drive nemá ako
-    # otvoriť a Planetiler (93 MB) sa ťahá pri každom behu.
+    # `workflow_call` doesn't inherit secrets; without them the Drive cache can't
+    # open and Planetiler (93 MB) is downloaded on every run.
     secrets:
       GDRIVE_CREDENTIALS:
         required: false
@@ -66,8 +67,8 @@ on:
       DRIVE_REFRESH:
         required: false
 
-# prihlásenie na Drive pre celý workflow, nie po kroku: `cache-restore`
-# a `cache-save` sú dva kroky a jeden bez tokenu by ťahal všetko odznova
+# Drive sign-in for the whole workflow, not per step: `cache-restore` and
+# `cache-save` are two steps and one without a token would download everything again
 env:
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
   DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
@@ -76,7 +77,7 @@ env:
 
 jobs:
   boundaries:
-    name: Hranice území
+    name: Area boundaries
     runs-on: ubuntu-latest
     outputs:
       enabled: ${{ steps.boundaries.outputs.enabled }}
@@ -85,18 +86,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Priprav priečinok na meranie
+      - name: Prepare the timing folder
         run: mkdir -p steps-out
 
-      - name: Stiahni PBF z prípravy
+      - name: Download the PBF from the plan
         uses: actions/download-artifact@v8
         with:
           name: pbf
           path: data
 
-      # polygón regiónu je `--polygon` pre Planetiler; `continue-on-error`,
-      # lebo aj bez neho sa beh dokončiť dá (dlaždice budú na bboxe)
-      - name: Stiahni polygón regiónu
+      # the region polygon is Planetiler's `--polygon`; `continue-on-error`, since
+      # the run finishes without it too (tiles then follow the bbox)
+      - name: Download the region polygon
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
@@ -126,13 +127,13 @@ jobs:
           path: planetiler.jar
           key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
 
-      # testy schémy pred stavbou (`examples`) – jediná vec, ktorá o schéme
-      # povie pravdu bez celého behu. Beží ako prvé.
-      - name: Testy schémy hraníc
+      # schema tests before the build (`examples`) – the one thing that tells the
+      # truth about a schema without a whole run. They go first.
+      - name: Boundary schema tests
         run: java -jar planetiler.jar verify workers/boundaries/boundaries.yml
 
-      # rozpis je vo `workers/boundaries/build.sh`
-      - name: Hranice území z OSM → PMTiles
+      # described in `workers/boundaries/build.sh`
+      - name: Area boundaries from OSM → PMTiles
         id: boundaries
         env:
           OPT_BOUNDARIES_MAXZOOM: ${{ inputs.maxzoom }}
@@ -143,7 +144,7 @@ jobs:
           BUDGET_BOUNDARIES_PCT: ${{ inputs.budget_pct }}
         run: workers/boundaries/build.sh
 
-      - name: Odlož časť stránky
+      - name: Upload the site part
         if: ${{ always() && hashFiles('_site/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -153,7 +154,7 @@ jobs:
           compression-level: 0
           if-no-files-found: ignore
 
-      - name: Odlož meranie krokov
+      - name: Upload the step timing
         if: ${{ always() && hashFiles('steps-out/*') != '' }}
         uses: actions/upload-artifact@v7
         with:

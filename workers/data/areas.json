@@ -1,11 +1,11 @@
 {
   "_comment": [
-    "Pomenované výrezy pre input `rock_area` vo workflowe Build map.",
-    "Skaly sú najdrahšia časť buildu (~30 min na kraj); pri ladení nastavení",
-    "nemá zmysel počítať celý kraj, keď zaujíma jedno pohorie.",
-    "Bbox je west,south,east,north vo WGS84 a je zámerne o kúsok väčší než",
-    "samotné pohorie – radšej trochu navyše než odrezaný hrebeň.",
-    "Workflow ho vždy ešte pretne s bboxom zvoleného regiónu."
+    "Named cutouts for the `rock_area` input of the Build map workflow.",
+    "Rocks are the costliest part of a build (~30 min per region); when tuning",
+    "settings there's no point computing a whole region for one range.",
+    "The bbox is west,south,east,north in WGS84 and deliberately a bit larger than",
+    "the range itself – rather a little extra than a clipped ridge.",
+    "The workflow always intersects it with the chosen region's bbox too."
   ],
   "tatry": {
     "name": "Tatry (Západné + Vysoké + Belianske)",

@@ -1,119 +1,117 @@
 name: Maintenance · weekly cleanup
 
-# Jediný upratovací workflow: raz za týždeň zmaže to, čo po behoch ostalo.
-# Dva joby (`github` a `drive`), lebo sa líšia právami aj tým, čo ich vie zhodiť.
+# The one cleanup workflow: once a week it deletes what runs left behind.
+# Two jobs (`github` and `drive`), since they differ in rights and in what can fail them.
 #
-# Workflow a nie pull request preto, že behy, vetvy, releasy, artefakty ani
-# cache nie sú súbory v repozitári – zmazať ich vie len `GITHUB_TOKEN` vnútri
-# behu.
+# A workflow, not a pull request, because runs, branches, releases, artifacts and
+# caches aren't files in the repository – only `GITHUB_TOKEN` inside a run can
+# delete them.
 #
-# Na GitHube maže behy zrušených workflowov a odmietnutých súborov, releasy
-# aj ich assety, artefakty, GitHub cache (tá sa už nepoužíva) a voliteľne
-# vetvy `claude/*`. Nič sa tým nestratí – všetko publikované leží v sklade na
-# Drive (`workers/drive/store.py`).
+# On GitHub it deletes runs of retired workflows and rejected files, releases and
+# their assets, artifacts, the GitHub cache (no longer used) and optionally
+# `claude/*` branches. Nothing is lost – everything published lies in the Drive
+# store (`workers/drive/store.py`).
 #
-# Na Drive prerieďuje cache dvoma rýchlosťami: hotové vrstvy z výškového modelu
-# 180 dní (sú to hodiny výpočtu na kraj), zvyšok 30. Sklad `vysledky` 90 dní,
-# presne tá retencia, ktorú mal artefakt. Sklady s výškovým modelom sa
-# neprerieďujú – to sú drahé zrkadlá.
+# On Drive it thins the cache at two speeds: finished elevation layers 180 days
+# (hours of compute per region), the rest 30. The `results` store 90 days, the
+# retention artifacts had. Elevation model stores aren't thinned – costly mirrors.
 #
-# Z plánu beží `tyzdenne`: releasy, artefakty a obe cache. Behy a vetvy sa
-# z plánu nemažú – to je história a patrí do rúk človeku.
+# The schedule runs `weekly`: releases, artifacts and both caches. Runs and
+# branches aren't deleted on schedule – that's history, for a human to decide.
 
 on:
   workflow_dispatch:
     inputs:
-      co:
-        description: "Čo upratať"
+      what:
+        description: "What to clean"
         required: false
-        default: tyzdenne
+        default: weekly
         type: choice
         options:
-          - tyzdenne
-          - behy
-          - behy_a_vetvy
-          - releasy_a_artefakty
+          - weekly
+          - runs
+          - runs_and_branches
+          - releases_and_artifacts
           - cache
-          - vsetko
+          - everything
       dry_run:
-        description: "Len vypísať, čo by sa zmazalo (nič sa nemaže)"
+        description: "Only list what would be deleted (nothing is deleted)"
         required: false
         default: false
         type: boolean
       keep_days:
-        description: "Na Drive nechať záznamy mladšie než toľkoto dní (0 = nemazať podľa veku)"
+        description: "On Drive keep entries younger than this many days (0 = no age limit)"
         required: false
         default: "30"
         type: string
       keep_days_layers:
-        description: "Hotové vrstvy (vrstevnice, skaly, tieňovanie) nechať toľkoto dní"
+        description: "Keep finished layers (contours, rocks, shading) this many days"
         required: false
         default: "180"
         type: string
       keep_gb:
-        description: "Strop priečinka cache na Drive v GB (0 = bez stropu)"
+        description: "Drive cache folder cap in GB (0 = no cap)"
         required: false
         default: "100"
         type: string
       keep_days_results:
-        description: "V sklade `vysledky` nechať archívy mladšie než toľkoto dní"
+        description: "In the `results` store keep archives younger than this many days"
         required: false
         default: "90"
         type: string
   schedule:
-    # nedeľa 03:20 UTC – mimo času, keď sa buildy spúšťajú ručne
+    # Sunday 03:20 UTC – outside the hours builds are started by hand
     - cron: "20 3 * * 0"
 
 permissions:
   contents: read
 
 concurrency:
-  # dva behy naraz by si navzájom mazali to isté a hádzali 404
+  # two runs at once would delete the same things and throw 404s
   group: cleanup
   cancel-in-progress: false
 
 jobs:
   github:
-    name: Upratať GitHub
-    # pri behu z plánu je `inputs.co` prázdne – vtedy platí `tyzdenne`
-    if: ${{ inputs.co != 'cache' }}
+    name: Clean GitHub
+    # a scheduled run has an empty `inputs.what` – then `weekly` applies
+    if: ${{ inputs.what != 'cache' }}
     runs-on: ubuntu-latest
     permissions:
-      actions: write    # mazanie behov, artefaktov a cache
-      contents: write   # mazanie vetiev a releasov aj s ich tagmi
+      actions: write    # deleting runs, artifacts and caches
+      contents: write   # deleting branches and releases with their tags
     steps:
-      # checkout je tu kvôli jedinej veci: skript sa pozerá, či súbor workflowu
-      # ešte existuje. Bez neho by mu všetky vyšli ako zrušené.
+      # checkout for one thing: the script checks whether a workflow file still
+      # exists; without it every workflow would look retired
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Behy, vetvy, releasy a artefakty
+      - name: Runs, branches, releases and artifacts
         env:
           GH_TOKEN: ${{ github.token }}
-          # `tyzdenne` = releasy a artefakty; behy a vetvy sú história
-          MODE: ${{ (inputs.co == '' || inputs.co == 'tyzdenne') && 'releasy_a_artefakty' || inputs.co }}
+          # `weekly` = releases and artifacts; runs and branches are history
+          MODE: ${{ (inputs.what == '' || inputs.what == 'weekly') && 'releases_and_artifacts' || inputs.what }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: python3 workers/tools/cleanup-actions.py
 
-      # GitHubová cache má strop 10 GB a keď sa naplní, ticho vyhodí najstaršie
-      # záznamy – preto sa presťahovala na Drive. To, čo v GitHube ostalo, už
-      # nikto nehľadá.
-      - name: Zmaž GitHub cache
-        if: ${{ inputs.co == '' || inputs.co == 'tyzdenne' || inputs.co == 'cache' || inputs.co == 'vsetko' }}
+      # GitHub's cache caps at 10 GB and quietly evicts the oldest when full – so
+      # it moved to Drive; nobody looks for what's left on GitHub
+      - name: Delete the GitHub cache
+        if: ${{ inputs.what == '' || inputs.what == 'weekly' || inputs.what == 'cache' || inputs.what == 'everything' }}
         env:
           GH_TOKEN: ${{ github.token }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: python3 workers/tools/cleanup-cache.py
 
   drive:
-    name: Prerieď Drive
-    if: ${{ inputs.co == '' || inputs.co == 'tyzdenne' || inputs.co == 'cache' || inputs.co == 'vsetko' }}
+    name: Thin Drive
+    if: ${{ inputs.what == '' || inputs.what == 'weekly' || inputs.what == 'cache' || inputs.what == 'everything' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
-      # prerieďovanie maže súbory, takže potrebuje token vlastníka s rozsahom
-      # na zápis; readonly to povie hneď a s návodom
+      # thinning deletes files, so it needs the owner's token with write scope;
+      # a readonly one says so at once, with instructions
       GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
       DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
       DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
@@ -122,15 +120,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # lacná otázka na začiatok – inak sa odpoveď dozvieme až z 403 pri mazaní
-      - name: Prístup k cache na Drive
+      # a cheap question first – otherwise the answer is a 403 while deleting
+      - name: Drive cache access
         continue-on-error: true
         run: python3 workers/drive/cache.py --check
 
-      # dve rýchlosti: hotové vrstvy z výškového modelu sú hodiny výpočtu na
-      # kraj a dávka ich berie hotové aj o mesiace. Zvyšok (DEM dlaždice,
-      # Planetiler, PBF) sa dá zohnať znova, tak mu 30 dní stačí.
-      - name: Prerieď cache na Drive
+      # two speeds: finished elevation layers are hours of compute per region and
+      # batches reuse them months later; the rest (DEM tiles, Planetiler, PBF)
+      # can be fetched again, so 30 days do
+      - name: Thin the Drive cache
         env:
           KEEP_DAYS: ${{ inputs.keep_days }}
           KEEP_DAYS_LAYERS: ${{ inputs.keep_days_layers }}
@@ -147,9 +145,9 @@ jobs:
             "${ARGS[@]}" \
             --summary="$GITHUB_STEP_SUMMARY"
 
-      # sklad `vysledky` nahradil dlhodobé artefakty a rovnako ako ony sa má
-      # sám prerieďovať; ostatné sklady nie – výškový model je drahé zrkadlo
-      - name: Prerieď sklad medzivýsledkov
+      # the `results` store replaced long-lived artifacts and thins like they did;
+      # other stores don't – an elevation model is a costly mirror
+      - name: Thin the intermediate results store
         continue-on-error: true
         env:
           KEEP_DAYS: ${{ inputs.keep_days_results }}

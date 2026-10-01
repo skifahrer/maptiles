@@ -1,65 +1,65 @@
 name: Data · elevation models
 
-# JEDINÁ sťahovacia pipeline pre výškové modely: vyber `source`, ona ho zoženie,
-# preveďie na dlaždice 1°×1° vo WGS84 a uloží do skladu na Drive.
+# THE ONE download pipeline for elevation models: pick a `source` and it fetches
+# it, converts it to 1°×1° WGS84 tiles and saves them to a Drive store.
 #
-# | source  | čo to je                    | sklad        | mriežka |
+# | source  | what it is                  | store        | grid    |
 # |---------|-----------------------------|--------------|---------|
 # | sonny   | Sonny's LiDAR DTM (Drive)   | dem-sonny    | 20 m    |
 # | sonny1  | Sonny's LiDAR DTM 1″ (Drive)| dem-sonny1   | 20×31 m |
 # | dmr35   | ÚGKK DMR 3.5 (opendata ZIP) | dem-dmr35    | ~10 m   |
 # | ugkk    | ÚGKK DMR 5.0 (1 m LiDAR)    | dem-ugkk     | 1 m     |
 #
-# `dmr5` v tabuľke nie je a `what: dmr5` je CHYBA: tento workflow sťahuje archív
-# na runner, model má 145 GB a runner ~60 GB. Robí to `dmr5-drive.yml` cez HTTP
-# Range. Kým tu bol rozcestník končiaci úspechom, doplnenie bolo tiché nič.
+# `dmr5` isn't in the table and `what: dmr5` is an ERROR: this workflow downloads
+# the archive to the runner, the model is 145 GB and the runner ~60 GB.
+# `dmr5-drive.yml` does it via HTTP Range. A signpost ending green was a quiet no-op.
 #
-# `ugkk` sa z GitHub runnera stiahnuť nedá (zbgis.skgeodesy.sk timeoutuje);
-# ostáva vo výbere kvôli `url` z ručného exportu.
+# `ugkk` can't be downloaded from a GitHub runner (zbgis.skgeodesy.sk times out);
+# it stays in the choice for a `url` from a manual export.
 #
-# Zrkadlí sa preto, že Drive nemá stabilné priame URL a pri väčšom počte
-# sťahovaní odmieta. `sonny` (0,1 m zvislý krok) je na skaly lepší než `sonny1`
-# (celé metre → zubatý sklon). 1″ priečinok sú samé skratky, tak chce prihlásenie.
+# Mirrored because Drive has no stable direct URL and refuses many downloads.
+# `sonny` (0.1 m vertical step) beats `sonny1` for rocks (whole metres → jagged
+# slope). The 1″ folder is all shortcuts, so it needs a sign-in.
 #
-# Jeden sklad = jeden model: dlaždice sa volajú rovnako a prepísali by sa.
-# Licencia: Sonny's LiDAR DTM – CC BY 4.0, zdroj sa uvádza v atribúcii mapy.
+# One store = one model: tiles share names and would overwrite each other.
+# Licence: Sonny's LiDAR DTM – CC BY 4.0, credited in the map attribution.
 
 on:
   workflow_dispatch:
     inputs:
       what:
-        description: "Čo stiahnuť"
+        description: "What to download"
         required: true
         default: "dmr35 | https://opendata.skgeodesy.sk/static/DMR3_5/dmr3_5-10.zip"
         type: choice
         options:
           - "dmr35 | https://opendata.skgeodesy.sk/static/DMR3_5/dmr3_5-10.zip"
-          - "sonny | Google Drive (20 m, celé Slovensko)"
-          - "sonny1 | Google Drive (1″ .hgt, krok 1 m – hrubší, chce token)"
-          - "ugkk  | DMR 5.0 1 m – vyplň custom_url odkazom z exportu ZBGIS"
-          - "vlastné | vyplň custom_url"
+          - "sonny | Google Drive (20 m, all of Slovakia)"
+          - "sonny1 | Google Drive (1″ .hgt, 1 m step – coarser, needs a token)"
+          - "ugkk  | DMR 5.0 1 m – fill custom_url with a ZBGIS export link"
+          - "custom | fill in custom_url"
       custom_url:
-        description: "URL, keď je vyššie „vlastné“ alebo „ugkk“. ZIP/TIF/HGT; viac odkazov oddeľ medzerou"
+        description: "URL when “custom” or “ugkk” is picked above. ZIP/TIF/HGT; separate several links by spaces"
         required: false
         default: ""
         type: string
       store:
-        description: "Do ktorého skladu na Drive uložiť (prázdne = podľa výberu)"
+        description: "Which Drive store to save to (empty = by the choice)"
         required: false
         default: ""
         type: string
       area:
-        description: "Len pre ugkk: pohorie z workers/data/areas.json alebo bbox W,S,E,N"
+        description: "ugkk only: a range from workers/data/areas.json or a bbox W,S,E,N"
         required: false
         default: vysoke_tatry
         type: string
       force:
-        description: "Stiahnuť nanovo, aj keď už dáta v sklade sú"
+        description: "Download again even when the store already has the data"
         required: false
         default: false
         type: boolean
-  # volá ho aj Build map, keď v sklade nie sú dlaždice pre jeho územie.
-  # `workflow_call` nepozná `type: choice`, tak sem chodí holý kľúč zdroja.
+  # Build map calls it too when the store lacks tiles for its area.
+  # `workflow_call` has no `type: choice`, so a bare source key comes here.
   workflow_call:
     inputs:
       what:
@@ -81,8 +81,8 @@ on:
         required: false
         default: false
         type: boolean
-    # `workflow_call` nededí secrets automaticky. Nič nie je povinné – bez
-    # tokenu sa nemení nič, len sa vypíše, že platí verejný limit.
+    # `workflow_call` doesn't inherit secrets. None is required – without
+    # a token nothing changes, the run just says the public quota applies.
     secrets:
       GDRIVE_CREDENTIALS:
         required: false
@@ -91,7 +91,7 @@ on:
       DRIVE_REFRESH:
         required: false
 
-# `contents: read` stačí: publikuje sa na Drive, nie do releasov
+# `contents: read` will do: it publishes to Drive, not to releases
 permissions:
   contents: read
 
@@ -99,12 +99,12 @@ jobs:
   mirror:
     runs-on: ubuntu-latest
     env:
-      # priečinok sa nemení – nemá čo zaberať pole vo formulári
+      # the folder doesn't change – it needn't take a form field
       SONNY_DRIVE_FOLDER: https://drive.google.com/drive/folders/1qrGm0mPDwmZytOkYQup6TfhCw9ohlsMa
-      # Sonnyho 1″ model (.hgt), zvislý krok 1 m namiesto 0,1 m
+      # Sonny's 1″ model (.hgt), a 1 m vertical step instead of 0.1 m
       SONNY1_DRIVE_FOLDER: https://drive.google.com/drive/folders/1FCXPutDU6DvnTEA4PY6iFOQKiuVd11j4
-      # token vlastníka dvíha denný strop na vlastné súbory; na cudzí zdieľaný
-      # priečinok aspoň dovolí čítať cez Drive API, ktoré odmietnutie povie rovno
+      # an owner token lifts the daily cap on own files; on someone else's shared
+      # folder it at least allows the Drive API, which states a refusal plainly
       GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
       DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
       DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
@@ -113,53 +113,53 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Nainštaluj GDAL a gdown
+      - name: Install GDAL and gdown
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq gdal-bin p7zip-full
           python3 -m pip install --quiet --upgrade gdown
 
-      # jediné miesto, kde sa rozhoduje „čo → odkiaľ → do ktorého skladu".
-      # Obyčajný `case`, nie čítanie JSONu: URL je vidieť priamo vo formulári.
-      - name: Priprav zdroj
+      # the one place deciding “what → from where → into which store”.
+      # A plain `case`, not JSON: the URL shows right in the form.
+      - name: Prepare the source
         id: src
         run: |
           set -uo pipefail
           WHAT='${{ inputs.what }}'
           CUSTOM='${{ inputs.custom_url }}'
-          # kľúč je to, čo je pred „|" – z výberu aj z `workflow_call`
+          # the key is what precedes “|” – from the choice and from `workflow_call`
           KEY=$(printf '%s' "$WHAT" | cut -d'|' -f1 | tr -d '[:space:]')
           case "$KEY" in
             dmr35)
               URL="https://opendata.skgeodesy.sk/static/DMR3_5/dmr3_5-10.zip"
-              REL=dem-dmr35; LABEL="ÚGKK DMR 3.5 (otvorené dáta)" ;;
+              REL=dem-dmr35; LABEL="ÚGKK DMR 3.5 (open data)" ;;
             sonny)
               URL=""; REL=dem-sonny; LABEL="Sonny's LiDAR DTM 20 m" ;;
             sonny1)
-              # druhý Sonnyho priečinok (1″ .hgt); prevod je ten istý krok,
-              # líši sa len priečinok a sklad
+              # Sonny's second folder (1″ .hgt); the conversion is the same step,
+              # only the folder and the store differ
               URL=""; REL=dem-sonny1; LABEL="Sonny's LiDAR DTM 1″ (.hgt)" ;;
             ugkk)
               URL="$CUSTOM"; REL=dem-ugkk; LABEL="ÚGKK DMR 5.0 (1 m LiDAR)" ;;
             dmr5)
-              # DMR 5.0 sem nepatrí a nie je to rozcestník, ale chyba: tu sa
-              # archív sťahuje na runner (145 GB proti ~60 GB voľným).
-              # Doplnenie, ktoré nedopĺňa, musí byť červené hneď.
-              echo "::error::DMR 5.0 sa cez „Dáta · výškové modely“ doplniť nedá (145 GB, runner má ~60 GB). Použi workflow „Dáta · DMR 5.0“: area: <pohorie> → dem-ugkk, alebo area: <bbox stupňov> s tiles: true → dem-dmr5-v2. Build map si ju volá sám (joby „Doplniť DMR 5.0 …“)."
+              # DMR 5.0 doesn't belong here and it's an error, not a signpost: this
+              # downloads the archive to the runner (145 GB against ~60 GB free).
+              # A refill that refills nothing must be red at once.
+              echo "::error::DMR 5.0 can't be filled in through “Data · elevation models” (145 GB, the runner has ~60 GB). Use the “Data · DMR 5.0” workflow: area: <range> → dem-ugkk, or area: <degree bbox> with tiles: true → dem-dmr5-v2. Build map calls it itself (the “Refill DMR 5.0 …” jobs)."
               exit 1 ;;
             vlastné|vlastne|custom)
-              URL="$CUSTOM"; REL=dem-dmr35; LABEL="vlastné URL" ;;
+              URL="$CUSTOM"; REL=dem-dmr35; LABEL="custom URL" ;;
             *)
-              echo "::error::Neznáme „$WHAT“. Známe: dmr35, sonny, sonny1, ugkk, dmr5, vlastné."
+              echo "::error::Unknown “$WHAT”. Known: dmr35, sonny, sonny1, ugkk, dmr5, custom."
               exit 1 ;;
           esac
-          # URL z výberu sa dá prebiť `custom_url`
+          # `custom_url` overrides the choice's URL
           if [ -n "${CUSTOM//[[:space:]]/}" ] && [ "$KEY" != "sonny" ] && [ "$KEY" != "sonny1" ]; then
             URL="$CUSTOM"
           fi
           [ -n '${{ inputs.store }}' ] && REL='${{ inputs.store }}'
           if [ "$KEY" != "sonny" ] && [ "$KEY" != "sonny1" ] && [ -z "${URL//[[:space:]]/}" ]; then
-            echo "::error::Pre „$KEY“ treba URL – vyplň custom_url."
+            echo "::error::“$KEY” needs a URL – fill in custom_url."
             exit 1
           fi
           {
@@ -170,100 +170,100 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "── $LABEL"
           echo "   URL:   ${URL:-(Google Drive)}"
-          echo "   sklad: $REL"
+          echo "   store: $REL"
 
-      - name: Stiahni dlaždice
+      - name: Download the tiles
         id: fetch
         if: ${{ contains(fromJSON('["sonny","sonny1"]'), steps.src.outputs.key) }}
         run: |
           set -uo pipefail
           mkdir -p dl
 
-          # čím sa to naozaj stiahlo, ide do súhrnu – tichý návrat k verejnému
-          # limitu by sa zistil až o pol dňa
+          # how it really downloaded goes into the summary – a quiet fall back to the
+          # public quota would surface only half a day later
           DRIVE_MODE="priame URL (mimo Drive)"
 
           URLS='${{ steps.src.outputs.url }}'
           if [ -n "${URLS//[[:space:]]/}" ]; then
-            # priame URL (napr. mirror) majú prednosť – Drive vie limitovať
+            # direct URLs (e.g. a mirror) win – Drive can throttle
             for u in $URLS; do
               echo "── $u"
               curl -fL --retry 3 --retry-delay 5 -O --output-dir dl "$u" \
-                || echo "::warning::$u sa nepodarilo stiahnuť"
+                || echo "::warning::$u couldn't be downloaded"
             done
           else
-            # dva Sonnyho priečinky, jeden krok: 20m GeoTIFF vs 1″ .hgt
+            # two Sonny folders, one step: 20m GeoTIFF vs 1″ .hgt
             FOLDER="${SONNY_DRIVE_FOLDER}"
             [ "${{ steps.src.outputs.key }}" = "sonny1" ] \
               && FOLDER="${SONNY1_DRIVE_FOLDER}"
-            echo "Sťahujem Google Drive priečinok: $FOLDER"
-            # „vieme sa prihlásiť?" má jednu odpoveď (`folder.py --mode`);
-            # z toho, či je nastavený secret, by nekompletná trojica prešla.
-            # `|| exit 1` je podstatné: krok beží bez `set -e`, takže by beh
-            # ticho prepadol do vetvy s verejným limitom.
+            echo "Downloading Google Drive folder: $FOLDER"
+            # “can we sign in?” has one answer (`folder.py --mode`);
+            # judging by a set secret, an incomplete trio would pass.
+            # `|| exit 1` matters: the step runs without `set -e`, so the run would
+            # quietly fall into the public-quota branch.
             MODE=$(python3 workers/drive/folder.py --mode) || exit 1
-            # 1″ priečinok sa neprihlásene stiahnuť nedá a nie je to otázka
-            # limitu: všetkých 15 dlaždíc sú skratky a verejné
-            # `uc?export=download` na skratku odpovie chybou o právach –
-            # hoci cieľ zdieľaný je
+            # the 1″ folder can't be downloaded signed out, and not for a
+            # quota: all 15 tiles are shortcuts and a public
+            # `uc?export=download` of a shortcut answers with a permission error –
+            # though the target is shared
             if [ "${{ steps.src.outputs.key }}" = "sonny1" ] \
                && [ "$MODE" != "auth" ]; then
-              echo "::error::Sonnyho 1″ priečinok sa dá stiahnuť LEN prihlásene: dlaždice v ňom sú skratky (shortcut) na súbory inde na Drive a tie verejný odkaz nesťahuje (odpovie „Only the owner and editors can download this file“, aj keď je cieľ zdieľaný). Doplň premennú DRIVE_CLIENT a secrety DRIVE_SECRET / DRIVE_REFRESH – vyrobí ich workflow „Údržba · prihlásenie Drive“. Alebo zvoľ zdroj „sonny“ (20 m), ktorý je zároveň jemnejší vo zvislej osi."
+              echo "::error::Sonny's 1″ folder downloads ONLY signed in: its tiles are shortcuts to files elsewhere on Drive and a public link won't fetch them (it answers “Only the owner and editors can download this file” even though the target is shared). Add the DRIVE_CLIENT variable and the DRIVE_SECRET / DRIVE_REFRESH secrets – the “Maintenance · Drive sign-in” workflow makes them. Or pick the “sonny” source (20 m), which is also finer vertically."
               exit 1
             fi
             if [ "$MODE" = "auth" ]; then
-              DRIVE_MODE="Drive API, prihlásený ako vlastník tokenu"
+              DRIVE_MODE="Drive API, signed in as the token owner"
               python3 workers/drive/folder.py --folder="$FOLDER" --out=dl || exit 1
             else
-              DRIVE_MODE="**verejný odkaz (neprihlásene)** – platí denný limit"
-              # bez tokenu sa nemení nič, ale nesmie to byť tiché: verejný
-              # odkaz má denný strop a po jeho vyčerpaní vráti HTML s HTTP 200
-              echo "::warning::Sťahujem z Google Drive NEPRIHLÁSENE – platí verejný denný limit sťahovania, zdieľaný so všetkými klientmi. Doplň premennú DRIVE_CLIENT a secrety DRIVE_SECRET / DRIVE_REFRESH (workflow „Údržba · prihlásenie Drive“) a pôjde to cez Drive API."
-              # `--remaining-ok` v gdown 5 už neexistuje (a limit 50 súborov
-              # tiež nie), tak sa pridáva len ak ho daná verzia pozná
+              DRIVE_MODE="**public link (signed out)** – the daily quota applies"
+              # without a token nothing changes, but it mustn't be quiet: a public
+              # link has a daily cap and once spent returns HTML with HTTP 200
+              echo "::warning::Downloading from Google Drive SIGNED OUT – the public daily download quota applies, shared with every client. Add the DRIVE_CLIENT variable and the DRIVE_SECRET / DRIVE_REFRESH secrets (the “Maintenance · Drive sign-in” workflow) and it goes through the Drive API."
+              # `--remaining-ok` is gone in gdown 5 (so is the 50 file limit),
+              # so it's added only when the version knows it
               REMAINING=""
               gdown --help 2>&1 | grep -q -- --remaining-ok && REMAINING="--remaining-ok"
               gdown --folder $REMAINING --no-cookies -O dl "$FOLDER" || {
-                echo "::error::Stiahnutie z Google Drive zlyhalo. Priečinok musí byť zdieľaný odkazom; pri hláške o limite stiahnutí sa prihlás (premenná DRIVE_CLIENT, secrety DRIVE_SECRET / DRIVE_REFRESH), skús o pár hodín neskôr, alebo vyplň custom_url odkazom na mirror."
+                echo "::error::The Google Drive download failed. The folder must be shared by link; on a quota message sign in (the DRIVE_CLIENT variable, the DRIVE_SECRET / DRIVE_REFRESH secrets), try again in a few hours, or fill custom_url with a mirror link."
                 exit 1
               }
             fi
           fi
 
           find dl -type f | head -100
-          echo "Stiahnutých súborov: $(find dl -type f | wc -l)"
-          echo "Cesta k dátam: $DRIVE_MODE"
+          echo "Files downloaded: $(find dl -type f | wc -l)"
+          echo "Path to the data: $DRIVE_MODE"
           echo "drive_mode=$DRIVE_MODE" >> "$GITHUB_OUTPUT"
 
-      - name: Rozbaľ archívy a preveď na GeoTIFF dlaždice
+      - name: Unpack archives and convert to GeoTIFF tiles
         id: convert
         if: ${{ contains(fromJSON('["sonny","sonny1"]'), steps.src.outputs.key) }}
         run: |
           set -uo pipefail
           mkdir -p unpacked tiles
 
-          # ---- rozbalenie (Sonny posiela .zip, občas .7z) ----
+          # Sonny sends .zip, sometimes .7z
           while IFS= read -r a; do
             case "${a,,}" in
-              *.zip) 7z x -y -o"unpacked" "$a" >/dev/null || echo "::warning::$a sa nepodarilo rozbaliť" ;;
-              *.7z)  7z x -y -o"unpacked" "$a" >/dev/null || echo "::warning::$a sa nepodarilo rozbaliť" ;;
-              # nearchívy sa nekopírujú – hľadá sa aj priamo v dl/
+              *.zip) 7z x -y -o"unpacked" "$a" >/dev/null || echo "::warning::$a couldn't be unpacked" ;;
+              *.7z)  7z x -y -o"unpacked" "$a" >/dev/null || echo "::warning::$a couldn't be unpacked" ;;
+              # non-archives aren't copied – dl/ is searched directly too
               *)     : ;;
             esac
           done < <(find dl -type f)
 
-          # pri viacerých verziách tej istej .hgt dlaždice necháme jemnejšiu
+          # of several versions of one .hgt tile the finer one is kept
           declare -A best_px
 
-          hgt_to_tif() { # $1 = vstup .hgt, $2 = výstup .tif, $3 = meno dlaždice (N49E019)
-            # GDAL pozná SRTMHGT pri štandardných veľkostiach (1201/3601)
+          hgt_to_tif() { # $1 = input .hgt, $2 = output .tif, $3 = tile name (N49E019)
+            # GDAL knows SRTMHGT at the standard sizes (1201/3601)
             if gdal_translate -q -of GTiff -a_srs EPSG:4326 \
                  -co COMPRESS=DEFLATE -co PREDICTOR=2 -co TILED=YES "$1" "$2" 2>/dev/null; then
               return 0
             fi
-            # neštandardná mriežka: .hgt je surové int16 big-endian bez hlavičky,
-            # takže georeferencia sa skladá z mena dlaždice (vzorky sú v uzloch,
-            # preto polpixelový posun a krok 1/(n−1))
+            # a non-standard grid: .hgt is raw big-endian int16 without a header,
+            # so the georeference comes from the tile name (samples sit on nodes,
+            # hence a half-pixel shift and a 1/(n−1) step)
             local px n lat lon res ulx uly
             px=$(stat -c%s "$1")
             n=$(python3 -c "import math;print(math.isqrt($px//2))")
@@ -287,33 +287,33 @@ jobs:
               /tmp/raw.vrt "$2"
           }
 
-          # ---- GeoTIFFy → dlaždice 1°×1° vo WGS84 ----
-          # Jeden súbor môže pokrývať celú krajinu a byť v metrickej projekcii,
-          # takže meno dlaždice sa berie z rozsahu dát, nie z názvu súboru.
+          # GeoTIFFs → 1°×1° WGS84 tiles
+          # One file may cover a whole country in a metric projection,
+          # so a tile's name comes from the data extent, not the file name.
           mapfile -t geotiffs < <(find unpacked dl -type f \( -iname '*.tif' -o -iname '*.tiff' \) 2>/dev/null | sort)
           if [ ${#geotiffs[@]} -gt 0 ]; then
             echo "GeoTIFFov na spracovanie: ${#geotiffs[@]}"
             python3 workers/dem/tiles.py --out tiles "${geotiffs[@]}" \
-              || echo "::warning::GeoTIFFy sa nepodarilo narezať na dlaždice"
+              || echo "::warning::GeoTIFFs couldn't be cut into tiles"
           fi
 
-          # ---- .hgt (model 1″/3″) → dlaždica podľa mena súboru ----
+          # .hgt (a 1″/3″ model) → a tile by file name
           while IFS= read -r f; do
             base=$(basename "$f")
             tile=$(printf '%s' "$base" | tr '[:lower:]' '[:upper:]' | grep -oE '[NS][0-9]{2}[EW][0-9]{3}' | head -1)
             if [ -z "$tile" ]; then
-              echo "::warning::$base nemá v názve meno dlaždice (napr. N49E019) – preskakujem."
+              echo "::warning::$base has no tile name in it (e.g. N49E019) – skipping."
               continue
             fi
             out="tiles/$tile.tif"
             tmp="/tmp/$tile.tif"
             case "${base,,}" in
-              *.hgt) hgt_to_tif "$f" "$tmp" "$tile" || { echo "::warning::$base sa nepodarilo previesť"; continue; } ;;
+              *.hgt) hgt_to_tif "$f" "$tmp" "$tile" || { echo "::warning::$base couldn't be converted"; continue; } ;;
               *) continue ;;
             esac
             px=$(gdalinfo -json "$tmp" | jq -r '.size[0]')
             if [ -n "${best_px[$tile]:-}" ] && [ "${best_px[$tile]}" -ge "$px" ]; then
-              echo "  $tile: ponechávam ${best_px[$tile]} px (nová verzia má $px px)"
+              echo "  $tile: keeping ${best_px[$tile]} px (the new version has $px px)"
               rm -f "$tmp"
               continue
             fi
@@ -324,31 +324,31 @@ jobs:
 
           COUNT=$(find tiles -name '*.tif' | wc -l)
           if [ "$COUNT" -eq 0 ]; then
-            echo "::error::Nevznikla ani jedna dlaždica – skontroluj obsah priečinka (očakávajú sa .tif s výškami alebo .hgt s menom typu N49E019)."
+            echo "::error::Not a single tile came out – check the folder (expected: .tif with heights or .hgt named like N49E019)."
             exit 1
           fi
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
           du -sh tiles
           ls tiles
 
-      # do skladu na Drive, nie do releasu (`workers/drive/store.py`)
-      - name: Publikuj dlaždice do skladu
+      # into the Drive store, not a release (`workers/drive/store.py`)
+      - name: Publish the tiles to the store
         if: ${{ contains(fromJSON('["sonny","sonny1"]'), steps.src.outputs.key) }}
         env:
           STORE: ${{ steps.src.outputs.store }}
         run: |
           set -euo pipefail
 
-          # `force` = zahodiť, čo v sklade je; inak by v ňom ostali dlaždice,
-          # ktoré sa už nesťahujú
+          # `force` = drop what the store holds; otherwise tiles no longer
+          # downloaded would stay
           if [ '${{ inputs.force }}' = 'true' ]; then
             BOLO=$(python3 workers/drive/store.py --names --store="$STORE" | tr '\n' ' ')
             [ -n "${BOLO// /}" ] && python3 workers/drive/store.py --rm \
               --store="$STORE" --name="$BOLO" || true
           fi
 
-          # priečinok do `meta.json` musí byť ten, z ktorého sa naozaj ťahalo –
-          # `meta.json` je jediné, čo o obsahu skladu potom hovorí
+          # the folder in `meta.json` must be the one really downloaded from –
+          # `meta.json` is the only thing telling a store's contents afterwards
           FOLDER="$SONNY_DRIVE_FOLDER"
           MODEL="Sonny's LiDAR DTM 20 m"
           if [ '${{ steps.src.outputs.key }}' = 'sonny1' ]; then
@@ -368,12 +368,12 @@ jobs:
           python3 workers/drive/store.py --put --store="$STORE" \
             --file="$(find tiles -maxdepth 1 -name '*.tif' -printf '%p ')" \
             --file=tiles/meta.json \
-            --note="Dlaždice 1°×1° výškového modelu (GeoTIFF, meno = juhozápadný roh). Zdroj: Sonny's LiDAR DTM (https://sonny.4lima.de/), CC BY 4.0."
-          echo "Hotovo – ${{ steps.convert.outputs.count }} dlaždíc v sklade $STORE."
+            --note="1°×1° elevation model tiles (GeoTIFF, name = south-west corner). Source: Sonny's LiDAR DTM (https://sonny.4lima.de/), CC BY 4.0."
+          echo "Done – ${{ steps.convert.outputs.count }} tiles in store $STORE."
 
-      # ---------- ÚGKK DMR 3.5 (otvorené dáta, jeden ZIP) ----------
-      # Ten istý výsledok ako Sonny, takže `fetch.sh` sa pri čítaní nevetví.
-      - name: Sú dlaždice DMR 3.5 už v sklade?
+      # ÚGKK DMR 3.5 (open data, one ZIP)
+      # The same result as Sonny, so `fetch.sh` doesn't branch when reading.
+      - name: Are the DMR 3.5 tiles in the store already?
         id: have35
         if: ${{ steps.src.outputs.key != 'sonny' && steps.src.outputs.key != 'ugkk' }}
         env:
@@ -382,18 +382,18 @@ jobs:
           set -uo pipefail
           N=$(python3 workers/drive/store.py --names --store="$STORE" 2>/dev/null | grep -c . || echo 0)
           if [ '${{ inputs.force }}' = 'true' ]; then
-            echo "force=áno – sťahujem nanovo (v sklade je ${N:-0} dlaždíc)."
+            echo "force=yes – downloading again (the store has ${N:-0} tiles)."
             echo "skip=false" >> "$GITHUB_OUTPUT"
           elif [ "${N:-0}" -gt 0 ]; then
-            echo "V sklade '$STORE' už je $N dlaždíc – nesťahujem."
+            echo "Store '$STORE' already has $N tiles – not downloading."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # `continue-on-error`: keď `opendata.skgeodesy.sk` nepôjde, volajúci build
-      # to zistí z prázdneho skladu a spadne späť na Sonnyho
-      - name: Stiahni a rozrež DMR 3.5
+      # `continue-on-error`: if `opendata.skgeodesy.sk` fails, the calling build
+      # sees an empty store and falls back to Sonny
+      - name: Download and cut DMR 3.5
         id: fetch35
         if: ${{ steps.src.outputs.key != 'sonny' && steps.src.outputs.key != 'ugkk' && steps.have35.outputs.skip != 'true' }}
         continue-on-error: true
@@ -404,21 +404,21 @@ jobs:
             --url='${{ steps.src.outputs.url }}' \
             --out=tiles --stats=open-stats.txt
 
-      - name: Nahraj DMR 3.5 do skladu
+      - name: Upload DMR 3.5 to the store
         if: ${{ steps.src.outputs.key != 'sonny' && steps.src.outputs.key != 'ugkk' && steps.fetch35.outcome == 'success' }}
         env:
           STORE: ${{ steps.src.outputs.store }}
         run: |
           set -euo pipefail
           COUNT=$(find tiles -maxdepth 1 -name '*.tif' | wc -l)
-          [ "$COUNT" -gt 0 ] || { echo "::warning::Žiadne dlaždice."; exit 0; }
+          [ "$COUNT" -gt 0 ] || { echo "::warning::No tiles."; exit 0; }
           python3 workers/drive/store.py --put --store="$STORE" \
             --file="$(find tiles -maxdepth 1 -name '*.tif' -printf '%p ')" \
-            --note="Dlaždice 1°×1° z https://opendata.skgeodesy.sk. Zdroj: ÚGKK SR – DMR 3.5."
-          echo "Nahraných $COUNT dlaždíc do skladu $STORE ✓"
+            --note="1°×1° tiles from https://opendata.skgeodesy.sk. Source: ÚGKK SR – DMR 3.5."
+          echo "Uploaded $COUNT tiles to store $STORE ✓"
 
-      # pri 1 m má jedna 1° dlaždica ~48 GB, tak sa ukladá jeden COG na pohorie
-      - name: Vyrieš výrez
+      # at 1 m a 1° tile is ~48 GB, so one COG per range is stored
+      - name: Resolve the cutout
         id: area
         if: ${{ steps.src.outputs.key == 'ugkk' }}
         run: |
@@ -427,7 +427,7 @@ jobs:
             --region-bbox='16.815,47.71,22.585,49.635' \
             --area='${{ inputs.area }}' --out="$GITHUB_OUTPUT"
 
-      - name: Je výrez už v sklade?
+      - name: Is the cutout in the store already?
         id: haveu
         if: ${{ steps.src.outputs.key == 'ugkk' }}
         env:
@@ -437,31 +437,31 @@ jobs:
           ASSET="ugkk-${{ steps.area.outputs.key }}.tif"
           echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
           if [ '${{ inputs.force }}' = 'true' ]; then
-            echo "force=áno – sťahujem nanovo."
+            echo "force=yes – downloading again."
             echo "skip=false" >> "$GITHUB_OUTPUT"
           elif python3 workers/drive/store.py --names --store="$STORE" \
                  2>/dev/null | grep -qx "$ASSET"; then
-            echo "V sklade už je $ASSET – nesťahujem."
+            echo "The store already has $ASSET – not downloading."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # `continue-on-error`: z GitHub runnera sa DMR 5.0 stiahnuť nedá –
-      # ostáva to tu kvôli poľu `url` z ručného exportu
+      # `continue-on-error`: DMR 5.0 can't be downloaded from a GitHub runner –
+      # it stays for the `url` field from a manual export
       - name: Stiahni DMR 5.0
         id: fetchu
         if: ${{ steps.src.outputs.key == 'ugkk' && steps.haveu.outputs.skip != 'true' }}
         continue-on-error: true
         run: |
           set -euo pipefail
-          echo "Výrez: ${{ steps.area.outputs.name }} (${{ steps.area.outputs.bbox }}), ${{ steps.area.outputs.km2 }} km²"
+          echo "Cutout: ${{ steps.area.outputs.name }} (${{ steps.area.outputs.bbox }}), ${{ steps.area.outputs.km2 }} km²"
           python3 workers/dem/fetch-ugkk.py \
             --bbox='${{ steps.area.outputs.bbox }}' \
             --out='${{ steps.haveu.outputs.asset }}' \
             --direct-urls='${{ steps.src.outputs.url }}'
 
-      - name: Nahraj DMR 5.0 do skladu
+      - name: Upload DMR 5.0 to the store
         if: ${{ steps.src.outputs.key == 'ugkk' && steps.fetchu.outcome == 'success' }}
         env:
           STORE: ${{ steps.src.outputs.store }}
@@ -469,42 +469,42 @@ jobs:
           set -euo pipefail
           ASSET='${{ steps.haveu.outputs.asset }}'
           ls -lh "$ASSET"
-          # sklad na Drive strop nemá; varovanie ostáva, lebo veľký COG stojí
-          # čas každému, kto ho potom sťahuje
+          # the Drive store has no cap; the warning stays, since a big COG costs
+          # time for everyone downloading it later
           SZ=$(stat -c%s "$ASSET")
           if [ "$SZ" -gt $((4 * 1024 * 1024 * 1024)) ]; then
-            echo "::warning::$ASSET má $(( SZ / 1048576 )) MB. Nahrá sa, ale každý build ho bude celý sťahovať – ak to nie je zámer, zvoľ menší výrez."
+            echo "::warning::$ASSET is $(( SZ / 1048576 )) MB. It uploads, but every build will download all of it – if that isn't intended, pick a smaller cutout."
           fi
           python3 workers/drive/store.py --put --store="$STORE" --file="$ASSET" \
-            --note="Jeden COG na výrez; meno je kľúč z workers/data/areas.json. Zdroj: ÚGKK SR – DMR 5.0."
-          echo "Uložené: $STORE / $ASSET"
+            --note="One COG per cutout; the name is a key from workers/data/areas.json. Source: ÚGKK SR – DMR 5.0."
+          echo "Saved: $STORE / $ASSET"
 
-      - name: Súhrn
+      - name: Summary
         if: ${{ always() }}
         run: |
           set -uo pipefail
           {
             echo "# ${{ steps.src.outputs.label }}"
             echo
-            echo "| vec | hodnota |"
+            echo "| what | value |"
             echo "|---|---|"
-            echo "| zdroj | \`${{ steps.src.outputs.key }}\` |"
-            echo "| sklad | \`${{ steps.src.outputs.store }}\` |"
+            echo "| source | \`${{ steps.src.outputs.key }}\` |"
+            echo "| store | \`${{ steps.src.outputs.store }}\` |"
             echo "| URL | ${{ steps.src.outputs.url }} |"
           } >> "$GITHUB_STEP_SUMMARY"
-          # „ako sa beh k dátam dostal" je súčasť výsledku, nie detail v logu
+          # “how the run got the data” is part of the result, not a log detail
           if [ -n '${{ steps.fetch.outputs.drive_mode }}' ]; then
-            echo "| cesta k dátam | ${{ steps.fetch.outputs.drive_mode }} |" \
+            echo "| path to the data | ${{ steps.fetch.outputs.drive_mode }} |" \
               >> "$GITHUB_STEP_SUMMARY"
           fi
-          # čítať `key=value`, nie `source`: hodnoty nie sú shell kód
-          # (`crs=S-JTSK / Krovak East North` sa pri `.` vykoná ako príkaz `/`).
-          # Súhrn nesmie zhodiť hotovú prácu.
+          # read `key=value`, not `source`: values aren't shell code
+          # (`crs=S-JTSK / Krovak East North` would run `/` as a command under `.`).
+          # The summary mustn't fail finished work.
           get() { sed -n "s/^$1=//p" open-stats.txt | head -1; }
           if [ -s open-stats.txt ]; then
             {
-              echo "| dlaždíc | $(get tiles) ($(get mb) MB) |"
-              echo "| **skutočná mriežka** | **$(get cell_m) m** (Sonny má 20 m) |"
+              echo "| tiles | $(get tiles) ($(get mb) MB) |"
+              echo "| **real grid** | **$(get cell_m) m** (Sonny has 20 m) |"
               echo "| CRS zdroja | $(get crs) |"
             } >> "$GITHUB_STEP_SUMMARY"
           fi

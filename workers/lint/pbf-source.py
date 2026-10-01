@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
-"""Kraj sa reže z rodičovského extraktu – hotový export kraja sa nesmie vrátiť.
+"""A region is cut from its parent extract – the ready regional export mustn't return.
 
-Hotový `{kraj}-latest.osm.pbf` nie je referenčne úplný: plocha pokračujúca do
-susedného kraja v ňom nemá všetkých členov a Planetiler ju zahodí celú.
-Namerané na Bratislavskom kraji: 250 z 3075 plošných relácií, medzi nimi tri
-CHKO. Po reze z rodiča ostane päť, všetky na hranici so zahraničím.
+A ready `{region}-latest.osm.pbf` isn't referentially complete: an area reaching
+into a neighbouring region lacks members and Planetiler drops it whole.
 
-  1. každý región s `osmfr` má `dir` aj neprázdne `slugs`;
-  2. každý kraj má `osmfr.parent` na región, ktorý má vlastný `osmfr`;
-  3. `plan/pbf.sh` reže rodiča `osmium extract -s smart --polygon`;
-  4. a má pri tom `-S types=multipolygon,boundary` – `smart` inak dopĺňa
-     členov len `type=multipolygon`, kým CHKO je `type=boundary`;
-  5. rez sa nesmie ticho preskočiť, keď chýba hranica.
+  1. every region with `osmfr` has `dir` and non-empty `slugs`;
+  2. every region has `osmfr.parent` on a region with its own `osmfr`;
+  3. `plan/pbf.sh` cuts the parent with `osmium extract -s smart --polygon`;
+  4. with `-S types=multipolygon,boundary` – `smart` otherwise completes only
+     `type=multipolygon`, while a protected area is `type=boundary`;
+  5. the cut mustn't be quietly skipped when the border is missing.
 
-Rozpis s číslami je v hlavičke `workers/plan/pbf.sh`.
+Figures are in the `workers/plan/pbf.sh` header.
 """
 import json
 import re
@@ -24,7 +22,7 @@ PBF = "workers/plan/pbf.sh"
 
 bad = []
 
-# ---- 1. a 2. číselník regiónov ----
+# 1. and 2. the region lookup
 with open(REGIONS, encoding="utf-8") as f:
     regions = {k: v for k, v in json.load(f).items() if not k.startswith("_")}
 
@@ -34,75 +32,73 @@ for key, reg in regions.items():
         continue
     if not osmfr.get("dir") or not osmfr.get("slugs"):
         bad.append(
-            f"Región `{key}` má `osmfr`, ale nie `dir` a neprázdne `slugs`. "
-            f"URL sa skladá ako `<base>/<dir>/<slug>.osm.pbf`, takže bez nich "
-            f"sa PBF nemá odkiaľ stiahnuť.")
+            f"Region `{key}` has `osmfr` but not `dir` and non-empty `slugs`. "
+            f"The URL is `<base>/<dir>/<slug>.osm.pbf`, so without them the "
+            f"PBF has nowhere to come from.")
 
     parent = osmfr.get("parent")
     if (reg.get("admin_level") or 0) > 2 and not parent:
         bad.append(
-            f"Región `{key}` je kraj, ale nemá `osmfr.parent`. Kraj sa reže "
-            f"z rodičovského extraktu – hotový `{key}-latest.osm.pbf` z osm.fr "
-            f"nie je referenčne úplný a plochy presahujúce do susedného kraja "
-            f"(CHKO, veľké lesy) by z mapy ticho zmizli celé.")
+            f"Region `{key}` is a sub-national region but has no `osmfr.parent`. "
+            f"It's cut from the parent extract – osm.fr's ready "
+            f"`{key}-latest.osm.pbf` isn't referentially complete and areas "
+            f"reaching into a neighbour (protected areas, big forests) would "
+            f"quietly vanish whole.")
     if parent and parent not in regions:
         bad.append(
-            f"Región `{key}` má `osmfr.parent` = `{parent}`, ale taký región "
-            f"v {REGIONS} nie je. Rodič je KĽÚČ regiónu, nie URL.")
+            f"Region `{key}` has `osmfr.parent` = `{parent}`, but {REGIONS} has "
+            f"no such region. The parent is a region KEY, not a URL.")
     elif parent and not (regions[parent].get("osmfr") or {}).get("dir"):
         bad.append(
-            f"Rodič `{parent}` regiónu `{key}` nemá `osmfr.dir` – nedá sa "
-            f"z neho zložiť adresa, z ktorej sa má rezať.")
+            f"Parent `{parent}` of region `{key}` has no `osmfr.dir` – no "
+            f"address to cut from can be built.")
     if parent == key:
-        bad.append(f"Región `{key}` je rodičom sám sebe.")
+        bad.append(f"Region `{key}` is its own parent.")
 
-# ---- 3. až 5. čím to reže ----
+# 3. to 5. what it cuts with
 with open(PBF, encoding="utf-8") as f:
     text = f.read()
-kod = "\n".join(r for r in text.splitlines() if not r.lstrip().startswith("#"))
+code = "\n".join(r for r in text.splitlines() if not r.lstrip().startswith("#"))
 
-rezy = re.findall(r"osmium extract((?:[^\n]*\\\n)*[^\n]*)", kod)
-rez_rodica = [v for v in rezy if "--polygon" in v]
+cuts = re.findall(r"osmium extract((?:[^\n]*\\\n)*[^\n]*)", code)
+parent_cut = [v for v in cuts if "--polygon" in v]
 
-if not rez_rodica:
+if not parent_cut:
     bad.append(
-        f"{PBF} nereže kraj z rodičovského extraktu (`osmium extract "
-        f"--polygon`). Hotový export kraja z osm.fr sa použiť nesmie: nemá "
-        f"členov plôch, čo presahujú do susedného kraja, a Planetiler ich "
-        f"zahodí CELÉ – z mapy zmizne CHKO aj s tou časťou, čo v kraji leží.")
+        f"{PBF} doesn't cut the region from the parent extract (`osmium extract "
+        f"--polygon`). osm.fr's ready regional export mustn't be used: it lacks "
+        f"members of areas reaching into a neighbour and Planetiler drops them "
+        f"WHOLE – a protected area vanishes, its in-region part too.")
 
-# `-S types=` musí byť pri KAŽDOM reze, nie len pri tom z rodiča: orez na
-# `crop_bbox` aj na štvorec rýchleho testu majú ten istý problém, len sa
-# prejaví ešte skôr – zo 4 km² vytŕča skoro každá plocha.
-for volanie in rezy:
-    if "-s smart" not in volanie:
+# `-S types=` on EVERY cut: `crop_bbox` and quick-test squares have the same problem
+for call in cuts:
+    if "-s smart" not in call:
         bad.append(
-            f"{PBF}: `osmium extract` bez `-s smart`. Bez neho sa členovia "
-            f"relácií nedopĺňajú a rez nespraví nič navyše oproti hotovému "
-            f"exportu.")
-    if "types=multipolygon,boundary" not in volanie:
+            f"{PBF}: `osmium extract` without `-s smart`. Without it relation "
+            f"members aren't completed and the cut adds nothing over the ready "
+            f"export.")
+    if "types=multipolygon,boundary" not in call:
         bad.append(
-            f"{PBF}: `osmium extract -s smart` bez `-S types=multipolygon,boundary`. "
-            f"Predvolene `smart` dopĺňa členov len reláciám "
-            f"`type=multipolygon`, kým CHKO je `type=boundary` – bez toho "
-            f"prepínača ostanú CHKO Malé Karpaty, Záhorie aj Dunajské luhy "
-            f"rozbité a v mape ich nebude. Nespadne po tom nič.")
+            f"{PBF}: `osmium extract -s smart` without `-S types=multipolygon,boundary`. "
+            f"By default `smart` completes only `type=multipolygon` relations, "
+            f"while a protected area is `type=boundary` – without the switch "
+            f"they stay broken and miss from the map. Nothing fails.")
 
-if not re.search(r'\$OSMFR_BASE/\$PDIR/\$SLUG\.osm\.pbf', kod):
+if not re.search(r'\$OSMFR_BASE/\$PDIR/\$SLUG\.osm\.pbf', code):
     bad.append(
-        f"{PBF} neskladá URL rodiča ako `$OSMFR_BASE/$PDIR/$SLUG.osm.pbf` – "
-        f"adresa sa má brať z `osmfr.dir` a `osmfr.slugs` toho regiónu, na "
-        f"ktorý ukazuje `osmfr.parent` v {REGIONS}.")
+        f"{PBF} doesn't build the parent URL as `$OSMFR_BASE/$PDIR/$SLUG.osm.pbf` – "
+        f"it comes from `osmfr.dir` and `osmfr.slugs` of the region "
+        f"`osmfr.parent` points at in {REGIONS}.")
 
-# 5. chýbajúca hranica musí byť PÁD, nie návrat k priamemu sťahovaniu
-if not re.search(r'if \[ ! -s "\$POLY" \]; then\n[^\n]*::error::', kod):
+# 5. a missing border must FAIL, not fall back to a direct download
+if not re.search(r'if \[ ! -s "\$POLY" \]; then\n[^\n]*::error::', code):
     bad.append(
-        f"{PBF} nepadne, keď chýba `.poly` regiónu. Presne tam sa predošlá "
-        f"verzia vrátila k priamemu sťahovaniu kraja – beh bol zelený a v mape "
-        f"zase chýbali CHKO (pravidlo 8). Chýbajúca hranica musí byť "
-        f"`::error::` a `exit 1`.")
+        f"{PBF} doesn't fail when the region `.poly` is missing. That's where a "
+        f"previous version fell back to a direct download – the run was green "
+        f"and protected areas were missing again. A missing border must be "
+        f"`::error::` and `exit 1`.")
 
 for b in bad:
     print(f"::error::{b}")
-print(f"Kraj sa reže z rodičovského extraktu: {len(bad)} chýb")
+print(f"Regions are cut from the parent extract: {len(bad)} errors")
 sys.exit(1 if bad else 0)

@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""Kontrola „publikuje sa len na Drive". Volá ju `Kontrola · lint workflowov`.
+"""Publish only to Drive. Run by `Check · workflow lint`.
 
-Do GitHubu nesmie ísť ani release, ani artefakt, ktorý má prežiť beh – všetko
-ide do skladu na Drive. `gh release upload` je jeden riadok a poznalo by sa to
-len tým, že v Releases pribúdajú gigabajty; `retention-days: 90` je uložený
-výsledok, nie prepravka medzi jobmi jedného behu.
-
-A tretia vec, ktorá by inak bola tichá: preklep v mene skladu neskončí chybou,
-ale prázdnym skladom – doslovné mená sa preto kontrolujú proti `KNOWN`.
+Neither a release nor an artifact meant to outlive a run goes to GitHub –
+everything goes to the Drive store. And a typo in a store name doesn't fail but
+gives an empty store, so literal names are checked against `KNOWN`.
 """
 import ast
 import glob
@@ -18,53 +14,41 @@ import yaml
 
 STORE = "workers/drive/store.py"
 
-# Hľadané príkazy sa SKLADAJÚ, nepíšu. Keby tu stáli celé, našla by táto
-# kontrola samu seba a hlásila by chybu navždy – rovnako ako pri `gh cache
-# delete` v `lint-workflows.yml`. Skript je totiž sám v `workers/*.py`, teda
-# medzi tým, čo prehľadáva.
+# the searched commands are assembled, or this file would find itself
 REL = "gh " + "release"
 UP = "actions/upload" + "-artifact"
 FLAG = "--store" + "="
 
 
-def zdrojaky():
-    """Všetko, čo môže publikovať: workflowy a workery."""
+def sources():
+    """Everything that can publish: workflows and workers."""
     return (sorted(glob.glob(".github/workflows/*.yml"))
             + sorted(glob.glob("workers/**/*.sh", recursive=True))
             + sorted(glob.glob("workers/**/*.py", recursive=True)))
 
 
-def bez_releasov():
-    """1. Nikde ani jeden SPUSTENÝ `gh release`.
+def no_releases():
+    """1. Not a single RUN `gh release` anywhere.
 
-    Hľadá sa VOLANIE, nie zmienka. Komentáre a docstringy o releasoch tu
-    zámerne ostávajú – nesú, prečo sa to presťahovalo, a keby ich kontrola
-    hlásila, prvá oprava by bola vymazať vysvetlenie.
-
-    Preto sa v shelli a v `run:` blokoch preskakujú komentárové riadky, a
-    v Pythone sa nehľadá text vôbec: tam sa `gh` volalo zoznamom argumentov
-    (`["gh", "release", "upload", …]`), takže reťazec „gh release" v ňom nikdy
-    nebol – bola by to kontrola, ktorá hľadá niečo iné, než čo chytá.
-
-    `gh api /repos/…/releases` je v poriadku a nesmie sa hlásiť: presne tým
-    `workers/tools/cleanup-actions.py` staré releasy MAŽE.
+    A call, not a mention: comment lines are skipped, and Python is searched for
+    an argument list, not text. `gh api /repos/…/releases` is fine – that's how
+    `workers/tools/cleanup-actions.py` DELETES old releases.
     """
     bad = 0
 
-    def prezri(path, text, kde=""):
+    def scan(path, text, where=""):
         nonlocal bad
         for i, line in enumerate(text.splitlines(), 1):
             if line.lstrip().startswith("#"):
                 continue
             if REL in line:
-                print(f"::error file={path}::{kde}`{REL}` publikuje do GitHub "
-                      f"releasu (riadok {i}). Do releasov sa neukladá nič – "
-                      f"použi `python3 {STORE}` (--put / --get / --names "
-                      f"/ --rm).")
+                print(f"::error file={path}::{where}`{REL}` publishes to a GitHub "
+                      f"release (line {i}). Nothing goes to releases – use "
+                      f"`python3 {STORE}` (--put / --get / --names / --rm).")
                 bad += 1
 
     for path in sorted(glob.glob("workers/**/*.sh", recursive=True)):
-        prezri(path, open(path, encoding="utf-8").read())
+        scan(path, open(path, encoding="utf-8").read())
 
     for path in sorted(glob.glob(".github/workflows/*.yml")):
         d = yaml.safe_load(open(path, encoding="utf-8")) or {}
@@ -72,38 +56,35 @@ def bez_releasov():
             for st in (jd or {}).get("steps") or []:
                 run = str((st or {}).get("run") or "")
                 if run:
-                    prezri(path, run, f"{job} / {st.get('name', '?')}: ")
+                    scan(path, run, f"{job} / {st.get('name', '?')}: ")
 
-    # Python: `gh` sa volá zoznamom argumentov, tak sa hľadá ten zoznam.
+    # Python calls `gh` with an argument list, so that list is searched
     for path in sorted(glob.glob("workers/**/*.py", recursive=True)):
         try:
             tree = ast.parse(open(path, encoding="utf-8").read())
         except SyntaxError as exc:
-            print(f"::error file={path}::nedá sa rozparsovať ({exc})")
+            print(f"::error file={path}::can't be parsed ({exc})")
             bad += 1
             continue
         for node in ast.walk(tree):
             if not isinstance(node, (ast.List, ast.Tuple)):
                 continue
-            prve = [e.value for e in node.elts[:2]
+            first = [e.value for e in node.elts[:2]
                     if isinstance(e, ast.Constant) and isinstance(e.value, str)]
-            # `REL.split()`, nie doslovný zoznam – inak by táto kontrola
-            # našla samu seba (a to sa aj stalo).
-            if prve[:2] == REL.split():
-                print(f"::error file={path},line={node.lineno}::volá "
-                      f"`{REL}` zoznamom argumentov. Do releasov sa neukladá "
-                      f"nič – použi `{STORE}` ako modul (`index`, `download`, "
-                      f"`upload`) alebo príkazom.")
+            # `REL.split()`, not a literal list, or this check finds itself
+            if first[:2] == REL.split():
+                print(f"::error file={path},line={node.lineno}::calls "
+                      f"`{REL}` with an argument list. Nothing goes to releases "
+                      f"– use `{STORE}` as a module (`index`, `download`, "
+                      f"`upload`) or a command.")
                 bad += 1
     return bad
 
 
-def artefakt_zije_den():
-    """2. Artefakt smie žiť najviac jeden deň.
+def artifact_lives_a_day():
+    """2. An artifact lives one day at most – a crate between jobs of one run.
 
-    Kratší je prepravka medzi jobmi jedného behu (`site-*`, `steps-*`) – tou
-    si joby podávajú kusy `_site` a bez nej sa stránka nedá zlepiť. Dlhší je
-    publikovanie, a to patrí do skladu `vysledky`
+    Longer is publishing, which belongs in the `results` store
     (`workers/deploy/publish-results.sh`).
     """
     bad = 0
@@ -114,104 +95,97 @@ def artefakt_zije_den():
                 uses = str((st or {}).get("uses") or "")
                 if not uses.startswith(UP):
                     continue
-                dni = (st.get("with") or {}).get("retention-days")
-                if dni is not None and int(dni) <= 1:
+                days = (st.get("with") or {}).get("retention-days")
+                if days is not None and int(days) <= 1:
                     continue
-                print(f"::error file={path}::krok '{st.get('name', '?')}' "
-                      f"v jobe '{job}' ukladá artefakt s retenciou "
-                      f"{dni if dni is not None else 'podľa repozitára'} dní. "
-                      f"Artefakt smie byť len prepravka medzi jobmi jedného "
-                      f"behu (`retention-days: 1`); čo má prežiť beh, ide do "
-                      f"skladu na Drive (`workers/deploy/publish-results.sh`).")
+                print(f"::error file={path}::step '{st.get('name', '?')}' "
+                      f"in job '{job}' keeps an artifact for "
+                      f"{days if days is not None else 'the repository default of'} days. "
+                      f"An artifact may only be a crate between jobs of one run "
+                      f"(`retention-days: 1`); what must outlive a run goes to "
+                      f"the Drive store (`workers/deploy/publish-results.sh`).")
                 bad += 1
     return bad
 
 
-def znama_mena():
-    """3. Sklad existuje a `--store=` nemá preklep. Vracia (chyby, mená)."""
+def known_names():
+    """3. The store exists and `--store=` has no typo. Returns (errors, names)."""
     try:
         tree = ast.parse(open(STORE, encoding="utf-8").read())
     except OSError:
-        print(f"::error::chýba {STORE} – bez neho pipeline nemá kam publikovať.")
+        print(f"::error::{STORE} is missing – without it the pipeline has nowhere to publish.")
         return 1, set()
     known = set()
     for node in ast.walk(tree):
         if (isinstance(node, ast.Assign)
-                and any(getattr(cil, "id", "") == "KNOWN" for cil in node.targets)
+                and any(getattr(target, "id", "") == "KNOWN" for target in node.targets)
                 and isinstance(node.value, ast.Dict)):
             known = {k.value for k in node.value.keys}
     if not known:
-        print(f"::error file={STORE}::nenašiel som v ňom KNOWN so zoznamom "
-              f"skladov.")
+        print(f"::error file={STORE}::no KNOWN list of stores found in it.")
         return 1, known
 
-    # Doslovné meno za `--store=`; `$PREMENNÁ` sa staticky skontrolovať nedá
-    # a rieši ju `known_or_die` za behu.
-    pouzite = re.compile(re.escape(FLAG) + r"[\"']?([a-z][a-z0-9-]*)")
+    # a literal name after `--store=`; `$VARIABLE` is `known_or_die`'s job at run time
+    used = re.compile(re.escape(FLAG) + r"[\"']?([a-z][a-z0-9-]*)")
     bad = 0
-    for path in zdrojaky():
+    for path in sources():
         for i, line in enumerate(open(path, encoding="utf-8"), 1):
-            for m in pouzite.finditer(line):
+            for m in used.finditer(line):
                 if m.group(1) not in known:
-                    print(f"::error file={path},line={i}::sklad "
-                          f"`{m.group(1)}` nie je v KNOWN vo {STORE} "
-                          f"({', '.join(sorted(known))}). Preklep v mene sa "
-                          f"neodlíši od prázdneho skladu, takže by build ticho "
-                          f"počítal všetko odznova.")
+                    print(f"::error file={path},line={i}::store "
+                          f"`{m.group(1)}` isn't in KNOWN in {STORE} "
+                          f"({', '.join(sorted(known))}). A name typo looks like "
+                          f"an empty store, so the build would quietly recompute "
+                          f"everything.")
                     bad += 1
     return bad, known
 
 
-def mena_hovoria_pravdu():
-    """4. `*_RELEASE` v `env:` je klamstvo o mieste, kde tá vec leží."""
+def names_tell_truth():
+    """4. `*_RELEASE` in `env:` lies about where the thing lives."""
     bad = 0
     for path in sorted(glob.glob(".github/workflows/*.yml")):
         for i, line in enumerate(open(path, encoding="utf-8"), 1):
             m = re.match(r"\s*([A-Z][A-Z0-9_]*)_RELEASE:", line)
             if m:
                 print(f"::error file={path},line={i}::`{m.group(1)}_RELEASE` "
-                      f"pomenúva sklad na Drive slovom „release“. Prepíš na "
-                      f"`{m.group(1)}_STORE` – meno, ktoré hovorí, kde tá vec "
-                      f"naozaj je (pravidlo 2 v CLAUDE.md).")
+                      f"names a Drive store “release”. Rename it to "
+                      f"`{m.group(1)}_STORE` – a name saying where the thing "
+                      f"really is.")
                 bad += 1
     return bad
 
 
-def sklady_sa_nerozidu():
-    """5. Ten istý `*_STORE` v dvoch workflowoch musí mať tú istú hodnotu.
+def stores_agree():
+    """5. The same `*_STORE` in two workflows must hold the same value.
 
-    Sklad má PISATEĽA a ČITATEĽA a sú to spravidla dva workflowy:
-    `shading-rocks.yml` do `ROCK_IMG_STORE` zapisuje, `build-map-region.yml` z neho
-    číta. Keby sa tie dve konštanty rozišli, nespadne nič – čitateľ sa pozrie
-    do skladu, do ktorého nikto nepíše, a povie „pre tento výrez tam nič nie
-    je". To je tichý omyl (pravidlo 8) a hľadá sa zle, lebo obe strany
-    vyzerajú samy o sebe správne (pravidlo 1).
+    A store has a WRITER and a READER, usually two workflows; if they drift the
+    reader looks into a store nobody writes and says there's nothing there.
     """
-    kde = {}
+    where = {}
     for path in sorted(glob.glob(".github/workflows/*.yml")):
         d = yaml.safe_load(open(path, encoding="utf-8")) or {}
         for k, v in (d.get("env") or {}).items():
             if k.endswith("_STORE") and isinstance(v, str) and "${" not in v:
-                kde.setdefault(k, {})[path] = v
+                where.setdefault(k, {})[path] = v
     bad = 0
-    for k, m in sorted(kde.items()):
+    for k, m in sorted(where.items()):
         if len(set(m.values())) > 1:
-            kde_co = ", ".join(f"{p}={v}" for p, v in sorted(m.items()))
-            print(f"::error::`{k}` má v rôznych workflowoch rôznu hodnotu "
-                  f"({kde_co}). Jeden sklad, jedno meno – inak sa do neho "
-                  f"zapisuje inde, než sa z neho číta, a beh povie len to, "
-                  f"že tam nič nie je.")
+            listing = ", ".join(f"{p}={v}" for p, v in sorted(m.items()))
+            print(f"::error::`{k}` has different values in different workflows "
+                  f"({listing}). One store, one name – otherwise it's written "
+                  f"elsewhere than read, and the run only says nothing is there.")
             bad += 1
     return bad
 
 
 def main():
-    bad = (bez_releasov() + artefakt_zije_den() + mena_hovoria_pravdu()
-           + sklady_sa_nerozidu())
-    chyby, known = znama_mena()
-    bad += chyby
-    print(f"publikovanie len na Drive: {bad} chýb "
-          f"({len(known)} skladov v KNOWN)")
+    bad = (no_releases() + artifact_lives_a_day() + names_tell_truth()
+           + stores_agree())
+    errors, known = known_names()
+    bad += errors
+    print(f"publishing only to Drive: {bad} errors "
+          f"({len(known)} stores in KNOWN)")
     return 1 if bad else 0
 
 

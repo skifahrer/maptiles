@@ -5873,15 +5873,15 @@ export function buildStyle({
     );
   }
 
-  // hranica regiónu úplne navrchu: vrstva pridaná za ňu by mimo regiónu opäť
-  // kreslila – stráži to `workers/lint/style.mjs`
+  // the region mask on top, or a later layer draws outside the region again;
+  // `mimo`/`hranica` are the kinds of packages built before the English rename
   if (regionOutline) {
     add(
       {
         id: "region-outside",
         type: "fill",
         source: "region",
-        filter: ["==", ["get", "kind"], "mimo"],
+        filter: ["in", ["get", "kind"], ["literal", ["outside", "mimo"]]],
         paint: { "fill-color": c.regionOutside }
       },
       ["hranice", "Mimo stiahnutého regiónu", "area",
@@ -5892,7 +5892,7 @@ export function buildStyle({
         id: "region-border",
         type: "line",
         source: "region",
-        filter: ["==", ["get", "kind"], "hranica"],
+        filter: ["in", ["get", "kind"], ["literal", ["outline", "hranica"]]],
         layout: { "line-join": "round" },
         paint: {
           "line-color": c.regionBorder,

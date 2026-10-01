@@ -1,46 +1,46 @@
-name: Obnov cache z Google Drive
+name: Restore cache from Google Drive
 description: >-
-  Náhrada za actions/cache/restore. Záznamy ležia na Drive, nie v GitHube –
-  ten má na repozitár 10 GB a ticho vyhadzoval najstaršie.
+  Stand-in for actions/cache/restore. Entries live on Drive, not on GitHub –
+  which gives a repository 10 GB and quietly dropped the oldest.
 
-# Vstupy aj výstupy sú NAROVNAKO ako pri `actions/cache/restore`, aby sa
-# `if:` podmienky vo workflowoch nemuseli prepisovať a aby platilo to, čo je
-# pri nich napísané: `cache-hit` je `true` len pri presnej zhode kľúča,
-# `restore-keys` sú predpony a berie sa najnovší záznam, čo na ne sedí.
+# Inputs and outputs MATCH `actions/cache/restore`, so the `if:` conditions in
+# workflows needn't change and what's written about them holds: `cache-hit` is
+# `true` only on an exact key match, `restore-keys` are prefixes and the newest
+# matching entry wins.
 #
-# PRIHLÁSENIE SA SEM NEPODÁVA VSTUPOM, berie sa z prostredia jobu
-# (GDRIVE_CREDENTIALS alebo trojica DRIVE_CLIENT/DRIVE_SECRET/DRIVE_REFRESH).
-# Composite akcia vidí `env:` volajúceho jobu, ale nie `secrets` – a keby sa
-# token podával ako vstup, stálo by pri každom z dvadsiatich volaní. Že ho job
-# naozaj má, stráži „Kontrola · lint workflowov".
+# SIGN-IN ISN'T AN INPUT, it comes from the job's environment
+# (GDRIVE_CREDENTIALS or the DRIVE_CLIENT/DRIVE_SECRET/DRIVE_REFRESH trio).
+# A composite action sees the calling job's `env:`, not `secrets` – and a token
+# passed as an input would sit in each of twenty calls. That the job really has
+# it is guarded by “Check · workflow lint”.
 
 inputs:
   path:
-    description: "Čo sa obnovuje – jedna cesta na riadok, ako pri actions/cache"
+    description: "What is restored – one path per line, as with actions/cache"
     required: true
   key:
-    description: "Kľúč záznamu"
+    description: "Entry key"
     required: true
   restore-keys:
-    description: "Predpony, po ktorých sa hľadá, keď kľúč nesedí (po riadkoch)"
+    description: "Prefixes searched when the key misses (one per line)"
     required: false
     default: ""
 
 outputs:
   cache-hit:
-    description: "`true` len pri PRESNEJ zhode kľúča"
-    value: ${{ steps.obnov.outputs.cache-hit }}
+    description: "`true` only on an EXACT key match"
+    value: ${{ steps.restore.outputs.cache-hit }}
   cache-primary-key:
-    description: "Kľúč, na ktorý sa hľadalo (na uloženie tým istým kľúčom)"
-    value: ${{ steps.obnov.outputs.cache-primary-key }}
+    description: "The key searched for (to save under the same key)"
+    value: ${{ steps.restore.outputs.cache-primary-key }}
   cache-matched-key:
-    description: "Kľúč, ktorý sa naozaj našiel (pri zhode po predpone je iný)"
-    value: ${{ steps.obnov.outputs.cache-matched-key }}
+    description: "The key actually found (differs on a prefix match)"
+    value: ${{ steps.restore.outputs.cache-matched-key }}
 
 runs:
   using: composite
   steps:
-    - id: obnov
+    - id: restore
       shell: bash
       env:
         CACHE_KEY: ${{ inputs.key }}

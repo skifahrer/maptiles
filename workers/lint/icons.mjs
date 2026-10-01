@@ -1,22 +1,20 @@
 #!/usr/bin/env node
 /**
- * Kontrola ikon: vlastných obrázkov, vlastných sád a `layout` vlastností.
- * Volá ju `Kontrola · lint workflowov`.
+ * Checks icons: own images, own sets and `layout` properties.
+ * Run by `Check · workflow lint`.
  *
- * Sedem tichých vecí – nič z toho nespadne, prejaví sa to až v mape:
+ * Seven quiet things – none fails, they show only in the map:
  *
- *   1. vlastná ikona sa musí dopiecť do spritu (neznámy obrázok MapLibre
- *      ticho preskočí); skúša sa na naozajstnom sprite;
- *   2. štýl ju musí pustiť aj vtedy, keď v sprite ešte nie je;
- *   3. vlastnú sadu musí `icons.sh` vypísať na stiahnutie a `deploy/site.sh`
- *      do manifestu;
- *   4. `layout` len na symbolovej vrstve – neznáma vlastnosť v `layout` je
- *      tvrdá chyba a MapLibre odmietne celý štýl;
- *   5. ikona pri POI kategórii sa nasadzuje ako holé meno obrázka; drží sa aj
- *      práve nahratá vlastná ikona a voľba „žiadna";
- *   6. vlastný obrázok ako vzor plochy (pečie ho ten istý skript);
- *   7. šípka jednosmerky musí vzniknúť pri každej sade – kým bola z cudzieho
- *      spritu, vrstva `road-oneway` pri dvoch z troch sád vôbec nevznikla.
+ *   1. an own icon bakes into the sprite (MapLibre quietly skips an unknown
+ *      image); tried on a real sprite;
+ *   2. the style lets it through even before the sprite has it;
+ *   3. `icons.sh` lists an own set for download and `deploy/site.sh` for the manifest;
+ *   4. `layout` only on a symbol layer – an unknown `layout` property is a hard
+ *      error and MapLibre refuses the whole style;
+ *   5. a POI category icon is set as a bare image name; a freshly uploaded own icon
+ *      and the “none” choice hold too;
+ *   6. an own image as an area pattern (baked by the same script);
+ *   7. a one-way arrow exists for every set.
  *
  *   node workers/lint/icons.mjs
  */
@@ -39,37 +37,37 @@ import { collectPatternNames } from "../../poc/web/patterns.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 let bad = 0;
-const chyba = (subor, text) => {
-  console.log(`::error file=${subor}::${text}`);
+const error = (file, text) => {
+  console.log(`::error file=${file}::${text}`);
   bad += 1;
 };
 
-/** Malé PNG ako vlastná ikona. */
-const ikonaPng = () => {
+/** A small PNG as an own icon. */
+const iconPng = () => {
   const n = 8;
   const d = Buffer.alloc(n * n * 4, 255);
   return `data:image/png;base64,${encodePng({ width: n, height: n, data: d }).toString("base64")}`;
 };
 
-const UKAZKA = {
+const SAMPLE = {
   version: 2,
   icons: `${CUSTOM_SET_PREFIX}test`,
   iconSets: [
     {
       id: `${CUSTOM_SET_PREFIX}test`,
-      label: "Testovacia sada",
+      label: "Test set",
       sprite: "https://example.org/sprites/test",
       suffix: "_11"
     }
   ],
-  customIcons: [{ name: `${CUSTOM_ICON_PREFIX}test`, png: ikonaPng(), pixelRatio: 2 }]
+  customIcons: [{ name: `${CUSTOM_ICON_PREFIX}test`, png: iconPng(), pixelRatio: 2 }]
 };
-const { overrides, problems } = normalizeOverrides(UKAZKA);
+const { overrides, problems } = normalizeOverrides(SAMPLE);
 for (const p of problems) {
-  chyba("poc/web/themes.js", `ukážkové úpravy neprešli normalizáciou: ${p}`);
+  error("poc/web/themes.js", `the sample overrides didn't pass normalisation: ${p}`);
 }
 
-// 1. vlastná ikona sa dopečie do spritu
+// 1. an own icon bakes into the sprite
 const dir = mkdtempSync(join(tmpdir(), "icons-lint-"));
 try {
   const base = join(dir, "sprite");
@@ -78,88 +76,88 @@ try {
     `${base}.json`,
     JSON.stringify({ test_11: { x: 0, y: 0, width: 4, height: 4, pixelRatio: 1, sdf: true } })
   );
-  const upravy = join(dir, "overrides.json");
-  writeFileSync(upravy, JSON.stringify(UKAZKA));
+  const overridesFile = join(dir, "overrides.json");
+  writeFileSync(overridesFile, JSON.stringify(SAMPLE));
   execFileSync(
     "node",
-    ["workers/assets/custom-icons.mjs", `--sprite=${base}`, `--overrides=${upravy}`],
+    ["workers/assets/custom-icons.mjs", `--sprite=${base}`, `--overrides=${overridesFile}`],
     { stdio: "pipe", cwd: ROOT }
   );
   const index = JSON.parse(readFileSync(`${base}.json`, "utf8"));
-  const meno = overrides.customIcons[0].name;
-  const e = index[meno];
+  const name = overrides.customIcons[0].name;
+  const e = index[name];
   if (!e) {
-    chyba(
+    error(
       "workers/assets/custom-icons.mjs",
-      `vlastná ikona "${meno}" sa do spritu nedopiekla – vrstva, ktorá si ju pýta, ` +
-        `ostane bez obrázka a MapLibre o tom nepovie nič.`
+      `own icon "${name}" didn't bake into the sprite – a layer asking for it ` +
+        `stays without an image and MapLibre says nothing.`
     );
   } else {
     if (e.sdf) {
-      chyba("workers/assets/custom-icons.mjs",
-        `vlastná ikona "${meno}" je označená ako \`sdf\` – je to hotový farebný obrázok.`);
+      error("workers/assets/custom-icons.mjs",
+        `own icon "${name}" is marked \`sdf\` – it's a finished colour image.`);
     }
     if (e.pixelRatio !== 2) {
-      chyba("workers/assets/custom-icons.mjs",
-        `vlastná ikona "${meno}" má v indexe pixelRatio ${e.pixelRatio}, ale nahrala sa ako @2x ` +
-        `– v mape by bola dvojnásobne veľká.`);
+      error("workers/assets/custom-icons.mjs",
+        `own icon "${name}" has pixelRatio ${e.pixelRatio} in the index, but was uploaded @2x ` +
+        `– it would be twice as big in the map.`);
     }
   }
-  // pôvodné ikony sa pri tom nesmú stratiť
+  // the original icons mustn't get lost
   if (!index.test_11) {
-    chyba("workers/lib/sprite-bake.mjs",
-      "dopečenie vlastných ikon zahodilo ikonu, ktorá v sprite už bola.");
+    error("workers/lib/sprite-bake.mjs",
+      "baking own icons dropped an icon the sprite already had.");
   }
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
 
-// 2. štýl vlastnú ikonu pustí, aj keď v sprite ešte nie je
+// 2. the style lets an own icon through before the sprite has it
 {
-  const meno = overrides.customIcons[0].name;
+  const name = overrides.customIcons[0].name;
   const style = buildStyle({
     theme: Object.keys(THEMES)[0],
     tilesUrl: "pmtiles://x/t.pmtiles",
     spriteUrl: "https://x/sprite",
     glyphsUrl: "https://x/{fontstack}/{range}.pbf",
-    // sprite zámerne bez tej ikony – stav po jej pridaní v paneli
+    // the sprite lacks the icon on purpose – the state after adding it in the panel
     icons: ["mountain_11"],
     iconSet: "osm-liberty",
-    overrides: { ...overrides, layers: { "poi-major": { icon: meno } } }
+    overrides: { ...overrides, layers: { "poi-major": { icon: name } } }
   });
   const l = style.layers.find((x) => x.id === "poi-major");
-  if (!l || (l.layout || {})["icon-image"] !== meno) {
-    chyba(
+  if (!l || (l.layout || {})["icon-image"] !== name) {
+    error(
       "poc/web/themes.js",
-      `vrstva si po výbere vlastnej ikony "${meno}" nechala ` +
-        `"${(l?.layout || {})["icon-image"]}" – práve pridaná ikona sa tým ticho zahodí.`
+      `after picking own icon "${name}" the layer kept ` +
+        `"${(l?.layout || {})["icon-image"]}" – the freshly added icon is quietly dropped.`
     );
   }
 }
 
-// 3. vlastnú sadu naozaj niekto stiahne a zapíše do manifestu
+// 3. someone really downloads an own set and writes it into the manifest
 {
   const id = overrides.iconSets[0].id;
   if (!allIconSources(overrides).some((s) => s.id === id)) {
-    chyba("poc/web/icon-sources.js", `vlastná sada "${id}" nie je v \`allIconSources\`.`);
+    error("poc/web/icon-sources.js", `own set "${id}" isn't in \`allIconSources\`.`);
   }
-  for (const [subor, co] of [
-    ["workers/assets/icons.sh", "sťahovanie sád"],
-    ["workers/deploy/site.sh", "zoznam sád v manifeste"]
+  for (const [file, what] of [
+    ["workers/assets/icons.sh", "downloading sets"],
+    ["workers/deploy/site.sh", "the manifest's set list"]
   ]) {
-    const text = readFileSync(join(ROOT, subor), "utf8");
+    const text = readFileSync(join(ROOT, file), "utf8");
     if (!text.includes("allIconSources")) {
-      chyba(
-        subor,
-        `${co} berie len sady z repozitára (\`ICON_SOURCES\`). Vlastná sada z úprav ` +
-          `sa tým dá pridať aj vybrať, ale sprite k nej nikdy nevznikne – a mapa ` +
-          `ostane bez ikon.`
+      error(
+        file,
+        `${what} takes only the repository's sets (\`ICON_SOURCES\`). An own set ` +
+          `from the overrides can then be added and picked, but its sprite is never ` +
+          `made – and the map stays without icons.`
       );
     }
   }
 }
 
-// 4. `layout` sa nasadí len na symbolovú vrstvu
+// 4. `layout` lands only on a symbol layer
 {
   const style = buildStyle({
     theme: Object.keys(THEMES)[0],
@@ -168,72 +166,69 @@ try {
     glyphsUrl: "https://x/{fontstack}/{range}.pbf",
     icons: ["mountain_11"],
     overrides: normalizeOverrides({
-      // `road-path` je čiara – `icon-size` na nej zhodí celý štýl
+      // `road-path` is a line – `icon-size` on it breaks the whole style
       layers: { "road-path": { layout: { "icon-size": 2 } } }
     }).overrides
   });
   const l = style.layers.find((x) => x.id === "road-path");
   if (l && (l.layout || {})["icon-size"] !== undefined) {
-    chyba(
+    error(
       "poc/web/themes.js",
-      "`layout` úprava sa nasadila na čiarovú vrstvu – MapLibre by taký štýl " +
-        "odmietol celý a mapa by sa nenačítala."
+      "a `layout` override landed on a line layer – MapLibre would refuse the " +
+        "whole style and the map wouldn't load."
     );
   }
 }
 
-// 5. ikona vybraná pri POI kategórii sa do mapy dostane
-// Je to jediná hodnota v štýle nasadzovaná ako holé meno obrázka. Meno, ktoré
-// sprite nemá, MapLibre preskočí; práve nahratá vlastná ikona musí prejsť;
-// a „žiadna ikona" (prázdne meno) je voľba, nie nezadaná hodnota.
+// 5. an icon picked for a POI category reaches the map; an empty name is a choice
 {
-  const meno = overrides.customIcons[0].name;
+  const name = overrides.customIcons[0].name;
   const style = buildStyle({
     theme: Object.keys(THEMES)[0],
     tilesUrl: "pmtiles://x/t.pmtiles",
     spriteUrl: "https://x/sprite",
     glyphsUrl: "https://x/{fontstack}/{range}.pbf",
     featuresUrl: "pmtiles://x/f.pmtiles",
-    // body sú vo vlastnom zdroji – bez toho vrstva `feature-point` v štýle nie je
+    // points have their own source – without it there's no `feature-point` layer
     pointsUrl: "pmtiles://x/p.pmtiles",
     roadsUrl: "pmtiles://x/r.pmtiles",
-    // sprite zámerne bez vlastnej ikony – stav po jej nahratí v paneli
+    // the sprite lacks the own icon on purpose – the state after uploading it
     icons: ["mountain_11", "restaurant_11"],
     iconSet: "osm-liberty",
     overrides: normalizeOverrides({
       ...overrides,
-      poi: { hidden: [], icons: { restaurant: meno, spring: "", cave: "nieje_11" } }
+      poi: { hidden: [], icons: { restaurant: name, spring: "", cave: "missing_11" } }
     }).overrides
   });
-  const vyraz = (id) =>
+  const expr = (id) =>
     JSON.stringify((style.layers.find((l) => l.id === id)?.layout || {})["icon-image"] || null);
 
   for (const id of ["poi-major", "poi-all", "feature-point"]) {
-    const text = vyraz(id);
-    if (!text.includes(JSON.stringify(meno))) {
-      chyba(
+    const text = expr(id);
+    if (!text.includes(JSON.stringify(name))) {
+      error(
         "poc/web/themes.js",
-        `vrstva \`${id}\` nepustila vlastnú ikonu "${meno}" vybranú pri kategórii – ` +
-          `v paneli sa vybrať dá, ale mapa ju nenakreslí.`
+        `layer \`${id}\` didn't let through own icon "${name}" picked for a category – ` +
+          `the panel can pick it, but the map won't draw it.`
       );
     }
-    if (text.includes("nieje_11")) {
-      chyba(
+    if (text.includes("missing_11")) {
+      error(
         "poc/web/themes.js",
-        `vrstva \`${id}\` si pýta ikonu "nieje_11", ktorú sprite nemá – MapLibre ju ` +
-          `ticho preskočí a kategória ostane bez obrázka.`
+        `layer \`${id}\` asks for icon "missing_11", which the sprite lacks – MapLibre ` +
+          `quietly skips it and the category stays without an image.`
       );
     }
     if (!text.includes('"spring"')) {
-      chyba(
+      error(
         "poc/web/themes.js",
-        `vrstva \`${id}\` zahodila voľbu „žiadna ikona" pri kategórii spring. Prázdne ` +
-          `meno je odpoveď, nie chýbajúca hodnota.`
+        `layer \`${id}\` dropped the “no icon” choice for category spring. An empty ` +
+          `name is an answer, not a missing value.`
       );
     }
   }
-  // skryté kategórie platia aj na vlastných bodoch – zoznam v paneli je jeden
-  const skryte = buildStyle({
+  // hidden categories apply to own points too – the panel has one list
+  const hidden = buildStyle({
     theme: Object.keys(THEMES)[0],
     tilesUrl: "pmtiles://x/t.pmtiles",
     spriteUrl: "https://x/sprite",
@@ -244,45 +239,41 @@ try {
     icons: ["mountain_11"],
     overrides: normalizeOverrides({ poi: { hidden: ["spring"] } }).overrides
   });
-  const bodyFilter = JSON.stringify(
-    skryte.layers.find((l) => l.id === "feature-point")?.filter || null
+  const pointFilter = JSON.stringify(
+    hidden.layers.find((l) => l.id === "feature-point")?.filter || null
   );
-  if (!bodyFilter.includes('"spring"')) {
-    chyba(
+  if (!pointFilter.includes('"spring"')) {
+    error(
       "poc/web/themes.js",
-      "`feature-point` nerešpektuje skryté kategórie – odškrtnutie prameňa v paneli " +
-        "by neurobilo nič a nikto by nepovedal prečo."
+      "`feature-point` ignores hidden categories – unticking springs in the panel " +
+        "would do nothing and nobody would say why."
     );
   }
 }
 
-// 6. vlastný obrázok ako vzor
-// Nahratý obrázok je uložený ako vlastná ikona (`own:…`), pečie ho
-// custom-icons.mjs. Meno, ktoré v úpravách nie je, MapLibre ticho preskočí;
-// a keby ho `collectPatternNames` vrátilo medzi kreslené vzory, prepísal by
-// ho rasterizér šrafovaním.
+// 6. an own image as a pattern – baked by custom-icons.mjs, not the pattern rasteriser
 {
-  const meno = overrides.customIcons[0].name;
-  const spravne = normalizeOverrides({
+  const name = overrides.customIcons[0].name;
+  const valid = normalizeOverrides({
     ...overrides,
-    layers: { "landcover-wood": { pattern: { image: meno, opacity: 0.8 } } }
+    layers: { "landcover-wood": { pattern: { image: name, opacity: 0.8 } } }
   });
-  if (spravne.problems.length) {
-    chyba(
+  if (valid.problems.length) {
+    error(
       "poc/web/themes.js",
-      `vlastný obrázok ako vzor normalizeOverrides odmietol: ${spravne.problems[0]}`
+      `normalizeOverrides refused an own image as a pattern: ${valid.problems[0]}`
     );
   }
-  const zle = normalizeOverrides({
+  const invalid = normalizeOverrides({
     ...overrides,
-    layers: { "landcover-wood": { pattern: { image: "own:tento-neexistuje" } } }
+    layers: { "landcover-wood": { pattern: { image: "own:does-not-exist" } } }
   });
-  if (zle.overrides.layers["landcover-wood"]?.pattern || !zle.problems.length) {
-    chyba(
+  if (invalid.overrides.layers["landcover-wood"]?.pattern || !invalid.problems.length) {
+    error(
       "poc/web/themes.js",
-      "vzor z obrázka, ktorý nie je medzi vlastnými ikonami úprav, prešiel " +
-        "normalizáciou. Do spritu by ho nemal kto dopiecť a plocha by ostala " +
-        "bez vzoru – štýl je pritom platný."
+      "a pattern from an image that isn't among the overrides' own icons passed " +
+        "normalisation. Nobody would bake it into the sprite and the area would " +
+        "stay without a pattern – on a valid style."
     );
   }
 
@@ -291,63 +282,61 @@ try {
     tilesUrl: "pmtiles://x/t.pmtiles",
     spriteUrl: "https://x/sprite",
     glyphsUrl: "https://x/{fontstack}/{range}.pbf",
-    // sprite zámerne bez neho – stav hneď po nahratí v paneli
+    // the sprite lacks it on purpose – the state right after uploading
     icons: ["mountain_11"],
     iconSet: "osm-liberty",
-    overrides: spravne.overrides
+    overrides: valid.overrides
   });
-  const vrstva = style.layers.find((l) => l.id === "landcover-wood__pattern");
-  if (!vrstva || (vrstva.paint || {})["fill-pattern"] !== meno) {
-    chyba(
+  const layer = style.layers.find((l) => l.id === "landcover-wood__pattern");
+  if (!layer || (layer.paint || {})["fill-pattern"] !== name) {
+    error(
       "poc/web/themes.js",
-      `vrstva so vzorom z vlastného obrázka má \`fill-pattern: ` +
-        `${JSON.stringify((vrstva?.paint || {})["fill-pattern"])}\`, čakalo sa ` +
-        `"${meno}" – práve nahratý obrázok sa tým ticho zahodí.`
+      `the layer with an own-image pattern has \`fill-pattern: ` +
+        `${JSON.stringify((layer?.paint || {})["fill-pattern"])}\`, expected ` +
+        `"${name}" – the freshly uploaded image is quietly dropped.`
     );
   }
-  const kreslene = collectPatternNames(style);
-  if (kreslene.includes(meno)) {
-    chyba(
+  const drawn = collectPatternNames(style);
+  if (drawn.includes(name)) {
+    error(
       "poc/web/patterns.js",
-      `\`collectPatternNames\` vrátilo vlastný obrázok "${meno}" medzi kreslenými ` +
-        `vzormi – \`workers/styles/patterns.mjs\` by cezeň do atlasu nakreslil ` +
-        `šrafovanie a prepísal obrázok, ktorý tam dal \`custom-icons.mjs\`.`
+      `\`collectPatternNames\` returned own image "${name}" among drawn patterns ` +
+        `– \`workers/styles/patterns.mjs\` would draw hatching over it in the atlas ` +
+        `and overwrite the image \`custom-icons.mjs\` put there.`
     );
   }
 }
 
-// 7. šípky jednosmeriek sú v každej sade
-// Kým bola `arrow` z cudzieho spritu, vrstva `road-oneway` pri dvoch z troch
-// sád vôbec nevznikla a v paneli nebolo čo nastavovať.
+// 7. one-way arrows exist in every set
 {
-  const vsetky = arrowImages();
-  if (!vsetky.includes(DEFAULT_ARROW_IMAGE)) {
-    chyba("poc/web/arrows.js",
-      `štýl žiada šípku "${DEFAULT_ARROW_IMAGE}", ale medzi pečenými nie je ` +
-      `(${vsetky.join(", ")}) – vrstva jednosmeriek by sa ticho vynechala.`);
+  const all = arrowImages();
+  if (!all.includes(DEFAULT_ARROW_IMAGE)) {
+    error("poc/web/arrows.js",
+      `the style asks for arrow "${DEFAULT_ARROW_IMAGE}", but it isn't among the ` +
+      `baked ones (${all.join(", ")}) – the one-way layer would be quietly skipped.`);
   }
   for (const set of ICON_SOURCE_IDS) {
-    // sada bez vlastnej `arrow` je ten prípad, kvôli ktorému si ich kreslíme sami
+    // a set without its own `arrow` is why we draw them ourselves
     const style = buildStyle({
       theme: Object.keys(THEMES)[0],
       tilesUrl: "pmtiles://x/t.pmtiles",
       spriteUrl: "https://x/sprite",
-      // pole, nie Set: `hasIcon` sa pýta na `.length` a `.includes`
-      icons: vsetky,
+      // an array, not a Set: `hasIcon` asks for `.length` and `.includes`
+      icons: all,
       sdfIcons: true,
       overrides: { ...overrides, icons: set }
     });
     if (!style.layers.some((l) => l.id === "road-oneway")) {
-      chyba("poc/web/icon-sources.js",
-        `pri sade "${set}" nie je v štýle vrstva "road-oneway" – jednosmerky ` +
-        `by nemali šípky a v paneli by nebolo čo nastaviť.`);
+      error("poc/web/icon-sources.js",
+        `with set "${set}" the style has no "road-oneway" layer – one-way roads ` +
+        `would have no arrows and the panel nothing to set.`);
     }
   }
 }
 
 console.log(
-  `ikony: ${bad} chýb (${LAYOUT_PROP_IDS.length} vlastností z layout, ` +
-    `${overrides.customIcons.length} vlastných ikon, ${overrides.iconSets.length} vlastných sád, ` +
-    `${arrowImages().length} šípok × ${ICON_SOURCE_IDS.length} sád)`
+  `icons: ${bad} errors (${LAYOUT_PROP_IDS.length} layout properties, ` +
+    `${overrides.customIcons.length} own icons, ${overrides.iconSets.length} own sets, ` +
+    `${arrowImages().length} arrows × ${ICON_SOURCE_IDS.length} sets)`
 );
 process.exit(bad ? 1 : 0);
