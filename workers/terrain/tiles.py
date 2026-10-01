@@ -208,7 +208,7 @@ def main():
     ap.add_argument("--maxzoom", type=int, default=12)
     ap.add_argument("--minzoom", type=int, default=0)
     ap.add_argument("--out", required=True, help="directory of {z}/{x}/{y}.<format> tiles")
-    ap.add_argument("--format", choices=sorted(ENCODERS), default="png")
+    ap.add_argument("--format", choices=sorted(ENCODERS), default="webp")
     ap.add_argument("--max-frac-bits", type=int, default=-1,
                     help="at most this many fraction bits (-1 = by the pixel only)")
     ap.add_argument("--budget-mb", type=float, default=0,

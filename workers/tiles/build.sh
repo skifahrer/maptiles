@@ -62,8 +62,8 @@ TILE_LANGUAGES="${TILE_LANGUAGES:-sk,cs,en,de,fr,pl,hu,it,es,pt,nl,da,sv,no,nb,f
 
 # Planetiler's defaults drop sub-pixel detail at max zoom; overzoom past z16 shows it
 DETAIL=(--min_feature_size_at_max_zoom=0 --simplify_tolerance_at_max_zoom=0)
-if [ "${OPT_MAP_SIMPLIFY:-false}" = true ]; then DETAIL=(); fi
-HN_MIN="${OPT_HOUSENUMBER_MINZOOM:-14}"
+if [ "${OPT_MAP_SIMPLIFY:-true}" = true ]; then DETAIL=(); fi
+HN_MIN="${OPT_HOUSENUMBER_MINZOOM:-16}"
 case "$HN_MIN" in ''|*[!0-9]*) HN_MIN=14 ;; esac
 if [ "$HN_MIN" -gt 14 ]; then python3 -m pip install --quiet pmtiles; fi
 
@@ -119,5 +119,5 @@ echo "maxzoom=$Z" >> "$GITHUB_OUTPUT"
 echo "size_mb=$(( $(stat -c%s "$OUT") / 1048576 ))" >> "$GITHUB_OUTPUT"
 ls -lh _site/tiles/
 printf '%s\t%s\t%s\t%s\n' "70" "Map tiles (Planetiler)" "$(( $(date +%s) - T_TILES ))" \
-  "maxzoom $Z, $(( $(stat -c%s "$OUT") / 1048576 )) MB, simplify ${OPT_MAP_SIMPLIFY:-false}, house numbers from z$HN_MIN" \
+  "maxzoom $Z, $(( $(stat -c%s "$OUT") / 1048576 )) MB, simplify ${OPT_MAP_SIMPLIFY:-true}, house numbers from z$HN_MIN" \
   >> steps-out/tiles.tsv

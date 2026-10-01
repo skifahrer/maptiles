@@ -28,8 +28,8 @@ TPCT="${BUDGET_TERRAIN_PCT:-12}"
 case "$TPCT" in ''|*[!0-9]*) TPCT=12 ;; esac
 TBUDGET_MB=$(( LIMIT_MB * TPCT / 100 ))
 REBUILD="${TERRAIN_REBUILD:-false}"
-FMT="${TERRAIN_FORMAT:-png}"
-case "$FMT" in png|webp) ;; *) FMT=png ;; esac
+FMT="${TERRAIN_FORMAT:-webp}"
+case "$FMT" in png|webp) ;; *) FMT=webp ;; esac
 BITS="${TERRAIN_FRAC_BITS:-auto}"
 case "$BITS" in ''|*[!0-9]*) BITS=auto ;; esac
 

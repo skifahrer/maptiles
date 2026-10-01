@@ -116,12 +116,12 @@ on:
       opt_contour_maxzoom_cap:
         description: "Highest zoom contours may climb to"
         required: false
-        default: "16"
+        default: "14"
         type: string
       opt_contour_lowland_m:
         description: "Below this height contours keep every second line (0 = off)"
         required: false
-        default: "0"
+        default: "300"
         type: string
       opt_contour_smoothing:
         description: "DEM smoothing before tracing, in arc seconds"
@@ -181,7 +181,7 @@ on:
       opt_terrain_format:
         description: "Image format of height tiles: png or webp"
         required: false
-        default: "png"
+        default: "webp"
         type: string
       # flags of the `rebuild` choice: drop that layer's cache and compute it anew
       opt_contours_rebuild:

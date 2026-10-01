@@ -25,13 +25,18 @@ TS="$(store_token "$OPT_SHADING_SOURCE")"
 RA=$(store_token "$AREA_IN" | tr -c 'a-zA-Z0-9' '_')
 
 # ---------- layer settings (key prefixes) ----------
-# non-default A/B options sit mid-key: at the end the default's prefix would match them
+# size options sit mid-key: at the end the default's prefix would match them
+# compared with the old defaults, so tiles built before them are never reused
+CCAP="${OPT_CONTOUR_MAXZOOM_CAP:-14}"
+LOWLAND="${OPT_CONTOUR_LOWLAND_M:-300}"
+TBITS="${OPT_TERRAIN_FRAC_BITS:-auto}"
+TFMT="${OPT_TERRAIN_FORMAT:-webp}"
 C_OPT=""
-if [ "${OPT_CONTOUR_MAXZOOM_CAP:-16}" != 16 ]; then C_OPT="${C_OPT}-zc${OPT_CONTOUR_MAXZOOM_CAP}"; fi
-if [ "${OPT_CONTOUR_LOWLAND_M:-0}" != 0 ]; then C_OPT="${C_OPT}-l${OPT_CONTOUR_LOWLAND_M}"; fi
+if [ "$CCAP" != 16 ]; then C_OPT="${C_OPT}-zc${CCAP}"; fi
+if [ "$LOWLAND" != 0 ]; then C_OPT="${C_OPT}-l${LOWLAND}"; fi
 T_OPT=""
-if [ "${OPT_TERRAIN_FRAC_BITS:-auto}" != auto ]; then T_OPT="${T_OPT}-b${OPT_TERRAIN_FRAC_BITS}"; fi
-if [ "${OPT_TERRAIN_FORMAT:-png}" != png ]; then T_OPT="${T_OPT}-${OPT_TERRAIN_FORMAT}"; fi
+if [ "$TBITS" != auto ]; then T_OPT="${T_OPT}-b${TBITS}"; fi
+if [ "$TFMT" != png ]; then T_OPT="${T_OPT}-${TFMT}"; fi
 # v11: contours no longer carry rock settings; smoothing is in the key too,
 # the three values live in dem-layers.yml `env:`, not in hashed files
 C_SETTINGS="contours-v11-c$CS-$B-i${CONTOUR_INTERVAL}-z${OPT_CONTOUR_MAXZOOM}-s${OPT_CONTOUR_SMOOTHING}h${CONTOUR_DEM_LOWPASS}t${CONTOUR_SIMPLIFY}x${CONTOUR_SMOOTH}${C_OPT}-a$RA"

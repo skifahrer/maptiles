@@ -229,7 +229,7 @@ Trails) preto kombinuje OSM s externým DEM. Robíme to rovnako:
 | výšky vrcholov | OSM tag `ele` | už v dlaždiciach, vrstva `mountain_peak` |
 | **vrstevnice a skaly** | **Sonny's LiDAR DTM, model 20m** | náš sklad `dem-sonny` na Drive (napĺňa ho workflow *Dáta · výškové modely*) |
 | **výšky v smerovacej sieti** | **DMR 5.0 prevzorkované na 5 m** | `<kraj>-routing.pmtiles`: výška každých 5 m každej cesty aj chodníka, odoberá [`workers/routing/heights.py`](routing/heights.py) zo skladu `dem-dmr5-v2`, zálohou je Sonny 20 m; iný model cez `ROUTING_DEM_SOURCE` |
-| **tieňovanie reliéfu, 3D terén** | **ten istý Sonny DEM** | vlastný raster `.pmtiles` (terrarium PNG vnútri), uložený v sklade `dem-terrain` |
+| **tieňovanie reliéfu, 3D terén** | **ten istý Sonny DEM** | vlastný raster `.pmtiles` (terrarium WebP bez strát vnútri, `terrain_format=png` vráti PNG), uložený v sklade `dem-terrain` |
 | tieňovanie a 3D – záloha | AWS Terrain Tiles (Terrarium) | [registry.opendata.aws](https://registry.opendata.aws/terrain-tiles/), keď sa vlastné nevyrobia |
 
 Tieňovanie reliéfu je **predvolene vypnuté** – na farebnej mape prekrýva
@@ -465,9 +465,10 @@ sú maxzoom a to, aby sa čiara nevzorkovala jemnejšie, než mriežka unesie
 Preto si vrstevnice zoom **hľadajú oboma smermi**: keď sa `.pmtiles` nezmestí
 do svojho podielu rozpočtu stránky, ide o úroveň nižšie (ako doteraz), a keď
 v rozpočte ostalo miesto aspoň na dvojnásobok, skúsi sa o úroveň vyššie – až
-po 16. Celý kraj tak ostane na z14 (187 MB), kým výrez jedného pohoria vyjde
-na z16 a pri max zoome je hladký. Voľba `contour_maxzoom` je teda želanie, od
-ktorého sa začína, nie strop.
+po `contour_maxzoom_cap` (14). Voľba `contour_maxzoom` je teda želanie, od
+ktorého sa začína, strop je `contour_maxzoom_cap`. Pod `contour_lowland_m`
+(300 m) ostáva každá druhá vrstevnica. Čo ktorá voľba ušetrí, je
+v `docs/package-size-ab.md`.
 
 Vrstevnice sa trasujú z **plného rozlíšenia DEM** a do dlaždíc idú na
 najvyššom zoome bez zjednodušovania geometrie
@@ -3476,16 +3477,19 @@ Planetiler má tvrdý limit `maxzoom <= 16`
 a upozorní v logu.
 
 Priblíženie až na **z20** to nijako neblokuje: dlaždice z16 sa dopočítavajú
-**overzoomom** v MapLibre (web aj iOS majú `maxZoom = 20`). Aby overzoom
-vyzeral ostro, najvyšší zoom sa generuje bez zjednodušovania geometrie:
+**overzoomom** v MapLibre (web aj iOS majú `maxZoom = 20`). Najvyšší zoom má
+predvolené zjednodušovanie Planetileru (`map_simplify=true`, rozdiel je pod
+pixel a šetrí ~1 %) a čísla domov sú až od z16 (`housenumber_minzoom`, štýl
+ich kreslí od z17):
 
 ```
 --maxzoom=16 --render_maxzoom=16
---min_feature_size_at_max_zoom=0     # nezahadzuj malé prvky
---simplify_tolerance_at_max_zoom=0   # presná geometria
 --transportation_z13_paths=true      # všetky chodníky/cestičky
 --building_merge_z13=false           # samostatné budovy, nie zlepence
 ```
+
+`map_simplify=false` vráti `--min_feature_size_at_max_zoom=0` a
+`--simplify_tolerance_at_max_zoom=0`.
 
 Čo je vidieť na akom zoome (`DETAIL_Z = 14` v `themes.js`):
 
