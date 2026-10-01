@@ -1,0 +1,40 @@
+name: Check · catalog schema
+
+# `maps.json` against `maps.schema.json`, pulled from skifahrer/schemas; no copy lives here.
+# A build checks its own write in `catalog.sh`, since a bot push starts no workflow.
+
+on:
+  push:
+    paths:
+      - "maps.json"
+      - "maps-test.json"
+      - "workers/deploy/**"
+      - ".github/workflows/catalog-schema.yml"
+  pull_request:
+    paths:
+      - "maps.json"
+      - "maps-test.json"
+      - "workers/deploy/**"
+      - ".github/workflows/catalog-schema.yml"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "skifahrer/schemas branch or tag"
+        required: false
+        default: master
+
+permissions:
+  contents: read
+
+jobs:
+  schema:
+    name: maps.json matches its schema
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Validate both catalogs
+        env:
+          SCHEMAS_REF: ${{ inputs.ref || 'master' }}
+        run: python3 workers/deploy/catalog-schema.py maps.json maps-test.json
