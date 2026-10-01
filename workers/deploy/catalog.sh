@@ -55,6 +55,12 @@ for i in $(seq 1 "$TRIES"); do
     echo "::warning::Branch $BRANCH couldn't be fetched – committing on the SHA this run started from. Another job's catalog write since then is lost."
   fi
 
+  # the schema lives in skifahrer/schemas; a catalog the app can't read stays out
+  if ! python3 workers/deploy/catalog-schema.py "$MAPS_JSON"; then
+    echo "::error::$MAPS_JSON isn't committed. The packages are on Drive; fix the writer and run again."
+    exit 1
+  fi
+
   # a new file is a change too: `git diff` says nothing about untracked files
   if git ls-files --error-unmatch -- "$MAPS_JSON" >/dev/null 2>&1; then
     if git diff --quiet -- "$MAPS_JSON"; then

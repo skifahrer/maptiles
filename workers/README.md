@@ -2441,6 +2441,12 @@ a krok `Zapíš mapu do maps.json` ho commitne do vetvy, z ktorej beh vyšel
 vlastný [`maps-test.json`](../maps-test.json) s tým istým tvarom – rozpis
 o pár odstavcov nižšie.
 
+Tvar katalógu určuje `maps.schema.json` v repozitári
+[skifahrer/schemas](https://github.com/skifahrer/schemas) – tu nie je jeho kópia.
+`catalog.sh` si ho pred commitom stiahne ([`catalog-schema.py`](deploy/catalog-schema.py))
+a katalóg, ktorý mu nevyhovuje, nezapíše; workflow `Check · catalog schema`
+kontroluje oba súbory pri každej zmene.
+
 ```json
 {
   "_comment": "…", "_updated_at": "2026-08-11T18:35:52Z", "_updated_ts": 1760207752,
