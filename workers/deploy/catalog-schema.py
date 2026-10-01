@@ -27,10 +27,12 @@ def main(files):
         print(f"::warning::{REPO} couldn't be cloned – the catalog goes unchecked.")
         return 0
     try:
-        import jsonschema  # noqa: F401
+        # the runner's apt jsonschema predates 4.18 and ships without referencing
+        import referencing  # noqa: F401
+        from jsonschema import Draft202012Validator  # noqa: F401
     except ImportError:
-        subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "jsonschema"],
-                       check=True)
+        subprocess.run([sys.executable, "-m", "pip", "install", "--quiet",
+                        "--break-system-packages", "jsonschema>=4.18"], check=True)
     done = subprocess.run([sys.executable, os.path.join(found, "tools", "validate.py"), *files])
     if done.returncode:
         print(f"::error::{' '.join(files)} doesn't match maps.schema.json of "
