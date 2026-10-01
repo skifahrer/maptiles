@@ -29,6 +29,11 @@ definitions:
       type: integer
       value:
         tag_value: rail_gauge
+    # track section between switches of its kind, from `lines.py`
+    - key: _section
+      type: long
+      value:
+        tag_value: rail_section
     - key: electrified
     - key: voltage
     - key: frequency
@@ -426,6 +431,23 @@ examples:
           class: rail
           gauge: "1435;1520"
           gauge_mm: 1520
+
+  - name: A track carries its section, for the app to light the whole of it
+    input:
+      source: osm
+      geometry: line
+      tags:
+        railway: rail
+        usage: main
+        rail_section: "1234567000"
+    output:
+      - layer: railway
+        geometry: line
+        min_zoom: 6
+        tags:
+          class: rail
+          usage: main
+          _section: 1234567000
 
   - name: A siding only from z12
     input:

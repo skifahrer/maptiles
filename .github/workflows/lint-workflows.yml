@@ -524,6 +524,10 @@ jobs:
       - name: "Railways and cable cars: filter, promised classes and track network"
         run: python3 workers/lint/rail.py
 
+      # the app lights a track from switch to switch by its section
+      - name: "Railway sections: cut only at a switch onto the same kind of track"
+        run: python3 workers/lint/rail-sections.py
+
       - name: "Settlements: filter, floor area and a name on the building"
         run: python3 workers/lint/buildings.py
 
