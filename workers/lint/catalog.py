@@ -363,9 +363,9 @@ def _catalog_trial():
            "regions": {"bratislavsky": {"bbox": [16.8, 48.0, 17.5, 48.6],
                                         "maxzoom": 16}}}
     parts = ["slovensko", "bratislavsky"]
-    map_kinds = ["base", "contours-rocks", "terrain"]
+    map_kinds = ["base", "contours", "terrain"]
     map_packages = [("", "bratislavsky.zip", 1, "id1", "zip", "sha1"),
-                    ("contours-rocks", "bratislavsky-contours-rocks.zip",
+                    ("contours", "bratislavsky-contours.zip",
                      1, "id2", "zip", "sha2"),
                     ("terrain", "bratislavsky-terrain.zip", 1, "id3",
                      "zip", "sha3")]

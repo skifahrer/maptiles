@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hillshading and 3D terrain: terrarium PNG tiles from the chosen elevation model.
+# Hillshading and 3D terrain: terrarium PNG or WebP tiles from the chosen elevation model.
 #
 # Cheapest first: the run's cache → the Drive store → computing.
 #
@@ -28,13 +28,21 @@ TPCT="${BUDGET_TERRAIN_PCT:-12}"
 case "$TPCT" in ''|*[!0-9]*) TPCT=12 ;; esac
 TBUDGET_MB=$(( LIMIT_MB * TPCT / 100 ))
 REBUILD="${TERRAIN_REBUILD:-false}"
+FMT="${TERRAIN_FORMAT:-png}"
+case "$FMT" in png|webp) ;; *) FMT=png ;; esac
+BITS="${TERRAIN_FRAC_BITS:-auto}"
+case "$BITS" in ''|*[!0-9]*) BITS=auto ;; esac
 
 # the real maxzoom is known only after computing (the size cap may lower it),
 # so the name is a function; the encoding shape is written once
 ENC_VER=v7
+# empty for the defaults, so assets already stored stay found
+ENC_OPT=""
+[ "$BITS" != auto ] && ENC_OPT="${ENC_OPT}-b${BITS}"
+[ "$FMT" != png ] && ENC_OPT="${ENC_OPT}-${FMT}"
 # the overlap with the neighbouring region changes the tiles, so it is in the name too
 BORDER_M=$(python3 -c "import sys; sys.path.insert(0, 'workers/plan'); import area; print(int(area.BORDER_BUFFER_M))")
-asset_name() { echo "terrain-${REGION_KEY}-${TDEM}-z${1}-${ENC_VER}-o${BORDER_M}.pmtiles"; }
+asset_name() { echo "terrain-${REGION_KEY}-${TDEM}-z${1}-${ENC_VER}${ENC_OPT}-o${BORDER_M}.pmtiles"; }
 
 # done = a finished archive lies here; half a PNG tree is a non-empty folder too
 have_tiles() { [ -s terrain-out/terrain.pmtiles ]; }
@@ -49,7 +57,7 @@ else
   # the highest stored zoom not above the wished one: a capped run stored exactly that
   HAVE_Z=$(python3 workers/drive/store.py --names --store="$TERRAIN_STORE" \
       2>/dev/null \
-    | sed -n "s/^terrain-${REGION_KEY}-${TDEM}-z\([0-9]\+\)-${ENC_VER}-o${BORDER_M}\.pmtiles$/\1/p" \
+    | sed -n "s/^terrain-${REGION_KEY}-${TDEM}-z\([0-9]\+\)-${ENC_VER}${ENC_OPT}-o${BORDER_M}\.pmtiles$/\1/p" \
     | awk -v want="$TZ" '$1 <= want' | sort -n | tail -1)
   if [ -n "$HAVE_Z" ] && python3 workers/drive/store.py --get \
        --store="$TERRAIN_STORE" --name="$(asset_name "$HAVE_Z")" --dir=/tmp; then
@@ -67,6 +75,7 @@ if ! have_tiles; then
   sudo apt-get update -qq
   sudo apt-get install -y -qq gdal-bin zstd
   python3 -m pip install --quiet numpy
+  [ "$FMT" = webp ] && python3 -m pip install --quiet pillow
   # no cut-out key is passed, so `dmr5` means the 5 m tiles; code 3 = "no model here"
   set +e
   workers/dem/fetch.sh "$BBOX" "dem/$TDEM" steps-out/terrain.tsv "$TDEM"
@@ -85,11 +94,12 @@ if ! have_tiles; then
   elif [ "$TRC" -ne 0 ]; then
     exit "$TRC"
   fi
-  echo "::group::Terrain tiles to z$TZ from model $TDEM (cap ${TBUDGET_MB} MB)"
+  echo "::group::Terrain tiles to z$TZ from model $TDEM, $FMT, fraction bits $BITS (cap ${TBUDGET_MB} MB)"
   # `--poly` stops shading at the region's edge; without a polygon the whole bbox
   python3 workers/terrain/tiles.py --dem="dem/$TDEM/all.vrt" --bbox="$BBOX" \
     --poly=data/region.geojson \
-    --minzoom=5 --maxzoom="$TZ" --budget-mb="$TBUDGET_MB" --out=terrain-png
+    --minzoom=5 --maxzoom="$TZ" --budget-mb="$TBUDGET_MB" --out=terrain-png \
+    --format="$FMT" --max-frac-bits="$([ "$BITS" = auto ] && echo -1 || echo "$BITS")"
   # `tiles.py` writes the maxzoom made – the size cap may have lowered it
   TZ=$(cat terrain-png/maxzoom.txt)
   # the PNG tree is only a step: one `.pmtiles` goes out (see `pack.py`)
@@ -109,7 +119,7 @@ if ! have_tiles; then
   cp terrain-out/terrain.pmtiles "/tmp/$ASSET"
   python3 workers/drive/store.py --put --store="$TERRAIN_STORE" \
       --file="/tmp/$ASSET" \
-      --note="Terrarium PNG tiles from the elevation model as raster .pmtiles – one file per region, model and maxzoom (Build map)" \
+      --note="Terrarium PNG/WebP tiles from the elevation model as raster .pmtiles – one file per region, model and maxzoom (Build map)" \
     && echo "Saved to store $TERRAIN_STORE as $ASSET" \
     || echo "::warning::Terrain tiles couldn't be saved to store $TERRAIN_STORE – next time they will be computed again."
 fi
@@ -125,7 +135,7 @@ echo "dem_source=$TDEM" >> "$GITHUB_OUTPUT"
 # after falling back to Sonny, the original model's cache key mustn't get these tiles
 echo "fell_back=$FELL_BACK" >> "$GITHUB_OUTPUT"
 TER_MB=$(du -sm "_site/tiles/${REGION_KEY}-terrain.pmtiles" | cut -f1)
-echo "Terrain tiles: raster .pmtiles to z$TZ from model $TDEM, ${TER_MB} MB"
+echo "Terrain tiles: raster .pmtiles ($FMT, fraction bits $BITS) to z$TZ from model $TDEM, ${TER_MB} MB"
 printf '%s\t%s\t%s\t%s\n' "60" "Hillshading and 3D terrain" "$(( $(date +%s) - T_TER ))" \
-  "raster .pmtiles to z$TZ from $TDEM, ${TER_MB} MB ($TSRC)" \
+  "raster .pmtiles ($FMT, bits $BITS) to z$TZ from $TDEM, ${TER_MB} MB ($TSRC)" \
   >> steps-out/terrain.tsv

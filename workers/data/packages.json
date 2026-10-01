@@ -45,17 +45,28 @@
       "legacy": ["tienovanie"]
     },
     {
-      "key": "contours-rocks",
-      "app": "Contours & rock",
+      "key": "contours",
+      "app": "Contours",
       "symbol": "chart.line.flattrend.xyaxis",
-      "app_detail": "Contour lines and rock faces",
-      "description": "contour lines from the height model and rock areas from its slope (.pmtiles)",
-      "sources": ["author", "dem:contours", "dem:rocks"],
-      "manifest": ["contours", "rocks"],
-      "suffixes": ["-contours.pmtiles", "-rocks.pmtiles"],
+      "app_detail": "Contour lines from the height model",
+      "description": "contour lines from the height model (.pmtiles)",
+      "sources": ["author", "dem:contours"],
+      "manifest": ["contours"],
+      "suffixes": ["-contours.pmtiles"],
       "origin": "site",
-      "regenerate": "contours",
-      "legacy": ["vrstevnice-skaly"]
+      "regenerate": "contours"
+    },
+    {
+      "key": "rocks",
+      "app": "Rock faces",
+      "symbol": "circle.hexagongrid.fill",
+      "app_detail": "Cliffs and rock areas, from the terrain's slope",
+      "description": "rock areas from the slope of the height model or from hillshading (.pmtiles)",
+      "sources": ["author", "dem:rocks"],
+      "manifest": ["rocks"],
+      "suffixes": ["-rocks.pmtiles"],
+      "origin": "site",
+      "regenerate": "rocks"
     },
     {
       "key": "roads",
@@ -155,6 +166,7 @@
     }
   ],
   "retired": [
+    {"key": "contours-rocks", "legacy": ["vrstevnice-skaly"]},
     {"key": "search"},
     {"key": "lines", "legacy": ["linie"]},
     {"key": "routing", "legacy": ["navigacia"]}

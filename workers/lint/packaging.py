@@ -175,8 +175,8 @@ if packages and "routing" in packages:
         f"and in `roads`; a third ZIP would be downloaded for nothing.")
 
 # the same for layers with their own package: none may stay in the base map
-for kind, name in (("contours-rocks", "tiles/region-contours.pmtiles"),
-                   ("contours-rocks", "tiles/region-rocks.pmtiles"),
+for kind, name in (("contours", "tiles/region-contours.pmtiles"),
+                   ("rocks", "tiles/region-rocks.pmtiles"),
                    ("terrain", "tiles/region-terrain.pmtiles"),
                    ("roads", "tiles/region-transport.pmtiles"),
                    ("points", "tiles/region-points.pmtiles"),

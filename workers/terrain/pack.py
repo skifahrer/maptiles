@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Terrain tiles → one `.pmtiles` (raster, terrarium PNG).
+"""Terrain tiles → one `.pmtiles` (raster, terrarium PNG or WebP).
 
 One file instead of a tree of thousands of PNGs: the same shape on Pages and in
 the store, extent and zooms in its header. Identical tiles (plane, water level)
@@ -30,8 +30,11 @@ def tile_bounds(z, x, y):
     return w, south, e, north
 
 
+TYPES = {".png": (TileType.PNG, "png"), ".webp": (TileType.WEBP, "webp")}
+
+
 def collect(src):
-    """Find `{z}/{x}/{y}.png` and return sorted [(tileid, z, x, y, path)]."""
+    """Find `{z}/{x}/{y}.png|webp` and return sorted [(tileid, z, x, y, path)]."""
     out = []
     for zd in os.listdir(src):
         if not zd.isdigit():
@@ -47,7 +50,7 @@ def collect(src):
             xpath = os.path.join(zpath, xd)
             for name in os.listdir(xpath):
                 base, ext = os.path.splitext(name)
-                if ext != ".png" or not base.isdigit():
+                if ext not in TYPES or not base.isdigit():
                     continue
                 y = int(base)
                 out.append((zxy_to_tileid(z, x, y), z, x, y,
@@ -59,7 +62,7 @@ def collect(src):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--in", dest="src", required=True,
-                    help="directory of {z}/{x}/{y}.png tiles")
+                    help="directory of {z}/{x}/{y}.png|webp tiles")
     ap.add_argument("--out", dest="dst", required=True, help="target .pmtiles")
     ap.add_argument("--name", default="terrain", help="name for the metadata")
     ap.add_argument("--clip-bbox", default="",
@@ -98,6 +101,13 @@ def main():
                   f"the run's bbox says.", file=sys.stderr)
             return 1
 
+    exts = {os.path.splitext(t[4])[1] for t in tiles}
+    if len(exts) != 1:
+        print(f"::error::{args.src} mixes tile formats ({', '.join(sorted(exts))}) – "
+              f"one archive holds one.", file=sys.stderr)
+        return 1
+    tile_type, fmt = TYPES[exts.pop()]
+
     raw = 0
     with open(args.dst, "wb") as f:
         wr = Writer(f)
@@ -108,8 +118,8 @@ def main():
             wr.write_tile(_tid, data)
         wr.finalize(
             {
-                "tile_type": TileType.PNG,
-                # PNG is already compressed
+                "tile_type": tile_type,
+                # the image is already compressed
                 "tile_compression": Compression.NONE,
                 "min_zoom": minz,
                 "max_zoom": maxz,
@@ -123,10 +133,10 @@ def main():
             },
             {
                 "name": args.name,
-                "format": "png",
+                "format": fmt,
                 # without it `raster-dem` draws coloured noise instead of relief
                 "encoding": "terrarium",
-                "description": "Terrarium PNG – elevation in RGB "
+                "description": f"Terrarium {fmt.upper()} – elevation in RGB "
                                "(v = R*256 + G + B/256 − 32768)",
                 # the archive can be downloaded on its own – the model is named nowhere else
                 **({"source": args.source} if args.source else {}),

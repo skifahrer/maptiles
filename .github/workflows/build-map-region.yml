@@ -230,6 +230,8 @@ jobs:
       opt_ugkk_urls: ${{ needs.plan.outputs.opt_ugkk_urls }}
       opt_contour_interval: ${{ needs.plan.outputs.opt_contour_interval }}
       opt_contour_maxzoom: ${{ needs.plan.outputs.opt_contour_maxzoom }}
+      opt_contour_maxzoom_cap: ${{ needs.plan.outputs.opt_contour_maxzoom_cap }}
+      opt_contour_lowland_m: ${{ needs.plan.outputs.opt_contour_lowland_m }}
       opt_contour_smoothing: ${{ needs.plan.outputs.opt_contour_smoothing }}
       rock_slope: ${{ inputs.rock_slope }}
       opt_rock_maxzoom: ${{ needs.plan.outputs.opt_rock_maxzoom }}
@@ -240,6 +242,8 @@ jobs:
       opt_rock_img_zoom: ${{ needs.plan.outputs.opt_rock_img_zoom }}
       opt_rock_img_options: ${{ needs.plan.outputs.opt_rock_img_options }}
       opt_terrain_maxzoom: ${{ needs.plan.outputs.opt_terrain_maxzoom }}
+      opt_terrain_frac_bits: ${{ needs.plan.outputs.opt_terrain_frac_bits }}
+      opt_terrain_format: ${{ needs.plan.outputs.opt_terrain_format }}
       opt_contours_rebuild: ${{ needs.plan.outputs.opt_contours_rebuild }}
       opt_rocks_rebuild: ${{ needs.plan.outputs.opt_rocks_rebuild }}
       opt_terrain_rebuild: ${{ needs.plan.outputs.opt_terrain_rebuild }}
@@ -322,6 +326,8 @@ jobs:
       opt_ugkk_urls: ${{ steps.opts.outputs.opt_ugkk_urls }}
       opt_contour_interval: ${{ steps.opts.outputs.opt_contour_interval }}
       opt_contour_maxzoom: ${{ steps.opts.outputs.opt_contour_maxzoom }}
+      opt_contour_maxzoom_cap: ${{ steps.opts.outputs.opt_contour_maxzoom_cap }}
+      opt_contour_lowland_m: ${{ steps.opts.outputs.opt_contour_lowland_m }}
       opt_rock_maxzoom: ${{ steps.opts.outputs.opt_rock_maxzoom }}
       opt_rock_solid: ${{ steps.opts.outputs.opt_rock_solid }}
       opt_rock_fill_holes: ${{ steps.opts.outputs.opt_rock_fill_holes }}
@@ -349,6 +355,8 @@ jobs:
       budget_rocks_pct: ${{ env.BUDGET_ROCKS_PCT }}
       budget_terrain_pct: ${{ env.BUDGET_TERRAIN_PCT }}
       opt_terrain_maxzoom: ${{ steps.opts.outputs.opt_terrain_maxzoom }}
+      opt_terrain_frac_bits: ${{ steps.opts.outputs.opt_terrain_frac_bits }}
+      opt_terrain_format: ${{ steps.opts.outputs.opt_terrain_format }}
       opt_terrain_3d: ${{ steps.opts.outputs.opt_terrain_3d }}
       opt_rocks: ${{ steps.opts.outputs.opt_rocks }}
       opt_rock_slope: ${{ inputs.rock_slope }}
@@ -357,6 +365,8 @@ jobs:
       opt_rock_img_zoom: ${{ steps.opts.outputs.opt_rock_img_zoom }}
       opt_rock_img_options: ${{ steps.opts.outputs.opt_rock_img_options }}
       opt_maxzoom: ${{ steps.opts.outputs.opt_maxzoom }}
+      opt_map_simplify: ${{ steps.opts.outputs.opt_map_simplify }}
+      opt_housenumber_minzoom: ${{ steps.opts.outputs.opt_housenumber_minzoom }}
       opt_custom_pbf_url: ${{ steps.opts.outputs.opt_custom_pbf_url }}
       opt_custom_name: ${{ steps.opts.outputs.opt_custom_name }}
       opt_custom_bbox: ${{ steps.opts.outputs.opt_custom_bbox }}
@@ -865,6 +875,8 @@ jobs:
         env:
           OPT_AUTO_SHRINK: ${{ needs.plan.outputs.opt_auto_shrink }}
           OPT_MAXZOOM: ${{ needs.plan.outputs.opt_maxzoom }}
+          OPT_MAP_SIMPLIFY: ${{ needs.plan.outputs.opt_map_simplify }}
+          OPT_HOUSENUMBER_MINZOOM: ${{ needs.plan.outputs.opt_housenumber_minzoom }}
           OPT_REGION_CLIP: ${{ needs.plan.outputs.opt_region_clip }}
           REGION_BBOX: ${{ needs.plan.outputs.bbox }}
           REGION_KEY: ${{ needs.plan.outputs.key }}

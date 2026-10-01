@@ -306,7 +306,7 @@ def main():
                 count = folder.delete_named(creds, fid, name)
                 if count:
                     log(f"::warning::Package `{kind}` no longer exists – its contents "
-                        f"are in the base map. Deleted {count}× {name}, so nobody "
+                        f"moved to other packages. Deleted {count}× {name}, so nobody "
                         f"downloads it twice.")
 
     # what really is in the folder; `None` = unknown, `{}` = empty

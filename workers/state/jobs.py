@@ -61,18 +61,11 @@ COST = {
                  "stations, line signs and the track network for navigation"),
     "settlements": ("Settlements",
                     "every building with floor area, name, kind and address, and place names"),
-    "contours": ("Contours",
-                 "contour lines from the height model (rocks in the package come "
-                 "from cache)"),
-    "rocks": ("Rocks",
-              "rock areas from the model's slope (contours in the package come "
-              "from cache)"),
+    "contours": ("Contours", "contour lines from the height model"),
+    "rocks": ("Rocks", "rock areas from the model's slope"),
     "terrain": ("Hillshading and 3D terrain",
                 "height tiles for hillshading and 3D"),
 }
-
-# rocks are the other half of `contours-rocks`: their own choice, not their own package
-ALIAS = {"rocks": "contours-rocks"}
 
 
 def _build():
@@ -81,17 +74,16 @@ def _build():
     out = {}
     for key, (name, what) in COST.items():
         p = registry.get(key)
-        package = p["key"] if p else ALIAS.get(key)
-        if not package:
+        if not p:
             raise SystemExit(
                 f"::error::`{key}` is in COST, but the package registry "
-                f"({_packages.REGISTRY}) has no `regenerate` or alias for it – "
+                f"({_packages.REGISTRY}) has no `regenerate` for it – "
                 f"the form would offer a choice the packer doesn't know and the run "
                 f"would fail on `--only`.")
         out[key] = {
             "name": name,
-            "description": f"{what} – package `-{package}.zip`",
-            "package": package,
+            "description": f"{what} – package `-{p['key']}.zip`",
+            "package": p["key"],
             "workflow": "regenerate-region.yml",
             "inputs": {"what": key},
         }

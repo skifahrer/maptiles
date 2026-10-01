@@ -118,6 +118,19 @@ def png_rgb(arr):
     )
 
 
+def webp_rgb(arr):
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    # `exact` keeps every RGB value, which is the height
+    Image.fromarray(np.ascontiguousarray(arr)).save(
+        buf, "WEBP", lossless=True, quality=100, method=2, exact=True)
+    return buf.getvalue()
+
+
+ENCODERS = {"png": png_rgb, "webp": webp_rgb}
+
+
 def terrarium(heights, bits):
     """Height in metres → RGB terrarium with a `bits`-bit fraction, rounded to the step."""
     # a mask would be `floor`, a whole step down makes a stair at zoom borders
@@ -194,13 +207,21 @@ def main():
                          "region before the plane starts")
     ap.add_argument("--maxzoom", type=int, default=12)
     ap.add_argument("--minzoom", type=int, default=0)
-    ap.add_argument("--out", required=True, help="directory of {z}/{x}/{y}.png tiles")
+    ap.add_argument("--out", required=True, help="directory of {z}/{x}/{y}.<format> tiles")
+    ap.add_argument("--format", choices=sorted(ENCODERS), default="png")
+    ap.add_argument("--max-frac-bits", type=int, default=-1,
+                    help="at most this many fraction bits (-1 = by the pixel only)")
     ap.add_argument("--budget-mb", type=float, default=0,
                     help="how many MB the tiles may take (0 = no cap)")
     ap.add_argument("--keep-flat", action="store_true",
                     help="write tiles without relief too (otherwise skipped "
                          "and the client takes their parent)")
     args = ap.parse_args()
+    encode = ENCODERS[args.format]
+
+    def bits_for(px_m):
+        bits = frac_bits(px_m)
+        return bits if args.max_frac_bits < 0 else min(bits, args.max_frac_bits)
 
     w, s, e, n = (float(v) for v in args.bbox.split(","))
     lat = (s + n) / 2
@@ -262,13 +283,13 @@ def main():
     print("Resampling and vertical step: " + ", ".join(
         f"z{z} {tile_m_per_px(z, lat):.1f} m/px "
         f"{resampling(tile_m_per_px(z, lat), cell_m)}"
-        f" 1/{2 ** frac_bits(tile_m_per_px(z, lat))} m"
+        f" 1/{2 ** bits_for(tile_m_per_px(z, lat))} m"
         for z, _, _ in plan), flush=True)
 
     for z in range(args.minzoom, args.maxzoom + 1):
         x0, x1, y0, y1 = tile_range(z, w, s, e, n)
         px_m = tile_m_per_px(z, lat)
-        bits = frac_bits(px_m)
+        bits = bits_for(px_m)
         resample = resampling(px_m, cell_m)
         # size cap: the next zoom estimated from the one below
         if args.budget_mb and total_tiles:
@@ -344,8 +365,8 @@ def main():
                         continue
                     d = os.path.join(args.out, str(z), str(tx))
                     os.makedirs(d, exist_ok=True)
-                    data = png_rgb(terrarium(heights, bits))
-                    with open(os.path.join(d, f"{ty}.png"), "wb") as f:
+                    data = encode(terrarium(heights, bits))
+                    with open(os.path.join(d, f"{ty}.{args.format}"), "wb") as f:
                         f.write(data)
                     zbytes += len(data)
                     total_tiles += 1

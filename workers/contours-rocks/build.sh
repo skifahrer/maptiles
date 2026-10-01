@@ -268,6 +268,13 @@ PY
     fi
   fi
 
+  # lowland lines are long and wavy, so every second one costs a lot and says little
+  LOWLAND="${OPT_CONTOUR_LOWLAND_M:-0}"
+  LOWLAND_SQL=""
+  if [ "$LOWLAND" != 0 ]; then
+    LOWLAND_SQL="AND NOT (ele < $LOWLAND AND CAST(ele AS INTEGER) % $(( INTERVAL * 2 )) != 0)"
+    echo "Contours below ${LOWLAND} m: every $(( INTERVAL * 2 )) m"
+  fi
   python3 workers/lib/watch.py --label="sorting contours" \
     --watch-file=work/level.gpkg \
     -- ogr2ogr -f GPKG work/level.gpkg work/raw.gpkg -nln contours \
@@ -276,7 +283,7 @@ PY
          WHEN CAST(ele AS INTEGER) % $MAJOR = 0 THEN 'major'
          WHEN CAST(ele AS INTEGER) % $MID  = 0 THEN 'mid'
          ELSE 'minor' END AS level
-       FROM contours WHERE ele IS NOT NULL"
+       FROM contours WHERE ele IS NOT NULL $LOWLAND_SQL"
 
   # rounding by the limit curve (quadratic B-spline); the number is the chord sag
   # in quarters of the tile grid step, `0` turns it off
@@ -308,6 +315,10 @@ fi
 CZ="$OPT_CONTOUR_MAXZOOM"
 case "$CZ" in ''|*[!0-9]*) CZ=14 ;; esac
 if [ "$CZ" -gt 16 ]; then CZ=16; fi
+CCAP="${OPT_CONTOUR_MAXZOOM_CAP:-16}"
+case "$CCAP" in ''|*[!0-9]*) CCAP=16 ;; esac
+if [ "$CCAP" -gt 16 ]; then CCAP=16; fi
+if [ "$CZ" -gt "$CCAP" ]; then CZ="$CCAP"; fi
 
 # rocks have their own .pmtiles and maxzoom: areas only where steep fit up to z16,
 # Planetiler's hard cap; overzoom does the rest
@@ -330,7 +341,7 @@ if [ "$ONLY" != 'rocks' ]; then
   # the eighth argument caps how high it may go with room left: `contour_maxzoom` is a wish and a floor
   pmtiles_in_budget workers/contours-rocks/contours.yml contours-out/contours.pmtiles \
     "$CZ" "$CBUDGET_MB" 10 "Contours" \
-    "raise contour_interval (e.g. 20 m) or turn them off for this area." 16
+    "raise contour_interval (e.g. 20 m) or turn them off for this area." "$CCAP"
   CZ="$PM_Z"
 fi
 

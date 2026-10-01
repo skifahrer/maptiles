@@ -185,6 +185,8 @@ jobs:
       opt_ugkk_urls: ${{ steps.opts.outputs.opt_ugkk_urls }}
       opt_contour_interval: ${{ steps.opts.outputs.opt_contour_interval }}
       opt_contour_maxzoom: ${{ steps.opts.outputs.opt_contour_maxzoom }}
+      opt_contour_maxzoom_cap: ${{ steps.opts.outputs.opt_contour_maxzoom_cap }}
+      opt_contour_lowland_m: ${{ steps.opts.outputs.opt_contour_lowland_m }}
       opt_contour_smoothing: ${{ steps.opts.outputs.opt_contour_smoothing }}
       opt_rock_maxzoom: ${{ steps.opts.outputs.opt_rock_maxzoom }}
       opt_rock_res: ${{ steps.opts.outputs.opt_rock_res }}
@@ -194,6 +196,8 @@ jobs:
       opt_rock_img_zoom: ${{ steps.opts.outputs.opt_rock_img_zoom }}
       opt_rock_img_options: ${{ steps.opts.outputs.opt_rock_img_options }}
       opt_terrain_maxzoom: ${{ steps.opts.outputs.opt_terrain_maxzoom }}
+      opt_terrain_frac_bits: ${{ steps.opts.outputs.opt_terrain_frac_bits }}
+      opt_terrain_format: ${{ steps.opts.outputs.opt_terrain_format }}
       opt_reuse_layers: ${{ steps.opts.outputs.opt_reuse_layers }}
     steps:
       - name: Checkout
@@ -510,19 +514,21 @@ jobs:
       dem_bboxkey: ${{ needs.plan.outputs.dem_bboxkey }}
       test_km2: ${{ needs.plan.outputs.opt_test_km2 }}
       day: ${{ needs.plan.outputs.day }}
-      # the job gate: on for both choices, both layers go into one package
+      # the job gate; each layer is its own package, so only the chosen one is made
       opt_contours: ${{ (inputs.what == 'contours' || inputs.what == 'rocks') && 'true' || 'false' }}
-      opt_contour_lines: ${{ (inputs.what == 'contours' || inputs.what == 'rocks') && needs.plan.outputs.opt_contour_lines || 'false' }}
-      opt_rocks: ${{ (inputs.what == 'contours' || inputs.what == 'rocks') && needs.plan.outputs.opt_rocks || 'false' }}
+      opt_contour_lines: ${{ inputs.what == 'contours' && needs.plan.outputs.opt_contour_lines || 'false' }}
+      opt_rocks: ${{ inputs.what == 'rocks' && needs.plan.outputs.opt_rocks || 'false' }}
       opt_terrain: ${{ inputs.what == 'terrain' && needs.plan.outputs.opt_terrain || 'false' }}
       opt_contour_source: ${{ needs.plan.outputs.opt_contour_source }}
-      opt_rock_source: ${{ needs.plan.outputs.opt_rock_source }}
-      opt_rock_dem: ${{ needs.plan.outputs.opt_rock_dem }}
+      opt_rock_source: ${{ inputs.what == 'rocks' && needs.plan.outputs.opt_rock_source || 'none' }}
+      opt_rock_dem: ${{ inputs.what == 'rocks' && needs.plan.outputs.opt_rock_dem || '' }}
       opt_shading_source: ${{ needs.plan.outputs.opt_shading_source }}
       opt_ugkk_fallback: ${{ needs.plan.outputs.opt_ugkk_fallback }}
       opt_ugkk_urls: ${{ needs.plan.outputs.opt_ugkk_urls }}
       opt_contour_interval: ${{ needs.plan.outputs.opt_contour_interval }}
       opt_contour_maxzoom: ${{ needs.plan.outputs.opt_contour_maxzoom }}
+      opt_contour_maxzoom_cap: ${{ needs.plan.outputs.opt_contour_maxzoom_cap }}
+      opt_contour_lowland_m: ${{ needs.plan.outputs.opt_contour_lowland_m }}
       opt_contour_smoothing: ${{ needs.plan.outputs.opt_contour_smoothing }}
       rock_slope: ${{ inputs.rock_slope }}
       opt_rock_maxzoom: ${{ needs.plan.outputs.opt_rock_maxzoom }}
@@ -533,7 +539,8 @@ jobs:
       opt_rock_img_zoom: ${{ needs.plan.outputs.opt_rock_img_zoom }}
       opt_rock_img_options: ${{ needs.plan.outputs.opt_rock_img_options }}
       opt_terrain_maxzoom: ${{ needs.plan.outputs.opt_terrain_maxzoom }}
-      # only the chosen one is regenerated; the other half of the package is taken finished
+      opt_terrain_frac_bits: ${{ needs.plan.outputs.opt_terrain_frac_bits }}
+      opt_terrain_format: ${{ needs.plan.outputs.opt_terrain_format }}
       opt_reuse_layers: ${{ needs.plan.outputs.opt_reuse_layers }}
       opt_contours_rebuild: ${{ inputs.what == 'contours' && 'true' || 'false' }}
       opt_rocks_rebuild: ${{ inputs.what == 'rocks' && 'true' || 'false' }}

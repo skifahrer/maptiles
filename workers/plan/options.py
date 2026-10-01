@@ -33,6 +33,10 @@ DEFAULTS = {
     "ugkk_fallback": ("true", "when DMR 5.0 is missing for the cut-out, use Sonny"),
     "ugkk_urls": ("", "direct URLs to ÚGKK data (last resort)"),
     "contour_maxzoom": ("14", "max zoom of contour tiles"),
+    # contours climb while the budget has room, so the floor alone caps nothing
+    "contour_maxzoom_cap": ("16", "highest zoom contours may climb to"),
+    "contour_lowland_m": ("0", "below this height contours keep every second "
+                               "line (0 = off)"),
     # 16 is Planetiler's hard cap; overzoom does the rest
     "rock_maxzoom": ("16", "max zoom of rock tiles (Planetiler caps at 16)"),
     "rock_solid": ("1", "1 = one rock class (no area inside another), "
@@ -46,6 +50,10 @@ DEFAULTS = {
     "trails_maxzoom": ("14", "max zoom of waymarked trail tiles"),
     # `auto` = the lowest zoom whose pixel is finer than the model cell
     "terrain_maxzoom": ("auto", "max zoom of height tiles (auto = by the model grid)"),
+    "terrain_frac_bits": ("auto", "fraction bits of a height (auto = by the pixel, "
+                                  "0 = whole metres)"),
+    # MapLibre is the only reader and iOS 14+ decodes WebP
+    "terrain_format": ("png", "image format of height tiles: png or webp (lossless)"),
     # public AWS tiles are global and coarse, so no 3D on them
     "terrain_3d": ("auto", "3D terrain in the style (auto = when we have our own height tiles)"),
     # trails have no source choice – the same PBF as the map
@@ -90,6 +98,10 @@ DEFAULTS = {
     "rock_img_zoom": ("auto", "zoom of hillshading tiles (auto = the highest under the cap)"),
     "rock_img_options": ("", "switches for rocks from hillshading, e.g. \"fill=40 min_hole=5\""),
     "maxzoom": ("16", "max zoom of map tiles – Planetiler goes to 16 at most"),
+    "map_simplify": ("false", "Planetiler's default simplification and minimum "
+                              "feature size at max zoom (false = keep everything)"),
+    # the style draws house numbers from z17, overzoomed from z16
+    "housenumber_minzoom": ("14", "lowest zoom with house numbers in map tiles"),
     "custom_pbf_url": ("", "own region – URL of a .osm.pbf"),
     "custom_name": ("", "own region – display name"),
     "custom_bbox": ("", "own region – bbox W,S,E,N"),
@@ -183,6 +195,17 @@ def check_bool(values, key, label=""):
         return True
     print(f"::error::Option “{key}”{f' ({label})' if label else ''} must be true "
           f"or false, not “{values[key]}”.", file=sys.stderr)
+    return False
+
+
+def check_int(values, key, lo, hi):
+    """True when `key` is a whole number from `lo` to `hi`; says so otherwise."""
+    v = values[key].strip()
+    if v.isdigit() and lo <= int(v) <= hi:
+        values[key] = str(int(v))
+        return True
+    print(f"::error::Option “{key}” must be a whole number from {lo} to {hi}, "
+          f"not “{values[key]}”.", file=sys.stderr)
     return False
 
 
@@ -309,9 +332,30 @@ def main():
                        ("boundaries", "boundaries"), ("water", "water"),
                        ("rail", "railways"), ("buildings", "settlements"),
                        ("routing", ""), ("apple_archive", ""), ("wikipedia", ""),
-                       ("publish", "")):
+                       ("publish", ""), ("map_simplify", "")):
         if not check_bool(values, key, label):
             return 1
+    for key, lo, hi in (("contour_maxzoom_cap", 8, 16),
+                        ("housenumber_minzoom", 0, 17)):
+        if not check_int(values, key, lo, hi):
+            return 1
+    bits = values["terrain_frac_bits"].strip().lower()
+    if bits != "auto" and not check_int(values, "terrain_frac_bits", 0, 8):
+        return 1
+    values["terrain_frac_bits"] = bits
+    if values["terrain_format"] not in ("png", "webp"):
+        print(f"::error::Option “terrain_format” must be png or webp, "
+              f"not “{values['terrain_format']}”.", file=sys.stderr)
+        return 1
+    try:
+        lowland = float(values["contour_lowland_m"])
+    except ValueError:
+        lowland = -1
+    if lowland < 0:
+        print(f"::error::Option “contour_lowland_m” must be a height in metres, "
+              f"0 or more, not “{values['contour_lowland_m']}”.", file=sys.stderr)
+        return 1
+    values["contour_lowland_m"] = f"{lowland:g}"
     # a switch in the form, but the script can be run by hand
     pages_on = (args.publish_pages or "true").strip().lower()
     if pages_on not in ("true", "false"):

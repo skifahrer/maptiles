@@ -65,7 +65,7 @@ def main():
     relief = [credits.get("author"), credits.get("dmr5")]
     if packages_mod.credits("terrain", {"shading": "dmr5"}) != relief:
         bad.append("packages.credits: terrain doesn't name the author, then ÚGKK SR")
-    if packages_mod.credits("contours-rocks", {}) != relief:
+    if packages_mod.credits("contours", {}) != relief:
         bad.append("packages.credits: a region without a model doesn't name the author "
                    "and the default DMR 5.0")
     if packages_mod.credits("base") != [credits.get("osm")]:
