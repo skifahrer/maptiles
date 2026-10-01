@@ -2,7 +2,8 @@
 """Copies line colour and number from `type=route` relations onto their tracks.
 
 Also adds speed change points (`rail_speed`, `rail_speed_prev`), the track bearing
-at a signal (`rail_bearing`) and the widest gauge in mm (`rail_gauge`).
+at a signal (`rail_bearing`), the widest gauge in mm (`rail_gauge`) and the track section
+(`rail_section`, its extent `rail_section_box`), splitting a way at the switches that bound one.
 """
 import argparse
 import math
@@ -10,6 +11,8 @@ import re
 from pathlib import Path
 
 import osmium
+
+from sections import Sections, kind as section_kind
 
 # lines whose colour belongs on the track
 ROUTES = {"tram", "subway", "light_rail", "monorail", "train", "railway", "funicular"}
@@ -77,16 +80,25 @@ class Lines(osmium.SimpleHandler):
         # signal → the direction it applies to; and the track bearing there
         self.signals = {}
         self.bearing = {}
+        self.sections = Sections()
+        self.top_way = 0
 
     def node(self, n):
         if n.tags.get("railway") == "signal":
             self.signals[n.id] = n.tags.get("railway:signal:direction", "forward")
+        if n.tags.get("railway") == "railway_crossing":
+            self.sections.crossings.add(n.id)
 
     def way(self, w):
+        self.top_way = max(self.top_way, w.id)
+        nodes = w.nodes
+        if section_kind(w.tags):
+            self.sections.add(w.id, w.tags, [nd.ref for nd in nodes],
+                              [(nd.lon, nd.lat) if nd.location.valid() else None
+                               for nd in nodes])
         kind = w.tags.get("railway")
         if kind not in TRACKS:
             return
-        nodes = w.nodes
         if kind in FAST and "service" not in w.tags and len(nodes) > 1:
             v = speed(w.tags.get("maxspeed"))
             if v:
@@ -125,6 +137,10 @@ class Rewrite(osmium.SimpleHandler):
         self.changes = changes
         self.w = writer
         self.changed = 0
+        self.split = 0
+        # extra pieces of split ways, written after every way
+        self.extra = []
+        self.next_id = lines.top_way + 1
 
     def node(self, n):
         change = self.changes.get(n.id)
@@ -143,7 +159,8 @@ class Rewrite(osmium.SimpleHandler):
         colour = self.lines.colour.get(w.id)
         numbers = self.lines.numbers.get(w.id)
         mm = gauge(w.tags.get("gauge"))
-        if not colour and not numbers and not mm:
+        pieces = self.lines.sections.split(w.id)
+        if not colour and not numbers and not mm and not pieces:
             self.w.add_way(w)
             return
         new_tags = dict(w.tags)
@@ -153,10 +170,29 @@ class Rewrite(osmium.SimpleHandler):
             new_tags["route_ref"] = ";".join(sorted(numbers, key=lambda c: (len(c), c)))
         if mm:
             new_tags["rail_gauge"] = str(mm)
-        self.w.add_way(w.replace(tags=new_tags))
         self.changed += bool(colour or numbers)
+        if not pieces:
+            self.w.add_way(w.replace(tags=new_tags))
+            return
+        self.split += len(pieces) > 1
+        for k, (refs, section) in enumerate(pieces):
+            tags = dict(new_tags, rail_section=str(section))
+            box = self.lines.sections.box(section)
+            if box:
+                tags["rail_section_box"] = box
+            if k == 0:
+                self.w.add_way(w.replace(tags=tags, nodes=refs))
+            else:
+                self.extra.append(w.replace(id=self.next_id, tags=tags, nodes=refs))
+                self.next_id += 1
+
+    def flush(self):
+        for way in self.extra:
+            self.w.add_way(way)
+        self.extra = []
 
     def relation(self, r):
+        self.flush()
         self.w.add_relation(r)
 
 
@@ -169,14 +205,17 @@ def main():
     lines = Lines()
     lines.apply_file(a.pbf, locations=True, idx="flex_mem")
     changes = speed_changes(lines.ends)
+    lines.sections.solve()
     Path(a.out).unlink(missing_ok=True)
     writer = osmium.SimpleWriter(a.out)
     try:
         rewrite = Rewrite(lines, changes, writer)
         rewrite.apply_file(a.pbf)
+        rewrite.flush()
     finally:
         writer.close()
     print(f"Lines: {rewrite.changed} tracks got a line colour or number")
+    print(f"Sections: {len(lines.sections.ways)} tracks, {rewrite.split} split at a switch")
     print(f"Speed changes at {len(changes)} points, {len(lines.bearing)} signals "
           f"have a bearing")
 

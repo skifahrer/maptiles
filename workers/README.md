@@ -3054,7 +3054,7 @@ a manifesty platili.
 
 | vrstva | čo nesie |
 |---|---|
-| `railway` | trate; `class`, `usage`, `service`, `maxspeed`, `gauge`, `electrified`, `voltage`, `frequency`, `name`, `ref`, `colour`, `route_ref`, `network`, `start_date`, `end_date`, `wikidata`, `wikipedia` |
+| `railway` | trate; `class`, `usage`, `service`, `maxspeed`, `gauge`, `electrified`, `voltage`, `frequency`, `_section`, `_section_box`, `name`, `ref`, `colour`, `route_ref`, `network`, `start_date`, `end_date`, `wikidata`, `wikipedia` |
 | `railway_area` | nástupištia a stanice ako plochy |
 | `railway_point` | značky na trati; `position` je poloha kilometrovníka, `switch_type` druh výhybky, `signal_main`, `signal_distant`, `signal_combined`, `signal_shunting`, `signal_minor` druh návestidla |
 | `station` | stanice, zastávky a električkové zastávky s menom, `network`, `colour`, `wikidata`, `wikipedia` |
@@ -3069,6 +3069,17 @@ Farbu linky (`colour`) a čísla liniek (`route_ref`) nesie v OSM `type=route`
 relácia, nie koľaj. `workers/rail/lines.py` ich pred Planetilerom prepíše na
 členské koľaje; mestská linka má prednosť pred vlakom po tej istej koľaji a
 vlastná `colour` koľaje sa neprepisuje.
+
+`_section` je úsek trate: koľaj jedného druhu (rovnaký `railway`, `usage`,
+`service`, `gauge`, `voltage`, `frequency`; rýchlosť sa meniť smie) od výhybky
+po výhybku, kde sa delí na dve koľaje toho istého druhu alebo sa k nej taká
+pripája. Vlečka z hlavnej trate úsek nedelí, priame krížovanie
+(`railway=railway_crossing`) tiež nie. `lines.py` (`workers/rail/sections.py`)
+pritom rozdelí cestu na výhybke; ďalšie kusy dostanú nové `id` nad najvyšším v
+súbore. Číslo úseku je `id cesty × 1000 + poradie kusu` jeho prvého kusu, takže
+je rovnaké vo všetkých dlaždiciach – aplikácia podľa neho zvýrazní celý úsek
+naraz, aj mimo obrazovky. `_section_box` (`západ,juh,východ,sever`) je rozsah
+celého úseku, aby ho náhľad v detaile objektu ukázal celý. Pravidlá stráži `workers/lint/rail-sections.py`.
 
 Farby podľa rýchlosti, rozchodu či trakcie si kreslí aplikácia z atribútov,
 v každom štýle inak.
