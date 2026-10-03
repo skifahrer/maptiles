@@ -56,6 +56,8 @@ java -Xmx4g -jar planetiler.jar generate-custom \
   --simplify_tolerance_at_max_zoom=0 \
   --min_feature_size_at_max_zoom=0 \
   --force
+# the region ends in the tiles, not in the style
+workers/lib/clip-tiles.sh "$OUT"
 printf '%s\t%s\t%s\t%s\n' "68" "Railways and aerialways → PMTiles" "$(( $(date +%s) - T_PM ))" \
   "maxzoom $RZ_, $(du -h "$OUT" | cut -f1)" \
   >> steps-out/rail.tsv

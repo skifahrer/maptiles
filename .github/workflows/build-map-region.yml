@@ -1065,7 +1065,6 @@ jobs:
             --terrain-3d='${{ needs.plan.outputs.opt_terrain_3d }}' \
             ${{ needs.dem.outputs.terrain_enabled == 'true' && format('--dem-tiles=pmtiles://{0}/tiles/{1}-terrain.pmtiles --dem-maxzoom={2}', steps.pages.outputs.base_url, needs.plan.outputs.key, needs.dem.outputs.terrain_maxzoom) || '' }} \
             --sprites-dir=_site/sprites \
-            --region-outline=_site/region.geojson \
             --overrides=poc/web/style-overrides.json \
             --fonts-dir=_site/fonts \
             --out=_site/styles

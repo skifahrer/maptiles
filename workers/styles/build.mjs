@@ -16,7 +16,6 @@
  *   --dem-source … model of contours and rocks – goes into the attribution
  *   --dem-tiles-source … model of the elevation tiles; empty = --dem-source
  *   --sprites-dir… folder of deployed sprites; the set follows the overrides
- *   --region-outline region border (`_site/region.geojson`), inlined INTO the style
  *
  * Usage:
  *   node workers/styles/build.mjs --base-url=https://user.github.io/fricomaps \
@@ -108,23 +107,6 @@ const demBounds = args["dem-bounds"]
 if (demBounds && (demBounds.length !== 4 || demBounds.some((n) => !Number.isFinite(n)))) {
   console.error("--dem-bounds must be W,S,E,N (four numbers)");
   process.exit(1);
-}
-
-// inlined: a forgotten offline URL rewrite would silently draw beyond the region
-// a token swapped last, since pretty-printing puts every coordinate on its own line
-const OUTLINE_TOKEN = "__frico:region-outline__";
-const regionOutlinePath = args["region-outline"] || "";
-let regionOutline = null;
-if (regionOutlinePath) {
-  if (existsSync(regionOutlinePath)) {
-    regionOutline = JSON.parse(readFileSync(regionOutlinePath, "utf8"));
-    const kb = (statSync(regionOutlinePath).size / 1024).toFixed(1);
-    console.log(`Region border: ${regionOutlinePath} (${kb} kB, inline in the style)`);
-  } else {
-    console.warn(
-      `⚠ Region border (${regionOutlinePath}) not found – the map goes without it and reaches beyond the region.`
-    );
-  }
 }
 
 if (!baseUrl) {
@@ -315,15 +297,11 @@ for (const type of MAP_TYPES) {
       demTilesSource,
       demMaxzoom,
       demBounds,
-      regionOutline: regionOutline ? OUTLINE_TOKEN : null,
       terrain3d,
       terrainExaggeration,
       name: `FricoMaps ${regionName} – ${type.label} (${THEMES[themeKey].label})`
     });
-    const json = JSON.stringify(style, null, 2).replace(
-      JSON.stringify(OUTLINE_TOKEN),
-      () => JSON.stringify(regionOutline)
-    );
+    const json = JSON.stringify(style, null, 2);
     const drawn = style.layers.filter(
       (l) => (l.layout || {}).visibility !== "none"
     ).length;

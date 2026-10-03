@@ -210,9 +210,6 @@ export const THEMES = {
     pier: "#e8e4dc",
     boundary: "#9e7bb5",
     boundaryLocal: "#b8a0c8",
-    // za hranicou regiónu mapa končí – zámerne tá istá farba ako `background`
-    regionOutside: "#f0efeb",
-    regionBorder: "#9e7bb5",
     placeText: "#333333",
     roadText: "#5a4a3a",
     waterText: "#4a7bab",
@@ -339,8 +336,6 @@ export const THEMES = {
     pier: "#2a2833",
     boundary: "#7a5f95",
     boundaryLocal: "#5f4a75",
-    regionOutside: "#1b1b19",
-    regionBorder: "#7a5f95",
     placeText: "#c8c8d8",
     roadText: "#9a8f80",
     waterText: "#5a7bab",
@@ -464,8 +459,6 @@ export const THEMES = {
     pier: "#e0dac8",
     boundary: "#8a6aa0",
     boundaryLocal: "#a880b8",
-    regionOutside: "#edece8",
-    regionBorder: "#8a6aa0",
     placeText: "#2a2a1a",
     roadText: "#4a3a2a",
     waterText: "#33688a",
@@ -589,8 +582,6 @@ export const THEMES = {
     pier: "#f0e6da",
     boundary: "#c090a8",
     boundaryLocal: "#c8a0b8",
-    regionOutside: "#f2f0ea",
-    regionBorder: "#c090a8",
     placeText: "#5a4a45",
     roadText: "#7a5a4a",
     waterText: "#4a8a7a",
@@ -832,9 +823,7 @@ export const PALETTE_GROUPS = [
     label: "Hranice",
     keys: [
       ["boundary", "Štátna / krajská hranica"],
-      ["boundaryLocal", "Okresná / obecná hranica"],
-      ["regionOutside", "Mimo stiahnutého regiónu"],
-      ["regionBorder", "Okraj stiahnutého regiónu"]
+      ["boundaryLocal", "Okresná / obecná hranica"]
     ]
   },
   {
@@ -3136,20 +3125,9 @@ export function applyLayerOrder(style, order) {
     layers = [...zvysok.slice(0, kam), ...blok, ...zvysok.slice(kam)];
   }
 
-  const maska = layers.filter((l) => REGION_MASK_LAYERS.includes(l.id));
-  if (maska.length) {
-    layers = [...layers.filter((l) => !maska.includes(l)), ...maska];
-  }
   style.layers = layers;
   return style;
 }
-
-/**
- * Vrstvy masky regiónu – tie, ktoré musia ostať úplne navrchu. Sú tu, a nie
- * ako reťazec v `applyLayerOrder`, lebo sa na ne pýta aj developer mode
- * (neponúka ich presúvať) a `workers/lint/style.mjs`.
- */
-export const REGION_MASK_LAYERS = ["region-outside", "region-border"];
 
 /**
  * Cesty: jeden riadok na triedu, zoradené od najdôležitejšej.
@@ -3278,8 +3256,6 @@ export const SHIELD_DEFS = [
  * @param {number} [opts.demMaxzoom]
  * @param {number[]|null} [opts.demBounds] kde vlastné výškové dlaždice sú –
  *                                    pri rýchlom teste je to pár km²
- * @param {object|string|null} [opts.regionOutline] hranica regiónu (dáta alebo
- *                                    URL); za ňou štýl nekreslí nič
  * @param {boolean} [opts.hillshade]  tieňovanie reliéfu (default nie)
  * @param {boolean} [opts.terrain3d]  3D z tých istých dlaždíc (default nie)
  * @param {number} [opts.terrainExaggeration] násobok prevýšenia (default 1.3)
@@ -3319,7 +3295,6 @@ export function buildStyle({
   demTilesSource = null,
   demMaxzoom = DEFAULT_DEM_MAXZOOM,
   demBounds = null,
-  regionOutline = null,
   sdfIcons = false,
   iconSet = null,
   hillshade = null,
@@ -3517,16 +3492,6 @@ export function buildStyle({
         exaggeration: Number(terrainExaggeration) || DEFAULT_TERRAIN_EXAGGERATION
       };
     }
-  }
-
-  // hranica stiahnutého regiónu: dlaždice vznikajú celé a Planetiler do nich
-  // kreslí celosvetové vodstvo, takže mapa inak pokračuje do prázdna.
-  // Súbor robí `workers/deploy/region-mask.py` z toho istého `.poly` ako PBF.
-  if (regionOutline) {
-    style.sources.region = {
-      type: "geojson",
-      data: regionOutline
-    };
   }
 
   const L = style.layers;
@@ -5870,38 +5835,6 @@ export function buildStyle({
         }
       },
       ["sidla", label, "text", { "text-color": "placeText", "text-halo-color": "textHalo" }]
-    );
-  }
-
-  // the region mask on top, or a later layer draws outside the region again;
-  // `mimo`/`hranica` are the kinds of packages built before the English rename
-  if (regionOutline) {
-    add(
-      {
-        id: "region-outside",
-        type: "fill",
-        source: "region",
-        filter: ["in", ["get", "kind"], ["literal", ["outside", "mimo"]]],
-        paint: { "fill-color": c.regionOutside }
-      },
-      ["hranice", "Mimo stiahnutého regiónu", "area",
-       { "fill-color": "regionOutside" }]
-    );
-    add(
-      {
-        id: "region-border",
-        type: "line",
-        source: "region",
-        filter: ["in", ["get", "kind"], ["literal", ["outline", "hranica"]]],
-        layout: { "line-join": "round" },
-        paint: {
-          "line-color": c.regionBorder,
-          "line-width": zw([[4, 0.6], [8, 1], [12, 1.6], [16, 2.4]]),
-          "line-opacity": 0.75
-        }
-      },
-      ["hranice", "Okraj stiahnutého regiónu", "line",
-       { "line-color": "regionBorder" }]
     );
   }
 

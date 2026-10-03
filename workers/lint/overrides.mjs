@@ -417,7 +417,6 @@ for (const [z, expected] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13,
     featuresUrl: "pmtiles://x/f.pmtiles",
     pointsUrl: "pmtiles://x/p.pmtiles",
     roadsUrl: "pmtiles://x/r.pmtiles",
-    regionOutline: { type: "FeatureCollection", features: [] },
     overrides: normalizeOverrides({ order }).overrides
   });
 
@@ -430,12 +429,6 @@ for (const [z, expected] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13,
         `moving layers (${label}) changed the layer count: ${plain.length} → ${ids.length} ` +
         `(${new Set(ids).size} distinct). A layer lost in a move isn't in the map ` +
         `while the style stays valid.`);
-    }
-    const last = ids.slice(-2);
-    if (JSON.stringify(last) !== JSON.stringify(["region-outside", "region-border"])) {
-      error("poc/web/themes.js",
-        `moving layers (${label}) left ${last.join(", ")} on top instead of the region ` +
-        `mask. A layer above the mask draws outside the downloaded region too.`);
     }
     over(ids);
   };
@@ -465,8 +458,11 @@ for (const [z, expected] of [[5, 2], [9, 2], [11.9, 2], [12, 4], [12.9, 4], [13,
     { id: "water", before: "also-missing" }
   ], () => {});
 
-  // moving above the mask mustn't work
-  tryMove("trying to cover the mask", [{ id: "background", before: null }], () => {});
+  tryMove("the paper on top", [{ id: "background", before: null }], (ids) => {
+    if (ids[ids.length - 1] !== "background") {
+      error("poc/web/themes.js", "moving `background` to the top didn't take effect.");
+    }
+  });
 }
 
 // 8. every panel tab is drawn – `TABS` and the `renderBody` switch are two places

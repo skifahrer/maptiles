@@ -53,6 +53,8 @@ java -Xmx4g -jar planetiler.jar generate-custom \
   --simplify_tolerance_at_max_zoom=0 \
   --min_feature_size_at_max_zoom=0 \
   --force
+# the region ends in the tiles, not in the style
+workers/lib/clip-tiles.sh "$OUT"
 
 MB=$(( $(stat -c%s "$OUT") / 1048576 ))
 

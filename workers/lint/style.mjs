@@ -10,7 +10,7 @@
  *      grid of empty alleys.
  *   4. a more important road lies above a less important one; a pass's casings
  *      lie wholly under its fills and passes go tunnel → surface → bridge.
- *   5. the region mask stays on top and filters on the kinds `region-mask.py` writes.
+ *   5. no style draws a region mask; every vector worker cuts its tiles instead.
  *
  * Every map type × theme is checked – a map type profile adds and hides layers.
  *
@@ -37,17 +37,6 @@ const MIXED = {
 /** Fill layer types – the ones earcut really triangulates. */
 const FILL = new Set(["fill", "fill-extrusion"]);
 
-/** A stand-in for `_site/region.geojson` (`workers/deploy/region-mask.py`); only the kinds matter. */
-const MASK_KINDS = [...readFileSync("workers/deploy/region-mask.py", "utf8")
-  .matchAll(/"kind":\s*"([a-z]+)"/g)].map((m) => m[1]);
-const OUTLINE = {
-  type: "FeatureCollection",
-  features: MASK_KINDS.map((kind) => ({
-    type: "Feature", properties: { kind },
-    geometry: { type: "MultiPolygon", coordinates: [] }
-  }))
-};
-
 function styles() {
   const out = [];
   for (const theme of Object.keys(THEMES)) {
@@ -66,9 +55,7 @@ function styles() {
           trailsUrl: "https://x/trails.pmtiles",
           featuresUrl: "https://x/features.pmtiles",
           pointsUrl: "https://x/points.pmtiles",
-          transportUrl: "https://x/transport.pmtiles",
-          // without the region border the mask layers wouldn't exist
-          regionOutline: OUTLINE
+          transportUrl: "https://x/transport.pmtiles"
         })
       });
     }
@@ -274,41 +261,28 @@ for (const { where, style } of styles()) {
   }
 }
 
-// 5. the region mask stays on top – water and Natural Earth cover the whole bbox
-let masks = 0;
+// 5. no mask: the tiles end at the region
+let cutters = 0;
 for (const { where, style } of styles()) {
-  const ids = style.layers.map((l) => l.id);
-  masks += 1;
-  if (!ids.includes("region-outside")) {
+  const mask = style.layers.filter((l) => ["region-outside", "region-border"].includes(l.id));
+  if (mask.length || style.sources.region) {
     console.log(
-      `::error file=poc/web/themes.js::the style (${where}) has no ` +
-      `\`region-outside\` layer though a region border came. The map would ` +
-      `reach beyond the downloaded region in the app.`
-    );
-    bad += 1;
-    continue;
-  }
-  const last = ids.slice(-2);
-  if (!last.includes("region-outside") || !last.includes("region-border")) {
-    console.log(
-      `::error file=poc/web/themes.js::the region mask isn't on top (${where}): ` +
-      `the last layers are [${ids.slice(-3)}]. A layer after \`region-outside\` ` +
-      `draws outside the downloaded region too – add it BEFORE the mask.`
+      `::error file=poc/web/themes.js::the style (${where}) draws a region mask again. ` +
+      `The region ends in the tiles (workers/lib/clip-tiles.sh), not in the style.`
     );
     bad += 1;
   }
-  // the mask must match what `region-mask.py` writes, or it covers nothing
-  for (const id of ["region-outside", "region-border"]) {
-    const layer = style.layers.find((l) => l.id === id);
-    const filter = JSON.stringify(layer?.filter ?? null);
-    if (layer && !MASK_KINDS.some((kind) => filter.includes(`"${kind}"`))) {
-      console.log(
-        `::error file=poc/web/themes.js::\`${id}\` (${where}) filters ${filter}, ` +
-        `but workers/deploy/region-mask.py writes kinds ${MASK_KINDS.join(", ")}. ` +
-        `The mask would match nothing and the map would reach past the region.`
-      );
-      bad += 1;
-    }
+}
+for (const worker of ["tiles", "trails", "features", "boundaries", "buildings", "water",
+                      "transport", "rail"]) {
+  const build = readFileSync(`workers/${worker}/build.sh`, "utf8");
+  cutters += 1;
+  if (!build.includes("workers/lib/clip-tiles.sh")) {
+    console.log(
+      `::error file=workers/${worker}/build.sh::its tiles aren't cut to the region ` +
+      `(workers/lib/clip-tiles.sh), so the map draws what lies beyond it.`
+    );
+    bad += 1;
   }
 }
 
@@ -316,7 +290,7 @@ console.log(
   `style: ${bad} errors (${checked} fills over mixed geometry, ` +
   `${derived} derived layer checks, ${patterns} area patterns at the seam, ` +
   `${roadPairs} road pairs in order, ` +
-  `${masks} styles with a region mask, ` +
+  `${cutters} workers cutting to the region, ` +
   `${Object.keys(THEMES).length} themes × ${MAP_TYPE_IDS.length} map types)`
 );
 process.exit(bad ? 1 : 0);
