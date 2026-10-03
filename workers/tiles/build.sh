@@ -91,6 +91,9 @@ while : ; do
       --layer=housenumber --below="$HN_MIN"
   fi
 
+  # the region ends in the tiles, not in the style
+  workers/lib/clip-tiles.sh "$OUT"
+
   BYTES=$(stat -c%s "$OUT")
   MB=$(( BYTES / 1048576 ))
   echo "maxzoom $Z → ${MB} MB (${BUDGET_MB} MB for tiles)"

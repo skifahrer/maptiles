@@ -155,6 +155,29 @@ Mapa · úpravy štýlu          style-overrides.json z developer módu
   naozaj platí, meria [`workers/plan/seam.py`](plan/seam.py) v každom behu
   (medzeru **aj** prekryv).
 
+  #### Orez dlaždíc po hranicu regiónu
+
+  **Región končí v dlaždiciach, nie pod maskou v štýle.** `osmium extract -s
+  smart` zámerne nechá celé relácie a cesty, ktoré do kraja zasahujú (plocha
+  orezaná osmiom by stratila aj časť v kraji), a Planetiler kreslí vodstvo
+  a Natural Earth na celých dlaždiciach. Namerané na Bratislavskom kraji
+  (balík z 2. 10. 2026) to, čo z regiónu unikalo: 55 sídiel (Trnava, Senica,
+  Kittsee, Marchegg…), štíty Vysokých Tatier na z7 (uzly štátnej hranice),
+  celé CHKO Záhorie a Dunajské luhy, diaľnice a rieky ďaleko za hranicou
+  a oceán na z3 – 5.
+
+  Preto každý worker, ktorý robí vektorové dlaždice (`tiles`, `trails`,
+  `features`, `boundaries`, `buildings`, `water`, `transport`, `rail`), hotový
+  `.pmtiles` prežene cez
+  [`workers/lib/clip-tiles.sh`](lib/clip-tiles.sh): **čiary a plochy sa na
+  hranici odstrihnú** (100 m za ňou, aby susedné kraje na seba nadväzovali bez
+  škáry), **nič sa nezahodí celé**; body za tým okrajom sa vynechajú. Dlaždice
+  celé vnútri kraja sa len skopírujú. Po oreze nesiaha v tom istom balíku nič
+  ďalej než 100 m plus jeden dielik dlaždice (pod pixel na obrazovke). Štýl
+  preto masku ani hranicu regiónu nenesie – tá v ňom bola celá inline a každé
+  otvorenie mapy ju muselo prečítať. Stráži to
+  [`workers/lint/style.mjs`](lint/style.mjs) (bod 5).
+
   **Hranica sa pred rezom zjednoduší na 10 m.** `osmium extract --polygon`
   testuje každý uzol PBF proti každej úsečke hranice, takže čas rezu rastie
   s počtom bodov. Namerané na relácii Prešovského kraja (388271, plná geometria
@@ -3652,8 +3675,9 @@ pre celé Slovensko nechaj pipeline zvoliť najvyšší zoom, ktorý sa zmestí.
 
    **`region_clip` je DOČASNE `false`**, teda dlaždice sa nerežú na hranicu
    regiónu (`--polygon` Planetileru) a vyrobia sa na celom obdĺžniku bboxu.
-   V mape to vidieť nie je – hranicu dokresľuje maska v štýle, ktorá je „celý
-   svet mínus región". Merané na Bratislavskom kraji (maxzoom 14): 1607
+   V mape to vidieť nie je – dlaždice potom ešte orezáva
+   [workers/lib/clip-tiles.py](lib/clip-tiles.py) presne po hranicu (viď
+   [Orez dlaždíc po hranicu regiónu](#orez-dlaždíc-po-hranicu-regiónu)). Merané na Bratislavskom kraji (maxzoom 14): 1607
    dlaždíc namiesto 1271 (+26 %) za +0,7 % bajtov a rovnaký čas, a v tých
    navyše je riedky lem OSM z nášho PBF cez hranicu kraja. Kým je vypnutý,
    hlási to `::warning::` v každom behu; späť sa zapína `region_clip=true`.

@@ -52,6 +52,8 @@ java -Xmx4g -jar planetiler.jar generate-custom \
   --force
 
 OUT="_site/tiles/${REGION_KEY}-trails.pmtiles"
+# the region ends in the tiles, not in the style
+workers/lib/clip-tiles.sh "$OUT"
 MB=$(( $(stat -c%s "$OUT") / 1048576 ))
 
 # said here rather than in `deploy`

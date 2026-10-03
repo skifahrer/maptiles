@@ -33,7 +33,6 @@ import {
   MAX_PAINT_STOPS,
   NO_FILL,
   builtinDash,
-  REGION_MASK_LAYERS,
   sortStops,
   sortBands,
   isBandList,
@@ -911,9 +910,7 @@ export function initDevMode({
     return (getStyle()?.layers || []).filter((l) => {
       const meta = l.metadata || {};
       // odvodené vrstvy a druhá polovica dvojice sa presúvajú s predlohou
-      if (meta["frico:derived"] || meta["frico:with"]) return false;
-      // Maska regiónu ostáva navrchu vždy – rozpis pri `applyLayerOrder`.
-      return !REGION_MASK_LAYERS.includes(l.id);
+      return !(meta["frico:derived"] || meta["frico:with"]);
     });
   }
 
@@ -3556,9 +3553,7 @@ export function initDevMode({
       return el("div", { class: "dev-sub" }, [
         el("span", {
           class: "dev-note",
-          text: REGION_MASK_LAYERS.includes(layer.id)
-            ? "Maska regiónu sa kreslí vždy úplne navrchu – vrstva za ňou by kreslila aj mimo stiahnutého regiónu."
-            : "Túto vrstvu presúvať netreba – kreslí sa so svojou predlohou."
+          text: "Túto vrstvu presúvať netreba – kreslí sa so svojou predlohou."
         })
       ]);
     }
