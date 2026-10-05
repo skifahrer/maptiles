@@ -150,6 +150,33 @@ examples:
           levels: 2
           housenumber: "12"
 
+  - name: A building's name comes in the app's languages
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        building: castle
+        name: Bratislavský hrad
+        name:de: Burg Pressburg
+        area_m2: "4800"
+    output:
+      - layer: building
+        geometry: polygon
+        min_zoom: 13
+        tags:
+          class: castle
+          name: Bratislavský hrad
+          name:de: Burg Pressburg
+          area: 4800
+      - layer: building_name
+        geometry: point
+        min_zoom: 14
+        tags:
+          class: castle
+          name: Bratislavský hrad
+          name:de: Burg Pressburg
+          area: 4800
+
   - name: A building without a name is just an area
     input:
       source: osm

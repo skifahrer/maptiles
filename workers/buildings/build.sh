@@ -48,10 +48,13 @@ printf '%s\t%s\t%s\t%s\n' "74" "Building areas" "$(( $(date +%s) - T_A ))" "" \
 
 mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
 
+# names in the app's languages, as the base map has them
+workers/lib/name-languages.sh workers/buildings/buildings.yml data/buildings.yml
+
 T_PM=$(date +%s)
 OUT="_site/tiles/${REGION_KEY}-buildings.pmtiles"
 java -Xmx4g -jar planetiler.jar generate-custom \
-  --schema=workers/buildings/buildings.yml \
+  --schema=data/buildings.yml \
   "${CLIP[@]}" \
   --output="$OUT" \
   --maxzoom="$BZ_" --render_maxzoom="$BZ_" \

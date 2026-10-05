@@ -116,7 +116,10 @@ jobs:
           key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
 
       - name: Settlement schema tests
-        run: java -jar planetiler.jar verify workers/buildings/buildings.yml
+        run: |
+          mkdir -p data
+          workers/lib/name-languages.sh workers/buildings/buildings.yml data/buildings.yml
+          java -jar planetiler.jar verify data/buildings.yml
 
       - name: Settlements from OSM → PMTiles
         id: buildings
