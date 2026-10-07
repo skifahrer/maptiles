@@ -6,6 +6,24 @@ Vector map pipeline for Slovakia (OSM ─► PMTiles). `workers/` = pipeline ste
 
 Details: `workers/README.md`.
 
+## Pull requests: merge only on green
+
+**Don't merge a PR until its checks are green and the pipeline really ran.**
+
+- `Check · workflow lint` and `Check · catalog schema` are green on the PR's
+  HEAD, not on an older commit of the branch.
+- No conflict with `master`.
+- The check really ran: a run with no job verified nothing, and green from
+  another commit says nothing about this one.
+
+The checks run only on changes to their paths, and a bot's push to `maps.json`
+starts no workflow, so the last result on `master` can be days old. When it
+matters, run the workflow by hand (`workflow_dispatch`) or locally:
+`workers/lint/*.py`, `workers/lint/*.mjs`, `workers/deploy/catalog-schema.py`.
+
+Fix a red check, or say on the PR why it isn't this PR's. Never switch a test
+or lint off to get green.
+
 ## Comments: as few words as possible
 
 **This is a hard rule. A comment is a few words, not a paragraph.**
