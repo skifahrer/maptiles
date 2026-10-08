@@ -3783,6 +3783,11 @@ hodinami. Keby kraj bežal dlhšie než rozpočet úseku (5 h), štafeta sa
 odovzdá s tým istým kolíkom a čaká ďalší článok; job sa tak nikdy nepriblíži
 k šiestim hodinám.
 
+Kraj, ktorého beh GitHub ukončí ako zlyhaný, hoci mu niektoré joby **ani
+nedal bežať** (ostali vo fronte) a žiadny z našich nezlyhal, štafeta spustí
+**ešte raz** (`gh run rerun`, len prvý pokus). Skutočná chyba v jobe sa
+neopakuje – tá ide do súhrnu ako diera v mape.
+
 `workflow_dispatch` cez `GITHUB_TOKEN` beh naozaj **spustí** — je to výslovná
 výnimka z pravidla „udalosti z GITHUB_TOKENu nespúšťajú ďalšie behy" (spolu
 s `repository_dispatch`). Práve preto je štafeta postavená na ňom: cez `push`

@@ -56,6 +56,14 @@ trap on_cancel INT TERM
 
 run_link() { echo "$SERVER/$REPO/actions/runs/$1"; }
 
+# GitHub ended the run with jobs that never got a runner, and none of ours failed
+never_started() {
+  gh run view "$1" --repo "$REPO" --json attempt,jobs --jq \
+    '.attempt == 1
+     and ([.jobs[] | select(.conclusion == "failure")] | length) == 0
+     and ([.jobs[] | select(.status != "completed")] | length) > 0' 2>/dev/null || true
+}
+
 # the whole picture in every leg, rebuilt from the baton
 FAILED=0
 write_summary() {
@@ -120,6 +128,16 @@ relay_main() {
       state="$(gh run view "$RUNNING_ID" --repo "$REPO" --json status,conclusion \
                 --jq '.status + " " + (.conclusion // "")' 2>/dev/null || true)"
       case "$state" in
+        "completed failure")
+          if [ "$(never_started "$RUNNING_ID")" = "true" ]; then
+            log "::warning::Region $RUNNING_REGION (run $RUNNING_ID) failed with jobs GitHub never started – running it once more."
+            if gh run rerun "$RUNNING_ID" --repo "$REPO"; then
+              pause "$POLL_S"
+              continue
+            fi
+            log "::warning::Run $RUNNING_ID couldn't be started again – it counts as failed."
+          fi
+          break ;;
         completed*) break ;;
         "") log "::warning::Run $RUNNING_ID can't be read (API outage?) – still trying." ;;
       esac
