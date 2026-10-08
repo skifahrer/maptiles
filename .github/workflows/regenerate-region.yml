@@ -3,7 +3,7 @@ name: Map · Regenerate region layer
 # ONE LAYER OF ONE REGION ANEW – without rebuilding the map.
 #
 # Choices `what`: points, roads (the whole road network with the routing
-# network), boundaries, water, railways, settlements, contours, rocks, terrain.
+# network), boundaries, water, railways, history, settlements, contours, rocks, terrain.
 # Only that package is overwritten on Drive.
 #
 # OSM layers take minutes (the same PBF as the map); DEM layers tens of minutes
@@ -45,6 +45,7 @@ on:
           - boundaries
           - water
           - railways
+          - history
           - settlements
           - contours
           - rocks
@@ -124,6 +125,7 @@ env:
   BUDGET_BOUNDARIES_PCT: "3"
   BUDGET_WATER_PCT: "5"
   BUDGET_RAIL_PCT: "3"
+  BUDGET_HISTORY_PCT: "3"
   BUDGET_BUILDINGS_PCT: "6"
   # the same for DEM layers; `dem-layers.yml` gets them as inputs
   BUDGET_CONTOURS_PCT: "25"
@@ -155,6 +157,7 @@ jobs:
       opt_boundaries_maxzoom: ${{ steps.opts.outputs.opt_boundaries_maxzoom }}
       opt_water_maxzoom: ${{ steps.opts.outputs.opt_water_maxzoom }}
       opt_rail_maxzoom: ${{ steps.opts.outputs.opt_rail_maxzoom }}
+      opt_history_maxzoom: ${{ steps.opts.outputs.opt_history_maxzoom }}
       opt_buildings_maxzoom: ${{ steps.opts.outputs.opt_buildings_maxzoom }}
       opt_custom_pbf_url: ${{ steps.opts.outputs.opt_custom_pbf_url }}
       opt_custom_name: ${{ steps.opts.outputs.opt_custom_name }}
@@ -163,6 +166,7 @@ jobs:
       budget_boundaries_pct: ${{ env.BUDGET_BOUNDARIES_PCT }}
       budget_water_pct: ${{ env.BUDGET_WATER_PCT }}
       budget_rail_pct: ${{ env.BUDGET_RAIL_PCT }}
+      budget_history_pct: ${{ env.BUDGET_HISTORY_PCT }}
       budget_buildings_pct: ${{ env.BUDGET_BUILDINGS_PCT }}
       # shares go as outputs, `env` can't be read in a called workflow's `with:`
       budget_contours_pct: ${{ env.BUDGET_CONTOURS_PCT }}
@@ -461,6 +465,22 @@ jobs:
       budget_pct: ${{ needs.plan.outputs.budget_rail_pct }}
       day: ${{ needs.plan.outputs.day }}
 
+  # the same workflow the map build calls (`workers/history/history.yml`)
+  history:
+    name: Army & history
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.what == 'history' }}
+    uses: ./.github/workflows/history.yml
+    secrets: inherit                      # cache on Drive; `env` isn't inherited
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      region_bbox: ${{ needs.plan.outputs.bbox }}
+      maxzoom: ${{ needs.plan.outputs.opt_history_maxzoom }}
+      region_clip: ${{ needs.plan.outputs.opt_region_clip }}
+      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      budget_pct: ${{ needs.plan.outputs.budget_history_pct }}
+      day: ${{ needs.plan.outputs.day }}
+
   # the same workflow the map build calls (`workers/buildings/buildings.yml`)
   settlements:
     name: Settlements
@@ -552,7 +572,7 @@ jobs:
 
   publish:
     name: Package to Drive and the catalog
-    needs: [plan, points, transport, boundaries, water, railways, settlements, routing, dem]
+    needs: [plan, points, transport, boundaries, water, railways, history, settlements, routing, dem]
     # `skipped` is fine, `failure` isn't: half a new and half an old layer would be a lying package
     if: >-
       ${{ !cancelled() && needs.plan.result == 'success'
@@ -561,6 +581,7 @@ jobs:
           && needs.boundaries.result != 'failure'
           && needs.water.result != 'failure'
           && needs.railways.result != 'failure'
+          && needs.history.result != 'failure'
           && needs.settlements.result != 'failure'
           && needs.routing.result != 'failure'
           && needs.dem.result != 'failure'
@@ -586,7 +607,7 @@ jobs:
       - name: What came from the layer jobs
         run: |
           set -uo pipefail
-          echo "points=${{ needs.points.result }}, roads=${{ needs.transport.result }}, boundaries=${{ needs.boundaries.result }}, water=${{ needs.water.result }}, railways=${{ needs.railways.result }}, settlements=${{ needs.settlements.result }}, routing=${{ needs.routing.result }}, DEM layers=${{ needs.dem.result }} (contours=${{ needs.dem.outputs.res_contours }}, hillshading=${{ needs.dem.outputs.res_terrain }})"
+          echo "points=${{ needs.points.result }}, roads=${{ needs.transport.result }}, boundaries=${{ needs.boundaries.result }}, water=${{ needs.water.result }}, railways=${{ needs.railways.result }}, history=${{ needs.history.result }}, settlements=${{ needs.settlements.result }}, routing=${{ needs.routing.result }}, DEM layers=${{ needs.dem.result }} (contours=${{ needs.dem.outputs.res_contours }}, hillshading=${{ needs.dem.outputs.res_terrain }})"
           find _site -type f -printf '%10s  %p\n' 2>/dev/null || true
 
       # the build's packer and catalog write, with `--only`: one package, the entry added to
@@ -600,7 +621,7 @@ jobs:
           CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
           # for OSM layers the layer's name – without it `contents.json` would say
           # “no_contours, no_rocks…” of a map the run never saw; empty for DEM layers
-          MAP_LAYERS: ${{ (inputs.what == 'points' || inputs.what == 'roads' || inputs.what == 'boundaries' || inputs.what == 'water' || inputs.what == 'railways' || inputs.what == 'settlements') && inputs.what || '' }}
+          MAP_LAYERS: ${{ (inputs.what == 'points' || inputs.what == 'roads' || inputs.what == 'boundaries' || inputs.what == 'water' || inputs.what == 'railways' || inputs.what == 'history' || inputs.what == 'settlements') && inputs.what || '' }}
           CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
           CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
           CONTOUR_INTERVAL: ${{ needs.plan.outputs.opt_contour_interval }}
@@ -682,7 +703,7 @@ jobs:
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
           # the same values as the ZIP job – `contents.json` is made of them
-          MAP_LAYERS: ${{ (inputs.what == 'points' || inputs.what == 'roads' || inputs.what == 'boundaries' || inputs.what == 'water' || inputs.what == 'railways' || inputs.what == 'settlements') && inputs.what || '' }}
+          MAP_LAYERS: ${{ (inputs.what == 'points' || inputs.what == 'roads' || inputs.what == 'boundaries' || inputs.what == 'water' || inputs.what == 'railways' || inputs.what == 'history' || inputs.what == 'settlements') && inputs.what || '' }}
           CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
           CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
           CONTOUR_INTERVAL: ${{ needs.plan.outputs.opt_contour_interval }}

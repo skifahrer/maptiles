@@ -520,6 +520,10 @@ jobs:
       - name: "Water: filter, relation members, name and the coast as a line"
         run: python3 workers/lint/water.py
 
+      # one object in one theme; a dropped prefilter line empties a theme quietly
+      - name: "Army and history: filter, relation members, every geometry"
+        run: python3 workers/lint/history.py
+
       # rail routing may ride only what the package draws
       - name: "Railways and cable cars: filter, promised classes and track network"
         run: python3 workers/lint/rail.py

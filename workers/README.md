@@ -39,6 +39,8 @@ Mapa · Build map region      deväť jobov, tie dlhé bežia súbežne:
                                vodstvo  rieky, jazerá, more ─► balík `vodstvo`
                                sidla    budovy s výmerou a menom, mená sídiel
                                         ─► balík `sidla`
+                               history  armáda, história, bane, násypy,
+                                        opustené a nepoužívané ─► balík `history`
                                navigacia smerovacia sieť so značkami ─►
                                         v mape aj v balíku `cesty`
                                assets   SDF sprity a glyfy
@@ -3122,6 +3124,38 @@ sady nedostane nič a appka kreslí predvolené. Ide v balíku `zeleznice`
 Ovládanie: `rail=false` balík vypne, `rail_maxzoom` (15) je strop dlaždíc,
 `BUDGET_RAIL_PCT` podiel na rozpočte stránky. Samostatne sa pregeneruje
 voľbou `zeleznice` v „Mapa · Pregeneruj vrstvu kraja".
+
+## Armáda a história (balík `history`)
+
+Všetko vojenské, historické, banské a opustené z OSM v
+`{kraj}-history.pmtiles` – body, čiary aj plochy. Schéma je
+`workers/history/history.yml`, stavia ju workflow „Map · history"
+(`history.yml`) pri každom builde kraja aj krajiny.
+
+| vrstva | čo nesie |
+|---|---|
+| `army` | `military=*`, `landuse=military`, `building=bunker/military/barracks` – výcvikové priestory, kasárne, bunkre, zákopy |
+| `mining` | `man_made=mineshaft/adit/spoil_heap`, `industrial=mine`, `landuse=quarry`, `historic=mine/mine_shaft/mine_adit/mining` – šachty, štôlne, haldy, lomy |
+| `embankment` | `man_made=embankment/dyke` a cesty či trate s `embankment=*` – vždy čiary |
+| `history` | `historic=*`, `heritage=*`, `ruins=yes`, `building=ruins` – hrady, zrúcaniny, pamätníky, archeologické náleziská, pamiatky |
+| `gone` | čo je opustené alebo nepoužívané a nepatrí do vrstvy vyššie: `abandoned:*`, `disused:*`, `abandoned=yes`, `disused=yes` a hodnoty `abandoned`/`disused` (`railway=abandoned`) |
+
+Objekt je len v jednej vrstve, v poradí z tabuľky: opustený bunker je v
+`army`, historická štôlňa v `mining`. Či je opustený alebo nepoužívaný, hovorí
+v každej vrstve `lifecycle` (`abandoned`, `disused`). `class` a `family` sú
+hodnota a kľúč značky, podľa ktorej tam objekt prišiel; vo vrstve `gone` je to
+značka za predponou (`disused:shop=bakery` → `family=shop`, `class=bakery`).
+Ďalej `name`, `name_en`, `historic`, `military`, `heritage`, `ruins`,
+`resource`, `start_date`, `end_date`, `wikidata`, `wikipedia`, `osm_id`,
+`osm_type`.
+
+Uzavretá cesta je plocha, okrem toho, čo je svojou povahou čiara (trať, cesta,
+vodný tok, násyp, zákop, hradby a tie isté značky s predponou `abandoned:` či
+`disused:`). Uzol je bod.
+
+Ovládanie: `history=false` balík vypne, `history_maxzoom` (14) je strop
+dlaždíc, `BUDGET_HISTORY_PCT` podiel na rozpočte stránky. Samostatne sa
+pregeneruje voľbou `history` v „Mapa · Pregeneruj vrstvu kraja".
 
 ## Typy máp – čo ktorá mapa ukazuje
 

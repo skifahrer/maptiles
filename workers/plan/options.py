@@ -76,6 +76,10 @@ DEFAULTS = {
                      "for navigation – package `railways`"),
     # 15: kilometre posts start at z15
     "rail_maxzoom": ("15", "max zoom of railway tiles"),
+    "history": ("true", "make army and history (military, historic, mines, "
+                        "embankments, abandoned and disused) – package `history`"),
+    # 14: the schema's highest `min_zoom` is 13, one more is headroom
+    "history_maxzoom": ("14", "max zoom of army and history tiles"),
     "buildings": ("true", "make settlements – buildings with floor area and "
                           "name – package `settlements`"),
     # 14: the schema's highest `min_zoom`, past it tiles only grow
@@ -331,7 +335,7 @@ def main():
     for key, label in (("trails", ""), ("features", ""), ("transport", ""),
                        ("boundaries", "boundaries"), ("water", "water"),
                        ("rail", "railways"), ("buildings", "settlements"),
-                       ("routing", ""), ("apple_archive", ""), ("wikipedia", ""),
+                       ("history", "history"), ("routing", ""), ("apple_archive", ""), ("wikipedia", ""),
                        ("publish", ""), ("map_simplify", "")):
         if not check_bool(values, key, label):
             return 1
@@ -456,6 +460,7 @@ def main():
           f"Boundaries: {values['boundaries']}   "
           f"Water: {values['water']}   "
           f"Railways: {values['rail']}   "
+          f"Army & history: {values['history']}   "
           f"Settlements: {values['buildings']}")
     print("Quick test: " + (f"ON, terrain (contours, rocks, hillshading) only on "
                             f"{values['test_km2']} km² in the middle of the cut-out; "

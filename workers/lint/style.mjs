@@ -274,7 +274,7 @@ for (const { where, style } of styles()) {
   }
 }
 for (const worker of ["tiles", "trails", "features", "boundaries", "buildings", "water",
-                      "transport", "rail"]) {
+                      "transport", "rail", "history"]) {
   const build = readFileSync(`workers/${worker}/build.sh`, "utf8");
   cutters += 1;
   if (!build.includes("workers/lib/clip-tiles.sh")) {

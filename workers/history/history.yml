@@ -1,0 +1,558 @@
+# Planetiler custom schema – army and history from OSM in one `.pmtiles`.
+# One object, one layer: army, then mining, embankments, history, and last whatever was left
+# abandoned or disused. A closed way is an area unless its tags say it's a line.
+schema_name: FricoMaps army and history
+schema_description: >-
+  Military sites, historic places, mines, shafts, adits and quarries,
+  embankments and dykes, and everything abandoned or disused, from OSM
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
+
+sources:
+  osm:
+    type: osm
+    local_path: data/history.osm.pbf
+
+definitions:
+  # what puts an object in a theme; each theme leaves out the ones before it
+  - &army_tags
+    military: __any__
+    landuse: [military]
+    building: [bunker, military, barracks]
+  - &mining_tags
+    man_made: [mineshaft, adit, spoil_heap]
+    industrial: [mine]
+    landuse: [quarry]
+    historic: [mine, mine_shaft, mine_adit, mining]
+  - &embankment_tags
+    man_made: [embankment, dyke]
+    embankment: __any__
+  - &history_tags
+    historic: __any__
+    heritage: __any__
+    ruins: ["yes"]
+    building: [ruins]
+  - &abandoned '${ feature.tags.exists(k, k.startsWith("abandoned:") || feature.tags[k] == "abandoned" || (k == "abandoned" && feature.tags[k] == "yes")) }'
+  - &disused '${ feature.tags.exists(k, k.startsWith("disused:") || feature.tags[k] == "disused" || (k == "disused" && feature.tags[k] == "yes")) }'
+  - &gone_tags
+    __any__: [*abandoned, *disused]
+
+  # tags that make a closed way a line, not an area
+  - &linear
+    railway: __any__
+    highway: __any__
+    waterway: __any__
+    aerialway: __any__
+    power: [line, minor_line, cable]
+    man_made: [embankment, dyke, pipeline, cutline]
+    military: [trench]
+    historic: [citywalls, railway, road, aqueduct, hollow_way]
+    embankment: __any__
+    "abandoned:railway": __any__
+    "disused:railway": __any__
+    "abandoned:highway": __any__
+    "disused:highway": __any__
+    "abandoned:waterway": __any__
+    "disused:waterway": __any__
+    "abandoned:aerialway": __any__
+    "disused:aerialway": __any__
+    "abandoned:power": [line, minor_line, cable]
+    "disused:power": [line, minor_line, cable]
+
+  - &theme_attrs
+    # WHAT IT IS: `class` the matched value, `family` the matched key
+    - key: class
+      type: match_value
+    - key: family
+      type: match_key
+    - key: name
+    - key: name_en
+      value:
+        tag_value: "name:en"
+    # `abandoned` or `disused`, whatever theme the object is in
+    - key: lifecycle
+      value: abandoned
+      include_when: *abandoned
+    - key: lifecycle
+      value: disused
+      include_when: *disused
+    - key: historic
+    - key: military
+    - key: heritage
+    - key: ruins
+    - key: resource
+    - key: start_date
+    - key: end_date
+    - key: wikidata
+    - key: wikipedia
+    - key: osm_id
+      value: '${ feature.id }'
+      type: long
+    - key: osm_type
+      value: '${ feature.osm_type }'
+  - &gone_attrs
+    # WHAT IT WAS: off the prefixed tag (`disused:shop=bakery`), else the tag that says it
+    - key: family
+      value: '${ feature.tags.filter(k, k.matches("^(abandoned|disused):.")).map(k, k.replace("abandoned:", "").replace("disused:", ""))[0] }'
+      include_when: '${ feature.tags.exists(k, k.matches("^(abandoned|disused):.")) }'
+    - key: class
+      value: '${ feature.tags[feature.tags.filter(k, k.matches("^(abandoned|disused):."))[0]] }'
+      include_when: '${ feature.tags.exists(k, k.matches("^(abandoned|disused):.")) }'
+    - key: family
+      value: '${ feature.tags.filter(k, feature.tags[k] == "abandoned" || feature.tags[k] == "disused")[0] }'
+      include_when: '${ !feature.tags.exists(k, k.matches("^(abandoned|disused):.")) && feature.tags.exists(k, feature.tags[k] == "abandoned" || feature.tags[k] == "disused") }'
+    - key: class
+      value: '${ feature.tags[feature.tags.filter(k, feature.tags[k] == "abandoned" || feature.tags[k] == "disused")[0]] }'
+      include_when: '${ !feature.tags.exists(k, k.matches("^(abandoned|disused):.")) && feature.tags.exists(k, feature.tags[k] == "abandoned" || feature.tags[k] == "disused") }'
+    # `abandoned=yes` alone: what it is says what it was
+    - key: family
+      value: '${ ["building", "amenity", "shop", "railway", "highway", "landuse", "man_made", "leisure", "tourism", "power", "office", "craft", "industrial", "aeroway", "aerialway", "waterway"].filter(k, k in feature.tags)[0] }'
+      include_when: '${ !feature.tags.exists(k, k.matches("^(abandoned|disused):.") || feature.tags[k] == "abandoned" || feature.tags[k] == "disused") && ["building", "amenity", "shop", "railway", "highway", "landuse", "man_made", "leisure", "tourism", "power", "office", "craft", "industrial", "aeroway", "aerialway", "waterway"].exists(k, k in feature.tags) }'
+    - key: class
+      value: '${ feature.tags[["building", "amenity", "shop", "railway", "highway", "landuse", "man_made", "leisure", "tourism", "power", "office", "craft", "industrial", "aeroway", "aerialway", "waterway"].filter(k, k in feature.tags)[0]] }'
+      include_when: '${ !feature.tags.exists(k, k.matches("^(abandoned|disused):.") || feature.tags[k] == "abandoned" || feature.tags[k] == "disused") && ["building", "amenity", "shop", "railway", "highway", "landuse", "man_made", "leisure", "tourism", "power", "office", "craft", "industrial", "aeroway", "aerialway", "waterway"].exists(k, k in feature.tags) }'
+    - key: name
+    - key: name_en
+      value:
+        tag_value: "name:en"
+    # `abandoned` or `disused`, whatever theme the object is in
+    - key: lifecycle
+      value: abandoned
+      include_when: *abandoned
+    - key: lifecycle
+      value: disused
+      include_when: *disused
+    - key: historic
+    - key: military
+    - key: heritage
+    - key: ruins
+    - key: resource
+    - key: start_date
+    - key: end_date
+    - key: wikidata
+    - key: wikipedia
+    - key: osm_id
+      value: '${ feature.id }'
+      type: long
+    - key: osm_type
+      value: '${ feature.osm_type }'
+
+layers:
+  # 1. army: bases, training areas, bunkers, trenches
+  - id: army
+    features:
+      # big areas from z8 – training areas cover whole hills
+      - source: osm
+        geometry: polygon
+        min_zoom: 8
+        include_when:
+          landuse: [military]
+          military: [danger_area, range, training_area, base, airfield, naval_base]
+        exclude_when: *linear
+        attributes: *theme_attrs
+      - source: osm
+        geometry: polygon
+        min_zoom: 11
+        include_when: *army_tags
+        exclude_when:
+          __any__:
+            - *linear
+            - landuse: [military]
+              military: [danger_area, range, training_area, base, airfield, naval_base]
+        attributes: *theme_attrs
+      - source: osm
+        geometry: line
+        min_zoom: 12
+        include_when:
+          __all__: [*army_tags, *linear]
+        attributes: *theme_attrs
+      - source: osm
+        geometry: point
+        min_zoom: 12
+        include_when: *army_tags
+        attributes: *theme_attrs
+
+  # 2. mining: mines, shafts, adits, heaps and quarries
+  - id: mining
+    features:
+      - source: osm
+        geometry: polygon
+        min_zoom: 9
+        include_when: *mining_tags
+        exclude_when:
+          __any__: [*army_tags, *linear]
+        attributes: *theme_attrs
+      - source: osm
+        geometry: line
+        min_zoom: 12
+        include_when:
+          __all__: [*mining_tags, *linear]
+        exclude_when: *army_tags
+        attributes: *theme_attrs
+      - source: osm
+        geometry: point
+        min_zoom: 12
+        include_when: *mining_tags
+        exclude_when: *army_tags
+        attributes: *theme_attrs
+
+  # 3. embankments and dykes – always lines; `embankment=yes` sits on roads and railways
+  - id: embankment
+    features:
+      - source: osm
+        geometry: line
+        min_zoom: 12
+        include_when:
+          man_made: [embankment, dyke]
+        exclude_when:
+          __any__: [*army_tags, *mining_tags]
+        attributes: *theme_attrs
+      - source: osm
+        geometry: line
+        min_zoom: 13
+        include_when:
+          embankment: __any__
+        exclude_when:
+          __any__:
+            - *army_tags
+            - *mining_tags
+            - man_made: [embankment, dyke]
+            - embankment: ["no"]
+        attributes: *theme_attrs
+
+  # 4. history: castles, ruins, memorials, archaeological sites, listed buildings
+  - id: history
+    features:
+      - source: osm
+        geometry: polygon
+        min_zoom: 11
+        include_when: *history_tags
+        exclude_when:
+          __any__: [*army_tags, *mining_tags, *embankment_tags, *linear]
+        attributes: *theme_attrs
+      - source: osm
+        geometry: line
+        min_zoom: 12
+        include_when:
+          __all__: [*history_tags, *linear]
+        exclude_when:
+          __any__: [*army_tags, *mining_tags, *embankment_tags]
+        attributes: *theme_attrs
+      - source: osm
+        geometry: point
+        min_zoom: 12
+        include_when: *history_tags
+        exclude_when:
+          __any__: [*army_tags, *mining_tags, *embankment_tags]
+        attributes: *theme_attrs
+
+  # 5. abandoned and disused – whatever no theme above took
+  - id: gone
+    features:
+      - source: osm
+        geometry: polygon
+        min_zoom: 12
+        include_when: *gone_tags
+        exclude_when:
+          __any__: [*army_tags, *mining_tags, *embankment_tags, *history_tags, *linear]
+        attributes: *gone_attrs
+      # abandoned railways and roads read as lines across the land from z10
+      - source: osm
+        geometry: line
+        min_zoom: 10
+        include_when:
+          __all__: [*gone_tags, *linear]
+        exclude_when:
+          __any__: [*army_tags, *mining_tags, *embankment_tags, *history_tags]
+        attributes: *gone_attrs
+      - source: osm
+        geometry: point
+        min_zoom: 13
+        include_when: *gone_tags
+        exclude_when:
+          __any__: [*army_tags, *mining_tags, *embankment_tags, *history_tags]
+        attributes: *gone_attrs
+
+# TESTS: `java -jar planetiler.jar verify workers/history/history.yml`
+examples:
+  - name: A training area is army from z8
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        landuse: military
+        name: Vojenský obvod Lešť
+    output:
+      - layer: army
+        geometry: polygon
+        min_zoom: 8
+        tags:
+          class: military
+          family: landuse
+          name: Vojenský obvod Lešť
+
+  - name: An abandoned bunker stays army and says it was abandoned
+    input:
+      source: osm
+      geometry: point
+      tags:
+        military: bunker
+        abandoned: "yes"
+    output:
+      - layer: army
+        geometry: point
+        min_zoom: 12
+        tags:
+          class: bunker
+          family: military
+          military: bunker
+          lifecycle: abandoned
+
+  - name: A historic bunker is army, not history twice
+    input:
+      source: osm
+      geometry: point
+      tags:
+        historic: bunker
+        military: bunker
+    output:
+      - layer: army
+        geometry: point
+        min_zoom: 12
+        tags:
+          class: bunker
+          family: military
+          historic: bunker
+
+  - name: A trench is a line
+    input:
+      source: osm
+      geometry: line
+      tags:
+        military: trench
+    output:
+      - layer: army
+        geometry: line
+        min_zoom: 12
+        tags:
+          class: trench
+          family: military
+
+  - name: A mine shaft is mining
+    input:
+      source: osm
+      geometry: point
+      tags:
+        man_made: mineshaft
+        resource: silver
+        name: Šachta Maximilián
+    output:
+      - layer: mining
+        geometry: point
+        min_zoom: 12
+        tags:
+          class: mineshaft
+          family: man_made
+          resource: silver
+          name: Šachta Maximilián
+
+  - name: A historic adit is mining, not history
+    input:
+      source: osm
+      geometry: point
+      tags:
+        historic: mine_adit
+    output:
+      - layer: mining
+        geometry: point
+        min_zoom: 12
+        tags:
+          class: mine_adit
+          family: historic
+
+  - name: A quarry is a mining area from z9
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        landuse: quarry
+    output:
+      - layer: mining
+        geometry: polygon
+        min_zoom: 9
+        tags:
+          class: quarry
+          family: landuse
+
+  - name: A dyke is an embankment line
+    input:
+      source: osm
+      geometry: line
+      tags:
+        man_made: dyke
+    output:
+      - layer: embankment
+        geometry: line
+        min_zoom: 12
+        tags:
+          class: dyke
+          family: man_made
+
+  - name: A road on an embankment is an embankment line from z13
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: track
+        embankment: "yes"
+    output:
+      - layer: embankment
+        geometry: line
+        min_zoom: 13
+        tags:
+          class: "yes"
+          family: embankment
+
+  - name: A closed embankment stays a line, never an area
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        man_made: embankment
+    output: []
+
+  - name: A castle ruin is history
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        historic: castle
+        ruins: "yes"
+        name: Spišský hrad
+    output:
+      - layer: history
+        geometry: polygon
+        min_zoom: 11
+        tags:
+          class: castle
+          family: historic
+          historic: castle
+          ruins: "yes"
+          name: Spišský hrad
+
+  - name: A listed building is history
+    input:
+      source: osm
+      geometry: point
+      tags:
+        heritage: "2"
+    output:
+      - layer: history
+        geometry: point
+        min_zoom: 12
+        tags:
+          class: "2"
+          family: heritage
+          heritage: "2"
+
+  - name: A disused shop says what it was
+    input:
+      source: osm
+      geometry: point
+      tags:
+        "disused:shop": bakery
+    output:
+      - layer: gone
+        geometry: point
+        min_zoom: 13
+        tags:
+          class: bakery
+          family: shop
+          lifecycle: disused
+
+  - name: An abandoned railway is a line from z10
+    input:
+      source: osm
+      geometry: line
+      tags:
+        railway: abandoned
+        name: Úvraťová železnica
+    output:
+      - layer: gone
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: abandoned
+          family: railway
+          lifecycle: abandoned
+          name: Úvraťová železnica
+
+  - name: A railway left as `abandoned:railway` is a line, and says it was a railway
+    input:
+      source: osm
+      geometry: line
+      tags:
+        "abandoned:railway": rail
+    output:
+      - layer: gone
+        geometry: line
+        min_zoom: 10
+        tags:
+          class: rail
+          family: railway
+          lifecycle: abandoned
+
+  - name: A closed loop of abandoned track stays a line, never an area
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        "abandoned:railway": rail
+    output: []
+
+  - name: An abandoned factory is an area
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        "abandoned:landuse": industrial
+    output:
+      - layer: gone
+        geometry: polygon
+        min_zoom: 12
+        tags:
+          class: industrial
+          family: landuse
+          lifecycle: abandoned
+
+  - name: A disused building says it is a building
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        building: "yes"
+        disused: "yes"
+    output:
+      - layer: gone
+        geometry: polygon
+        min_zoom: 12
+        tags:
+          class: "yes"
+          family: building
+          lifecycle: disused
+
+  - name: An ordinary pub isn't in it
+    input:
+      source: osm
+      geometry: point
+      tags:
+        amenity: pub
+    output: []
+
+  - name: A road isn't in it
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: residential
+        name: Hlavná
+    output: []

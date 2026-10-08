@@ -19,9 +19,9 @@ if [ "$MAXZOOM" -lt 8 ]; then MAXZOOM=8; fi
 # the other layers are built in parallel jobs, so tiles get what the shares leave
 LIMIT_MB="$SIZE_LIMIT_MB"
 case "$LIMIT_MB" in ''|*[!0-9]*) LIMIT_MB=900 ;; esac
-OTHERS_MB=$(( LIMIT_MB * (BUDGET_CONTOURS_PCT + BUDGET_TERRAIN_PCT + BUDGET_TRAILS_PCT + BUDGET_FEATURES_PCT + BUDGET_TRANSPORT_PCT + BUDGET_BOUNDARIES_PCT + BUDGET_WATER_PCT + ${BUDGET_RAIL_PCT:-0} + ${BUDGET_BUILDINGS_PCT:-0}) / 100 + BUDGET_ASSETS_MB ))
+OTHERS_MB=$(( LIMIT_MB * (BUDGET_CONTOURS_PCT + BUDGET_TERRAIN_PCT + BUDGET_TRAILS_PCT + BUDGET_FEATURES_PCT + BUDGET_TRANSPORT_PCT + BUDGET_BOUNDARIES_PCT + BUDGET_WATER_PCT + ${BUDGET_RAIL_PCT:-0} + ${BUDGET_HISTORY_PCT:-0} + ${BUDGET_BUILDINGS_PCT:-0}) / 100 + BUDGET_ASSETS_MB ))
 BUDGET_MB=$(( LIMIT_MB - OTHERS_MB ))
-echo "Page budget ${LIMIT_MB} MB − contours ${BUDGET_CONTOURS_PCT} % − terrain ${BUDGET_TERRAIN_PCT} % − trails ${BUDGET_TRAILS_PCT} % − landscape features ${BUDGET_FEATURES_PCT} % − transport ${BUDGET_TRANSPORT_PCT} % − boundaries ${BUDGET_BOUNDARIES_PCT} % − water ${BUDGET_WATER_PCT} % − railways ${BUDGET_RAIL_PCT:-0} % − settlements ${BUDGET_BUILDINGS_PCT:-0} % − icons and fonts ${BUDGET_ASSETS_MB} MB = ${BUDGET_MB} MB for tiles"
+echo "Page budget ${LIMIT_MB} MB − contours ${BUDGET_CONTOURS_PCT} % − terrain ${BUDGET_TERRAIN_PCT} % − trails ${BUDGET_TRAILS_PCT} % − landscape features ${BUDGET_FEATURES_PCT} % − transport ${BUDGET_TRANSPORT_PCT} % − boundaries ${BUDGET_BOUNDARIES_PCT} % − water ${BUDGET_WATER_PCT} % − railways ${BUDGET_RAIL_PCT:-0} % − army and history ${BUDGET_HISTORY_PCT:-0} % − settlements ${BUDGET_BUILDINGS_PCT:-0} % − icons and fonts ${BUDGET_ASSETS_MB} MB = ${BUDGET_MB} MB for tiles"
 
 if [ "$BUDGET_MB" -lt 50 ]; then
   echo "::error::Only ${BUDGET_MB} MB are left for tiles. Raise size_limit_mb or cut the contour and terrain shares (BUDGET_*_PCT in env)."

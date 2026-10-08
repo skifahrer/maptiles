@@ -34,6 +34,7 @@ on:
           - boundaries
           - water
           - railways
+          - history
           - settlements
           - contours
           - rocks

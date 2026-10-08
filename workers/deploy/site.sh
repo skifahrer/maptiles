@@ -76,6 +76,8 @@ jq -n \
   --argjson wmaxzoom "$WATER_MAXZOOM" \
   --argjson rail "${RAIL_ENABLED:-false}" \
   --argjson railmaxzoom "${RAIL_MAXZOOM:-15}" \
+  --argjson history "${HISTORY_ENABLED:-false}" \
+  --argjson histmaxzoom "${HISTORY_MAXZOOM:-14}" \
   --argjson railrouting "${RAIL_ROUTING:-false}" \
   --argjson buildings "${BUILDINGS_ENABLED:-false}" \
   --argjson bldmaxzoom "${BUILDINGS_MAXZOOM:-14}" \
@@ -171,6 +173,10 @@ jq -n \
       # track network for train routing
       + (if $rail and $railrouting then {
         rail_routing: ("tiles/" + $region + "-rail-routing.pmtiles")
+      } else {} end)
+      + (if $history then {
+        history: ("tiles/" + $region + "-history.pmtiles"),
+        history_maxzoom: $histmaxzoom
       } else {} end)
       + (if $buildings then {
         buildings: ("tiles/" + $region + "-buildings.pmtiles"),

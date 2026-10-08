@@ -140,6 +140,18 @@
       "legacy": ["zeleznice"]
     },
     {
+      "key": "history",
+      "app": "Army & history",
+      "symbol": "shield.lefthalf.filled",
+      "app_detail": "Military sites, historic places, mines and adits, embankments, and everything abandoned or disused",
+      "description": "OSM military sites, historic places and listed monuments, mines, shafts, adits and quarries, embankments and dykes, and everything abandoned or disused – as points, lines and areas (.pmtiles)",
+      "sources": ["osm"],
+      "manifest": ["history"],
+      "suffixes": ["-history.pmtiles"],
+      "origin": "site",
+      "regenerate": "history"
+    },
+    {
       "key": "settlements",
       "app": "Settlements",
       "symbol": "building.2.fill",

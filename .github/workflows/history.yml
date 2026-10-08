@@ -1,0 +1,163 @@
+name: Map · history
+
+# ARMY AND HISTORY from OSM into its own `.pmtiles`: military sites, historic
+# places, mines, shafts, adits and quarries, embankments and dykes, and
+# everything abandoned or disused (see the `workers/history/history.yml`
+# header). It's the `history` package.
+#
+# The same pattern as water: the same PBF read again with its own schema.
+on:
+  workflow_call:
+    inputs:
+      region_key:
+        description: "Region key – it names `{region}-history.pmtiles`"
+        required: true
+        type: string
+      region_bbox:
+        description: "Region bbox for clipping tiles (workers/lib/region-clip.sh)"
+        required: true
+        type: string
+      maxzoom:
+        description: "Highest zoom of the army and history tiles"
+        required: false
+        default: "14"
+        type: string
+      region_clip:
+        description: "Clip tiles to the region border"
+        required: false
+        default: "false"
+        type: string
+      size_limit_mb:
+        description: "The whole page budget in MB"
+        required: false
+        default: "900"
+        type: string
+      budget_pct:
+        description: "Army and history's share of the page budget in percent"
+        required: false
+        default: "3"
+        type: string
+      day:
+        description: "Date for the Planetiler cache key"
+        required: false
+        default: ""
+        type: string
+    outputs:
+      enabled:
+        description: "Was the layer made? (a cutout may hold none of it)"
+        value: ${{ jobs.history.outputs.enabled }}
+      maxzoom:
+        description: "The zoom tiles really go up to"
+        value: ${{ jobs.history.outputs.maxzoom }}
+      size_mb:
+        description: "Layer size in MB"
+        value: ${{ jobs.history.outputs.size_mb }}
+    # `workflow_call` doesn't inherit secrets; without them the Drive cache can't
+    # open and Planetiler (93 MB) is downloaded on every run.
+    secrets:
+      GDRIVE_CREDENTIALS:
+        required: false
+      DRIVE_SECRET:
+        required: false
+      DRIVE_REFRESH:
+        required: false
+
+# Drive sign-in for the whole workflow, not per step: cache-restore and
+# cache-save are two steps, and with the token on only one of them the other
+# would quietly go back to downloading everything. Guarded by “Check · workflow lint”.
+env:
+  GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+  DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
+  DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
+  DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
+
+jobs:
+  history:
+    name: Army & history
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.history.outputs.enabled }}
+      maxzoom: ${{ steps.history.outputs.maxzoom }}
+      size_mb: ${{ steps.history.outputs.size_mb }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Prepare the timing folder
+        run: mkdir -p steps-out
+
+      - name: Download the PBF from the plan
+        uses: actions/download-artifact@v8
+        with:
+          name: pbf
+          path: data
+
+      # the region polygon is Planetiler's `--polygon`; `continue-on-error`, since
+      # the run finishes without it too (tiles then follow the bbox)
+      - name: Download the region polygon
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: region-poly
+          path: data
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Cache Planetileru (restore)
+        id: planetiler-cache
+        uses: ./.github/actions/cache-restore
+        with:
+          path: planetiler.jar
+          key: planetiler-latest-${{ inputs.day }}
+
+      - name: Stiahni Planetiler
+        run: workers/lib/planetiler.sh
+      - name: Cache Planetileru (save)
+        if: ${{ always() && steps.planetiler-cache.outputs.cache-hit != 'true' && hashFiles('planetiler.jar') != '' }}
+        continue-on-error: true
+        uses: ./.github/actions/cache-save
+        with:
+          path: planetiler.jar
+          key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
+
+      # schema tests before the build (`examples`) – the one thing that tells the
+      # truth about a schema without a whole run. They go first.
+      - name: Army and history schema tests
+        run: |
+          mkdir -p data
+          workers/lib/name-languages.sh workers/history/history.yml data/history.yml
+          java -jar planetiler.jar verify data/history.yml
+
+      # described in `workers/history/build.sh`
+      - name: Army and history from OSM → PMTiles
+        id: history
+        env:
+          OPT_HISTORY_MAXZOOM: ${{ inputs.maxzoom }}
+          OPT_REGION_CLIP: ${{ inputs.region_clip }}
+          REGION_BBOX: ${{ inputs.region_bbox }}
+          REGION_KEY: ${{ inputs.region_key }}
+          SIZE_LIMIT_MB: ${{ inputs.size_limit_mb }}
+          BUDGET_HISTORY_PCT: ${{ inputs.budget_pct }}
+        run: workers/history/build.sh
+
+      - name: Upload the site part
+        if: ${{ always() && hashFiles('_site/**') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-history
+          path: _site
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+
+      - name: Upload the step timing
+        if: ${{ always() && hashFiles('steps-out/*') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: steps-history
+          path: steps-out
+          retention-days: 1
+          if-no-files-found: ignore

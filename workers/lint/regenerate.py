@@ -24,7 +24,7 @@ OWN = {"country", "what", "continuation"}
 # budget shares must equal the build's – `env:` isn't inherited
 SHARES = ("BUDGET_TRAILS_PCT", "BUDGET_FEATURES_PCT", "BUDGET_TRANSPORT_PCT",
            "BUDGET_BOUNDARIES_PCT", "BUDGET_WATER_PCT", "BUDGET_RAIL_PCT",
-           "BUDGET_BUILDINGS_PCT",
+           "BUDGET_HISTORY_PCT", "BUDGET_BUILDINGS_PCT",
            "BUDGET_CONTOURS_PCT", "BUDGET_ROCKS_PCT", "BUDGET_TERRAIN_PCT")
 REGION_LEVEL = 4
 

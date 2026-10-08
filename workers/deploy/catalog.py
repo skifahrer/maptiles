@@ -79,7 +79,7 @@ def region_entry(man):
 
 TILE_LAYERS = ("pmtiles", "contours", "rocks", "trails", "features", "points",
                "transport", "boundaries", "water", "rail", "rail_routing",
-               "buildings")
+               "history", "buildings")
 
 
 def tiles_paths(man, reg):
@@ -387,7 +387,7 @@ def write_catalog(path, parts, regions, uploaded, man, only="", merge=False,
               "rocks_maxzoom", "rock_slope", "dem_source", "rock_source",
               "trails_maxzoom", "features_maxzoom", "points_maxzoom",
               "transport_maxzoom", "boundaries_maxzoom", "water_maxzoom",
-              "rail_maxzoom", "buildings_maxzoom"):
+              "rail_maxzoom", "history_maxzoom", "buildings_maxzoom"):
         if reg.get(k) is not None:
             entry[k] = reg[k]
     tiles = tiles_paths(man, reg)
