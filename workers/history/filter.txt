@@ -1,0 +1,31 @@
+# PBF prefilter for `history.yml` (`osmium tags-filter --expressions`).
+# `r/` pulls the member ways of multipolygons; `workers/lint/history.py` guards the schema side.
+
+# army
+nwr/military
+nwr/landuse=military
+nwr/building=bunker,military,barracks
+
+# mining
+nwr/man_made=mineshaft,adit,spoil_heap
+nwr/industrial=mine
+nwr/landuse=quarry
+
+# embankments
+nwr/man_made=embankment,dyke
+w/embankment
+
+# history
+nwr/historic
+nwr/historic:*
+nwr/heritage
+nwr/ruins=yes
+nwr/building=ruins
+
+# abandoned and disused
+nwr/abandoned:*
+nwr/disused:*
+nwr/abandoned=yes
+nwr/disused=yes
+nwr/*=abandoned
+nwr/*=disused

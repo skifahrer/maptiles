@@ -112,6 +112,8 @@ def layers():
         out.append("water")
     if env("RAIL_ENABLED") == "true":
         out.append("rail")
+    if env("HISTORY_ENABLED") == "true":
+        out.append("history")
     if env("BUILDINGS_ENABLED") == "true":
         out.append("buildings")
     return out

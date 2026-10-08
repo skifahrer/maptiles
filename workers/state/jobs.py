@@ -59,6 +59,9 @@ COST = {
     "railways": ("Railways & cable cars",
                  "every railway and cable car, planned and abandoned too, named "
                  "stations, line signs and the track network for navigation"),
+    "history": ("Army & history",
+                "military sites, historic places, mines, embankments, and everything "
+                "abandoned or disused"),
     "settlements": ("Settlements",
                     "every building with floor area, name, kind and address, and place names"),
     "contours": ("Contours", "contour lines from the height model"),
