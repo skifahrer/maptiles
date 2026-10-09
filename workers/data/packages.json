@@ -143,6 +143,7 @@
       "key": "history",
       "app": "Army & history",
       "symbol": "shield.lefthalf.filled",
+      "part_of": "base",
       "app_detail": "Military sites, historic places, mines and adits, embankments, and everything abandoned or disused",
       "description": "OSM military sites, historic places and listed monuments, mines, shafts, adits and quarries, embankments and dykes, and everything abandoned or disused – as points, lines and areas (.pmtiles)",
       "sources": ["osm"],
