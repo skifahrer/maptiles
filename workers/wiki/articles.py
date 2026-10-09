@@ -152,6 +152,23 @@ def other_langs(api, known, wanted):
 
 TABLE = re.compile(r"\{\|.*?\|\}", re.S)
 
+# pictures and categories in the wiki languages the packages carry; `strip_code` keeps both
+NOT_TEXT = {
+    "file", "image", "media", "súbor", "obrázok", "soubor", "obrázek", "datei", "bild",
+    "fájl", "kép", "fichier", "archivo", "imagen", "plik", "grafika", "immagine",
+    "bestand", "afbeelding", "ficheiro", "arquivo", "imagem", "datoteka", "slika",
+    "fișier", "imagine", "файл", "изображение", "зображення", "датотека", "слика",
+    "category", "kategória", "kategorie", "kategoria", "kategorio", "catégorie",
+    "categoría", "categoria", "categorie", "kategorija", "категория",
+    "категорія", "категорија",
+}
+
+
+def is_not_text(link):
+    """`[[Súbor:x.jpg|náhľad|…]]` or `[[Kategória:…]]` – a picture or a filing, not text."""
+    space, colon, _ = str(link.title).partition(":")
+    return bool(colon) and space.strip().lower() in NOT_TEXT
+
 
 def to_text(wikitext):
     """Wikitext → plain text; tables cut BEFORE parsing (`strip_code` leaves them)."""
@@ -165,7 +182,15 @@ def to_text(wikitext):
     prev = None
     while prev != wikitext:            # nested tables, inside out
         prev, wikitext = wikitext, TABLE.sub("", wikitext)
-    txt = mwparserfromhell.parse(wikitext).strip_code()
+    code = mwparserfromhell.parse(wikitext)
+    pictures = [n for n in code.filter_wikilinks() if is_not_text(n)]
+    pictures += code.filter_tags(matches=lambda t: str(t.tag).strip().lower() == "gallery")
+    for node in pictures:
+        try:
+            code.remove(node)
+        except ValueError:
+            pass                       # went with the picture holding it
+    txt = code.strip_code()
     txt = re.sub(r"(?m)^[|!].*$", "", txt)     # leftover table rows
     txt = re.sub(r"\n{3,}", "\n\n", txt)       # three or more blank lines
     return txt.strip()
