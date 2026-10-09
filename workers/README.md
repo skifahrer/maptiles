@@ -1721,7 +1721,7 @@ prepočítaná verzia zahodila a ďalší build by dostal späť tú starú. Pre
 lebo skaly majú vlastný job a tým aj vlastný záznam).
 
 **Články sú jediná výnimka z toho mazania a nie je to nedôslednosť:** ich kľúč
-má na konci číslo behu (`wiki-v2-…-<run_id>`), takže nový záznam vždy vznikne
+má na konci číslo behu (`wiki-v3-…-<run_id>`), takže nový záznam vždy vznikne
 a ďalší beh si cez predponu vezme najnovší – čiže ten čerstvý. `rebuild:
 clanky` preto len **preskočí obnovenie**: nesťahuje z Drive nič, čo by potom
 zahodil.
@@ -2428,7 +2428,7 @@ map sa vypína **voľbou `wikipedia=false`**, jazyky (`wiki_langs`) a strop
 počtu článkov (`wiki_max`) sú inputy workflowu Build wiki.
 
 **Cache je na Drive a neplatí ju kalendár, ale `lastrevid`.** Obnovuje sa cez
-predponu (`wiki-v2-<región>-<jazyky>-text-`), takže sa berie najnovší
+predponu (`wiki-v3-<región>-<jazyky>-text-`), takže sa berie najnovší
 záznam toho istého regiónu; plný kľúč má na konci číslo behu, aby sa dal
 doplniť (existujúci kľúč sa neprepisuje). Keď je v cache z čoho recyklovať,
 `collect.py` si najprv dá **jednu dávkovú otázku `prop=info` na 50 článkov**

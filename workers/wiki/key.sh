@@ -5,5 +5,5 @@ set -euo pipefail
 # `text` stays in the key so old caches still match
 S=$(printf '%s|%s|%s|%s' "$REGION" "${COUNTRY:-}" "${LANGS:-}" text \
     | tr -c 'a-zA-Z0-9._-' '_')
-echo "prefix=wiki-v2-$S-"
-echo "key=wiki-v2-$S-$RUN_ID"
+echo "prefix=wiki-v3-$S-"
+echo "key=wiki-v3-$S-$RUN_ID"
