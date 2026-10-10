@@ -5,6 +5,10 @@
 w/building
 r/building
 
+# the settlement's area at low zoom
+w/landuse=residential,commercial,retail
+r/landuse=residential,commercial,retail
+
 # places and their names
 n/place
 w/place

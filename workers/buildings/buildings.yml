@@ -70,7 +70,7 @@ layers:
     features:
       - source: osm
         geometry: polygon
-        min_zoom: 13
+        min_zoom: 12
         include_when:
           building: __any__
         exclude_when:
@@ -90,6 +90,22 @@ layers:
         exclude_when:
           building: ["no"]
         attributes: *building_attrs
+
+  # the built-up area, until buildings take over at z12
+  - id: settlement_area
+    features:
+      - source: osm
+        geometry: polygon
+        min_zoom: 8
+        max_zoom: 11
+        include_when:
+          landuse: [residential, commercial, retail]
+        attributes:
+          - key: class
+            type: match_value
+    tile_post_process:
+      merge_polygons:
+        min_area: 1
 
   - id: settlement
     features:
@@ -133,7 +149,7 @@ examples:
     output:
       - layer: building
         geometry: polygon
-        min_zoom: 13
+        min_zoom: 12
         tags:
           class: church
           name: Kostol sv. Martina
@@ -162,7 +178,7 @@ examples:
     output:
       - layer: building
         geometry: polygon
-        min_zoom: 13
+        min_zoom: 12
         tags:
           class: castle
           name: Bratislavský hrad
@@ -187,7 +203,7 @@ examples:
     output:
       - layer: building
         geometry: polygon
-        min_zoom: 13
+        min_zoom: 12
         tags:
           class: "yes"
           area: 96
@@ -232,10 +248,24 @@ examples:
           class: hamlet
           name: Lazy
 
-  - name: A residential zone isn't a building
+  - name: A residential zone is the settlement's area up to z11, not a building
     input:
       source: osm
       geometry: polygon
       tags:
         landuse: residential
+    output:
+      - layer: settlement_area
+        geometry: polygon
+        min_zoom: 8
+        max_zoom: 11
+        tags:
+          class: residential
+
+  - name: Industry isn't the settlement's area
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        landuse: industrial
     output: []
