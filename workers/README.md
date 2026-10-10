@@ -3977,3 +3977,17 @@ z behu nevidno, lebo úsek skončí zelený.
 npx serve poc/web        # viewer (dlaždice vznikajú až v CI)
 cd backend && npm install && npm run start:dev   # API na :3000
 ```
+
+### Testy
+
+`workers/tests/` spúšťa kód workerov na malých ručne zostavených vstupoch,
+skôr než ho spustí build celého regiónu (`Check · tests`, `tests.yml`).
+Plán, čo ešte pribudne, je v [docs/test-plan.md](../docs/test-plan.md).
+
+```bash
+python3 -m unittest discover -s workers/tests   # Python, bez závislostí sa časť preskočí
+node --test workers/tests/*.test.mjs            # štýly proti MapLibre style spec
+```
+
+Test, ktorý potrebuje numpy, osmium a pod., má `@needs(...)` z
+`workers/tests/load.py`; v CI ho `TESTS_REQUIRE_ALL=1` nepreskočí, ale zhodí.

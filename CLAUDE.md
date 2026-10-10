@@ -10,8 +10,8 @@ Details: `workers/README.md`.
 
 **Don't merge a PR until its checks are green and the pipeline really ran.**
 
-- `Check · workflow lint` and `Check · catalog schema` are green on the PR's
-  HEAD, not on an older commit of the branch.
+- `Check · workflow lint`, `Check · catalog schema` and `Check · tests` are
+  green on the PR's HEAD, not on an older commit of the branch.
 - No conflict with `master`.
 - The check really ran: a run with no job verified nothing, and green from
   another commit says nothing about this one.
@@ -19,10 +19,15 @@ Details: `workers/README.md`.
 The checks run only on changes to their paths, and a bot's push to `maps.json`
 starts no workflow, so the last result on `master` can be days old. When it
 matters, run the workflow by hand (`workflow_dispatch`) or locally:
-`workers/lint/*.py`, `workers/lint/*.mjs`, `workers/deploy/catalog-schema.py`.
+`workers/lint/*.py`, `workers/lint/*.mjs`, `workers/deploy/catalog-schema.py`,
+`python3 -m unittest discover -s workers/tests`, `node --test workers/tests/*.test.mjs`.
 
 Fix a red check, or say on the PR why it isn't this PR's. Never switch a test
 or lint off to get green.
+
+## Tests: every fix brings its test
+
+A `fix:` commit adds the test in `workers/tests/` that fails without the fix.
 
 ## Comments: as few words as possible
 

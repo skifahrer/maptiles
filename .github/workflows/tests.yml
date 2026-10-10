@@ -1,0 +1,65 @@
+name: Check · tests
+
+# worker code run on small hand-built input, before a two-hour region build does
+
+on:
+  push:
+    paths:
+      - "workers/**"
+      - "poc/web/**"
+      - ".github/workflows/tests.yml"
+  pull_request:
+    paths:
+      - "workers/**"
+      - "poc/web/**"
+      - ".github/workflows/tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: unit (stdlib)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Python
+        run: python3 -m unittest discover -s workers/tests -v
+      - name: JavaScript
+        run: node --test workers/tests/*.test.mjs
+
+  unit-deps:
+    name: unit (with dependencies)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # a skipped test verifies nothing
+      TESTS_REQUIRE_ALL: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      # what the build scripts install
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --break-system-packages \
+            'osmium>=3.6,<5' numpy pillow pmtiles mapbox-vector-tile shapely \
+            mwparserfromhell coverage
+          npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/npm" \
+            @maplibre/maplibre-gl-style-spec@23.3.0
+      - name: Python
+        run: |
+          set -euo pipefail
+          python3 -m coverage run --source=workers --omit='workers/tests/*' \
+            -m unittest discover -s workers/tests -v
+          {
+            echo "### Python coverage"
+            python3 -m coverage report --format=markdown --skip-empty --sort=cover
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: JavaScript
+        env:
+          STYLE_SPEC_DIR: ${{ runner.temp }}/npm
+        run: node --test --experimental-test-coverage workers/tests/*.test.mjs

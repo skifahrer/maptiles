@@ -36,6 +36,7 @@ KNOWN = {
     "styles": "styles for web and iOS",
     "deploy": "job `deploy` and publishing",
     "lint": "checks run by lint-workflows.yml",
+    "tests": "unit tests run by tests.yml",
     "tools": "outside the build (cleanup)",
 }
 SUFFIXES = (".py", ".sh", ".mjs")
