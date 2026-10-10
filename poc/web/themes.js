@@ -5602,6 +5602,8 @@ export function buildStyle({
           // výška patrí k prameňu aj k rozhľadni
           "text-field": [
             "case",
+            ["==", str("subclass"), "communication"],
+            "",
             ["has", "ele"],
             ["concat", nameExpr, " ", ["to-string", ["round", num("ele", 0)]], " m"],
             nameExpr
