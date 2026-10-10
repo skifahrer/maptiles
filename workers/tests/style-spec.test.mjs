@@ -1,20 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
 import { THEMES, buildStyle } from "../../poc/web/themes.js";
 import { MAP_TYPE_IDS } from "../../poc/web/map-types.js";
-
-// not checked in; the job installs it under STYLE_SPEC_DIR
-function styleSpec() {
-  const require = createRequire(import.meta.url);
-  const paths = [process.env.STYLE_SPEC_DIR, process.cwd()].filter(Boolean);
-  try {
-    return require(require.resolve("@maplibre/maplibre-gl-style-spec", { paths }));
-  } catch (err) {
-    if (process.env.TESTS_REQUIRE_ALL === "1") throw err;
-    return null;
-  }
-}
+import { styleSpec, NEEDS_SPEC } from "./spec.mjs";
 
 const spec = styleSpec();
 const OWN = {
@@ -29,7 +17,7 @@ const OWN = {
 for (const theme of Object.keys(THEMES)) {
   for (const mapType of MAP_TYPE_IDS) {
     for (const [what, own] of [["base", {}], ["every archive", OWN]]) {
-      test(`${mapType} / ${theme} / ${what} passes the style spec`, { skip: !spec && "needs @maplibre/maplibre-gl-style-spec" }, () => {
+      test(`${mapType} / ${theme} / ${what} passes the style spec`, { skip: !spec && NEEDS_SPEC }, () => {
         const style = buildStyle({
           theme,
           mapType,
