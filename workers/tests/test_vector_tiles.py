@@ -1,4 +1,5 @@
 import gzip
+import importlib.util
 import os
 import tempfile
 import unittest
@@ -123,7 +124,7 @@ class TerrainPack(unittest.TestCase):
         self.assertEqual(ids[0], zxy_to_tileid(2, 1, 1))
 
     def test_tile_bounds_agree_with_clip_tiles(self):
-        clip = worker("lib/clip-tiles.py") if __import__("importlib").util.find_spec("shapely") else None
+        clip = worker("lib/clip-tiles.py") if importlib.util.find_spec("shapely") else None
         for zxy in ((0, 0, 0), (10, 567, 355), (14, 9000, 5685)):
             w, s, e, n = self.p.tile_bounds(*zxy)
             self.assertLess(w, e)

@@ -1,4 +1,5 @@
 import http.server
+import io
 import json
 import os
 import re
@@ -189,7 +190,7 @@ class Site(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-Range", f"bytes {a}-{b}/4096")
             self.send_header("Content-Length", str(b - a + 1))
             self.end_headers()
-            return __import__("io").BytesIO(b"\0" * (b - a + 1))
+            return io.BytesIO(b"\0" * (b - a + 1))
         return super().send_head()
 
 
