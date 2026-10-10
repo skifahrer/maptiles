@@ -51,7 +51,9 @@ def pick(name, raw=None):
 
 def schema_for(layers, doc=None):
     """`world.yml` cut to the chosen layers, with only the sources still used."""
-    doc = doc if doc is not None else yaml.safe_load(open(SCHEMA, encoding="utf-8"))
+    if doc is None:
+        with open(SCHEMA, encoding="utf-8") as f:
+            doc = yaml.safe_load(f)
     have = {l["id"] for l in doc.get("layers") or []}
     missing = [v for v in layers if v not in have]
     if missing:
