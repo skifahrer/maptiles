@@ -4094,18 +4094,33 @@ export function buildStyle({
   );
   // balík `sidla` má každú budovu, aj tú, ktorú OpenMapTiles zahodí
   if (buildingsUrl) {
+    // the built-up area until z12, then its buildings
+    add(
+      {
+        id: "settlement-area",
+        type: "fill",
+        source: "buildings",
+        "source-layer": "settlement_area",
+        minzoom: 8,
+        maxzoom: 12,
+        paint: {
+          "fill-color": c.building,
+          "fill-opacity": zl([[8, 0.6], [11, 0.8]])
+        }
+      },
+      ["budovy", "Plocha sídla (balík sídla)", "area", { "fill-color": "building" }]
+    );
     add(
       {
         id: "building-pkg",
         type: "fill",
         source: "buildings",
         "source-layer": "building",
-        minzoom: 13,
-        maxzoom: 16,
+        minzoom: 12,
         paint: {
           "fill-color": c.building,
           "fill-outline-color": c.buildingOutline,
-          "fill-opacity": zl([[13, 0.5], [15, 1]])
+          "fill-opacity": zl([[12, 0.5], [15, 1]])
         }
       },
       [
