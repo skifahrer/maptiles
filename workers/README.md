@@ -3977,3 +3977,26 @@ z behu nevidno, lebo úsek skončí zelený.
 npx serve poc/web        # viewer (dlaždice vznikajú až v CI)
 cd backend && npm install && npm run start:dev   # API na :3000
 ```
+
+### Testy
+
+`workers/tests/` spúšťa kód workerov na malých ručne zostavených vstupoch,
+skôr než ho spustí build celého regiónu. Plán je v
+[docs/test-plan.md](../docs/test-plan.md).
+
+```bash
+python3 -m unittest discover -s workers/tests   # Python, bez závislostí sa časť preskočí
+node --test workers/tests/*.test.mjs            # štýly, sprite, viewer
+python3 workers/tests/integration.py --dem --jar planetiler.jar --work /tmp/mini
+node workers/tests/browser.mjs --work=/tmp/mini --deps=<npm prefix s playwright>
+```
+
+- `Check · tests` (`tests.yml`): jednotkové testy; `unit-deps` s tým, čo
+  inštalujú buildy, a `TESTS_REQUIRE_ALL=1`, takže preskočený test zhodí beh.
+- `Check · mini region` (`mini-region.yml`): pár km² OSM z `mini_region.py`
+  cez každý `build.sh`, vrstevnice, skaly a tieňovanie zo syntetického kopca,
+  potom `check-packages.py` a viewer v Chromiu (`browser.mjs`).
+
+Test, ktorý potrebuje numpy, osmium, GDAL a pod., má `@needs(...)` /
+`@needs_cmd(...)` z `workers/tests/load.py`. Falošné príkazy (`gh`, `java`,
+`sleep`) dáva na `PATH` `workers/tests/stubs.py`.

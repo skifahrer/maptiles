@@ -60,7 +60,8 @@ def target(source, area_key, bbox, sources_path=None):
     src = (source or "sonny").strip()
     key = (area_key or "whole").strip()
     path = sources_path or os.path.join(_DATA, "dem-sources.json")
-    meta = json.load(open(path)).get(src) or {}
+    with open(path) as f:
+        meta = json.load(f).get(src) or {}
     label = meta.get("label", src)
 
     if src in HAS_AREA_FORM and key and key not in ("whole", "cely"):

@@ -248,12 +248,12 @@ def run_watched(cmd, label, tmp=None, max_rss_mb=0, every=30, max_s=0):
                 line, last, last_at = b"", -1.0, 0.0
                 continue
             before, line = line, line + chunk
-            if chunk == b".":
-                pct = percent(line) if PROGRESS.fullmatch(line) else None
-            elif not chunk.isdigit() and before[-1:].isdigit() \
+            if not chunk.isdigit() and before[-1:].isdigit() \
                     and PROGRESS.fullmatch(before):
-                # a number just finished – else the last percent would never show
+                # a number just finished – else tens would read as x2.5 and the last never show
                 pct = percent(before)
+            elif chunk == b".":
+                pct = percent(line) if PROGRESS.fullmatch(line) else None
             else:
                 continue          # a digit still being written, or a message
             if pct is None or pct <= last:
@@ -290,6 +290,7 @@ def run_watched(cmd, label, tmp=None, max_rss_mb=0, every=30, max_s=0):
             print(f"  … {label}: {pct:g} % (running {hms(run)}{where})", flush=True)
     finally:
         proc.wait()
+        proc.stdout.close()
         hb.stop()
     if hb.killed_for_memory:
         raise MemoryError(label)
