@@ -182,7 +182,8 @@ def resolve_area(area, areas_path):
         if len(vals) != 4:
             raise SystemExit(f"::error::a bbox must have 4 numbers: {key}")
         return f"bbox {key}", tuple(vals)
-    areas = json.load(open(areas_path))
+    with open(areas_path) as f:
+        areas = json.load(f)
     if key not in areas:
         known = ", ".join(k for k in areas if not k.startswith("_"))
         raise SystemExit(f"::error::unknown cut-out \"{key}\". Known: {known}")

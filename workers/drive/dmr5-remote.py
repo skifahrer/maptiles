@@ -128,7 +128,8 @@ def pick_member(plan_path, explicit):
     """Which archive file is the raster; sidecars are skipped."""
     if explicit:
         return explicit
-    plan = json.load(open(plan_path))
+    with open(plan_path) as f:
+        plan = json.load(f)
     best = None
     for e in plan["entries"]:
         low = e["name"].lower()
@@ -262,7 +263,8 @@ def probe(vsi, log, timeout=900, no_sidecars=False, expect_bytes=None):
 def find_sidecar(plan_path, member, suffix):
     """The plan entry of `member`'s sidecar, or None – suffix added or replaced."""
     try:
-        plan = json.load(open(plan_path))
+        with open(plan_path) as f:
+            plan = json.load(f)
     except (OSError, ValueError):
         return None
     wants = [(member + suffix).lower()]
