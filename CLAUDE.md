@@ -21,8 +21,8 @@ starts no workflow, so the last result on `master` can be days old. When it
 matters, run the workflow by hand (`workflow_dispatch`) or locally:
 `workers/lint/*.py`, `workers/lint/*.mjs`, `workers/deploy/catalog-schema.py`,
 `python3 -m unittest discover -s workers/tests`, `node --test workers/tests/*.test.mjs`.
-`Check · mini region` runs only on package, lib, style and viewer changes; it
-must be green too when it ran.
+`Check · tests` and `Check · mini region` run on every PR; on a push only when
+their paths change.
 
 Fix a red check, or say on the PR why it isn't this PR's. Never switch a test
 or lint off to get green.

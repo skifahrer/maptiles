@@ -8,11 +8,8 @@ on:
       - "workers/**"
       - "poc/web/**"
       - ".github/workflows/tests.yml"
+  # every PR, whatever it touches
   pull_request:
-    paths:
-      - "workers/**"
-      - "poc/web/**"
-      - ".github/workflows/tests.yml"
   workflow_dispatch:
 
 permissions:
