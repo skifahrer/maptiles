@@ -260,3 +260,34 @@ Keep each scan until its replacement is green on `master`.
 | 4 | §5 relay and cache keys | ½ day |
 | 5 | §4 mini region, then the DEM side | 2–3 days |
 | 6 | the rest of §2 and §3, then §6 and §7 | ongoing |
+
+## Status (2026-10-10)
+
+Done, on branch `claude/tests-harness`:
+
+- §1: `workers/tests/`, `Check · tests` (`unit`, `unit-deps` with coverage),
+  syntax checks, shellcheck at `-S warning` (`-x`, `SC1111` excluded as in
+  the actionlint step), the `CLAUDE.md` rule.
+- §2 and §3: every module in the tables, plus `rocks-shading/*` helpers.
+- §4: `Check · mini region` (`mini-region.yml`), its own workflow because a
+  job can't have its own `paths`. The DEM side runs `contours-rocks/build.sh`
+  on a synthetic hill (`dem/sonny/all.vrt` is there, so nothing is fetched),
+  `terrain/tiles.py` over a NODATA hole, and the rocks half twice: once real,
+  once with `rock-areas.py` failing.
+- §5: relay, cache keys, layer-done, store-area, the pmtiles budget, the
+  smoke test against a local server.
+- §6: `browser.mjs` in the same workflow, with real sprites and glyphs from
+  the assets scripts. The base archive is a stand-in (the boundaries
+  package): building OpenMapTiles needs gigabytes of Natural Earth and water
+  polygons.
+- Fixes the tests found: `lib/watch.py` dropped every ten of GDAL's progress;
+  `dem/target.py` left a file open.
+
+Still open:
+
+- `if: ${{ !cancelled() }}` on the lint steps: not done, waiting on a
+  decision.
+- §7: the replacements exist (`test_terrain.py`, `test_dem.py` `EmptyTile`,
+  the failing rocks run in `check-packages.py`). The scans go once these are
+  green on `master`. `rocks-empty.py` keeps checking the cache condition in
+  `dem-layers.yml`, which only a workflow run can exercise.

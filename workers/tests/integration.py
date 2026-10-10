@@ -133,6 +133,56 @@ def dem_side(work, stubs):
     return ok, "\n".join(logs)
 
 
+ROCK_ENV = {"ONLY": "rocks", "OPT_ROCKS": "true", "OPT_ROCK_DEM": "sonny", "OPT_ROCK_SOURCE": "sonny",
+            "AREA_NAME_IN": "the whole region", "ROCK_SLOPE_IN": "3", "ROCK_RES_IN": "10"}
+
+
+def failing_workers(work):
+    """`workers/` of symlinks, but `rock-areas.py` fails when run (still importable)."""
+    shadow = os.path.join(work, "shadow")
+    os.makedirs(os.path.join(shadow, "contours-rocks"), exist_ok=True)
+    for name in os.listdir(_WORKERS):
+        if name != "contours-rocks" and not os.path.exists(os.path.join(shadow, name)):
+            os.symlink(os.path.join(_WORKERS, name), os.path.join(shadow, name))
+    src = os.path.join(_WORKERS, "contours-rocks")
+    for name in os.listdir(src):
+        dst = os.path.join(shadow, "contours-rocks", name)
+        if name == "rock-areas.py":
+            with open(os.path.join(src, name)) as f:
+                body = f.read().replace("    sys.exit(main())", "    sys.exit(1)")
+            with open(dst, "w") as f:
+                f.write(body)
+        elif not os.path.exists(dst):
+            os.symlink(os.path.join(src, name), dst)
+    return shadow
+
+
+def rocks_side(work, stubs):
+    """Rocks from the hill, then the same with a failing computation in a copy of `work`."""
+    fail = os.path.join(work, "rocks-failed")
+    os.makedirs(fail, exist_ok=True)
+    for name in ("data", "dem", "stubs", "planetiler.jar"):
+        if not os.path.exists(os.path.join(fail, name)):
+            os.symlink(os.path.join(work, name), os.path.join(fail, name))
+    if not os.path.exists(os.path.join(fail, "workers")):
+        os.symlink(failing_workers(work), os.path.join(fail, "workers"))
+    bbox = ",".join(str(v) for v in mini_region.BBOX)
+    logs, ok = [], True
+    for where in (work, fail):
+        os.makedirs(os.path.join(where, "steps-out"), exist_ok=True)
+        env = {**os.environ, "PATH": stubs + os.pathsep + os.environ["PATH"], **CONTOUR_ENV, **ROCK_ENV,
+               "GITHUB_OUTPUT": os.path.join(where, "rocks.out"), "REGION_KEY": REGION_KEY,
+               "REGION_BBOX": bbox, "AREA_BBOX_IN": bbox, "CACHE_HIT": "false"}
+        for script in ("build.sh", "site.sh"):
+            r = subprocess.run(["bash", f"workers/contours-rocks/{script}"], cwd=where, env=env,
+                               capture_output=True, text=True)
+            print(f"{'✓' if r.returncode == 0 else '✗'} rocks {script}"
+                  f"{' (failing computation)' if where == fail else ''}", flush=True)
+            ok &= r.returncode == 0
+            logs.append(r.stdout + r.stderr)
+    return ok, "\n".join(logs)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--jar", default="planetiler.jar")
@@ -162,10 +212,11 @@ def main():
             print("::error::routing:\n" + "\n".join(log.splitlines()[-30:]))
 
     if args.dem:
-        ok, log = dem_side(work, stubs)
-        if not ok:
-            failed.append("dem")
-            print("::error::DEM side:\n" + "\n".join(log.splitlines()[-40:]))
+        for name, side in (("dem", dem_side), ("rocks", rocks_side)):
+            ok, log = side(work, stubs)
+            if not ok:
+                failed.append(name)
+                print(f"::error::{name}:\n" + "\n".join(log.splitlines()[-40:]))
 
     spec = importlib.util.spec_from_file_location("check_packages", os.path.join(_HERE, "check-packages.py"))
     check = importlib.util.module_from_spec(spec)
@@ -173,6 +224,8 @@ def main():
     problems = check.check_all(work, REGION_KEY, [p for p in packages if p not in failed])
     if args.dem and "dem" not in failed:
         problems += check.check_dem(work, HOLE)
+    if args.dem and "rocks" not in failed:
+        problems += check.check_rocks(work, os.path.join(work, "rocks-failed"), REGION_KEY)
     for p in problems:
         print(f"::error::{p}")
     print(f"Mini region: {len(failed)} builds failed, {len(problems)} problems in the packages")

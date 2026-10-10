@@ -21,8 +21,9 @@ class Syntax(unittest.TestCase):
         self.assertTrue(paths)
         for path in paths:
             with self.subTest(path=os.path.relpath(path, ROOT)):
-                r = subprocess.run(cmd + [path], capture_output=True, text=True)
-                self.assertEqual(r.returncode, 0, r.stderr)
+                r = subprocess.run(cmd + [os.path.relpath(path, ROOT)], capture_output=True, text=True,
+                                   cwd=ROOT, env={**os.environ, "LANG": "C.UTF-8"})
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_shell(self):
         self.check(["bash", "-n"], files("workers/**/*.sh"))
@@ -30,6 +31,11 @@ class Syntax(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "needs node")
     def test_js(self):
         self.check(["node", "--check"], files("workers/**/*.mjs", "poc/web/*.js"))
+
+    @unittest.skipUnless(shutil.which("shellcheck"), "needs shellcheck")
+    def test_shellcheck(self):
+        # SC1111: typographic quotes in messages are meant, as in the actionlint step
+        self.check(["shellcheck", "-x", "-S", "warning", "-e", "SC1111"], files("workers/**/*.sh"))
 
     def test_python(self):
         with tempfile.TemporaryDirectory() as tmp:

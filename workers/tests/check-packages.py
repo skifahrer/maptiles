@@ -238,6 +238,27 @@ def check_dem(work, hole):
     return problems
 
 
+def outputs(path):
+    with open(path) as f:
+        return dict(line.split("=", 1) for line in f.read().splitlines() if "=" in line)
+
+
+def check_rocks(work, failed, key):
+    """Rocks from the hill reach the map; a failed computation is marked and stays out of it."""
+    problems = []
+    if outputs(os.path.join(work, "rocks.out")).get("rocks_enabled") != "true":
+        problems.append("rocks: the hill's rocks didn't reach the map")
+    elif not [f for f in read(os.path.join(work, "_site", "tiles", f"{key}-rocks.pmtiles")) if f[1] == "rock"]:
+        problems.append("rocks: the rocks archive holds no `rock` feature")
+    if not os.path.exists(os.path.join(failed, "contours-out", "rock-failed.txt")):
+        problems.append("rocks: a failed computation isn't marked in rock-failed.txt, so the cache keeps it")
+    if outputs(os.path.join(failed, "rocks.out")).get("rocks_enabled") != "false":
+        problems.append("rocks: a failed computation still went to the map")
+    if os.path.exists(os.path.join(failed, "_site", "tiles", f"{key}-rocks.pmtiles")):
+        problems.append("rocks: a failed computation's empty archive is in _site")
+    return problems
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--work", required=True)

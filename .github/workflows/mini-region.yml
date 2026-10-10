@@ -22,6 +22,9 @@ on:
       - "workers/tests/integration.py"
       - "workers/tests/check-packages.py"
       - "workers/tests/geo.py"
+      - "workers/tests/browser.mjs"
+      - "workers/assets/**"
+      - "poc/web/**"
       - ".github/workflows/mini-region.yml"
   pull_request:
     paths:
@@ -42,6 +45,9 @@ on:
       - "workers/tests/integration.py"
       - "workers/tests/check-packages.py"
       - "workers/tests/geo.py"
+      - "workers/tests/browser.mjs"
+      - "workers/assets/**"
+      - "poc/web/**"
       - ".github/workflows/mini-region.yml"
   workflow_dispatch:
   schedule:
@@ -76,3 +82,14 @@ jobs:
         run: workers/lib/planetiler.sh
       - name: Build and read back
         run: python3 workers/tests/integration.py --dem --jar planetiler.jar --work "$RUNNER_TEMP/mini"
+      # the versions index.html loads from unpkg, so the page runs without the CDN
+      - name: Install the browser
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/browser" \
+            playwright@1.56.1 maplibre-gl@4.7.1 pmtiles@3.2.1
+          "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: The viewer over the packages
+        env:
+          GLYPHS_ZIP: https://github.com/openmaptiles/fonts/releases/download/v2.0/noto-sans.zip
+        run: node workers/tests/browser.mjs --work="$RUNNER_TEMP/mini" --deps="$RUNNER_TEMP/browser"
