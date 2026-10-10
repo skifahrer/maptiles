@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="hand">
+  <node id="1" version="1" lat="48.2000" lon="17.1000"/>
+  <node id="2" version="1" lat="48.2000" lon="17.1100"/>
+  <node id="3" version="1" lat="48.2000" lon="17.1200"/>
+  <node id="4" version="1" lat="48.2100" lon="17.1100"/>
+  <node id="5" version="1" lat="48.1900" lon="17.1100"/>
+  <node id="6" version="1" lat="48.2010" lon="17.1210"/>
+  <node id="7" version="1" lat="48.2020" lon="17.1200"/>
+  <node id="8" version="1" lat="48.2050" lon="17.1000"/>
+  <way id="100" version="1">
+    <nd ref="1"/><nd ref="2"/>
+    <tag k="highway" v="primary"/><tag k="ref" v="2"/>
+  </way>
+  <way id="101" version="1">
+    <nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="primary"/><tag k="oneway" v="yes"/>
+  </way>
+  <way id="102" version="1">
+    <nd ref="4"/><nd ref="2"/>
+    <tag k="highway" v="residential"/>
+  </way>
+  <way id="103" version="1">
+    <nd ref="2"/><nd ref="5"/>
+    <tag k="highway" v="residential"/><tag k="oneway" v="-1"/>
+  </way>
+  <way id="104" version="1">
+    <nd ref="3"/><nd ref="6"/><nd ref="7"/>
+    <tag k="highway" v="tertiary"/><tag k="junction" v="roundabout"/>
+  </way>
+  <way id="105" version="1">
+    <nd ref="1"/><nd ref="8"/>
+    <tag k="waterway" v="river"/>
+  </way>
+  <relation id="200" version="1">
+    <member type="way" ref="100" role="from"/>
+    <member type="node" ref="2" role="via"/>
+    <member type="way" ref="102" role="to"/>
+    <tag k="type" v="restriction"/><tag k="restriction" v="no_left_turn"/><tag k="except" v="bicycle;psv"/>
+  </relation>
+  <relation id="201" version="1">
+    <member type="way" ref="102" role="from"/>
+    <member type="way" ref="101" role="via"/>
+    <member type="way" ref="104" role="to"/>
+    <tag k="type" v="restriction"/><tag k="restriction" v="only_straight_on"/>
+  </relation>
+  <relation id="202" version="1">
+    <member type="way" ref="100" role="from"/>
+    <member type="node" ref="2" role="via"/>
+    <member type="way" ref="103" role="to"/>
+    <tag k="type" v="restriction"/><tag k="restriction:hgv" v="no_right_turn"/>
+  </relation>
+</osm>
