@@ -26,29 +26,8 @@ on:
       - "workers/assets/**"
       - "poc/web/**"
       - ".github/workflows/mini-region.yml"
+  # every PR, whatever it touches
   pull_request:
-    paths:
-      - "workers/transport/**"
-      - "workers/boundaries/**"
-      - "workers/water/**"
-      - "workers/rail/**"
-      - "workers/history/**"
-      - "workers/buildings/**"
-      - "workers/trails/**"
-      - "workers/features/**"
-      - "workers/routing/**"
-      - "workers/contours-rocks/**"
-      - "workers/terrain/**"
-      - "workers/styles/**"
-      - "workers/lib/**"
-      - "workers/tests/mini_region.py"
-      - "workers/tests/integration.py"
-      - "workers/tests/check-packages.py"
-      - "workers/tests/geo.py"
-      - "workers/tests/browser.mjs"
-      - "workers/assets/**"
-      - "poc/web/**"
-      - ".github/workflows/mini-region.yml"
   workflow_dispatch:
   schedule:
     # Planetiler and osmium are installed unpinned and change under us
