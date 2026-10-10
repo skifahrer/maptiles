@@ -16,18 +16,26 @@ with open(os.path.join(here, name + ".log"), "a") as f:
 with open(os.path.join(here, name + ".json")) as f:
     table = json.load(f)
 line = " ".join(args)
-for rule in table:
-    if re.search(rule["match"], line):
-        sys.stdout.write(rule.get("out", ""))
-        sys.stderr.write(rule.get("err", ""))
-        sys.exit(rule.get("exit", 0))
+counts_path = os.path.join(here, name + ".count.json")
+counts = json.load(open(counts_path)) if os.path.exists(counts_path) else {}
+for i, rule in enumerate(table):
+    if not re.search(rule["match"], line):
+        continue
+    if "times" in rule and counts.get(str(i), 0) >= rule["times"]:
+        continue
+    counts[str(i)] = counts.get(str(i), 0) + 1
+    with open(counts_path, "w") as f:
+        json.dump(counts, f)
+    sys.stdout.write(rule.get("out", ""))
+    sys.stderr.write(rule.get("err", ""))
+    sys.exit(rule.get("exit", 0))
 sys.stderr.write(f"stub {name}: no rule for {line}\n")
 sys.exit(97)
 '''
 
 
 class Stubs:
-    """`with Stubs(gh=[{"match": "...", "out": "..."}]) as s: s.run([...])`."""
+    """`with Stubs(gh=[{"match": "...", "out": "...", "times": 1}]) as s: s.run([...])`."""
 
     def __init__(self, **commands):
         self.dir = tempfile.mkdtemp(prefix="stubs-")
@@ -41,6 +49,13 @@ class Stubs:
         os.chmod(path, 0o755)
         with open(path + ".json", "w") as f:
             json.dump(rules, f)
+
+    def script(self, name, text):
+        """A fake command with its own body, when a table can't say it."""
+        path = os.path.join(self.dir, name)
+        with open(path, "w") as f:
+            f.write(text)
+        os.chmod(path, 0o755)
 
     def calls(self, name):
         path = os.path.join(self.dir, name + ".log")
