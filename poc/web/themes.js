@@ -5604,6 +5604,9 @@ export function buildStyle({
             "case",
             ["==", str("subclass"), "communication"],
             "",
+            ...(buildingsUrl
+              ? [["in", str("class"), ["literal", ["tower", "mast"]]], ""]
+              : []),
             ["has", "ele"],
             ["concat", nameExpr, " ", ["to-string", ["round", num("ele", 0)]], " m"],
             nameExpr
