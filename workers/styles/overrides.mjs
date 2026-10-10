@@ -242,6 +242,7 @@ const payload = {
   // every section must be written, or it silently never reaches the repo
   trails: overrides.trails,
   shields: overrides.shields,
+  routeShields: overrides.routeShields,
   iconSets: overrides.iconSets,
   customIcons: overrides.customIcons,
   maps: overrides.maps
