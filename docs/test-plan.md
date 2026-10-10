@@ -280,8 +280,16 @@ Done, on branch `claude/tests-harness`:
   the assets scripts. The base archive is a stand-in (the boundaries
   package): building OpenMapTiles needs gigabytes of Natural Earth and water
   polygons.
+- Beyond the plan, every worker that had no test: `deploy/*`, the options
+  form, the batch jobs, routing order/profile/crosscheck/fixture, the remote
+  ZIP reader and the DEM fetchers (against a local Range server), the DMR 5.0
+  helpers, the world variant and style, rail signs, and the shell scripts
+  (relay callers, catalog commit against local git repos, site check, Pages
+  source, PBF download and crop, DEM check and fetch, node order cache,
+  publish-results, the run summary). 402 Python and 56 JS tests.
 - Fixes the tests found: `lib/watch.py` dropped every ten of GDAL's progress;
-  `dem/target.py` left a file open.
+  `dem/target.py`, `drive/dmr5-raster.py`, `drive/dmr5-remote.py` and
+  `world/variant.py` left files open.
 
 Still open:
 

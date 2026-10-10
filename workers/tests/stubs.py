@@ -76,3 +76,23 @@ class Stubs:
 
     def __exit__(self, *exc):
         shutil.rmtree(self.dir, ignore_errors=True)
+
+
+def shadow_workers(root, replace):
+    """`root/workers` of symlinks, with `{"job/file": text}` swapped in."""
+    workers = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    shadow = os.path.join(root, "workers")
+    os.makedirs(shadow, exist_ok=True)
+    for job in os.listdir(workers):
+        mine = {r.split("/", 1)[1]: t for r, t in replace.items() if r.startswith(job + "/")}
+        if not mine:
+            os.symlink(os.path.join(workers, job), os.path.join(shadow, job))
+            continue
+        os.makedirs(os.path.join(shadow, job))
+        for name in os.listdir(os.path.join(workers, job)):
+            if name not in mine:
+                os.symlink(os.path.join(workers, job, name), os.path.join(shadow, job, name))
+        for name, text in mine.items():
+            with open(os.path.join(shadow, job, name), "w") as f:
+                f.write(text)
+    return shadow
