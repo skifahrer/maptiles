@@ -29,8 +29,9 @@ or lint off to get green.
 
 ## Pull requests and commits: no Claude Code
 
-No Claude Code session URL (`claude.ai/code/session_…`), no `Claude-Session:` trailer and no
-"Generated with Claude Code" line in a PR title, description, comment or commit message.
+No Claude Code session URL (`claude.ai/code/session_…`), no `Claude-Session:` or
+`Co-Authored-By: Claude …` trailer and no "Generated with Claude Code" line in a PR title,
+description, comment or commit message.
 
 ## Tests: every fix brings its test
 
