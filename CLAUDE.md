@@ -27,6 +27,11 @@ their paths change.
 Fix a red check, or say on the PR why it isn't this PR's. Never switch a test
 or lint off to get green.
 
+## Pull requests and commits: no Claude Code
+
+No Claude Code session URL (`claude.ai/code/session_…`), no `Claude-Session:` trailer and no
+"Generated with Claude Code" line in a PR title, description, comment or commit message.
+
 ## Tests: every fix brings its test
 
 A `fix:` commit adds the test in `workers/tests/` that fails without the fix.
