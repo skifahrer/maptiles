@@ -1,5 +1,6 @@
 {
   "svet": {
+    "id": "world",
     "name": "Svet",
     "country": "svet",
     "osm_name": "World",
@@ -8,6 +9,7 @@
     "note": "The base world map from its own pipeline (world-map.yml). `osmfr` is deliberately ABSENT: it's built not from a regional PBF but from OSM coastlines, Natural Earth and the Geofabrik index (workers/world/sources.py). `admin_level: 2` means the package sits on Drive directly in `svet/`, with no region level."
   },
   "svet_basic": {
+    "id": "world_basic",
     "name": "Svet – basic",
     "country": "svet_basic",
     "osm_name": "World",
@@ -16,6 +18,7 @@
     "note": "The world map in its `basic` form – state borders and download regions only, no water or lakes (input `variant` in world-map.yml, lookup workers/data/world-variants.json). ITS OWN KEY, not a suffix to `svet`, by rule 2 of CLAUDE.md: a name is a promise about extent, so `basic` must not land on `svet.zip` or its node in `maps.json` – whoever downloads “the world map” from the catalog must not get a map without seas. So `country` is `svet_basic` too: the package sits in its own Drive folder and is its own root node in the catalog, beside `svet`."
   },
   "navigacia_slovensko": {
+    "id": "navigation_slovakia",
     "name": "Navigácia – Slovensko",
     "country": "navigacia_slovensko",
     "osm_name": "Slovensko",
@@ -24,6 +27,7 @@
     "note": "The routing GRAPH (Valhalla), not a map – `navigation.yml`, extent from workers/data/routing-areas.json. `osmfr` is deliberately ABSENT: `workers/routing/pbf.sh` downloads the PBF by that lookup, since the graph's extent is another question than the map's – the graph is NOT split by region (see there). `admin_level: 2` means the package sits on Drive directly in `navigacia_slovensko/`, with no region level. And `country` EQUALS the key – not a shared `navigacia` for every scope: `admin_level: 2` makes the country a catalog node too, so two scopes under one `navigacia` would OVERWRITE each other's item (both packages on Drive, the catalog knowing the second). The same decision for the same reason as `svet_basic`."
   },
   "navigacia_slovensko_susedia": {
+    "id": "navigation_slovakia_neighbours",
     "name": "Navigácia – Slovensko a susedia",
     "country": "navigacia_slovensko_susedia",
     "osm_name": "Slovensko + CZ, AT, HU, PL, UA",
@@ -32,6 +36,7 @@
     "note": "The same as `navigacia_slovensko`, with a graph across borders – without it one can't drive to Austria, so neither avoid lacking a vignette there. ITS OWN KEY, not a suffix (rule 2): whoever downloads `navigacia_slovensko` from the catalog must not get a graph that ends at the border – nor the reverse. Its own `country` (and so its own catalog node) for the same reason as `navigacia_slovensko`."
   },
   "slovensko": {
+    "id": "slovakia",
     "name": "Slovensko",
     "country": "slovensko",
     "osm_name": "Slovensko",
@@ -43,6 +48,7 @@
     "note": "All of Slovakia as one region – and the PARENT of its regions: each has `osmfr.parent: slovensko` and `workers/plan/pbf.sh` cuts it out of this file (`osmium extract -s smart`). osm.fr's ready `{region}-latest.osm.pbf` is NOT USED – it isn't referentially complete, so an area reaching into a neighbouring region (CHKO Malé Karpaty, CHKO Záhorie, the Záhorie forests) lacks members and Planetiler drops it WHOLE, the in-region part too. Measured, with figures in the pbf.sh header. `iso` is the two-letter country code, here for ROUTING: an archive edge carries its country, or the vignette has nothing to stand on (`workers/data/vignettes.json`). Regions take it through their `country`, so it's written once. `routing_area` is the key in `workers/data/routing-areas.json` the CCH NODE ORDER is computed over – every region of a country must stand on the same one, or their archives must not be joined on the phone."
   },
   "bratislavsky": {
+    "id": "slovakia-bratislavsky",
     "name": "Bratislavský kraj",
     "country": "slovensko",
     "osm_name": "Bratislavský kraj",
@@ -51,6 +57,7 @@
     "osmfr": { "dir": "europe/slovakia", "slugs": ["bratislavsky-latest"], "parent": "slovensko" }
   },
   "trnavsky": {
+    "id": "slovakia-trnavsky",
     "name": "Trnavský kraj",
     "country": "slovensko",
     "osm_name": "Trnavský kraj",
@@ -59,6 +66,7 @@
     "osmfr": { "dir": "europe/slovakia", "slugs": ["trnavsky-latest"], "parent": "slovensko" }
   },
   "trenciansky": {
+    "id": "slovakia-trenciansky",
     "name": "Trenčiansky kraj",
     "country": "slovensko",
     "osm_name": "Trenčiansky kraj",
@@ -67,6 +75,7 @@
     "osmfr": { "dir": "europe/slovakia", "slugs": ["trenciansky-latest"], "parent": "slovensko" }
   },
   "nitriansky": {
+    "id": "slovakia-nitriansky",
     "name": "Nitriansky kraj",
     "country": "slovensko",
     "osm_name": "Nitriansky kraj",
@@ -75,6 +84,7 @@
     "osmfr": { "dir": "europe/slovakia", "slugs": ["nitriansky-latest"], "parent": "slovensko" }
   },
   "zilinsky": {
+    "id": "slovakia-zilinsky",
     "name": "Žilinský kraj",
     "country": "slovensko",
     "osm_name": "Žilinský kraj",
@@ -83,6 +93,7 @@
     "osmfr": { "dir": "europe/slovakia", "slugs": ["zilinsky-latest"], "parent": "slovensko" }
   },
   "banskobystricky": {
+    "id": "slovakia-banskobystricky",
     "name": "Banskobystrický kraj",
     "country": "slovensko",
     "osm_name": "Banskobystrický kraj",
@@ -91,6 +102,7 @@
     "osmfr": { "dir": "europe/slovakia", "slugs": ["banskobystricky-latest"], "parent": "slovensko" }
   },
   "presovsky": {
+    "id": "slovakia-presovsky",
     "name": "Prešovský kraj",
     "country": "slovensko",
     "osm_name": "Prešovský kraj",
@@ -99,6 +111,7 @@
     "osmfr": { "dir": "europe/slovakia", "slugs": ["presovsky-latest"], "parent": "slovensko" }
   },
   "kosicky": {
+    "id": "slovakia-kosicky",
     "name": "Košický kraj",
     "country": "slovensko",
     "osm_name": "Košický kraj",

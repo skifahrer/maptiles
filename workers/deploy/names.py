@@ -19,6 +19,26 @@ def safe(text):
     return "".join(out).strip("_") or "unnamed"
 
 
+# osm.fr's top folders that are no country; `russia/` is one
+CONTINENTS = {"africa", "asia", "central-america", "europe", "north-america",
+              "oceania", "south-america"}
+
+
+def id_piece(text):
+    """One level of a region id: `-` separates levels, so it never appears inside one."""
+    return "".join(ch if (ch.isascii() and ch.isalnum()) or ch == "_" else "_"
+                   for ch in safe(text))
+
+
+def osmfr_id(path):
+    """`europe/france/rhone_alpes/savoie-latest.osm.pbf` → `france-rhone_alpes-savoie`."""
+    pieces = [k for k in path.split("/extracts/")[-1].split("/") if k]
+    pieces[-1] = pieces[-1].split(".")[0].removesuffix("-latest")
+    if pieces[0] in CONTINENTS:
+        pieces = pieces[1:]
+    return "-".join(id_piece(k) for k in pieces)
+
+
 def strip_test(key):
     """`presovsky_test4` → `presovsky`; the file name says it is a test, the path does not."""
     base = key

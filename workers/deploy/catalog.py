@@ -25,6 +25,7 @@ def _load(name, path):
 
 folder = _load("drive_folder", os.path.join(_DRIVE, "folder.py"))
 packages = _load("deploy_packages", os.path.join(_HERE, "packages.py"))
+names = _load("deploy_names", os.path.join(_HERE, "names.py"))
 
 
 def env(name, default=""):
@@ -138,6 +139,30 @@ def migrate_node(maps):
                 part.setdefault("description", part.pop("popis"))
             if key in LEGACY_PARTS:
                 entry["parts"].setdefault(LEGACY_PARTS[key], entry["parts"].pop(key))
+
+
+def node_id(regions, key, parent="", listed=True):
+    """A node's id, unique across the catalog; `listed` = its key may be in `regions.json`."""
+    base, test = split_test(key)
+    own = (regions.get(base) or {}).get("id") if listed else None
+    if not own:
+        osmfr = (regions.get(base) or {}).get("osmfr") if listed else None
+        own = (names.osmfr_id(f"{osmfr['dir']}/{osmfr['slugs'][0]}") if osmfr
+               else (f"{parent}-" if parent else "") + names.id_piece(base))
+    return own + (f"_test{names.id_piece(test)}km2" if test else "")
+
+
+def stamp_ids(data, regions):
+    """Every country, region and subregion carries its id; derived, so rewritten each time."""
+    pending = [(v, k, "", True) for k, v in data.items()
+               if not k.startswith(("_", "$")) and isinstance(v, dict)]
+    while pending:
+        node, key, parent, listed = pending.pop()
+        node["id"] = node_id(regions, key, parent, listed)
+        for nest in ("regions", "subregions"):
+            pending += [(v, k, node["id"], nest == "regions")
+                        for k, v in (node.get(nest) or {}).items() if isinstance(v, dict)]
+    return data
 
 
 def migrate(data):
@@ -313,7 +338,7 @@ def write_parts(maps, parts):
 
 COMMENT = ("Map catalog of finished maps on Google Drive – which there are and "
            "where. The top key is the country, under it `regions` and `subregions`; "
-           "keys starting with `_` are catalog metadata, not countries. Written at the "
+           "`id` names a node uniquely across the catalog (its osm.fr path); keys starting with `_` are catalog metadata, not countries. Written at the "
            "end of a build by workers/deploy/publish-map.py; never edited by hand.")
 COMMENT_TEST = ("QUICK TEST runs – terrain covers only a few km² of the cut-out, so "
                 "these are NOT maps to download; finished maps are in maps.json. ")
@@ -371,6 +396,7 @@ def write_catalog(path, parts, regions, uploaded, man, only="", merge=False,
                           at=data["_updated_at"], at_ts=data["_updated_ts"],
                           sha=sha, models=region_models(man, reg))
         tidy(maps, retired, live, {fid for _k, _n, _v, fid, _f, _s in uploaded})
+        stamp_ids(data, regions)
         return write(path, data, f"added package {only} to {'/'.join(cat)}")
     entry = {
         "name": node.get("name"),
@@ -442,6 +468,7 @@ def write_catalog(path, parts, regions, uploaded, man, only="", merge=False,
     node.update(entry)
     node.update(keep)
 
+    stamp_ids(data, regions)
     foreign = [k for k in entry["maps"]
                if k not in {(kind or "base") for kind, *_ in uploaded}]
     return write(path, data, f"wrote map {'/'.join(cat)} "
@@ -455,10 +482,12 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["--file"]:
         print(catalog_file())
     elif sys.argv[1:2] == ["--migrate"]:
+        with open(os.path.join(_DATA, "regions.json")) as f:
+            known = json.load(f)
         for p in sys.argv[2:]:
             with open(p) as f:
                 d = json.load(f)
-            write(p, migrate(d), "migrated to today's keys")
+            write(p, stamp_ids(migrate(d), known), "migrated to today's keys")
     else:
         raise SystemExit(
             "::error::workers/deploy/catalog.py alone answers only `--file` (which "

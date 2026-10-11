@@ -134,7 +134,10 @@ Mapa · úpravy štýlu          style-overrides.json z developer módu
 - **Výber regiónu:** celé Slovensko alebo ktorýkoľvek z 8 krajov. Zdroj je
   [osm.fr](https://download.openstreetmap.fr/extracts/europe/slovakia/)
   (denne aktualizované); mapovanie, `osm_name`, `admin_level` a bboxy sú vo
-  [workers/data/regions.json](data/regions.json). **Kraj sa REŽE z rodiča** –
+  [workers/data/regions.json](data/regions.json). Každý región tam má `id`
+  jedinečné v celom katalógu – cesta na osm.fr pod kontinentom, priečinky
+  spojené `-` (`slovakia-banskobystricky`); `maps.json` ho nesie pri každom
+  uzle a mapy v Riki Maps sa naň odvolávajú. **Kraj sa REŽE z rodiča** –
   stiahne sa `slovakia-latest.osm.pbf` (373 MB), z neho sa prečíta **presná
   hranica kraja** (OSM relácia `boundary=administrative`,
   [workers/plan/boundary.py](plan/boundary.py)) a `osmium extract -s smart
