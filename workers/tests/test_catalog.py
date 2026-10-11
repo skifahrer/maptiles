@@ -49,6 +49,49 @@ class Names(unittest.TestCase):
         self.assertNotIn("terrain", catalog.tiles_paths({"dem": "https://aws/{z}/{x}/{y}.png"}, reg))
 
 
+class RegionIds(unittest.TestCase):
+    def setUp(self):
+        with open(os.path.join(catalog._DATA, "regions.json")) as f:
+            self.regions = json.load(f)
+
+    def test_osmfr_path(self):
+        names = catalog.names
+        self.assertEqual(names.osmfr_id("europe/slovakia-latest.osm.pbf"), "slovakia")
+        self.assertEqual(names.osmfr_id(
+            "https://download.openstreetmap.fr/extracts/europe/france/rhone_alpes/"
+            "savoie-latest.osm.pbf"), "france-rhone_alpes-savoie")
+        self.assertEqual(names.osmfr_id("north-america/us-west/california-latest"),
+                         "us_west-california")
+        self.assertEqual(names.osmfr_id("russia/ural_federal_district-latest"),
+                         "russia-ural_federal_district")
+
+    def test_registry_ids_are_unique_and_follow_osmfr(self):
+        ids = [r["id"] for r in self.regions.values()]
+        self.assertEqual(len(ids), len(set(ids)))
+        for key, r in self.regions.items():
+            self.assertRegex(r["id"], r"^[a-z0-9_]+(-[a-z0-9_]+)*$", key)
+            if r.get("osmfr"):
+                path = f"{r['osmfr']['dir']}/{r['osmfr']['slugs'][0]}"
+                self.assertEqual(r["id"], catalog.names.osmfr_id(path), key)
+
+    def test_every_node_stamped(self):
+        data = {"_comment": "x", "slovensko": {"regions": {
+            "presovsky": {"subregions": {"pieniny": {}}},
+            "presovsky_test4km2": {}}, "subregions": {"vysoke_tatry": {}}},
+            "austria": {"regions": {"tirol": {}}}}
+        catalog.stamp_ids(data, self.regions)
+        sk = data["slovensko"]
+        self.assertEqual(sk["id"], "slovakia")
+        self.assertEqual(sk["regions"]["presovsky"]["id"], "slovakia-presovsky")
+        self.assertEqual(sk["regions"]["presovsky"]["subregions"]["pieniny"]["id"],
+                         "slovakia-presovsky-pieniny")
+        self.assertEqual(sk["regions"]["presovsky_test4km2"]["id"],
+                         "slovakia-presovsky_test4km2")
+        self.assertEqual(sk["subregions"]["vysoke_tatry"]["id"], "slovakia-vysoke_tatry")
+        self.assertEqual(data["austria"]["regions"]["tirol"]["id"], "austria-tirol")
+        self.assertNotIn("id", data)
+
+
 class Migrate(unittest.TestCase):
     def test_old_keys_become_today(self):
         old, new = next((o, n) for o, n in packages.legacy().items() if n != "base")
