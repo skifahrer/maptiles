@@ -22,6 +22,8 @@ on:
         type: choice
         options:
           - slovensko
+          - cesko
+          - rakusko
       # the list is `workers/state/jobs.py`; cheapest first
       what:
         description: "What to regenerate in every region"

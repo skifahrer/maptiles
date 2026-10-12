@@ -81,6 +81,31 @@ on:
           - banskobystricky
           - presovsky
           - kosicky
+          - cesko
+          - jihocesky
+          - jihomoravsky
+          - karlovarsky
+          - kralovehradecky
+          - liberecky
+          - moravskoslezsky
+          - olomoucky
+          - pardubicky
+          - plzensky
+          - praha
+          - stredocesky
+          - ustecky
+          - vysocina
+          - zlinsky
+          - rakusko
+          - burgenland
+          - karnten
+          - niederosterreich
+          - oberosterreich
+          - salzburg
+          - steiermark
+          - tirol
+          - vorarlberg
+          - wien
       wiki_langs:
         description: "EXTRA languages, comma separated (en and the country language always)"
         required: false

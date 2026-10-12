@@ -59,6 +59,20 @@ class Options(unittest.TestCase):
         v, _ = self.ok(**{"--contour-source": "none", "--rock-source": "none", "--shading-source": "none"})
         self.assertEqual((v["contours"], v["terrain"]), ("false", "false"))
 
+    def test_region_without_dem_gets_no_dem_layers(self):
+        for region in ("cesko", "praha", "rakusko", "wien"):
+            v, said = self.ok(f"--region={region}", **{"--rock-source": "shading"})
+            self.assertEqual((v["contour_source"], v["rock_source"], v["shading_source"]),
+                             ("none", "none", "none"), region)
+            self.assertEqual((v["contours"], v["rocks"], v["terrain"], v["rock_dem"]),
+                             ("false", "false", "false", ""), region)
+            self.assertEqual((v["trails"], v["transport"], v["water"]), ("true", "true", "true"))
+            self.assertIn("::notice::", said)
+        v, _ = self.ok("--region=presovsky")
+        self.assertEqual((v["contour_source"], v["terrain"]), ("sonny", "true"))
+        v, _ = self.ok("--region=cesko", "--options=custom_pbf_url=https://example.org/a.osm.pbf")
+        self.assertEqual(v["contour_source"], "sonny", "a custom PBF isn't the region")
+
     def test_quick_test(self):
         v, _ = self.ok("--test=true", "--options=reuse_layers=true")
         self.assertEqual((v["test_km2"], v["reuse_layers"], v["rocks_rebuild"]), ("4", "false", "true"))

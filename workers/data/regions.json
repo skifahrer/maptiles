@@ -118,5 +118,256 @@
     "admin_level": 4,
     "bbox": [20.16, 48.315, 22.41, 49.04],
     "osmfr": { "dir": "europe/slovakia", "slugs": ["kosicky-latest"], "parent": "slovensko" }
+  },
+  "navigacia_cesko": {
+    "id": "navigation_czech_republic",
+    "name": "Navigácia – Česko",
+    "country": "navigacia_cesko",
+    "osm_name": "Česko",
+    "admin_level": 2,
+    "bbox": [12.09, 48.551, 18.86, 51.057],
+    "note": "The routing graph of Česko alone – the same decision as `navigacia_slovensko`."
+  },
+  "navigacia_rakusko": {
+    "id": "navigation_austria",
+    "name": "Navigácia – Rakúsko",
+    "country": "navigacia_rakusko",
+    "osm_name": "Österreich",
+    "admin_level": 2,
+    "bbox": [9.53, 46.371, 17.162, 49.022],
+    "note": "The routing graph of Rakúsko alone – the same decision as `navigacia_slovensko`."
+  },
+  "cesko": {
+    "id": "czech_republic",
+    "name": "Česko",
+    "country": "cesko",
+    "osm_name": "Česko",
+    "admin_level": 2,
+    "iso": "CZ",
+    "routing_area": "cesko",
+    "dem": false,
+    "bbox": [12.09, 48.551, 18.86, 51.057],
+    "osmfr": { "dir": "europe", "slugs": ["czech_republic-latest"] },
+    "note": "Like `slovensko`: the whole country and the PARENT its regions are cut from. `dem: false` – no elevation model covers it yet, so `workers/plan/options.py` turns contours, rocks and hillshading off for it and its regions; the OSM layers are built as anywhere."
+  },
+  "jihocesky": {
+    "id": "czech_republic-jihocesky",
+    "name": "Jihočeský kraj",
+    "country": "cesko",
+    "osm_name": "Jihočeský kraj",
+    "admin_level": 4,
+    "bbox": [13.535, 48.551, 15.605, 49.622],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["jihocesky-latest"], "parent": "cesko" }
+  },
+  "jihomoravsky": {
+    "id": "czech_republic-jihomoravsky",
+    "name": "Jihomoravský kraj",
+    "country": "cesko",
+    "osm_name": "Jihomoravský kraj",
+    "admin_level": 4,
+    "bbox": [15.541, 48.616, 17.648, 49.634],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["jihomoravsky-latest"], "parent": "cesko" }
+  },
+  "karlovarsky": {
+    "id": "czech_republic-karlovarsky",
+    "name": "Karlovarský kraj",
+    "country": "cesko",
+    "osm_name": "Karlovarský kraj",
+    "admin_level": 4,
+    "bbox": [12.09, 49.889, 13.303, 50.461],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["karlovarsky-latest"], "parent": "cesko" }
+  },
+  "kralovehradecky": {
+    "id": "czech_republic-kralovehradecky",
+    "name": "Královéhradecký kraj",
+    "country": "cesko",
+    "osm_name": "Královéhradecký kraj",
+    "admin_level": 4,
+    "bbox": [15.103, 50.037, 16.587, 50.781],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["kralovehradecky-latest"], "parent": "cesko" }
+  },
+  "liberecky": {
+    "id": "czech_republic-liberecky",
+    "name": "Liberecký kraj",
+    "country": "cesko",
+    "osm_name": "Liberecký kraj",
+    "admin_level": 4,
+    "bbox": [14.342, 50.471, 15.634, 51.024],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["liberecky-latest"], "parent": "cesko" }
+  },
+  "moravskoslezsky": {
+    "id": "czech_republic-moravskoslezsky",
+    "name": "Moravskoslezský kraj",
+    "country": "cesko",
+    "osm_name": "Moravskoslezský kraj",
+    "admin_level": 4,
+    "bbox": [17.146, 49.392, 18.86, 50.329],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["moravskoslezsky-latest"], "parent": "cesko" }
+  },
+  "olomoucky": {
+    "id": "czech_republic-olomoucky",
+    "name": "Olomoucký kraj",
+    "country": "cesko",
+    "osm_name": "Olomoucký kraj",
+    "admin_level": 4,
+    "bbox": [16.711, 49.268, 17.919, 50.45],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["olomoucky-latest"], "parent": "cesko" }
+  },
+  "pardubicky": {
+    "id": "czech_republic-pardubicky",
+    "name": "Pardubický kraj",
+    "country": "cesko",
+    "osm_name": "Pardubický kraj",
+    "admin_level": 4,
+    "bbox": [15.362, 49.571, 16.868, 50.209],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["pardubicky-latest"], "parent": "cesko" }
+  },
+  "plzensky": {
+    "id": "czech_republic-plzensky",
+    "name": "Plzeňský kraj",
+    "country": "cesko",
+    "osm_name": "Plzeňský kraj",
+    "admin_level": 4,
+    "bbox": [12.4, 48.94, 13.841, 50.105],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["plzensky-latest"], "parent": "cesko" }
+  },
+  "praha": {
+    "id": "czech_republic-praha",
+    "name": "Praha",
+    "country": "cesko",
+    "osm_name": "Praha",
+    "admin_level": 4,
+    "bbox": [14.223, 49.941, 14.708, 50.178],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["praha-latest"], "parent": "cesko" }
+  },
+  "stredocesky": {
+    "id": "czech_republic-stredocesky",
+    "name": "Středočeský kraj",
+    "country": "cesko",
+    "osm_name": "Středočeský kraj",
+    "admin_level": 4,
+    "bbox": [13.395, 49.5, 15.536, 50.62],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["stredocesky-latest"], "parent": "cesko" }
+  },
+  "ustecky": {
+    "id": "czech_republic-ustecky",
+    "name": "Ústecký kraj",
+    "country": "cesko",
+    "osm_name": "Ústecký kraj",
+    "admin_level": 4,
+    "bbox": [12.939, 50.076, 14.654, 51.057],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["ustecky-latest"], "parent": "cesko" }
+  },
+  "vysocina": {
+    "id": "czech_republic-vysocina",
+    "name": "Kraj Vysočina",
+    "country": "cesko",
+    "osm_name": "Kraj Vysočina",
+    "admin_level": 4,
+    "bbox": [14.887, 48.937, 16.419, 49.862],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["vysocina-latest"], "parent": "cesko" }
+  },
+  "zlinsky": {
+    "id": "czech_republic-zlinsky",
+    "name": "Zlínský kraj",
+    "country": "cesko",
+    "osm_name": "Zlínský kraj",
+    "admin_level": 4,
+    "bbox": [17.109, 48.853, 18.417, 49.541],
+    "osmfr": { "dir": "europe/czech_republic", "slugs": ["zlinsky-latest"], "parent": "cesko" }
+  },
+  "rakusko": {
+    "id": "austria",
+    "name": "Rakúsko",
+    "country": "rakusko",
+    "osm_name": "Österreich",
+    "admin_level": 2,
+    "iso": "AT",
+    "routing_area": "rakusko",
+    "dem": false,
+    "bbox": [9.53, 46.371, 17.162, 49.022],
+    "osmfr": { "dir": "europe", "slugs": ["austria-latest"] },
+    "note": "Like `slovensko`: the whole country and the PARENT its regions are cut from. `dem: false` – no elevation model covers it yet, so `workers/plan/options.py` turns contours, rocks and hillshading off for it and its regions; the OSM layers are built as anywhere."
+  },
+  "burgenland": {
+    "id": "austria-burgenland",
+    "name": "Burgenland",
+    "country": "rakusko",
+    "osm_name": "Burgenland",
+    "admin_level": 4,
+    "bbox": [15.995, 46.83, 17.162, 48.12],
+    "osmfr": { "dir": "europe/austria", "slugs": ["burgenland-latest"], "parent": "rakusko" }
+  },
+  "karnten": {
+    "id": "austria-karnten",
+    "name": "Kärnten",
+    "country": "rakusko",
+    "osm_name": "Kärnten",
+    "admin_level": 4,
+    "bbox": [12.656, 46.371, 15.066, 47.132],
+    "osmfr": { "dir": "europe/austria", "slugs": ["karnten-latest"], "parent": "rakusko" }
+  },
+  "niederosterreich": {
+    "id": "austria-niederosterreich",
+    "name": "Niederösterreich",
+    "country": "rakusko",
+    "osm_name": "Niederösterreich",
+    "admin_level": 4,
+    "bbox": [14.452, 47.421, 17.07, 49.022],
+    "osmfr": { "dir": "europe/austria", "slugs": ["niederosterreich-latest"], "parent": "rakusko" }
+  },
+  "oberosterreich": {
+    "id": "austria-oberosterreich",
+    "name": "Oberösterreich",
+    "country": "rakusko",
+    "osm_name": "Oberösterreich",
+    "admin_level": 4,
+    "bbox": [12.748, 47.46, 14.993, 48.774],
+    "osmfr": { "dir": "europe/austria", "slugs": ["oberosterreich-latest"], "parent": "rakusko" }
+  },
+  "salzburg": {
+    "id": "austria-salzburg",
+    "name": "Salzburg",
+    "country": "rakusko",
+    "osm_name": "Salzburg",
+    "admin_level": 4,
+    "bbox": [12.075, 46.943, 13.997, 48.042],
+    "osmfr": { "dir": "europe/austria", "slugs": ["salzburg-latest"], "parent": "rakusko" }
+  },
+  "steiermark": {
+    "id": "austria-steiermark",
+    "name": "Steiermark",
+    "country": "rakusko",
+    "osm_name": "Steiermark",
+    "admin_level": 4,
+    "bbox": [13.562, 46.611, 16.173, 47.829],
+    "osmfr": { "dir": "europe/austria", "slugs": ["steiermark-latest"], "parent": "rakusko" }
+  },
+  "tirol": {
+    "id": "austria-tirol",
+    "name": "Tirol",
+    "country": "rakusko",
+    "osm_name": "Tirol",
+    "admin_level": 4,
+    "bbox": [10.097, 46.65, 12.967, 47.744],
+    "osmfr": { "dir": "europe/austria", "slugs": ["tirol-latest"], "parent": "rakusko" }
+  },
+  "vorarlberg": {
+    "id": "austria-vorarlberg",
+    "name": "Vorarlberg",
+    "country": "rakusko",
+    "osm_name": "Vorarlberg",
+    "admin_level": 4,
+    "bbox": [9.53, 46.84, 10.238, 47.597],
+    "osmfr": { "dir": "europe/austria", "slugs": ["vorarlberg-latest"], "parent": "rakusko" }
+  },
+  "wien": {
+    "id": "austria-wien",
+    "name": "Wien",
+    "country": "rakusko",
+    "osm_name": "Wien",
+    "admin_level": 4,
+    "bbox": [16.181, 48.117, 16.579, 48.324],
+    "osmfr": { "dir": "europe/austria", "slugs": ["wien-latest"], "parent": "rakusko" }
   }
 }

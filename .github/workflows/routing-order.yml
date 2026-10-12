@@ -28,6 +28,8 @@ on:
         options:
           - "slovensko"
           - "slovensko_susedia"
+          - "cesko"
+          - "rakusko"
 
 # Drive: the finished order goes here (cache). Sign-in for the whole workflow.
 env:
