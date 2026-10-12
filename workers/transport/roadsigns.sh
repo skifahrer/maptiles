@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sign nodes → `{region}-roadsigns.pmtiles`, the country's signs → sprite `{region}-roadsigns`.
+# Sign nodes → `{region}-roadsigns.pmtiles`, the images of those signs → sprite `{region}-roadsigns`.
 # Called by `build.sh` with its maxzoom and region cut; a failure leaves roads without signs.
 
 set -euo pipefail
@@ -37,17 +37,20 @@ java -Xmx2g -jar planetiler.jar generate-custom \
   --force
 workers/lib/clip-tiles.sh "$OUT"
 
-if [ -n "$COUNTRY" ]; then
-  # only this country's folders: the whole collection is hundreds of MB
+FOLDERS=$([ -n "$COUNTRY" ] && python3 workers/transport/sprite.py --country="$COUNTRY" \
+  --used=data/roadsigns-used.txt --folders || true)
+if [ -n "$FOLDERS" ]; then
+  # only the folders this region's signs name: the collection is hundreds of MB
   rm -rf data/traffic-signs
   git clone --quiet --depth 1 --filter=blob:none --no-checkout --branch "$SIGNS_REF" \
     "$SIGNS_REPO" data/traffic-signs
-  git -C data/traffic-signs sparse-checkout set --no-cone "/signs/*/*/${COUNTRY}/" \
-    "/signs/*/*/*.json" "/osm/${COUNTRY}.json"
+  while read -r sign; do
+    printf '/signs/%s/%s/\n/signs/%s/%s.json\n' "$sign" "$COUNTRY" "$sign" "${sign#*/}"
+  done <<<"$FOLDERS" | git -C data/traffic-signs sparse-checkout set --no-cone --stdin
   git -C data/traffic-signs checkout --quiet
   python3 workers/transport/sprite.py --signs=data/traffic-signs --country="$COUNTRY" \
     --used=data/roadsigns-used.txt --out="_site/tiles/${REGION_KEY}-roadsigns"
 else
-  echo "::warning::${REGION_KEY} has no country – signs are in the tiles, but with no sprite to draw them."
+  echo "::warning::${REGION_KEY}: no sign here is in workers/data/road-signs.json for “${COUNTRY}” – signs are in the tiles, with no images."
 fi
 ls -lh _site/tiles/"${REGION_KEY}"-roadsigns*

@@ -125,6 +125,19 @@ ROAD_SIGNS_SUFFIXES = ("-roadsigns.pmtiles", "-roadsigns.json", "-roadsigns.png"
                        "-roadsigns@2x.json", "-roadsigns@2x.png")
 
 
+# base map parts a region may go without
+OPTIONAL_PARTS = ("roadsigns",)
+
+
+def missing(man, p):
+    """Manifest keys of package `p` the region lacks, its optional ones left out."""
+    reg = catalog.region_entry(man)
+    if not reg:
+        return []
+    return [k for k in p.get("manifest") or ()
+            if not reg.get(k) and k not in (p.get("optional") or ())]
+
+
 def base_parts(site, man):
     """Parts of the base map: `[(key, description, files)]`, absent ones too (as `0`)."""
     return [

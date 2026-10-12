@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The signs OSM supports in a country (traffic-signs `osm/<cc>.json`) → sprite `{region}-roadsigns`."""
+"""A region's signs, mapped by `road-signs.json` to traffic-signs images → sprite `{region}-roadsigns`."""
 import argparse
 import io
 import json
@@ -9,39 +9,36 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
-from signs import sign_name  # noqa: E402
+from signs import mapped_name  # noqa: E402
 
+MAPPING = os.path.join(os.path.dirname(_HERE), "data", "road-signs.json")
 # side of the box a sign fits in, at 1x
 SIDE = 24
 ROW = 32
 
 
-def supported(root, country):
-    """`{sprite name: (sign path, uses)}` for what `osm/<cc>.json` says OSM has and draws."""
-    path = os.path.join(root, "osm", f"{country}.json")
-    if not os.path.isfile(path):
-        return {}
-    with open(path, encoding="utf-8") as f:
-        osm = json.load(f)
+def supported(country, mapping=MAPPING):
+    """`{sprite name: sign folder}` for the country, from `road-signs.json`."""
+    with open(mapping, encoding="utf-8") as f:
+        by_key = json.load(f).get(country) or {}
     out = {}
-    for value, info in (osm.get("signs") or {}).items():
-        name = sign_name(value, country)
-        if name and name not in out:
-            out[name] = (info["sign"], int(info.get("count") or 0))
-    for tag, by_figure in (osm.get("figures") or {}).items():
-        for figure, sign in by_figure.items():
-            out.setdefault(f"{country}.ts.{tag}-{figure}", (sign, 0))
-    for word, sign in (osm.get("implied") or {}).items():
-        out.setdefault(f"{country}.ts.{word}", (sign, 0))
+    for key, sign in sorted(by_key.items()):
+        name = mapped_name(key, country)
+        if name:
+            out.setdefault(name, sign)
     return out
 
 
-def entries(root, country, used=None):
-    """`{image file: {"names": [...], "sign": path, "uses": n}}`; with `used`, only those names."""
+def needed(country, used, mapping=MAPPING):
+    """`{sprite name: sign folder}` of the names the region uses that have a folder."""
+    known = supported(country, mapping)
+    return {n: known[n] for n in sorted(used) if n in known}
+
+
+def entries(root, country, used, mapping=MAPPING):
+    """`{image file: {"names": [...], "sign": folder, "uses": n}}`, `uses` the region's count."""
     out = {}
-    for name, (sign, uses) in sorted(supported(root, country).items()):
-        if used is not None and name not in used:
-            continue
+    for name, sign in needed(country, used, mapping).items():
         category, slug = sign.split("/")
         folder = os.path.join(root, "signs", category, slug)
         meta = os.path.join(folder, country, f"{slug}-{country}.json")
@@ -54,8 +51,15 @@ def entries(root, country, used=None):
         entry = out.setdefault(image, {"names": [], "sign": sign, "uses": 0,
                                        "label": labels(folder, slug)})
         entry["names"].append(name)
-        entry["uses"] += uses
+        entry["uses"] += used[name]
     return out
+
+
+def read_used(path):
+    """`{name: count}` from `signs.py --names`."""
+    with open(path, encoding="utf-8") as f:
+        rows = (line.rstrip("\n").split("\t") for line in f if line.strip())
+        return {r[0]: int(r[1]) if len(r) > 1 else 0 for r in rows}
 
 
 def labels(folder, slug):
@@ -117,16 +121,21 @@ def write(found, base, width=1024):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--signs", required=True, help="checkout of skifahrer/traffic-signs")
     ap.add_argument("--country", required=True)
-    ap.add_argument("--out", required=True, help="base name, without .json/.png")
-    ap.add_argument("--used", help="the region's sprite names, one per line (signs.py --names)")
+    ap.add_argument("--used", required=True, help="the region's names, `signs.py --names`")
+    ap.add_argument("--folders", action="store_true",
+                    help="print the collection folders to fetch, one per line, and stop")
+    ap.add_argument("--signs", help="checkout of skifahrer/traffic-signs")
+    ap.add_argument("--out", help="base name, without .json/.png")
     a = ap.parse_args()
-    used = None
-    if a.used:
-        with open(a.used, encoding="utf-8") as f:
-            used = {line.strip() for line in f if line.strip()}
-    found = entries(a.signs, a.country.lower(), used)
+    country = a.country.lower()
+    used = read_used(a.used)
+    if a.folders:
+        print("\n".join(sorted(set(needed(country, used).values()))))
+        return
+    if not (a.signs and a.out):
+        ap.error("--signs and --out build the sheet")
+    found = entries(a.signs, country, used)
     if not found:
         print(f"“{a.country}”: no sign this region uses has an image – no road sign sprite.")
         return

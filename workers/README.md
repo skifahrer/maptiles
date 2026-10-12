@@ -2122,16 +2122,17 @@ smerovanie, a to si ho parsuje samo.
 krajinu kraja (`sk.ts.stop`), `traffic_sign=maxspeed` číslo z `maxspeed`.
 Obrázky sú sprite `<kraj>-roadsigns.json/.png` (+`@2x`), ktorý
 [`sprite.py`](transport/sprite.py) kreslí zo zbierky
-[skifahrer/traffic-signs](https://github.com/skifahrer/traffic-signs) – **len
-značky, ktoré OSM podporuje**: tie, čo zbierkin súbor `osm/<cc>.json` páruje
-s obrázkom (hodnoty `traffic_sign`, ktoré v OSM naozaj sú, a tie, ktoré
-dokumentuje wiki; zbierka ho obnovuje každý týždeň). Meno obrázka počíta
-`signs.py` z hodnoty v OSM, takže dlaždice aj sprite hovoria rovnako. **Sprite kraja
-nesie len značky, ktoré dlaždice kraja menujú** (`signs.py --names` → `sprite.py
---used`) – Bratislavský kraj 18 obrázkov a ~65 kB namiesto celej krajiny. Aplikácia
-si ich skladá do jednej sady na krajinu, každú značku raz. Každá
+[skifahrer/traffic-signs](https://github.com/skifahrer/traffic-signs) – tá je
+len zdroj obrázkov po krajinách. **Ktorá hodnota z OSM je ktorý obrázok, hovorí
+[`data/road-signs.json`](data/road-signs.json)** (po krajinách: `SK:253[50]`,
+`stop`, `maxspeed=50`, `city_limit=end`, `highway=stop` → `regulatory/…`);
+čo v ňom nie je, sa nekreslí. **Sprite kraja nesie len značky, ktoré dlaždice
+kraja menujú** (`signs.py --names` → `sprite.py --folders`): `roadsigns.sh`
+stiahne zo zbierky len ich priečinky – Bratislavský kraj 18 obrázkov, 400 kB
+zo zbierky a ~65 kB spritu. Aplikácia si ich skladá do jednej sady na krajinu,
+každú značku raz. Každá
 položka spritu nesie aj `label` (meno značky po jazykoch), `category` a `uses`
-(počet výskytov v OSM) – z nich kreslí aplikácia legendu. `maxspeed`,
+(počet výskytov v kraji) – z nich kreslí aplikácia legendu. `maxspeed`,
 `maxweight`, `maxheight` a `maxwidth` berú číslo z rovnomenného tagu
 (`sk.ts.maxweight-7-5`), `city_limit=end` a `overtaking=yes` sú koncové značky
 (`…_end`). Značka bez obrázka sa nekreslí; hodnota bez vlastného obrázka
@@ -2139,7 +2140,10 @@ položka spritu nesie aj `label` (meno značky po jazykoch), `category` a `uses`
 mení `SIGNS_REF`.
 Archív aj sprite idú v balíku `roads` aj v základnej
 mape (časť `roadsigns`), stavia ich [`roadsigns.sh`](transport/roadsigns.sh)
-v jobe ciest; keď zlyhá, cesty idú bez značiek. Štýl ich kreslí ako
+v jobe ciest; keď zlyhá, cesty idú bez značiek. **Značky sú v balíku
+dobrovoľné** (`"optional"` v `packages.json`): kraj bez značky alebo bez
+obrázka ide bez `road_signs`/`road_sign_sprite` a publikovanie to nehlási ako
+chybu – chýbajúci povinný kľúč hlási varovaním. Štýl ich kreslí ako
 `road-sign` od z16, na cestnej mape od z15, na turistickej, lyžiarskej
 a historickej nie.
 

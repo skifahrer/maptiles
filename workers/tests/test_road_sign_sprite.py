@@ -24,6 +24,23 @@ def sign(root, category, folder, country, code, names=None):
         json.dump(names or {"en": folder}, f)
 
 
+class Mapping(unittest.TestCase):
+    def test_every_key_names_a_folder(self):
+        with open(sp.MAPPING, encoding="utf-8") as f:
+            mapping = json.load(f)
+        for country, by_key in mapping.items():
+            if country.startswith("_"):
+                continue
+            self.assertRegex(country, r"^[a-z]{2}$")
+            names = {}
+            for key, folder in by_key.items():
+                self.assertRegex(folder, r"^[a-z-]+/[a-z0-9-]+$", key)
+                name = sp.mapped_name(key, country)
+                self.assertTrue(name, f"{country}: {key}")
+                self.assertEqual(names.setdefault(name, folder), folder,
+                                 f"{country}: {name} points at two images")
+
+
 class Entries(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
@@ -31,41 +48,49 @@ class Entries(unittest.TestCase):
         sign(self.root, "regulatory", "stop", "sk", "202", {"en": "Stop", "sk": "Stoj"})
         sign(self.root, "regulatory", "give-way", "sk", "201")
         sign(self.root, "warning", "danger", "sk", "101")
-        os.makedirs(os.path.join(self.root, "osm"))
-        with open(os.path.join(self.root, "osm", "sk.json"), "w") as f:
-            json.dump({"signs": {"SK:P1": {"sign": "regulatory/give-way", "count": 9},
-                                 "SK:202": {"sign": "regulatory/stop", "count": 4},
-                                 "stop": {"sign": "regulatory/stop", "count": 100}},
-                       "figures": {"maxspeed": {"50": "regulatory/speed-limit-50"}},
-                       "implied": {"stop": "regulatory/stop"},
-                       "unmatched": {"SK:B1": 3}}, f)
+        self.mapping = os.path.join(self.root, "road-signs.json")
+        with open(self.mapping, "w") as f:
+            json.dump({"sk": {"SK:P1": "regulatory/give-way", "SK:202": "regulatory/stop",
+                              "stop": "regulatory/stop", "highway=stop": "regulatory/stop",
+                              "maxspeed=50": "regulatory/speed-limit-50",
+                              "SK:101": "warning/danger"}}, f)
+        self.used = {"sk.ts.p1": 9, "sk.ts.202": 4, "sk.ts.stop": 100,
+                     "sk.ts.maxspeed-50": 2, "sk.ts.nothing": 7}
 
-    def names(self, country):
-        return sorted(n for v in sp.entries(self.root, country).values() for n in v["names"])
+    def entries(self, used):
+        return sp.entries(self.root, "sk", used, self.mapping)
 
-    def test_only_what_osm_supports(self):
-        self.assertEqual(self.names("sk"), ["sk.ts.202", "sk.ts.maxspeed-50", "sk.ts.p1",
-                                            "sk.ts.stop"])
+    def test_only_the_folders_the_region_uses(self):
+        self.assertEqual(set(sp.needed("sk", self.used, self.mapping).values()),
+                         {"regulatory/give-way", "regulatory/stop", "regulatory/speed-limit-50"})
+        self.assertEqual(sp.needed("sk", {}, self.mapping), {})
 
-    def test_a_region_takes_only_the_signs_it_uses(self):
-        got = sorted(n for v in sp.entries(self.root, "sk", {"sk.ts.p1", "sk.ts.nothing"}).values()
-                     for n in v["names"])
-        self.assertEqual(got, ["sk.ts.p1"])
-        self.assertEqual(sp.entries(self.root, "sk", set()), {})
+    def test_a_country_with_no_mapping(self):
+        self.assertEqual(sp.needed("cz", {"cz.ts.p1": 1}, self.mapping), {})
 
-    def test_a_country_osm_has_not_been_read_for(self):
-        self.assertEqual(sp.entries(self.root, "cz"), {})
-
-    def test_uses_add_up_per_image(self):
-        stop = next(v for v in sp.entries(self.root, "sk").values() if v["sign"] == "regulatory/stop")
+    def test_uses_are_the_regions_own_count(self):
+        stop = next(v for v in self.entries(self.used).values() if v["sign"] == "regulatory/stop")
+        self.assertEqual(sorted(stop["names"]), ["sk.ts.202", "sk.ts.stop"])
         self.assertEqual(stop["uses"], 104)
         self.assertEqual(stop["label"], {"en": "Stop", "sk": "Stoj"})
+
+    def test_a_folder_missing_from_the_checkout_is_skipped(self):
+        self.assertEqual(self.entries({"sk.ts.101": 1, "sk.ts.p1": 1}).keys(),
+                         self.entries({"sk.ts.p1": 1}).keys() | self.entries({"sk.ts.101": 1}).keys())
+        os.remove(os.path.join(self.root, "signs/warning/danger/sk/danger-sk.svg"))
+        self.assertEqual(self.entries({"sk.ts.101": 1}), {})
+
+    def test_used_file_reads_counts(self):
+        path = os.path.join(self.root, "used.txt")
+        with open(path, "w") as f:
+            f.write("sk.ts.202\t4\nsk.ts.stop\t100\n")
+        self.assertEqual(sp.read_used(path), {"sk.ts.202": 4, "sk.ts.stop": 100})
 
     @needs("PIL")
     @needs_cmd("rsvg-convert")
     def test_sheet_names_point_at_one_cut_with_the_legend(self):
         base = os.path.join(self.root, "r-roadsigns")
-        sp.write(sp.entries(self.root, "sk"), base)
+        sp.write(self.entries(self.used), base)
         with open(base + "@2x.json") as f:
             index = json.load(f)
         stop = index["sk.ts.stop"]
@@ -73,7 +98,7 @@ class Entries(unittest.TestCase):
         self.assertEqual((stop["height"], stop["pixelRatio"]), (2 * sp.SIDE, 2))
         self.assertEqual((stop["category"], stop["uses"], stop["label"]["sk"]),
                          ("regulatory", 104, "Stoj"))
-        self.assertNotIn("sk.ts.101", index, "OSM has no SK:101, so no image")
+        self.assertNotIn("sk.ts.101", index, "the region has no SK:101, so no image")
 
 
 if __name__ == "__main__":

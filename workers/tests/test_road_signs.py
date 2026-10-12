@@ -71,5 +71,22 @@ class NodeTags(unittest.TestCase):
         self.assertNotIn("source", tags)
 
 
+
+class MappedName(unittest.TestCase):
+    """A key of `road-signs.json` names the image the tiles ask for."""
+
+    def tiles(self, **tags):
+        return s.node_tags(tags, "sk")["sign"]
+
+    def test_every_form_matches_the_tiles(self):
+        cases = {"SK:253[50]": self.tiles(traffic_sign="SK:253[50]"),
+                 "stop": self.tiles(traffic_sign="stop"),
+                 "maxspeed=50": self.tiles(traffic_sign="maxspeed", maxspeed="50"),
+                 "maxweight=7.5": self.tiles(traffic_sign="maxweight", maxweight="7.5"),
+                 "city_limit=end": self.tiles(traffic_sign="city_limit", city_limit="end"),
+                 "highway=give_way": self.tiles(highway="give_way")}
+        for key, name in cases.items():
+            self.assertEqual(s.mapped_name(key, "sk"), name, key)
+
 if __name__ == "__main__":
     unittest.main()

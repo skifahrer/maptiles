@@ -2,6 +2,7 @@
 """Sign nodes → `sign`, the sprite name of the first sign (`sk.ts.253-50`), for `roadsigns.yml`."""
 import argparse
 import re
+from collections import Counter
 from pathlib import Path
 
 # nodes that are a sign without `traffic_sign`
@@ -60,6 +61,16 @@ def figured(name, tags):
     return name
 
 
+def mapped_name(key, country):
+    """Sprite name of a `road-signs.json` key: a value, `maxspeed=50` or `highway=stop`."""
+    tag, eq, value = key.partition("=")
+    if not eq:
+        return sign_name(key, country)
+    if tag == "highway":
+        return f"{country}.ts.{code(value)}"
+    return figured(f"{country}.ts.{tag}", {tag: value})
+
+
 def direction(tags):
     """Which way the sign faces: its own tag, else the key it came in."""
     for k in ("traffic_sign:direction", "direction"):
@@ -99,13 +110,13 @@ def main():
     ap.add_argument("--pbf", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--country", default="")
-    ap.add_argument("--names", help="file for the sprite names the region uses, one per line")
+    ap.add_argument("--names", help="file for the sprite names the region uses, `name<TAB>count`")
     a = ap.parse_args()
 
     Path(a.out).unlink(missing_ok=True)
     writer = osmium.SimpleWriter(a.out)
     kept = named = 0
-    used = set()
+    used = Counter()
     try:
         for n in osmium.FileProcessor(a.pbf, osmium.osm.NODE):
             tags = node_tags(dict(n.tags), a.country.lower())
@@ -114,12 +125,12 @@ def main():
             kept += 1
             named += "sign" in tags
             if "sign" in tags:
-                used.add(tags["sign"])
+                used[tags["sign"]] += 1
             writer.add_node(n.replace(tags=tags))
     finally:
         writer.close()
     if a.names:
-        Path(a.names).write_text("".join(f"{n}\n" for n in sorted(used)), encoding="utf-8")
+        Path(a.names).write_text("".join(f"{n}\t{used[n]}\n" for n in sorted(used)), encoding="utf-8")
     print(f"Signs: {kept} nodes, {named} with a sprite name ({a.country or 'no country'})")
 
 

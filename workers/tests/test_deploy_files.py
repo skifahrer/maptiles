@@ -78,6 +78,15 @@ class Site(unittest.TestCase):
         self.assertIn("tiles/r-roadsigns.pmtiles", base)
         self.assertNotIn("tiles/r-transport.pmtiles", base)
 
+    def test_a_region_without_signs_lacks_nothing(self):
+        roads = packages.package("roads")
+        man = {"default_region": "r", "regions": {"r": {"transport": "tiles/r-transport.pmtiles",
+                                                        "routing": "tiles/r-routing.pmtiles"}}}
+        self.assertEqual(files.missing(man, roads), [])
+        del man["regions"]["r"]["routing"]
+        self.assertEqual(files.missing(man, roads), ["routing"])
+        self.assertEqual(files.missing({}, roads), [], "no manifest, nothing to tell")
+
     def test_viewer_and_glyphs_stay_out(self):
         with redirect_stdout(io.StringIO()):
             out, reasons = files.outside_packages(self.site, self.man)
