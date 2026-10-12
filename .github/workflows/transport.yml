@@ -128,7 +128,7 @@ jobs:
       # schema tests before the build (`examples`) – the one thing that tells the
       # truth about a schema without a whole run. They go first.
       - name: Transport schema tests
-        run: java -jar planetiler.jar verify workers/transport/transport.yml
+        run: workers/lib/verify-schema.sh workers/transport/transport.yml
 
       # described in `workers/transport/build.sh`
       - name: Transport network from OSM → PMTiles

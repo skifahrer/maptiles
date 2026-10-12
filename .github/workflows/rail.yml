@@ -132,7 +132,7 @@ jobs:
       # schema tests before the build (`examples`) – the one thing that tells the
       # truth about a schema without a whole run. They go first.
       - name: Railway schema tests
-        run: java -jar planetiler.jar verify workers/rail/rail.yml
+        run: workers/lib/verify-schema.sh workers/rail/rail.yml
 
       # described in `workers/rail/build.sh`
       - name: Railways and aerialways from OSM → PMTiles

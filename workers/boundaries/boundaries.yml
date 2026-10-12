@@ -122,6 +122,45 @@ layers:
       merge_line_strings:
         min_length: 0
 
+  # one point per area: a polygon label repeats in every tile the area touches
+  - id: boundary_label
+    features:
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 2
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["2"]
+        attributes: *area_attrs
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 4
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["3", "4"]
+        attributes: *area_attrs
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 6
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["5", "6", "7"]
+        attributes: *area_attrs
+      # the settlement's own label already says it (`labels.py`)
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 8
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["8"]
+        exclude_when:
+          named_by_place: "yes"
+        attributes: *area_attrs
+
   # 3. where the name is drawn – the settlement point, better than a polygon centroid
   - id: place
     features:
@@ -171,7 +210,7 @@ layers:
 
 # TESTS: `java -jar planetiler.jar verify workers/boundaries/boundaries.yml`
 examples:
-  - name: A state border is an area and a line, from z2, with a name
+  - name: A state border is an area from z2, with a name and its label point
     input:
       source: osm
       geometry: polygon
@@ -188,11 +227,12 @@ examples:
           name: Slovensko
           name_en: Slovakia
           admin_level: 2
-      - layer: boundary_line
-        geometry: line
+      - layer: boundary_label
+        geometry: point
         min_zoom: 2
         tags:
           name: Slovensko
+          name_en: Slovakia
           admin_level: 2
 
   - name: A region is from z4
@@ -210,8 +250,8 @@ examples:
         tags:
           name: Prešovský kraj
           admin_level: 4
-      - layer: boundary_line
-        geometry: line
+      - layer: boundary_label
+        geometry: point
         min_zoom: 4
         tags:
           name: Prešovský kraj
@@ -232,6 +272,39 @@ examples:
         tags:
           name: Ždiar
           admin_level: 8
+      - layer: boundary_label
+        geometry: point
+        min_zoom: 8
+        tags:
+          name: Ždiar
+          admin_level: 8
+
+  - name: A municipality its settlement already names gets no second label
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        boundary: administrative
+        admin_level: "8"
+        name: Ždiar
+        named_by_place: "yes"
+    output:
+      - layer: boundary
+        geometry: polygon
+        min_zoom: 8
+        tags:
+          name: Ždiar
+          admin_level: 8
+
+  - name: A border way is the line the map draws
+    input:
+      source: osm
+      geometry: line
+      tags:
+        boundary: administrative
+        admin_level: "8"
+        name: Ždiar
+    output:
       - layer: boundary_line
         geometry: line
         min_zoom: 8

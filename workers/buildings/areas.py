@@ -2,9 +2,14 @@
 """Writes the area in m² onto buildings and places as `area_m2`; a place mapped twice keeps its point."""
 import argparse
 import math
+import os
+import sys
 from pathlib import Path
 
 import osmium
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
+from place_twins import bbox, twins  # noqa: E402
 
 R = 6371008.8
 
@@ -51,26 +56,16 @@ class Areas(osmium.SimpleHandler):
         key = ("w" if a.from_way() else "r", a.orig_id())
         (self.ways if a.from_way() else self.relations)[key[1]] = round(m2)
         if "place" in t and ring:
-            box = (min(x for x, _ in ring), min(y for _, y in ring),
-                   max(x for x, _ in ring), max(y for _, y in ring))
-            self.place_areas.append((key, t.get("name"), t.get("wikidata"), box, round(m2)))
+            self.place_areas.append((key, t.get("name"), t.get("wikidata"), bbox(ring)))
 
     def twins(self):
         """Place areas that have a place point, and the area each point takes over."""
-        by_wikidata = {w: i for i, _, w, _, _ in self.place_nodes if w}
-        by_name = {}
-        for i, name, _, x, y in self.place_nodes:
-            by_name.setdefault(name, []).append((i, x, y))
-        dropped, node_m2 = set(), {}
-        for key, name, wikidata, (w, s, e, n), m2 in self.place_areas:
-            node = by_wikidata.get(wikidata) if wikidata else None
-            if node is None and name:
-                node = next((i for i, x, y in by_name.get(name, ())
-                             if w <= x <= e and s <= y <= n), None)
-            if node is not None:
-                dropped.add(key)
-                node_m2[node] = max(node_m2.get(node, 0), m2)
-        return dropped, node_m2
+        pairs = twins(self.place_nodes, self.place_areas)
+        node_m2 = {}
+        for (kind, i), node in pairs.items():
+            m2 = (self.ways if kind == "w" else self.relations)[i]
+            node_m2[node] = max(node_m2.get(node, 0), m2)
+        return set(pairs), node_m2
 
 
 class Write(osmium.SimpleHandler):

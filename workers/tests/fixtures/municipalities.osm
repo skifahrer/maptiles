@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="hand">
+  <node id="1" version="1" lat="48.2400" lon="17.1900"/>
+  <node id="2" version="1" lat="48.2400" lon="17.2300"/>
+  <node id="3" version="1" lat="48.2800" lon="17.2300"/>
+  <node id="4" version="1" lat="48.2800" lon="17.1900"/>
+  <node id="5" version="1" lat="48.2400" lon="17.3000"/>
+  <node id="6" version="1" lat="48.2400" lon="17.3400"/>
+  <node id="7" version="1" lat="48.2800" lon="17.3400"/>
+  <node id="8" version="1" lat="48.2800" lon="17.3000"/>
+  <node id="9" version="1" lat="48.2400" lon="17.4000"/>
+  <node id="10" version="1" lat="48.2400" lon="17.4400"/>
+  <node id="11" version="1" lat="48.2800" lon="17.4400"/>
+  <node id="12" version="1" lat="48.2800" lon="17.4000"/>
+  <node id="13" version="1" lat="48.1000" lon="17.1000"/>
+  <node id="14" version="1" lat="48.1000" lon="17.6000"/>
+  <node id="15" version="1" lat="48.6000" lon="17.6000"/>
+  <node id="16" version="1" lat="48.6000" lon="17.1000"/>
+  <node id="17" version="1" lat="48.2600" lon="17.2100"><tag k="place" v="town"/><tag k="name" v="Svätý Jur"/></node>
+  <node id="18" version="1" lat="48.5000" lon="17.5000"><tag k="place" v="suburb"/><tag k="name" v="Starý Lamač"/><tag k="wikidata" v="Q787303"/></node>
+  <node id="19" version="1" lat="48.8000" lon="17.8000"><tag k="place" v="village"/><tag k="name" v="Záhorie"/></node>
+  <node id="20" version="1" lat="48.2500" lon="17.2000"><tag k="place" v="village"/><tag k="name" v="Okres Pezinok"/></node>
+  <way id="201" version="1"><nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="4"/><nd ref="1"/><tag k="boundary" v="administrative"/></way>
+  <way id="202" version="1"><nd ref="5"/><nd ref="6"/><nd ref="7"/><nd ref="8"/><nd ref="5"/><tag k="boundary" v="administrative"/></way>
+  <way id="203" version="1"><nd ref="9"/><nd ref="10"/><nd ref="11"/><nd ref="12"/><nd ref="9"/><tag k="boundary" v="administrative"/></way>
+  <way id="204" version="1"><nd ref="13"/><nd ref="14"/><nd ref="15"/><nd ref="16"/><nd ref="13"/><tag k="boundary" v="administrative"/></way>
+  <relation id="301" version="1"><member type="way" ref="201" role="outer"/><tag k="type" v="boundary"/><tag k="boundary" v="administrative"/><tag k="admin_level" v="8"/><tag k="name" v="Svätý Jur"/></relation>
+  <relation id="302" version="1"><member type="way" ref="202" role="outer"/><tag k="type" v="boundary"/><tag k="boundary" v="administrative"/><tag k="admin_level" v="8"/><tag k="name" v="Lamač"/><tag k="wikidata" v="Q787303"/></relation>
+  <relation id="303" version="1"><member type="way" ref="203" role="outer"/><tag k="type" v="boundary"/><tag k="boundary" v="administrative"/><tag k="admin_level" v="8"/><tag k="name" v="Záhorie"/></relation>
+  <relation id="304" version="1"><member type="way" ref="204" role="outer"/><tag k="type" v="boundary"/><tag k="boundary" v="administrative"/><tag k="admin_level" v="6"/><tag k="name" v="Okres Pezinok"/></relation>
+</osm>

@@ -5127,7 +5127,7 @@ export function buildStyle({
           id,
           type: "symbol",
           source: "boundaries",
-          "source-layer": "boundary",
+          "source-layer": "boundary_label",
           minzoom: mz,
           filter: ["all",
             ["==", num("admin_level", 0), level],
