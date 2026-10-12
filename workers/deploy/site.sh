@@ -82,8 +82,7 @@ jq -n \
   --argjson buildings "${BUILDINGS_ENABLED:-false}" \
   --argjson bldmaxzoom "${BUILDINGS_MAXZOOM:-14}" \
   --argjson railsigns "$(find _site/tiles -maxdepth 1 -name "${REGION_KEY}-signs*" 2>/dev/null | sed 's|^_site/||' | sort | jq -R . | jq -s .)" \
-  --argjson roadsigns "$([ -f "_site/tiles/${REGION_KEY}-roadsigns.pmtiles" ] && echo true || echo false)" \
-  --argjson roadsignsprite "$(find _site/tiles -maxdepth 1 -name "${REGION_KEY}-roadsigns*" ! -name '*.pmtiles' 2>/dev/null | sed 's|^_site/||' | sort | jq -R . | jq -s .)" \
+  --argjson roadsignsprite "$(find _site/tiles -maxdepth 1 -name "${REGION_KEY}-roadsigns*" 2>/dev/null | sed 's|^_site/||' | sort | jq -R . | jq -s .)" \
   --argjson transport "$TRANSPORT_ENABLED" \
   --argjson trmaxzoom "$TRANSPORT_MAXZOOM" \
   --argjson paths "${PATHS_ENABLED:-false}" \
@@ -187,11 +186,7 @@ jq -n \
       } else {} end)
       # rail and road signs of the country – a sprite the app reads itself
       + (if $railsigns != [] then { rail_signs: $railsigns } else {} end)
-      # road signs and their sprite ride with the roads and in the base map
-      + (if $roadsigns then {
-        road_signs: ("tiles/" + $region + "-roadsigns.pmtiles"),
-        road_signs_maxzoom: $trmaxzoom
-      } else {} end)
+      # images of the `traffic_sign` layer in the roads
       + (if $roadsignsprite != [] then { road_sign_sprite: $roadsignsprite } else {} end)
       # the manifest lists what the map holds (files.py packs by it), not what the style asks
       + (if $transport then {

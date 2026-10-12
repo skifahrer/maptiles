@@ -1,6 +1,0 @@
-# PBF prefilter for `roadsigns.yml` (`osmium tags-filter --expressions`); `signs.py` narrows it.
-
-n/traffic_sign
-n/traffic_sign:forward
-n/traffic_sign:backward
-n/highway=stop,give_way,traffic_signals,speed_camera

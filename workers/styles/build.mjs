@@ -281,10 +281,7 @@ for (const type of MAP_TYPES) {
         ? `pmtiles://${baseUrl}/tiles/${region}-transport.pmtiles`
         : null,
       transportMaxzoom,
-      roadSignsUrl: hasRoadSigns
-        ? `pmtiles://${baseUrl}/tiles/${region}-roadsigns.pmtiles`
-        : null,
-      roadSignsMaxzoom: transportMaxzoom,
+      roadSigns: hasRoadSigns,
       boundariesUrl: hasBoundaries
         ? `pmtiles://${baseUrl}/tiles/${region}-boundaries.pmtiles`
         : null,

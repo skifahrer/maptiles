@@ -41,6 +41,17 @@ fi
 # the map's own region cut
 mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
 
+# sign nodes named for the `traffic_sign` layer, their images packed; without them roads still draw
+T_RS=$(date +%s)
+workers/transport/roadsigns.sh || {
+  echo "::warning::Road signs weren't made – roads go without them."
+  rm -f _site/tiles/"${REGION_KEY}"-roadsigns*
+}
+ROADSIGNS=false
+compgen -G "_site/tiles/${REGION_KEY}-roadsigns*.json" >/dev/null && ROADSIGNS=true
+printf '%s\t%s\t%s\t%s\n' "61.5" "Road signs and their images" "$(( $(date +%s) - T_RS ))" \
+  "$ROADSIGNS" >> steps-out/transport.tsv
+
 T_PM=$(date +%s)
 OUT="_site/tiles/${REGION_KEY}-transport.pmtiles"
 PATHS_OUT="_site/tiles/${REGION_KEY}-paths.pmtiles"
@@ -56,17 +67,6 @@ for pair in "transport:$OUT" "paths:$PATHS_OUT"; do
   # the region ends in the tiles, not in the style
   workers/lib/clip-tiles.sh "${pair#*:}"
 done
-
-# signs ride with the roads and in the base map; without them both still draw
-T_RS=$(date +%s)
-workers/transport/roadsigns.sh "$TZ_" "${CLIP[@]}" || {
-  echo "::warning::Road signs weren't made – roads go without them."
-  rm -f _site/tiles/"${REGION_KEY}"-roadsigns*
-}
-ROADSIGNS=false
-[ -f "_site/tiles/${REGION_KEY}-roadsigns.pmtiles" ] && ROADSIGNS=true
-printf '%s\t%s\t%s\t%s\n' "62.5" "Road signs → PMTiles and sprite" "$(( $(date +%s) - T_RS ))" \
-  "$ROADSIGNS" >> steps-out/transport.tsv
 
 MB=$(( $(stat -c%s "$OUT") / 1048576 ))
 PATHS_MB=$(( $(stat -c%s "$PATHS_OUT") / 1048576 ))

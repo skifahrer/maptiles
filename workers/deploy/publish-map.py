@@ -185,8 +185,7 @@ def main():
         log(f"The base map carries part `{key}` – {description}: "
             + (f"{len(fs)} files, "
                f"{folder.human(sum(os.path.getsize(f) for f in fs))}"
-               if fs else "none in this region" if key in files.OPTIONAL_PARTS
-               else "THIS BUILD DIDN'T MAKE IT, the map won't have it"))
+               if fs else "THIS BUILD DIDN'T MAKE IT, the map won't have it"))
     for p, fs in own_packages:
         for k in files.missing(man, p) if fs else ():
             log(f"::warning::Package `{p['key']}` goes without `{k}` – the manifest "

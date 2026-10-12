@@ -59,7 +59,7 @@ on:
         description: "Were the paths made? (package `paths`, same maxzoom as roads)"
         value: ${{ jobs.transport.outputs.paths_enabled }}
       roadsigns_enabled:
-        description: "Were the road signs made? (in `roads` and the base map, same maxzoom)"
+        description: "Have the road signs images? (layer `traffic_sign` of the roads)"
         value: ${{ jobs.transport.outputs.roadsigns_enabled }}
     # `workflow_call` doesn't inherit secrets; without them the Drive cache can't
     # open and Planetiler (93 MB) is downloaded on every run.
@@ -139,7 +139,6 @@ jobs:
         run: |
           workers/lib/verify-schema.sh workers/transport/transport.yml
           workers/lib/verify-schema.sh workers/transport/paths.yml
-          workers/lib/verify-schema.sh workers/transport/roadsigns.yml
 
       # described in `workers/transport/build.sh`
       - name: Roads and paths from OSM → PMTiles

@@ -66,7 +66,7 @@ const ALL_TRAILS = /^trail-/;
  * a je ich toľko, koľko trás, takže by z mapy spravili šum.
  */
 const TRAIL_MARKS = /^trail-.*-mark$/;
-/** Traffic signs: the road and the base map's. */
+/** Traffic signs, the roads' `traffic_sign` layer. */
 const ROAD_SIGNS = ["road-sign"];
 /** Tematické vrstvy – každá patrí len niektorým mapám. */
 const TOPIC_LAYERS = ["poi-historic", "poi-mining", "poi-ski", "poi-road"];

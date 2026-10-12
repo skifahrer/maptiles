@@ -66,14 +66,13 @@ function site() {
     }
   }
   // the signs with a one-sign sheet, so the viewer's own sign images are watched too
-  if (region.transport && existsSync(join(tiles, `${KEY}-roadsigns.pmtiles`))) {
+  if (region.transport) {
     const side = 48;
     writeFileSync(join(tiles, `${KEY}-roadsigns@2x.png`),
       encodePng({ width: side, height: side, data: Buffer.alloc(side * side * 4, 255) }));
     writeFileSync(join(tiles, `${KEY}-roadsigns@2x.json`), JSON.stringify(
       { "sk.ts.253-50": { x: 0, y: 0, width: side, height: side, pixelRatio: 2 } }));
-    Object.assign(region, { road_signs: `tiles/${KEY}-roadsigns.pmtiles`, road_signs_maxzoom: 14,
-      road_sign_sprite: [`tiles/${KEY}-roadsigns@2x.json`, `tiles/${KEY}-roadsigns@2x.png`] });
+    Object.assign(region, { road_sign_sprite: [`tiles/${KEY}-roadsigns@2x.json`, `tiles/${KEY}-roadsigns@2x.png`] });
   }
   const sprites = readdirSync(join(out, "sprites")).filter((f) => /^[^@]+\.json$/.test(f));
   writeFileSync(join(tiles, "manifest.json"), JSON.stringify({
@@ -212,7 +211,7 @@ async function main() {
   await report(dev.p, dev.console_, "developer mode");
 
   // a road sign up close is drawn from the region's sheet, not missed
-  if (await p.evaluate(() => !!window.__t.maps.at(-1).getSource("roadsigns"))) {
+  if (await p.evaluate(() => !!window.__t.maps.at(-1).getLayer("road-sign"))) {
     const drawn = await p.evaluate(async (ll) => {
       const map = window.__t.maps.at(-1);
       window.__t.idle = false;

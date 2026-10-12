@@ -14,3 +14,9 @@ w/aerialway
 # addresses: points and buildings with a house number
 nwr/addr:housenumber
 nwr/addr:conscriptionnumber
+
+# traffic signs; `signs.py` names their images in place
+n/traffic_sign
+n/traffic_sign:forward
+n/traffic_sign:backward
+n/highway=stop,give_way,traffic_signals,speed_camera

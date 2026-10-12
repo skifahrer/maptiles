@@ -12,7 +12,7 @@ const OWN = {
   featuresUrl: "https://x/features.pmtiles",
   pointsUrl: "https://x/points.pmtiles",
   transportUrl: "https://x/transport.pmtiles",
-  roadSignsUrl: "https://x/roadsigns.pmtiles"
+  roadSigns: true
 };
 
 for (const theme of Object.keys(THEMES)) {

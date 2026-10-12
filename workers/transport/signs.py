@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sign nodes → `sign`, the sprite name of the first sign (`sk.ts.253-50`), for `roadsigns.yml`."""
+"""Sign nodes get `sign`, the sprite name of the first sign (`sk.ts.253-50`), for `transport.yml`."""
 import argparse
 import json
 import os
@@ -144,8 +144,8 @@ def main():
     import osmium
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pbf", required=True)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--pbf", required=True, help="the roads' prefiltered PBF")
+    ap.add_argument("--out", required=True, help="the same PBF, sign nodes named")
     ap.add_argument("--country", default="")
     ap.add_argument("--names", help="file for the sprite names the region uses, `name<TAB>count`")
     ap.add_argument("--mapping", default=MAPPING)
@@ -154,23 +154,27 @@ def main():
 
     Path(a.out).unlink(missing_ok=True)
     writer = osmium.SimpleWriter(a.out)
-    kept = named = 0
+    kept = 0
     used = Counter()
     try:
-        for n in osmium.FileProcessor(a.pbf, osmium.osm.NODE):
-            tags = node_tags(dict(n.tags), a.country.lower(), by_country)
-            if tags is None:
-                continue
-            kept += 1
-            named += "sign" in tags
-            if "sign" in tags:
-                used[tags["sign"]] += 1
-            writer.add_node(n.replace(tags=tags))
+        for o in osmium.FileProcessor(a.pbf):
+            if o.is_node():
+                tags = node_tags(dict(o.tags), a.country.lower(), by_country)
+                if tags is not None:
+                    kept += 1
+                    if "sign" in tags:
+                        used[tags["sign"]] += 1
+                    o = o.replace(tags={**dict(o.tags), **tags})
+                writer.add_node(o)
+            elif o.is_way():
+                writer.add_way(o)
+            elif o.is_relation():
+                writer.add_relation(o)
     finally:
         writer.close()
     if a.names:
         Path(a.names).write_text("".join(f"{n}\t{used[n]}\n" for n in sorted(used)), encoding="utf-8")
-    print(f"Signs: {kept} nodes, {named} with a sprite name ({a.country or 'no country'})")
+    print(f"Signs: {kept} nodes, {sum(used.values())} with a sprite name ({a.country or 'no country'})")
 
 
 if __name__ == "__main__":

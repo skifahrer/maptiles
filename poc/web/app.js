@@ -247,9 +247,8 @@ function styleFor(manifest) {
         ? `pmtiles://${baseUrl}/${region.transport}`
         : null,
     transportMaxzoom: region.transport_maxzoom || 14,
-    // signs are the base map's too, so the roads switch doesn't hide them
-    roadSignsUrl: region.road_signs ? `pmtiles://${baseUrl}/${region.road_signs}` : null,
-    roadSignsMaxzoom: region.road_signs_maxzoom || 14,
+    // the roads' `traffic_sign` layer, drawn when the region has its images
+    roadSigns: !!region.road_sign_sprite,
     // NÁZVY ÚZEMÍ (balík `hranice`) a NÁZVY VÔD (balík `vodstvo`). Obe vrstvy
     // existujú kvôli menu: `boundary` OpenMapTiles je čiara bez mena územia
     // a meno vody leží mimo jej geometrie.
