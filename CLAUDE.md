@@ -9,9 +9,9 @@ Details: `workers/README.md`.
 ## Tickets: book the number with a draft PR
 
 A ticket number is a `skifahrer/rikimaps` PR number. Before starting on a ticket, book one by
-opening a draft PR in rikimaps (an empty `chore: book ticket` commit is enough) and use its
-number in this repo's commits and PR title. Never guess the next number: two sessions end up
-with the same one.
+opening a draft PR in rikimaps (an empty `chore: book ticket` commit is enough), titled from
+the start with a sentence on the ticket or the work, and use its number in this repo's commits
+and PR title. Never guess the next number: two sessions end up with the same one.
 
 A draft PR you opened is yours to finish: once every commit the task needs is pushed, mark it
 ready for review and rewrite its title and description to say what it now does.
