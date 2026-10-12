@@ -6,6 +6,13 @@ Vector map pipeline for Slovakia (OSM ─► PMTiles). `workers/` = pipeline ste
 
 Details: `workers/README.md`.
 
+## Tickets: book the number with a draft PR
+
+A ticket number is a `skifahrer/rikimaps` PR number. Before starting on a ticket, book one by
+opening a draft PR in rikimaps (an empty `chore: book ticket` commit is enough) and use its
+number in this repo's commits and PR title. Never guess the next number: two sessions end up
+with the same one.
+
 ## Pull requests: merge only on green
 
 **Don't merge a PR until its checks are green and the pipeline really ran.**
