@@ -159,6 +159,35 @@ class Buildings(unittest.TestCase):
 
 
 @needs("osmium")
+class BoundaryLabels(unittest.TestCase):
+    def test_a_municipality_its_settlement_names_is_marked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "m.osm.pbf")
+            r = subprocess.run([sys.executable, os.path.join(WORKERS, "boundaries/labels.py"),
+                                "--pbf", os.path.join(FIXTURES, "municipalities.osm"), "--out", out],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            tags = read(out)
+        self.assertEqual(tags[("r", 301)].get("named_by_place"), "yes", "same name, point inside")
+        self.assertEqual(tags[("r", 302)].get("named_by_place"), "yes", "same wikidata")
+        self.assertNotIn("named_by_place", tags[("r", 303)], "a namesake elsewhere")
+        self.assertNotIn("named_by_place", tags[("r", 304)], "only municipalities")
+        self.assertEqual(tags[("r", 301)]["name"], "Svätý Jur")
+
+
+class PlaceTwins(unittest.TestCase):
+    def test_twins(self):
+        t = worker("lib/place_twins.py")
+        points = [(1, "A", "Q1", 17.0, 48.0), (2, "B", None, 17.5, 48.5), (3, "C", None, 30.0, 10.0)]
+        areas = [("a", "A-district", "Q1", (0, 0, 1, 1)),
+                 ("b", "B", None, (17.4, 48.4, 17.6, 48.6)),
+                 ("c", "C", None, (17.4, 48.4, 17.6, 48.6)),
+                 ("d", None, None, (17.4, 48.4, 17.6, 48.6))]
+        self.assertEqual(t.twins(points, areas), {"a": 1, "b": 2})
+        self.assertEqual(t.bbox([(1, 5), (3, 2), (2, 9)]), (1, 2, 3, 9))
+
+
+@needs("osmium")
 class Trails(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
