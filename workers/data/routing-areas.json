@@ -69,6 +69,32 @@
         "the package would still be called `…_susedia` and a route in it would end at",
         "the border without explanation."
       ]
+    },
+    "cesko": {
+      "name": "Česko",
+      "region_key": "navigacia_cesko",
+      "pbf": [
+        "europe/czech_republic"
+      ],
+      "countries": [
+        "CZ"
+      ],
+      "note": [
+        "The node order the Czech regions share, as `slovensko` for Slovakia."
+      ]
+    },
+    "rakusko": {
+      "name": "Rakúsko",
+      "region_key": "navigacia_rakusko",
+      "pbf": [
+        "europe/austria"
+      ],
+      "countries": [
+        "AT"
+      ],
+      "note": [
+        "The node order the Austrian regions share, as `slovensko` for Slovakia."
+      ]
     }
   }
 }

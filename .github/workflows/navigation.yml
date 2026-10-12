@@ -24,6 +24,8 @@ on:
         options:
           - "slovensko"
           - "slovensko_susedia"
+          - "cesko"
+          - "rakusko"
       # the graph and the phone's library must match; the one used goes into `graph.json`
       valhalla_image:
         description: "Valhalla Docker image (a tag rather than latest)"

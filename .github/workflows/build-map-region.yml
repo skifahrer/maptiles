@@ -24,6 +24,31 @@ on:
           - banskobystricky
           - presovsky
           - kosicky
+          - cesko
+          - jihocesky
+          - jihomoravsky
+          - karlovarsky
+          - kralovehradecky
+          - liberecky
+          - moravskoslezsky
+          - olomoucky
+          - pardubicky
+          - plzensky
+          - praha
+          - stredocesky
+          - ustecky
+          - vysocina
+          - zlinsky
+          - rakusko
+          - burgenland
+          - karnten
+          - niederosterreich
+          - oberosterreich
+          - salzburg
+          - steiermark
+          - tirol
+          - vorarlberg
+          - wien
       # a whole region ~40 min, one range ~2; shrinking a run has one lever – `test`
       area:
         description: "Range on which contours and rocks are computed"
@@ -197,6 +222,7 @@ jobs:
           OPT_CONTOUR_SOURCE: ${{ inputs.contour_source }}
           OPT_ROCK_SOURCE: ${{ inputs.rock_source }}
           OPT_SHADING_SOURCE: ${{ inputs.shading_source }}
+          OPT_REGION: ${{ inputs.region }}
           OPT_TEST: ${{ inputs.test }}
           OPT_PUBLISH_PAGES: ${{ inputs.publish_pages }}
         run: workers/plan/settings.sh
@@ -408,6 +434,7 @@ jobs:
             --contour-source='${{ inputs.contour_source }}' \
             --rock-source='${{ inputs.rock_source }}' \
             --shading-source='${{ inputs.shading_source }}' \
+            --region='${{ inputs.region }}' \
             --test='${{ inputs.test }}' \
             --publish-pages='${{ inputs.publish_pages }}' \
             --out="$GITHUB_OUTPUT"

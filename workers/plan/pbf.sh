@@ -134,7 +134,7 @@ else
 
     need_osmium
     # a plan with an estimate before the expensive part – silence looks stuck
-    echo "The region is cut from its parent – $PNAME (~373 MB, then a cut of ~1 min)."
+    echo "The region is cut from its parent – $PNAME (0.4–1 GB, then a cut of minutes)."
     echo "  why: the region export lacks members of areas reaching into the next region (protected areas, large forests), and Planetiler drops them whole"
     OK=""
     for SLUG in $(slugs "$PARENT"); do
@@ -163,7 +163,7 @@ else
       echo "::error::Cutting the region from the parent extract failed. Try the run again; if it keeps failing, check that $POLY is a valid \`.poly\` (workers/plan/region-poly.py)."
       exit 1
     fi
-    # 373 MB gone at once: the test crop further on needs the space
+    # the parent gone at once: the test crop further on needs the space
     rm -f data/parent.osm.pbf
     echo "Cut in $(( $(date +%s) - TCUT )) s → $(du -h data/region.osm.pbf | cut -f1)"
   fi

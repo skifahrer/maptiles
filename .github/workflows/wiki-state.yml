@@ -17,6 +17,8 @@ on:
         type: choice
         options:
           - slovensko
+          - cesko
+          - rakusko
       rebuild:
         description: "Download articles anew (skips the Drive cache)"
         required: false

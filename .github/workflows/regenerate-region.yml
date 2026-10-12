@@ -32,6 +32,31 @@ on:
           - banskobystricky
           - presovsky
           - kosicky
+          - cesko
+          - jihocesky
+          - jihomoravsky
+          - karlovarsky
+          - kralovehradecky
+          - liberecky
+          - moravskoslezsky
+          - olomoucky
+          - pardubicky
+          - plzensky
+          - praha
+          - stredocesky
+          - ustecky
+          - vysocina
+          - zlinsky
+          - rakusko
+          - burgenland
+          - karnten
+          - niederosterreich
+          - oberosterreich
+          - salzburg
+          - steiermark
+          - tirol
+          - vorarlberg
+          - wien
       # the list is `workers/state/jobs.py` – the keys the country batch offers
       # (guarded by `workers/lint/regenerate.py`)
       what:
@@ -235,6 +260,7 @@ jobs:
             --contour-source='${{ inputs.contour_source }}' \
             --rock-source='${{ inputs.rock_source }}' \
             --shading-source='${{ inputs.shading_source }}' \
+            --region='${{ inputs.region }}' \
             --test='${{ inputs.test }}' \
             --publish-pages=false \
             --out="$GITHUB_OUTPUT" \

@@ -132,7 +132,11 @@ Mapa · úpravy štýlu          style-overrides.json z developer módu
                              ─► poc/web/style-overrides.json v repozitári
 ```
 
-- **Výber regiónu:** celé Slovensko alebo ktorýkoľvek z 8 krajov. Zdroj je
+- **Výber regiónu:** celé Slovensko alebo ktorýkoľvek z 8 krajov, celé Česko
+  alebo ktorýkoľvek zo 14 krajov, celé Rakúsko alebo ktorákoľvek z 9 spolkových
+  krajín. Česko a Rakúsko majú v registri `dem: false` – výškový model ich zatiaľ
+  nepokrýva, takže vrstevnice, skaly a tieňovanie sa pre ne vypnú samé
+  ([workers/plan/options.py](plan/options.py)), všetko z OSM sa urobí. Zdroj je
   [osm.fr](https://download.openstreetmap.fr/extracts/europe/slovakia/)
   (denne aktualizované); mapovanie, `osm_name`, `admin_level` a bboxy sú vo
   [workers/data/regions.json](data/regions.json). Každý región tam má `id`

@@ -18,6 +18,7 @@ python3 workers/plan/options.py \
   --contour-source="$OPT_CONTOUR_SOURCE" \
   --rock-source="$OPT_ROCK_SOURCE" \
   --shading-source="$OPT_SHADING_SOURCE" \
+  --region="${OPT_REGION:-}" \
   --test="$OPT_TEST" \
   --publish-pages="$OPT_PUBLISH_PAGES" \
   --summary="$OUT"

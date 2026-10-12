@@ -23,6 +23,8 @@ on:
         type: choice
         options:
           - slovensko
+          - cesko
+          - rakusko
       # the rest is the one-region form; `relay.sh` passes them whole every time
       contour_source:
         description: "Contours – which terrain model (none = don't make)"

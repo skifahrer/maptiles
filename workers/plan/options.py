@@ -4,7 +4,7 @@
     python3 workers/plan/options.py --options=\"rock_res=1\" \\
         --rebuild=rocks --contour-source=sonny --rock-source=dmr5 \\
         --shading-source=sonny --test=true --publish-pages=true \\
-        --out=$GITHUB_OUTPUT
+        --region=presovsky --out=$GITHUB_OUTPUT
 """
 import argparse
 import json
@@ -179,6 +179,15 @@ def dem_sources(path=None):
     return {k: v for k, v in raw.items() if not k.startswith("_")}
 
 
+def has_dem(region, path=None):
+    """False when `regions.json` says no elevation model covers the region or its country."""
+    with open(path or os.path.join(_DATA, "regions.json")) as f:
+        regions = json.load(f)
+    reg = regions.get(region) or {}
+    own = reg.get("dem", (regions.get(reg.get("country")) or {}).get("dem"))
+    return own is not False
+
+
 def pick_source(what, value, allowed):
     """Check one source choice; return it, or None on error."""
     value = (value or NONE).strip()
@@ -229,6 +238,10 @@ def main():
     ap.add_argument("--publish-pages", default="true",
                     help="GitHub Pages switch: false = the map is built and "
                          "checked, not deployed")
+    ap.add_argument("--region", default="",
+                    help="region key; one without an elevation model gets no DEM layers")
+    ap.add_argument("--regions", default="",
+                    help="path to regions.json (default beside the script)")
     ap.add_argument("--dem-sources", default="",
                     help="path to dem-sources.json (default beside the script)")
     ap.add_argument("--out", default="")
@@ -302,6 +315,14 @@ def main():
         [NONE] + [k for k, v in srcs.items() if "shading" in v.get("for", [])])
     if contour_src is None or rock_src is None or shading_src is None:
         return 1
+
+    # a custom PBF ignores the region input, so its coverage says nothing
+    if (args.region and not values["custom_pbf_url"]
+            and not has_dem(args.region, args.regions or None)):
+        if any(s != NONE for s in (contour_src, rock_src, shading_src)):
+            print(f"::notice::No elevation model covers `{args.region}` yet – contours, "
+                  f"rocks and hillshading are off, the OSM layers are built.")
+        contour_src = rock_src = shading_src = NONE
 
     values["contour_source"] = contour_src
     values["rock_source"] = rock_src
