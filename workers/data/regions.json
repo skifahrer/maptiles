@@ -49,7 +49,7 @@
   },
   "bratislavsky": {
     "id": "slovakia-bratislavsky",
-    "name": "Bratislava Region",
+    "name": "Bratislavský kraj",
     "country": "slovensko",
     "osm_name": "Bratislavský kraj",
     "admin_level": 4,
@@ -58,7 +58,7 @@
   },
   "trnavsky": {
     "id": "slovakia-trnavsky",
-    "name": "Trnava Region",
+    "name": "Trnavský kraj",
     "country": "slovensko",
     "osm_name": "Trnavský kraj",
     "admin_level": 4,
@@ -67,7 +67,7 @@
   },
   "trenciansky": {
     "id": "slovakia-trenciansky",
-    "name": "Trenčín Region",
+    "name": "Trenčiansky kraj",
     "country": "slovensko",
     "osm_name": "Trenčiansky kraj",
     "admin_level": 4,
@@ -76,7 +76,7 @@
   },
   "nitriansky": {
     "id": "slovakia-nitriansky",
-    "name": "Nitra Region",
+    "name": "Nitriansky kraj",
     "country": "slovensko",
     "osm_name": "Nitriansky kraj",
     "admin_level": 4,
@@ -85,7 +85,7 @@
   },
   "zilinsky": {
     "id": "slovakia-zilinsky",
-    "name": "Žilina Region",
+    "name": "Žilinský kraj",
     "country": "slovensko",
     "osm_name": "Žilinský kraj",
     "admin_level": 4,
@@ -94,7 +94,7 @@
   },
   "banskobystricky": {
     "id": "slovakia-banskobystricky",
-    "name": "Banská Bystrica Region",
+    "name": "Banskobystrický kraj",
     "country": "slovensko",
     "osm_name": "Banskobystrický kraj",
     "admin_level": 4,
@@ -103,7 +103,7 @@
   },
   "presovsky": {
     "id": "slovakia-presovsky",
-    "name": "Prešov Region",
+    "name": "Prešovský kraj",
     "country": "slovensko",
     "osm_name": "Prešovský kraj",
     "admin_level": 4,
@@ -112,7 +112,7 @@
   },
   "kosicky": {
     "id": "slovakia-kosicky",
-    "name": "Košice Region",
+    "name": "Košický kraj",
     "country": "slovensko",
     "osm_name": "Košický kraj",
     "admin_level": 4,
@@ -152,7 +152,7 @@
   },
   "jihocesky": {
     "id": "czech_republic-jihocesky",
-    "name": "South Bohemian Region",
+    "name": "Jihočeský kraj",
     "country": "cesko",
     "osm_name": "Jihočeský kraj",
     "admin_level": 4,
@@ -161,7 +161,7 @@
   },
   "jihomoravsky": {
     "id": "czech_republic-jihomoravsky",
-    "name": "South Moravian Region",
+    "name": "Jihomoravský kraj",
     "country": "cesko",
     "osm_name": "Jihomoravský kraj",
     "admin_level": 4,
@@ -170,7 +170,7 @@
   },
   "karlovarsky": {
     "id": "czech_republic-karlovarsky",
-    "name": "Karlovy Vary Region",
+    "name": "Karlovarský kraj",
     "country": "cesko",
     "osm_name": "Karlovarský kraj",
     "admin_level": 4,
@@ -179,7 +179,7 @@
   },
   "kralovehradecky": {
     "id": "czech_republic-kralovehradecky",
-    "name": "Hradec Králové Region",
+    "name": "Královéhradecký kraj",
     "country": "cesko",
     "osm_name": "Královéhradecký kraj",
     "admin_level": 4,
@@ -188,7 +188,7 @@
   },
   "liberecky": {
     "id": "czech_republic-liberecky",
-    "name": "Liberec Region",
+    "name": "Liberecký kraj",
     "country": "cesko",
     "osm_name": "Liberecký kraj",
     "admin_level": 4,
@@ -197,7 +197,7 @@
   },
   "moravskoslezsky": {
     "id": "czech_republic-moravskoslezsky",
-    "name": "Moravian-Silesian Region",
+    "name": "Moravskoslezský kraj",
     "country": "cesko",
     "osm_name": "Moravskoslezský kraj",
     "admin_level": 4,
@@ -206,7 +206,7 @@
   },
   "olomoucky": {
     "id": "czech_republic-olomoucky",
-    "name": "Olomouc Region",
+    "name": "Olomoucký kraj",
     "country": "cesko",
     "osm_name": "Olomoucký kraj",
     "admin_level": 4,
@@ -215,7 +215,7 @@
   },
   "pardubicky": {
     "id": "czech_republic-pardubicky",
-    "name": "Pardubice Region",
+    "name": "Pardubický kraj",
     "country": "cesko",
     "osm_name": "Pardubický kraj",
     "admin_level": 4,
@@ -224,7 +224,7 @@
   },
   "plzensky": {
     "id": "czech_republic-plzensky",
-    "name": "Plzeň Region",
+    "name": "Plzeňský kraj",
     "country": "cesko",
     "osm_name": "Plzeňský kraj",
     "admin_level": 4,
@@ -233,7 +233,7 @@
   },
   "praha": {
     "id": "czech_republic-praha",
-    "name": "Prague",
+    "name": "Praha",
     "country": "cesko",
     "osm_name": "Praha",
     "admin_level": 4,
@@ -242,7 +242,7 @@
   },
   "stredocesky": {
     "id": "czech_republic-stredocesky",
-    "name": "Central Bohemian Region",
+    "name": "Středočeský kraj",
     "country": "cesko",
     "osm_name": "Středočeský kraj",
     "admin_level": 4,
@@ -251,7 +251,7 @@
   },
   "ustecky": {
     "id": "czech_republic-ustecky",
-    "name": "Ústí nad Labem Region",
+    "name": "Ústecký kraj",
     "country": "cesko",
     "osm_name": "Ústecký kraj",
     "admin_level": 4,
@@ -260,7 +260,7 @@
   },
   "vysocina": {
     "id": "czech_republic-vysocina",
-    "name": "Vysočina Region",
+    "name": "Kraj Vysočina",
     "country": "cesko",
     "osm_name": "Kraj Vysočina",
     "admin_level": 4,
@@ -269,7 +269,7 @@
   },
   "zlinsky": {
     "id": "czech_republic-zlinsky",
-    "name": "Zlín Region",
+    "name": "Zlínský kraj",
     "country": "cesko",
     "osm_name": "Zlínský kraj",
     "admin_level": 4,
@@ -300,7 +300,7 @@
   },
   "karnten": {
     "id": "austria-karnten",
-    "name": "Carinthia",
+    "name": "Kärnten",
     "country": "rakusko",
     "osm_name": "Kärnten",
     "admin_level": 4,
@@ -309,7 +309,7 @@
   },
   "niederosterreich": {
     "id": "austria-niederosterreich",
-    "name": "Lower Austria",
+    "name": "Niederösterreich",
     "country": "rakusko",
     "osm_name": "Niederösterreich",
     "admin_level": 4,
@@ -318,7 +318,7 @@
   },
   "oberosterreich": {
     "id": "austria-oberosterreich",
-    "name": "Upper Austria",
+    "name": "Oberösterreich",
     "country": "rakusko",
     "osm_name": "Oberösterreich",
     "admin_level": 4,
@@ -336,7 +336,7 @@
   },
   "steiermark": {
     "id": "austria-steiermark",
-    "name": "Styria",
+    "name": "Steiermark",
     "country": "rakusko",
     "osm_name": "Steiermark",
     "admin_level": 4,
@@ -345,7 +345,7 @@
   },
   "tirol": {
     "id": "austria-tirol",
-    "name": "Tyrol",
+    "name": "Tirol",
     "country": "rakusko",
     "osm_name": "Tirol",
     "admin_level": 4,
@@ -363,7 +363,7 @@
   },
   "wien": {
     "id": "austria-wien",
-    "name": "Vienna",
+    "name": "Wien",
     "country": "rakusko",
     "osm_name": "Wien",
     "admin_level": 4,

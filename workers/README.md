@@ -2494,7 +2494,7 @@ kontroluje oba súbory pri každej zmene.
     "name": "Slovakia",
     "regions": {
       "zilinsky": {
-        "name": "Žilina Region",
+        "name": "Žilinský kraj",
         "maps": { "mapa": { "file": "zilinsky.zip", "link": "…", "download": "…", "size": 900000000 },
                   "tienovanie": { … }, "vrstevnice-skaly": { … },
                   "cesty": { … }, "body": { … }, "hranice": { … },

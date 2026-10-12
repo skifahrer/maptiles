@@ -8,27 +8,27 @@
     "The workflow always intersects it with the chosen region's bbox too."
   ],
   "tatry": {
-    "name": "Tatras (Western + High + Belianske)",
+    "name": "Tatry (Západné + Vysoké + Belianske)",
     "bbox": [19.55, 49.08, 20.4, 49.32]
   },
   "vysoke_tatry": {
-    "name": "High Tatras",
+    "name": "Vysoké Tatry",
     "bbox": [19.9, 49.09, 20.32, 49.25]
   },
   "belianske_tatry": {
-    "name": "Belianske Tatras",
+    "name": "Belianske Tatry",
     "bbox": [20.18, 49.19, 20.38, 49.3]
   },
   "zapadne_tatry": {
-    "name": "Western Tatras (Roháče)",
+    "name": "Západné Tatry (Roháče)",
     "bbox": [19.55, 49.1, 20.0, 49.28]
   },
   "nizke_tatry": {
-    "name": "Low Tatras",
+    "name": "Nízke Tatry",
     "bbox": [19.05, 48.83, 20.2, 49.08]
   },
   "slovensky_raj": {
-    "name": "Slovak Paradise",
+    "name": "Slovenský raj",
     "bbox": [20.2, 48.85, 20.55, 49.0]
   },
   "pieniny": {
@@ -44,27 +44,27 @@
     "bbox": [18.9, 48.75, 19.32, 49.12]
   },
   "sulovske_skaly": {
-    "name": "Súľov Rocks",
+    "name": "Súľovské skaly",
     "bbox": [18.53, 49.11, 18.72, 49.22]
   },
   "slovensky_kras": {
-    "name": "Slovak Karst",
+    "name": "Slovenský kras",
     "bbox": [20.4, 48.5, 21.0, 48.72]
   },
   "muranska_planina": {
-    "name": "Muráň Plateau",
+    "name": "Muránska planina",
     "bbox": [19.9, 48.68, 20.25, 48.85]
   },
   "vihorlat": {
-    "name": "Vihorlat Mountains",
+    "name": "Vihorlat",
     "bbox": [21.85, 48.85, 22.3, 49.0]
   },
   "strazovske_vrchy": {
-    "name": "Strážov Mountains",
+    "name": "Strážovské vrchy",
     "bbox": [18.3, 48.85, 18.85, 49.15]
   },
   "male_karpaty": {
-    "name": "Little Carpathians",
+    "name": "Malé Karpaty",
     "bbox": [16.98, 48.15, 17.75, 48.72]
   }
 }

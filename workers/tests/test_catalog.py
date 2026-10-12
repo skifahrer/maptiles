@@ -55,13 +55,16 @@ class Names(unittest.TestCase):
         catalog.name_node(fresh, {}, "neznamy", "region")
         self.assertEqual(fresh["name"], "neznamy")
 
-    def test_registry_names_are_english(self):
+    def test_countries_are_english_regions_native(self):
         with open(os.path.join(catalog._DATA, "regions.json"), encoding="utf-8") as f:
             regions = json.load(f)
-        slovak = ("kraj", "Slovensko", "Česko", "Rakúsko", "Navigácia", "Svet")
+        self.assertEqual(regions["slovensko"]["name"], "Slovakia")
+        self.assertEqual(regions["kosicky"]["name"], "Košický kraj")
+        slovak = ("Slovensko", "Česko", "Rakúsko", "Navigácia", "Svet")
         for key, r in regions.items():
-            for word in slovak:
-                self.assertNotIn(word, r["name"], key)
+            if r.get("admin_level") == 2:
+                for word in slovak:
+                    self.assertNotIn(word, r["name"], key)
 
     def test_tiles_paths(self):
         man = {"dem": "https://x/tiles/trnavsky-terrain.pmtiles"}
