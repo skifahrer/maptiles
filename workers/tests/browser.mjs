@@ -13,6 +13,7 @@ import { extname, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { THEMES } from "../../poc/web/themes.js";
 import { MAP_TYPE_IDS } from "../../poc/web/map-types.js";
+import { encodePng } from "../lib/png.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const KEY = "mini";
@@ -63,6 +64,16 @@ function site() {
       region[p] = `tiles/${KEY}-${p}.pmtiles`;
       region[`${p}_maxzoom`] = 14;
     }
+  }
+  // the signs with a one-sign sheet, so the viewer's own sign images are watched too
+  if (region.transport && existsSync(join(tiles, `${KEY}-roadsigns.pmtiles`))) {
+    const side = 48;
+    writeFileSync(join(tiles, `${KEY}-roadsigns@2x.png`),
+      encodePng({ width: side, height: side, data: Buffer.alloc(side * side * 4, 255) }));
+    writeFileSync(join(tiles, `${KEY}-roadsigns@2x.json`), JSON.stringify(
+      { "sk.ts.253-50": { x: 0, y: 0, width: side, height: side, pixelRatio: 2 } }));
+    Object.assign(region, { road_signs: `tiles/${KEY}-roadsigns.pmtiles`, road_signs_maxzoom: 14,
+      road_sign_sprite: [`tiles/${KEY}-roadsigns@2x.json`, `tiles/${KEY}-roadsigns@2x.png`] });
   }
   const sprites = readdirSync(join(out, "sprites")).filter((f) => /^[^@]+\.json$/.test(f));
   writeFileSync(join(tiles, "manifest.json"), JSON.stringify({
@@ -199,6 +210,19 @@ async function main() {
   if (got !== OVERRIDE.value) problems.push(`developer mode: ${OVERRIDE.layer} ${OVERRIDE.prop} is ${got}, the override says ${OVERRIDE.value}`);
   if (await dev.p.evaluate(() => document.getElementById("dev").hidden)) problems.push("developer mode: ?dev=1 didn't open it");
   await report(dev.p, dev.console_, "developer mode");
+
+  // a road sign up close is drawn from the region's sheet, not missed
+  if (await p.evaluate(() => !!window.__t.maps.at(-1).getSource("roadsigns"))) {
+    const drawn = await p.evaluate(async (ll) => {
+      const map = window.__t.maps.at(-1);
+      window.__t.idle = false;
+      map.jumpTo({ center: ll, zoom: 17 });
+      await new Promise((ok) => map.once("idle", ok));
+      return map.hasImage("sk.ts.253-50");
+    }, [17.125, 48.131]);
+    if (!drawn) problems.push("road signs: `sk.ts.253-50` wasn't cut from the region's sheet");
+    await report(p, console_, "road signs");
+  }
 
   // the watch itself: an icon nobody has must be heard
   const heard = await p.evaluate(async () => {

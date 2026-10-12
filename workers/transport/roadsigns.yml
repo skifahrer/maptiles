@@ -1,0 +1,91 @@
+# Planetiler custom schema – road signs as points, `sign` names their sprite image.
+# Input is `signs.py`'s output: sign nodes only, `sign` and `sign_direction` added.
+schema_name: FricoMaps road signs
+schema_description: >-
+  Traffic signs by the road – tagged `traffic_sign`, stop and give way, traffic
+  signals and speed cameras – with the sprite image each one is drawn with
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
+
+sources:
+  osm:
+    type: osm
+    local_path: data/roadsigns.osm.pbf
+
+layers:
+  - id: traffic_sign
+    features:
+      - source: osm
+        geometry: point
+        min_zoom: 14
+        include_when:
+          traffic_sign: __any__
+          traffic_sign:forward: __any__
+          traffic_sign:backward: __any__
+          highway: [stop, give_way, traffic_signals, speed_camera]
+        attributes:
+          # sprite image `sk.ts.253-50`; none when the country can't be told
+          - key: sign
+          # as tagged: `SK:253[50];SK:506`
+          - key: traffic_sign
+          - key: highway
+          # `forward`, `backward`, `both` or degrees
+          - key: direction
+            value:
+              tag_value: sign_direction
+          - key: maxspeed
+          - key: osm_id
+            value: '${ feature.id }'
+            type: long
+
+examples:
+  - name: A speed sign carries its sprite name and value as tagged
+    input:
+      source: osm
+      geometry: point
+      tags:
+        traffic_sign: "SK:253[50]"
+        sign: sk.ts.253-50
+        sign_direction: forward
+    output:
+      - layer: traffic_sign
+        geometry: point
+        min_zoom: 14
+        tags:
+          sign: sk.ts.253-50
+          traffic_sign: "SK:253[50]"
+          direction: forward
+
+  - name: A stop node is a sign without `traffic_sign`
+    input:
+      source: osm
+      geometry: point
+      tags:
+        highway: stop
+        sign: sk.ts.stop
+    output:
+      - layer: traffic_sign
+        geometry: point
+        tags:
+          sign: sk.ts.stop
+          highway: stop
+
+  - name: A sign facing one way only
+    input:
+      source: osm
+      geometry: point
+      tags:
+        traffic_sign:backward: "SK:230"
+        sign: sk.ts.230
+    output:
+      - layer: traffic_sign
+        geometry: point
+        tags:
+          sign: sk.ts.230
+
+  - name: A crossing isn't a sign
+    input:
+      source: osm
+      geometry: point
+      tags:
+        highway: crossing
+    output: []

@@ -28,6 +28,8 @@ class Site(unittest.TestCase):
             "tiles/manifest.json", "tiles/r.pmtiles", "tiles/r-trails.pmtiles", "tiles/r-routing.pmtiles",
             "tiles/r-rail.pmtiles", "tiles/r-rail-routing.pmtiles", "tiles/r-signs.json",
             "tiles/r-signs.png", "tiles/r-water.pmtiles", "tiles/r-terrain.pmtiles",
+            "tiles/r-transport.pmtiles", "tiles/r-roadsigns.pmtiles", "tiles/r-roadsigns.json",
+            "tiles/r-roadsigns.png",
             "sprites/osm-liberty.json", "styles/r-svetla.json"]
 
     def setUp(self):
@@ -57,10 +59,24 @@ class Site(unittest.TestCase):
     def test_parts_of_the_base_map(self):
         parts = {k: self.rel(f) for k, _, f in files.base_parts(self.site, self.man)}
         self.assertEqual(parts, {"trails": ["tiles/r-trails.pmtiles"], "routing": ["tiles/r-routing.pmtiles"],
-                                 "signs": ["tiles/r-signs.json", "tiles/r-signs.png"]})
+                                 "signs": ["tiles/r-signs.json", "tiles/r-signs.png"],
+                                 "roadsigns": ["tiles/r-roadsigns.json", "tiles/r-roadsigns.pmtiles",
+                                               "tiles/r-roadsigns.png"]})
         sizes = files.part_sizes(files.base_parts(self.site, self.man))
         self.assertEqual(sizes["signs"]["files"], 2)
         self.assertEqual(sizes["signs"]["raw_size"], 2)
+
+    def test_road_signs_ride_with_roads_and_in_the_base_map(self):
+        roads = packages.package("roads")
+        got = self.rel(files.package_files(self.site, {}, roads))
+        self.assertIn("tiles/r-roadsigns.pmtiles", got)
+        self.assertIn("tiles/r-roadsigns.png", got)
+        self.assertNotIn("tiles/r-signs.png", got)
+        parts = [f for k, _, f in files.base_parts(self.site, self.man)]
+        roads_files = files.package_files(self.site, {}, roads)
+        base = self.rel(files.base_files(self.site, roads_files, keep=[f for p in parts for f in p]))
+        self.assertIn("tiles/r-roadsigns.pmtiles", base)
+        self.assertNotIn("tiles/r-transport.pmtiles", base)
 
     def test_viewer_and_glyphs_stay_out(self):
         with redirect_stdout(io.StringIO()):

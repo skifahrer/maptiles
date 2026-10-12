@@ -57,6 +57,17 @@ for pair in "transport:$OUT" "paths:$PATHS_OUT"; do
   workers/lib/clip-tiles.sh "${pair#*:}"
 done
 
+# signs ride with the roads and in the base map; without them both still draw
+T_RS=$(date +%s)
+workers/transport/roadsigns.sh "$TZ_" "${CLIP[@]}" || {
+  echo "::warning::Road signs weren't made – roads go without them."
+  rm -f _site/tiles/"${REGION_KEY}"-roadsigns*
+}
+ROADSIGNS=false
+[ -f "_site/tiles/${REGION_KEY}-roadsigns.pmtiles" ] && ROADSIGNS=true
+printf '%s\t%s\t%s\t%s\n' "62.5" "Road signs → PMTiles and sprite" "$(( $(date +%s) - T_RS ))" \
+  "$ROADSIGNS" >> steps-out/transport.tsv
+
 MB=$(( $(stat -c%s "$OUT") / 1048576 ))
 PATHS_MB=$(( $(stat -c%s "$PATHS_OUT") / 1048576 ))
 
@@ -72,6 +83,7 @@ echo "enabled=true" >> "$GITHUB_OUTPUT"
 echo "maxzoom=$TZ_" >> "$GITHUB_OUTPUT"
 echo "size_mb=$MB" >> "$GITHUB_OUTPUT"
 echo "paths_enabled=true" >> "$GITHUB_OUTPUT"
+echo "roadsigns_enabled=$ROADSIGNS" >> "$GITHUB_OUTPUT"
 echo "paths_size_mb=$PATHS_MB" >> "$GITHUB_OUTPUT"
 ls -lh "$OUT" "$PATHS_OUT"
 printf '%s\t%s\t%s\t%s\n' "62" "Roads and paths → PMTiles" "$(( $(date +%s) - T_PM ))" \

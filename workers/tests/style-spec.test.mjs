@@ -11,7 +11,8 @@ const OWN = {
   trailsUrl: "https://x/trails.pmtiles",
   featuresUrl: "https://x/features.pmtiles",
   pointsUrl: "https://x/points.pmtiles",
-  transportUrl: "https://x/transport.pmtiles"
+  transportUrl: "https://x/transport.pmtiles",
+  roadSignsUrl: "https://x/roadsigns.pmtiles"
 };
 
 for (const theme of Object.keys(THEMES)) {

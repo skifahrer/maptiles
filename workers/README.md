@@ -2080,7 +2080,7 @@ o veľkosť sťahovania:
 
 | balík | čo v ňom je | z ktorých `.pmtiles` |
 |---|---|---|
-| `roads` | cesty, kam vojde auto – od diaľnice po poľnú cestu, aj trajekty – **s obmedzeniami na ceste** (výška podjazdu, šírka, hmotnosť, rýchlosť, pruhy, stúpanie) | `-transport` |
+| `roads` | cesty, kam vojde auto – od diaľnice po poľnú cestu, aj trajekty – **s obmedzeniami na ceste** (výška podjazdu, šírka, hmotnosť, rýchlosť, pruhy, stúpanie) a dopravnými značkami | `-transport`, `-roadsigns` |
 | `paths` | kam auto nevojde: chodníky, cestičky, cyklotrasy, schody, pešie zóny, ferraty a lanovky – s povrchom, prístupom a náročnosťou (`sac_scale`) | `-paths` |
 | `body` | pramene, jaskyne, rozhľadne, pamiatky, banské dedičstvo, geodetické body | `-points` |
 | `hranice` | štát, kraj, okres a obec ako plochy aj čiary, s menom a úrovňou, plus body sídel | `-boundaries` |
@@ -2111,6 +2111,26 @@ reťazcom** a je to zámer: `maxheight: "3.8 m"` a `12'6"` nesú jednotku
 a Planetiler by z nich vzal číslo zo začiatku a zvyšok zahodil – z 3,8 m by
 bolo 12 m, potichu a s platnou dlaždicou. Číslo z toho potrebuje len
 smerovanie, a to si ho parsuje samo.
+
+**Dopravné značky sú vlastný archív `<kraj>-roadsigns.pmtiles` s vrstvou
+`traffic_sign`** ([`roadsigns.yml`](transport/roadsigns.yml)): uzly s
+`traffic_sign` (aj `:forward`/`:backward`) a uzly, ktoré značkou sú samy –
+`highway=stop`, `give_way`, `traffic_signals`, `speed_camera`. Nesú `sign`
+(meno obrázka), `traffic_sign` tak, ako je v OSM, `direction` a `maxspeed`.
+`sign` počíta [`signs.py`](transport/signs.py) z prvej značky v hodnote:
+`SK:253[50];SK:506` → `sk.ts.253-50`, holé `stop` alebo `highway=stop` dostane
+krajinu kraja (`sk.ts.stop`), `traffic_sign=maxspeed` číslo z `maxspeed`.
+Obrázky sú sprite `<kraj>-roadsigns.json/.png` (+`@2x`), ktorý
+[`sprite.py`](transport/sprite.py) kreslí z SVG zbierky
+[skifahrer/traffic-signs](https://github.com/skifahrer/traffic-signs) – len
+výstražné, regulačné a informačné značky krajiny kraja, meno je národný kód bez
+medzier a `§` (`P 6` → `cz.ts.p6`). Značka, ktorej obrázok zbierka nemá, sa
+nekreslí; hodnota bez vlastného obrázka (`SK:253[45]`) tiež nie – iná číslica
+na značke by klamala. Archív aj sprite idú v balíku `roads` aj v základnej
+mape (časť `roadsigns`), stavia ich [`roadsigns.sh`](transport/roadsigns.sh)
+v jobe ciest; keď zlyhá, cesty idú bez značiek. Štýl ich kreslí ako
+`road-sign` od z16, na cestnej mape od z15, na turistickej, lyžiarskej
+a historickej nie.
 
 **Rovnaké tagy dostáva aj NAVIGÁCIA.** Graf sa stavia z celých štátnych
 extraktov bez akéhokoľvek filtra ([`workers/routing/pbf.sh`](routing/pbf.sh)),

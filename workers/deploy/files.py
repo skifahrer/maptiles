@@ -108,6 +108,23 @@ def signs_files(site, man):
 SIGNS_SUFFIXES = ("-signs.json", "-signs.png", "-signs@2x.json", "-signs@2x.png")
 
 
+def road_signs_files(site, man):
+    """Part `roadsigns` – traffic signs (`-roadsigns.pmtiles`) and their sprite, also in `roads`."""
+    reg = catalog.region_entry(man)
+    rel = ([reg["road_signs"]] if reg.get("road_signs") else []) \
+        + list(reg.get("road_sign_sprite") or [])
+    if not rel:
+        base = os.path.join(site, "tiles")
+        rel = [os.path.join("tiles", n) for n in sorted(os.listdir(base))
+               if has_suffix(n, ROAD_SIGNS_SUFFIXES)] if os.path.isdir(base) else []
+    return [os.path.join(site, f) for f in rel
+            if os.path.exists(os.path.join(site, f))]
+
+
+ROAD_SIGNS_SUFFIXES = ("-roadsigns.pmtiles", "-roadsigns.json", "-roadsigns.png",
+                       "-roadsigns@2x.json", "-roadsigns@2x.png")
+
+
 def base_parts(site, man):
     """Parts of the base map: `[(key, description, files)]`, absent ones too (as `0`)."""
     return [
@@ -117,6 +134,8 @@ def base_parts(site, man):
          routing_files(site, man)),
         ("signs", "the country's rail and road signs (sprite)",
          signs_files(site, man)),
+        ("roadsigns", "traffic signs by the road (.pmtiles) and their images (sprite)",
+         road_signs_files(site, man)),
     ]
 
 
