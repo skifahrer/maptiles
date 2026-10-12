@@ -6,6 +6,7 @@ import unittest
 from load import needs, needs_cmd, worker
 
 sp = worker("transport/sprite.py")
+sg = worker("transport/signs.py")
 
 SVG = ('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
        '<circle cx="50" cy="50" r="48" fill="red"/></svg>')
@@ -35,7 +36,7 @@ class Mapping(unittest.TestCase):
             names = {}
             for key, folder in by_key.items():
                 self.assertRegex(folder, r"^[a-z-]+/[a-z0-9-]+$", key)
-                name = sp.mapped_name(key, country)
+                name = sg.mapped_name(key, country)
                 self.assertTrue(name, f"{country}: {key}")
                 self.assertEqual(names.setdefault(name, folder), folder,
                                  f"{country}: {name} points at two images")
@@ -53,7 +54,9 @@ class Entries(unittest.TestCase):
             json.dump({"sk": {"SK:P1": "regulatory/give-way", "SK:202": "regulatory/stop",
                               "stop": "regulatory/stop", "highway=stop": "regulatory/stop",
                               "maxspeed=50": "regulatory/speed-limit-50",
-                              "SK:101": "warning/danger"}}, f)
+                              "SK:101": "warning/danger"},
+                       "at": {"AT:52.1": "regulatory/no-vehicles", "AT:52.24": "regulatory/stop"}}, f)
+        sign(self.root, "regulatory", "no-vehicles", "sk", "201", {"en": "No vehicles"})
         self.used = {"sk.ts.p1": 9, "sk.ts.202": 4, "sk.ts.stop": 100,
                      "sk.ts.maxspeed-50": 2, "sk.ts.nothing": 7}
 
@@ -64,6 +67,17 @@ class Entries(unittest.TestCase):
         self.assertEqual(set(sp.needed("sk", self.used, self.mapping).values()),
                          {"regulatory/give-way", "regulatory/stop", "regulatory/speed-limit-50"})
         self.assertEqual(sp.needed("sk", {}, self.mapping), {})
+
+    def test_a_foreign_sign_is_drawn_as_the_home_one(self):
+        by_country = sg.folders(self.mapping)
+        self.assertEqual(sg.at_home("at.ts.52.24", "sk", by_country), "sk.ts.202",
+                         "the home key of that meaning")
+        name = sg.at_home("at.ts.52.1", "sk", by_country)
+        self.assertEqual(name, "sk.ts.no-vehicles", "no home key: the folder's name")
+        self.assertEqual(sg.at_home("at.ts.99", "sk", by_country), "at.ts.99", "unknown abroad")
+        got = self.entries({name: 3})
+        self.assertEqual([v["names"] for v in got.values()], [["sk.ts.no-vehicles"]])
+        self.assertTrue(next(iter(got)).endswith("no-vehicles-sk.svg"))
 
     def test_a_country_with_no_mapping(self):
         self.assertEqual(sp.needed("cz", {"cz.ts.p1": 1}, self.mapping), {})

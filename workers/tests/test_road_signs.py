@@ -72,6 +72,16 @@ class NodeTags(unittest.TestCase):
 
 
 
+class AtHome(unittest.TestCase):
+    def test_a_foreign_code_takes_the_home_sign(self):
+        by_country = s.folders()
+        tags = s.node_tags({"traffic_sign": "AT:53.8a"}, "sk", by_country)
+        self.assertEqual(tags["sign"], "sk.ts.309", "Austrian motorway sign → Slovak 309")
+        self.assertEqual(tags["traffic_sign"], "AT:53.8a", "the OSM value stays")
+        self.assertEqual(s.node_tags({"traffic_sign": "AT:53.8a"}, "at", by_country)["sign"],
+                         "at.ts.53.8a")
+
+
 class MappedName(unittest.TestCase):
     """A key of `road-signs.json` names the image the tiles ask for."""
 

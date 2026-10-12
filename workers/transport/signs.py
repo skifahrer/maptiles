@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Sign nodes → `sign`, the sprite name of the first sign (`sk.ts.253-50`), for `roadsigns.yml`."""
 import argparse
+import json
+import os
 import re
 from collections import Counter
 from pathlib import Path
 
+MAPPING = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "data", "road-signs.json")
 # nodes that are a sign without `traffic_sign`
 IMPLIED = {"stop": "stop", "give_way": "give_way", "traffic_signals": "traffic_signals",
            "speed_camera": "speed_camera"}
@@ -71,6 +75,39 @@ def mapped_name(key, country):
     return figured(f"{country}.ts.{tag}", {tag: value})
 
 
+def folders(mapping=MAPPING):
+    """`{country: {sprite name: sign folder}}` from `road-signs.json`, first key wins."""
+    with open(mapping, encoding="utf-8") as f:
+        data = json.load(f)
+    out = {}
+    for cc, by_key in data.items():
+        if cc.startswith("_"):
+            continue
+        names = out[cc] = {}
+        for key, folder in sorted(by_key.items()):
+            name = mapped_name(key, cc)
+            if name:
+                names.setdefault(name, folder)
+    return out
+
+
+def generic(country, folder):
+    """Name of the home image for a folder no home key names: `sk.ts.no-vehicles`."""
+    return f"{country}.ts.{folder.split('/')[1]}"
+
+
+def at_home(name, home, by_country):
+    """A sign coded for another country, renamed to the home country's sign of that meaning."""
+    cc = name.split(".", 1)[0]
+    if not home or cc == home:
+        return name
+    folder = (by_country.get(cc) or {}).get(name)
+    if not folder:
+        return name
+    ours = sorted(n for n, f in (by_country.get(home) or {}).items() if f == folder)
+    return ours[0] if ours else generic(home, folder)
+
+
 def direction(tags):
     """Which way the sign faces: its own tag, else the key it came in."""
     for k in ("traffic_sign:direction", "direction"):
@@ -82,7 +119,7 @@ def direction(tags):
     return None
 
 
-def node_tags(tags, country):
+def node_tags(tags, country, by_country=None):
     """Tags a sign node keeps, `sign` and `sign_direction` added; None for a node that isn't one."""
     raw = next((tags[k] for k in KEYS if tags.get(k)), None)
     implied = IMPLIED.get(tags.get("highway", ""))
@@ -92,7 +129,7 @@ def node_tags(tags, country):
            if k in KEYS or k in ("highway", "maxspeed", "name")}
     name = sign_name(raw, country) if raw else f"{country}.ts.{implied}" if country else None
     if name:
-        name = figured(name, tags)
+        name = at_home(figured(name, tags), country, by_country or {})
     if name:
         out["sign"] = name
     if raw:
@@ -111,7 +148,9 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--country", default="")
     ap.add_argument("--names", help="file for the sprite names the region uses, `name<TAB>count`")
+    ap.add_argument("--mapping", default=MAPPING)
     a = ap.parse_args()
+    by_country = folders(a.mapping)
 
     Path(a.out).unlink(missing_ok=True)
     writer = osmium.SimpleWriter(a.out)
@@ -119,7 +158,7 @@ def main():
     used = Counter()
     try:
         for n in osmium.FileProcessor(a.pbf, osmium.osm.NODE):
-            tags = node_tags(dict(n.tags), a.country.lower())
+            tags = node_tags(dict(n.tags), a.country.lower(), by_country)
             if tags is None:
                 continue
             kept += 1

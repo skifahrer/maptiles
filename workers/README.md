@@ -2126,7 +2126,12 @@ Obrázky sú sprite `<kraj>-roadsigns.json/.png` (+`@2x`), ktorý
 len zdroj obrázkov po krajinách. **Ktorá hodnota z OSM je ktorý obrázok, hovorí
 [`data/road-signs.json`](data/road-signs.json)** (po krajinách: `SK:253[50]`,
 `stop`, `maxspeed=50`, `city_limit=end`, `highway=stop` → `regulatory/…`);
-čo v ňom nie je, sa nekreslí. **Sprite kraja nesie len značky, ktoré dlaždice
+čo v ňom nie je, sa nekreslí. **Značka s kódom inej krajiny sa kreslí ako
+domáca značka toho istého významu**: `AT:53.8a` na Slovensku je podľa
+rakúskych kľúčov `information/motorway`, a teda `sk.ts.309`; keď domáca krajina
+nemá na ten priečinok kľúč, meno je `sk.ts.<priečinok>` a obrázok jej
+priečinka. Kód, ktorý cudzia krajina nepozná, alebo význam bez domáceho
+obrázka sa nekreslí. **Sprite kraja nesie len značky, ktoré dlaždice
 kraja menujú** (`signs.py --names` → `sprite.py --folders`): `roadsigns.sh`
 stiahne zo zbierky len ich priečinky – Bratislavský kraj 18 obrázkov, 400 kB
 zo zbierky a ~65 kB spritu. Aplikácia si ich skladá do jednej sady na krajinu,

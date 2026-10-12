@@ -9,23 +9,20 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
-from signs import mapped_name  # noqa: E402
+from signs import MAPPING, folders, generic  # noqa: E402
 
-MAPPING = os.path.join(os.path.dirname(_HERE), "data", "road-signs.json")
 # side of the box a sign fits in, at 1x
 SIDE = 24
 ROW = 32
 
 
 def supported(country, mapping=MAPPING):
-    """`{sprite name: sign folder}` for the country, from `road-signs.json`."""
-    with open(mapping, encoding="utf-8") as f:
-        by_key = json.load(f).get(country) or {}
-    out = {}
-    for key, sign in sorted(by_key.items()):
-        name = mapped_name(key, country)
-        if name:
-            out.setdefault(name, sign)
+    """`{sprite name: sign folder}`: the country's keys, then any folder by its generic name."""
+    by_country = folders(mapping)
+    out = dict(by_country.get(country) or {})
+    for names in by_country.values():
+        for folder in names.values():
+            out.setdefault(generic(country, folder), folder)
     return out
 
 
