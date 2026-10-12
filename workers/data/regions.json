@@ -1,7 +1,7 @@
 {
   "svet": {
     "id": "world",
-    "name": "Svet",
+    "name": "World",
     "country": "svet",
     "osm_name": "World",
     "admin_level": 2,
@@ -10,7 +10,7 @@
   },
   "svet_basic": {
     "id": "world_basic",
-    "name": "Svet – basic",
+    "name": "World – basic",
     "country": "svet_basic",
     "osm_name": "World",
     "admin_level": 2,
@@ -19,7 +19,7 @@
   },
   "navigacia_slovensko": {
     "id": "navigation_slovakia",
-    "name": "Navigácia – Slovensko",
+    "name": "Navigation – Slovakia",
     "country": "navigacia_slovensko",
     "osm_name": "Slovensko",
     "admin_level": 2,
@@ -28,7 +28,7 @@
   },
   "navigacia_slovensko_susedia": {
     "id": "navigation_slovakia_neighbours",
-    "name": "Navigácia – Slovensko a susedia",
+    "name": "Navigation – Slovakia and neighbours",
     "country": "navigacia_slovensko_susedia",
     "osm_name": "Slovensko + CZ, AT, HU, PL, UA",
     "admin_level": 2,
@@ -37,7 +37,7 @@
   },
   "slovensko": {
     "id": "slovakia",
-    "name": "Slovensko",
+    "name": "Slovakia",
     "country": "slovensko",
     "osm_name": "Slovensko",
     "admin_level": 2,
@@ -121,7 +121,7 @@
   },
   "navigacia_cesko": {
     "id": "navigation_czech_republic",
-    "name": "Navigácia – Česko",
+    "name": "Navigation – Czechia",
     "country": "navigacia_cesko",
     "osm_name": "Česko",
     "admin_level": 2,
@@ -130,7 +130,7 @@
   },
   "navigacia_rakusko": {
     "id": "navigation_austria",
-    "name": "Navigácia – Rakúsko",
+    "name": "Navigation – Austria",
     "country": "navigacia_rakusko",
     "osm_name": "Österreich",
     "admin_level": 2,
@@ -139,7 +139,7 @@
   },
   "cesko": {
     "id": "czech_republic",
-    "name": "Česko",
+    "name": "Czechia",
     "country": "cesko",
     "osm_name": "Česko",
     "admin_level": 2,
@@ -278,7 +278,7 @@
   },
   "rakusko": {
     "id": "austria",
-    "name": "Rakúsko",
+    "name": "Austria",
     "country": "rakusko",
     "osm_name": "Österreich",
     "admin_level": 2,
