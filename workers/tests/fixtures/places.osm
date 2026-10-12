@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="hand">
+  <node id="1" version="1" lat="48.2300" lon="17.0300"/>
+  <node id="2" version="1" lat="48.2300" lon="17.0500"/>
+  <node id="3" version="1" lat="48.2450" lon="17.0500"/>
+  <node id="4" version="1" lat="48.2450" lon="17.0300"/>
+  <node id="11" version="1" lat="48.1850" lon="17.0400"/>
+  <node id="12" version="1" lat="48.1850" lon="17.0700"/>
+  <node id="13" version="1" lat="48.2000" lon="17.0700"/>
+  <node id="14" version="1" lat="48.2000" lon="17.0400"/>
+  <node id="21" version="1" lat="48.3000" lon="17.1000"/>
+  <node id="22" version="1" lat="48.3000" lon="17.1100"/>
+  <node id="23" version="1" lat="48.3100" lon="17.1100"/>
+  <node id="24" version="1" lat="48.3100" lon="17.1000"/>
+  <node id="31" version="1" lat="48.4000" lon="17.2000"/>
+  <node id="32" version="1" lat="48.4000" lon="17.2100"/>
+  <node id="33" version="1" lat="48.4100" lon="17.2100"/>
+  <node id="34" version="1" lat="48.4100" lon="17.2000"/>
+  <node id="100" version="1" lat="48.2393" lon="17.0383">
+    <tag k="place" v="suburb"/><tag k="name" v="Záhorská Bystrica"/><tag k="wikidata" v="Q246755"/>
+  </node>
+  <node id="101" version="1" lat="48.1912" lon="17.0543">
+    <tag k="place" v="suburb"/><tag k="name" v="Lamač"/><tag k="wikidata" v="Q787303"/>
+  </node>
+  <node id="102" version="1" lat="48.5000" lon="17.5000">
+    <tag k="place" v="village"/><tag k="name" v="Dvojník"/>
+  </node>
+  <way id="200" version="1">
+    <nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="4"/><nd ref="1"/>
+    <tag k="place" v="suburb"/><tag k="name" v="Záhorská Bystrica"/>
+  </way>
+  <way id="201" version="1">
+    <nd ref="11"/><nd ref="12"/><nd ref="13"/><nd ref="14"/><nd ref="11"/>
+    <tag k="boundary" v="administrative"/>
+  </way>
+  <way id="202" version="1">
+    <nd ref="21"/><nd ref="22"/><nd ref="23"/><nd ref="24"/><nd ref="21"/>
+    <tag k="place" v="village"/><tag k="name" v="Samota"/>
+  </way>
+  <way id="203" version="1">
+    <nd ref="31"/><nd ref="32"/><nd ref="33"/><nd ref="34"/><nd ref="31"/>
+    <tag k="place" v="village"/><tag k="name" v="Dvojník"/>
+  </way>
+  <relation id="300" version="1">
+    <member type="way" ref="201" role="outer"/>
+    <member type="node" ref="101" role="label"/>
+    <tag k="type" v="boundary"/><tag k="boundary" v="administrative"/><tag k="admin_level" v="9"/>
+    <tag k="place" v="borough"/><tag k="name" v="Bratislava-Lamač"/><tag k="wikidata" v="Q787303"/>
+  </relation>
+</osm>

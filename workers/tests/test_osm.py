@@ -132,6 +132,25 @@ class Buildings(unittest.TestCase):
         self.assertNotIn("area_m2", tags[("w", 103)])
         self.assertNotIn("area_m2", tags[("w", 101)])
 
+    def test_a_place_with_a_point_is_named_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "p.osm.pbf")
+            r = subprocess.run([sys.executable, os.path.join(WORKERS, "buildings/areas.py"),
+                                "--pbf", os.path.join(FIXTURES, "places.osm"), "--out", out],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            tags = read(out)
+        self.assertNotIn("place", tags[("w", 200)], "same name, point inside")
+        self.assertNotIn("place", tags[("r", 300)], "same wikidata")
+        self.assertEqual(tags[("r", 300)]["admin_level"], "9")
+        self.assertEqual(tags[("w", 202)]["place"], "village", "no point of its own")
+        self.assertEqual(tags[("w", 203)]["place"], "village", "a namesake elsewhere")
+        self.assertIn("area_m2", tags[("w", 202)])
+        bystrica = box_m2(0.02, 0.015, 48.2375)
+        self.assertAlmostEqual(int(tags[("n", 100)]["area_m2"]), bystrica, delta=bystrica * 0.01)
+        self.assertIn("area_m2", tags[("n", 101)])
+        self.assertNotIn("area_m2", tags[("n", 102)])
+
     def test_ring_area(self):
         a = worker("buildings/areas.py")
         self.assertEqual(a.ring_area([(0, 0), (1, 1), (0, 0)]), 0.0)
