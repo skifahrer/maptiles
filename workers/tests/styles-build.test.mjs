@@ -46,8 +46,8 @@ test("build.mjs writes every map type × theme, and each passes the style spec",
         assert.ok(Object.values(style.sources).some((s) => String(s.url).includes(`-${l}.pmtiles`)),
           `${file} has the ${l} source`);
       }
-      const sign = style.layers.find((l) => l.id === "road-sign");
-      assert.equal(sign?.source, "transport", `${file} draws the roads' signs`);
+      const signs = style.layers.filter((l) => l.id.startsWith("road-sign")).map((l) => l.source);
+      assert.deepEqual(signs, ["omt", "transport"], `${file} draws the signs of the base map and of the roads`);
       if (spec) assert.deepEqual(spec.validateStyleMin(style).map((e) => e.message), [], file);
     }
   } finally {

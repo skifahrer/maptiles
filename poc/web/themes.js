@@ -3241,7 +3241,7 @@ export const SHIELD_DEFS = [
  * @param {string} [opts.transportUrl] dopravná sieť (balík `cesty`); štýl z nej
  *                                    kreslí len obmedzenia na ceste
  * @param {number} [opts.transportMaxzoom]
- * @param {boolean} [opts.roadSigns] vrstva `traffic_sign` dopravnej siete má obrázky
+ * @param {boolean} [opts.roadSigns] vrstva `traffic_sign` (základná mapa aj cesty) má obrázky
  * @param {string} [opts.boundariesUrl] hranice území (balík `hranice`); štýl
  *                                    z nich kreslí názvy území
  * @param {number} [opts.boundariesMaxzoom]
@@ -5424,24 +5424,28 @@ export function buildStyle({
     );
   }
 
-  // a sign its sheet lacks draws nothing
-  if (transportUrl && roadSigns) {
-    add(
-      {
-        id: "road-sign",
-        type: "symbol",
-        source: "transport",
-        "source-layer": "traffic_sign",
-        minzoom: 16,
-        filter: ["has", "sign"],
-        layout: {
-          "icon-image": ["get", "sign"],
-          "icon-size": zl([[16, 0.75], [18, 1], [20, 1.4]]),
-          "icon-padding": 1
-        }
-      },
-      ["popisky", "Dopravné značky", "point", {}]
-    );
+  // the base map and the roads both carry the signs, so each draws alone;
+  // together the second copy of a sign collides and isn't placed
+  if (roadSigns) {
+    const signs = [["road-sign", "omt"], ...(transportUrl ? [["road-sign-roads", "transport"]] : [])];
+    for (const [id, source] of signs) {
+      add(
+        {
+          id,
+          type: "symbol",
+          source,
+          "source-layer": "traffic_sign",
+          minzoom: 16,
+          filter: ["has", "sign"],
+          layout: {
+            "icon-image": ["get", "sign"],
+            "icon-size": zl([[16, 0.75], [18, 1], [20, 1.4]]),
+            "icon-padding": 1
+          }
+        },
+        ["popisky", "Dopravné značky", "point", {}]
+      );
+    }
   }
 
   add(

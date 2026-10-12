@@ -18,8 +18,16 @@ COUNTRY=$(node --input-type=module -e \
   "$REGION_KEY")
 
 python3 workers/transport/signs.py --pbf=data/transport.osm.pbf \
-  --out=data/transport-signs.osm.pbf --country="$COUNTRY" --names=data/roadsigns-used.txt
+  --out=data/transport-signs.osm.pbf --country="$COUNTRY" --names=data/roadsigns-used.txt \
+  --report=data/roadsigns-report.tsv
 mv data/transport-signs.osm.pbf data/transport.osm.pbf
+# which signs the region has and what each is drawn as, in the job summary
+summary() {
+  python3 workers/transport/signs-summary.py --report=data/roadsigns-report.tsv \
+    --region="$REGION_KEY" --country="$COUNTRY" \
+    --sprite="_site/tiles/${REGION_KEY}-roadsigns@2x.json" >> "${GITHUB_STEP_SUMMARY:-/dev/null}" || true
+}
+trap summary EXIT
 
 FOLDERS=$([ -n "$COUNTRY" ] && python3 workers/transport/sprite.py --country="$COUNTRY" \
   --used=data/roadsigns-used.txt --folders || true)

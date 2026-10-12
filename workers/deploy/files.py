@@ -108,6 +108,23 @@ def signs_files(site, man):
 SIGNS_SUFFIXES = ("-signs.json", "-signs.png", "-signs@2x.json", "-signs@2x.png")
 
 
+def road_signs_files(site, man):
+    """Part `roadsigns` – images of the traffic signs both the base map and `roads` carry."""
+    rel = list(catalog.region_entry(man).get("road_sign_sprite") or [])
+    if not rel:
+        base = os.path.join(site, "tiles")
+        rel = [os.path.join("tiles", n) for n in sorted(os.listdir(base))
+               if has_suffix(n, ROAD_SIGNS_SUFFIXES)] if os.path.isdir(base) else []
+    return [os.path.join(site, f) for f in rel
+            if os.path.exists(os.path.join(site, f))]
+
+
+ROAD_SIGNS_SUFFIXES = ("-roadsigns.json", "-roadsigns.png", "-roadsigns@2x.json",
+                       "-roadsigns@2x.png")
+# base map parts a region may go without
+OPTIONAL_PARTS = ("roadsigns",)
+
+
 def missing(man, p):
     """Manifest keys of package `p` the region lacks, its optional ones left out."""
     reg = catalog.region_entry(man)
@@ -126,6 +143,8 @@ def base_parts(site, man):
          routing_files(site, man)),
         ("signs", "the country's rail and road signs (sprite)",
          signs_files(site, man)),
+        ("roadsigns", "images of the traffic signs in its `traffic_sign` layer (sprite)",
+         road_signs_files(site, man)),
     ]
 
 
