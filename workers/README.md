@@ -2491,10 +2491,10 @@ kontroluje oba súbory pri každej zmene.
   "_comment": "…", "_updated_at": "2026-08-11T18:35:52Z", "_updated_ts": 1760207752,
 
   "slovensko": {
-    "name": "Slovensko",
+    "name": "Slovakia",
     "regions": {
       "zilinsky": {
-        "name": "Žilinský kraj",
+        "name": "Žilina Region",
         "maps": { "mapa": { "file": "zilinsky.zip", "link": "…", "download": "…", "size": 900000000 },
                   "tienovanie": { … }, "vrstevnice-skaly": { … },
                   "cesty": { … }, "body": { … }, "hranice": { … },
