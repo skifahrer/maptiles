@@ -2080,7 +2080,7 @@ o veľkosť sťahovania:
 
 | balík | čo v ňom je | z ktorých `.pmtiles` |
 |---|---|---|
-| `roads` | cesty, kam vojde auto – od diaľnice po poľnú cestu, aj trajekty – **s obmedzeniami na ceste** (výška podjazdu, šírka, hmotnosť, rýchlosť, pruhy, stúpanie) | `-transport` |
+| `roads` | cesty, kam vojde auto – od diaľnice po poľnú cestu, aj trajekty – **s obmedzeniami na ceste** (výška podjazdu, šírka, hmotnosť, rýchlosť, pruhy, stúpanie) a dopravnými značkami | `-transport` (+ sprite `-roadsigns`) |
 | `paths` | kam auto nevojde: chodníky, cestičky, cyklotrasy, schody, pešie zóny, ferraty a lanovky – s povrchom, prístupom a náročnosťou (`sac_scale`) | `-paths` |
 | `body` | pramene, jaskyne, rozhľadne, pamiatky, banské dedičstvo, geodetické body | `-points` |
 | `hranice` | štát, kraj, okres a obec ako plochy aj čiary, s menom a úrovňou, plus body sídel | `-boundaries` |
@@ -2111,6 +2111,49 @@ reťazcom** a je to zámer: `maxheight: "3.8 m"` a `12'6"` nesú jednotku
 a Planetiler by z nich vzal číslo zo začiatku a zvyšok zahodil – z 3,8 m by
 bolo 12 m, potichu a s platnou dlaždicou. Číslo z toho potrebuje len
 smerovanie, a to si ho parsuje samo.
+
+**Dopravné značky sú vrstva `traffic_sign` v `<kraj>-transport.pmtiles`**
+([`transport.yml`](transport/transport.yml)), ako návestidlá vo vrstve
+`railway_point` železníc: uzly s
+`traffic_sign` (aj `:forward`/`:backward`) a uzly, ktoré značkou sú samy –
+`highway=stop`, `give_way`, `traffic_signals`, `speed_camera`. Nesú `sign`
+(meno obrázka), `traffic_sign` tak, ako je v OSM, `direction` a `maxspeed`.
+`sign` dopisuje [`signs.py`](transport/signs.py) priamo do predfiltrovaného
+PBF ciest (Planetiler berie jeden OSM vstup), z prvej značky v hodnote:
+`SK:253[50];SK:506` → `sk.ts.253-50`, holé `stop` alebo `highway=stop` dostane
+krajinu kraja (`sk.ts.stop`), `traffic_sign=maxspeed` číslo z `maxspeed`.
+Obrázky sú sprite `<kraj>-roadsigns.json/.png` (+`@2x`), ktorý
+[`sprite.py`](transport/sprite.py) kreslí zo zbierky
+[skifahrer/traffic-signs](https://github.com/skifahrer/traffic-signs) – tá je
+len zdroj obrázkov po krajinách. **Ktorá hodnota z OSM je ktorý obrázok, hovorí
+[`data/road-signs.json`](data/road-signs.json)** (po krajinách: `SK:253[50]`,
+`stop`, `maxspeed=50`, `city_limit=end`, `highway=stop` → `regulatory/…`);
+čo v ňom nie je, sa nekreslí. **Značka s kódom inej krajiny sa kreslí ako
+domáca značka toho istého významu**: `AT:53.8a` na Slovensku je podľa
+rakúskych kľúčov `information/motorway`, a teda `sk.ts.309`; keď domáca krajina
+nemá na ten priečinok kľúč, meno je `sk.ts.<priečinok>` a obrázok jej
+priečinka. Kód, ktorý cudzia krajina nepozná, alebo význam bez domáceho
+obrázka sa nekreslí. **Sprite kraja nesie len značky, ktoré dlaždice
+kraja menujú** (`signs.py --names` → `sprite.py --folders`): `roadsigns.sh`
+stiahne zo zbierky len ich priečinky – Bratislavský kraj ~20 obrázkov, ~400 kB
+zo zbierky a ~70 kB spritu. Aplikácia si ich skladá do jednej sady na krajinu,
+každú značku raz. Každá
+položka spritu nesie aj `label` (meno značky po jazykoch), `category` a `uses`
+(počet výskytov v kraji) – z nich kreslí aplikácia legendu. `maxspeed`,
+`maxweight`, `maxheight` a `maxwidth` berú číslo z rovnomenného tagu
+(`sk.ts.maxweight-7-5`), `city_limit=end` a `overtaking=yes` sú koncové značky
+(`…_end`). Značka bez obrázka sa nekreslí; hodnota bez vlastného obrázka
+(`SK:253[45]`) tiež nie – iná číslica na značke by klamala. Vetvu zbierky
+mení `SIGNS_REF`.
+Vrstva aj sprite sú len v balíku `roads` – základná mapa značky
+nekreslí, rovnako ako návestidlá. Pripravuje ich
+[`roadsigns.sh`](transport/roadsigns.sh) pred dlaždicovaním ciest; keď zlyhá,
+cesty idú bez značiek. **Sprite je v balíku dobrovoľný** (`"optional"`
+v `packages.json`): kraj bez značky alebo bez obrázka ide bez
+`road_sign_sprite` a publikovanie to nehlási ako chybu – chýbajúci povinný
+kľúč hlási varovaním. Štýl ich kreslí ako
+`road-sign` od z16, na cestnej mape od z15, na turistickej, lyžiarskej
+a historickej nie.
 
 **Rovnaké tagy dostáva aj NAVIGÁCIA.** Graf sa stavia z celých štátnych
 extraktov bez akéhokoľvek filtra ([`workers/routing/pbf.sh`](routing/pbf.sh)),

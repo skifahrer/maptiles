@@ -186,6 +186,10 @@ def main():
             + (f"{len(fs)} files, "
                f"{folder.human(sum(os.path.getsize(f) for f in fs))}"
                if fs else "THIS BUILD DIDN'T MAKE IT, the map won't have it"))
+    for p, fs in own_packages:
+        for k in files.missing(man, p) if fs else ():
+            log(f"::warning::Package `{p['key']}` goes without `{k}` – the manifest "
+                f"doesn't list it and the registry doesn't call it optional.")
     # out of the base map: files of own packages + what doesn't belong there
     exclude = [f for _p, fs in own_packages for f in fs] + out_files
     batch = [

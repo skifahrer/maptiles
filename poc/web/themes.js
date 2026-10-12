@@ -3241,6 +3241,7 @@ export const SHIELD_DEFS = [
  * @param {string} [opts.transportUrl] dopravná sieť (balík `cesty`); štýl z nej
  *                                    kreslí len obmedzenia na ceste
  * @param {number} [opts.transportMaxzoom]
+ * @param {boolean} [opts.roadSigns] vrstva `traffic_sign` dopravnej siete má obrázky
  * @param {string} [opts.boundariesUrl] hranice území (balík `hranice`); štýl
  *                                    z nich kreslí názvy území
  * @param {number} [opts.boundariesMaxzoom]
@@ -3284,6 +3285,7 @@ export function buildStyle({
   pointsMaxzoom = 15,
   transportUrl = null,
   transportMaxzoom = 14,
+  roadSigns = false,
   boundariesUrl = null,
   boundariesMaxzoom = 12,
   waterUrl = null,
@@ -5419,6 +5421,26 @@ export function buildStyle({
         "text",
         { "text-color": "roadLimit", "text-halo-color": "textHalo" }
       ]
+    );
+  }
+
+  // a sign its sheet lacks draws nothing
+  if (transportUrl && roadSigns) {
+    add(
+      {
+        id: "road-sign",
+        type: "symbol",
+        source: "transport",
+        "source-layer": "traffic_sign",
+        minzoom: 16,
+        filter: ["has", "sign"],
+        layout: {
+          "icon-image": ["get", "sign"],
+          "icon-size": zl([[16, 0.75], [18, 1], [20, 1.4]]),
+          "icon-padding": 1
+        }
+      },
+      ["popisky", "Dopravné značky", "point", {}]
     );
   }
 

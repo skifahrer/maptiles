@@ -41,6 +41,17 @@ fi
 # the map's own region cut
 mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
 
+# sign nodes named for the `traffic_sign` layer, their images packed; without them roads still draw
+T_RS=$(date +%s)
+workers/transport/roadsigns.sh || {
+  echo "::warning::Road signs weren't made – roads go without them."
+  rm -f _site/tiles/"${REGION_KEY}"-roadsigns*
+}
+ROADSIGNS=false
+compgen -G "_site/tiles/${REGION_KEY}-roadsigns*.json" >/dev/null && ROADSIGNS=true
+printf '%s\t%s\t%s\t%s\n' "61.5" "Road signs and their images" "$(( $(date +%s) - T_RS ))" \
+  "$ROADSIGNS" >> steps-out/transport.tsv
+
 T_PM=$(date +%s)
 OUT="_site/tiles/${REGION_KEY}-transport.pmtiles"
 PATHS_OUT="_site/tiles/${REGION_KEY}-paths.pmtiles"
@@ -72,6 +83,7 @@ echo "enabled=true" >> "$GITHUB_OUTPUT"
 echo "maxzoom=$TZ_" >> "$GITHUB_OUTPUT"
 echo "size_mb=$MB" >> "$GITHUB_OUTPUT"
 echo "paths_enabled=true" >> "$GITHUB_OUTPUT"
+echo "roadsigns_enabled=$ROADSIGNS" >> "$GITHUB_OUTPUT"
 echo "paths_size_mb=$PATHS_MB" >> "$GITHUB_OUTPUT"
 ls -lh "$OUT" "$PATHS_OUT"
 printf '%s\t%s\t%s\t%s\n' "62" "Roads and paths → PMTiles" "$(( $(date +%s) - T_PM ))" \

@@ -58,6 +58,9 @@ on:
       paths_enabled:
         description: "Were the paths made? (package `paths`, same maxzoom as roads)"
         value: ${{ jobs.transport.outputs.paths_enabled }}
+      roadsigns_enabled:
+        description: "Have the road signs images? (layer `traffic_sign` of the roads)"
+        value: ${{ jobs.transport.outputs.roadsigns_enabled }}
     # `workflow_call` doesn't inherit secrets; without them the Drive cache can't
     # open and Planetiler (93 MB) is downloaded on every run.
     secrets:
@@ -85,6 +88,7 @@ jobs:
       maxzoom: ${{ steps.transport.outputs.maxzoom }}
       size_mb: ${{ steps.transport.outputs.size_mb }}
       paths_enabled: ${{ steps.transport.outputs.paths_enabled }}
+      roadsigns_enabled: ${{ steps.transport.outputs.roadsigns_enabled }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7

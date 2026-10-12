@@ -14,6 +14,7 @@
     "  origin      `site` = from `_site`, `wiki` = from the `--wiki` folder",
     "  regenerate  key that builds it alone (`Map · Regenerate region layer`)",
     "  part_of     package it also travels in",
+    "  optional    manifest keys a region may go without (no traffic sign there) – not an error",
     "  legacy      former keys; their old files on Drive are removed on publish",
     "Order is the order in the app. A package dropped from here goes to `retired`,",
     "whose files (key and legacy names) are deleted on Drive."
@@ -74,10 +75,12 @@
       "symbol": "road.lanes",
       "part_of": "base",
       "app_detail": "Every road a car can drive, tracks and ferries too, with their limits, house numbers for search, and routing",
-      "description": "the OSM roads a car can drive – motorways to tracks, and ferries – with road limits, house-numbered addresses and the signed routing network the phone routes on (.pmtiles)",
+      "description": "the OSM roads a car can drive – motorways to tracks, and ferries – with road limits, traffic signs and their images, house-numbered addresses and the signed routing network the phone routes on (.pmtiles)",
       "sources": ["osm"],
-      "manifest": ["transport", "routing"],
-      "suffixes": ["-transport.pmtiles", "-routing.pmtiles"],
+      "manifest": ["transport", "routing", "road_sign_sprite"],
+      "suffixes": ["-transport.pmtiles", "-routing.pmtiles", "-roadsigns.json", "-roadsigns.png",
+                   "-roadsigns@2x.json", "-roadsigns@2x.png"],
+      "optional": ["road_sign_sprite"],
       "origin": "site",
       "regenerate": "roads",
       "legacy": ["cesty"]
@@ -148,6 +151,7 @@
       "manifest": ["rail", "rail_routing", "rail_signs"],
       "suffixes": ["-rail.pmtiles", "-rail-routing.pmtiles", "-signs.json", "-signs.png",
                    "-signs@2x.json", "-signs@2x.png"],
+      "optional": ["rail_signs"],
       "origin": "site",
       "regenerate": "railways",
       "legacy": ["zeleznice"]

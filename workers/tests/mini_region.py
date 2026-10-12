@@ -99,6 +99,9 @@ def build():
     o.way(o.line([(FAR[0] - 0.01, FAR[1]), (FAR[0] + 0.01, FAR[1])]), highway="secondary", name="Vonku")
     for i in range(30):
         o.node(17.131 + (i % 10) * 0.003, 48.1365 + (i // 10) * 0.002, **{"addr__housenumber": str(i + 1)})
+    # signs by the main road: one tagged with a country, one a stop node
+    o.node(17.125, 48.131, traffic_sign="SK:253[50]", direction="forward")
+    o.node(17.127, 48.132, highway="stop")
 
     # hiking route on the path and track
     o.relation([("w", path, ""), ("w", track, "")], type="route", route="hiking",

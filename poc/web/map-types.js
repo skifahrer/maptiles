@@ -66,6 +66,8 @@ const ALL_TRAILS = /^trail-/;
  * a je ich toľko, koľko trás, takže by z mapy spravili šum.
  */
 const TRAIL_MARKS = /^trail-.*-mark$/;
+/** Traffic signs, the roads' `traffic_sign` layer. */
+const ROAD_SIGNS = ["road-sign"];
 /** Tematické vrstvy – každá patrí len niektorým mapám. */
 const TOPIC_LAYERS = ["poi-historic", "poi-mining", "poi-ski", "poi-road"];
 /** Skalné plochy z vrstevnicových dlaždíc. */
@@ -88,6 +90,7 @@ export const MAP_TYPES = [
     rules: [
       // Nič, čo patrí inej mape.
       { match: { id: TOPIC_LAYERS }, visible: false },
+      { match: { id: ROAD_SIGNS }, visible: false },
       { match: { id: SKI_TRAILS }, visible: false },
       { match: { id: PISTES }, visible: false },
       { match: { id: "aerialway" }, minzoom: 12 },
@@ -124,6 +127,7 @@ export const MAP_TYPES = [
       "trasy sa objavia až na veľkom detaile, aby neprekážali.",
     rules: [
       { match: { id: TOPIC_LAYERS }, visible: false },
+      { match: { id: ROAD_SIGNS }, visible: false },
       { match: { id: "poi-ski" }, visible: true, minzoom: 11 },
       // Zjazdovky sú tu hlavná kresba, nie doplnok – vidieť ich má byť
       // z toho istého zoomu ako vleky, ku ktorým patria.
@@ -151,6 +155,7 @@ export const MAP_TYPES = [
       "bez skál, chodníkov a značených trás.",
     rules: [
       { match: { id: TOPIC_LAYERS }, visible: false },
+      { match: { id: ROAD_SIGNS }, minzoom: 15 },
       { match: { id: "poi-road" }, visible: true, minzoom: 10 },
       // Vrstevnice len naznačia kopec: 10 m preč, zvyšok stlmený.
       { match: { id: "contour-minor" }, visible: false },
@@ -192,6 +197,7 @@ export const MAP_TYPES = [
       "a lomy. Bez turistických chodníkov a značených trás.",
     rules: [
       { match: { id: TOPIC_LAYERS }, visible: false },
+      { match: { id: ROAD_SIGNS }, visible: false },
       { match: { id: ["poi-historic", "poi-mining"] }, visible: true, minzoom: 9 },
       // „Podobne ako turistická, ale bez chodníkov" – terén ostáva, kresba
       // chodníkov a trás nie.

@@ -22,6 +22,7 @@ import {
 import { initDevMode, loadOverrides, saveOverrides } from "./devmode.js";
 import { labelLanguages, localName } from "./languages.js";
 import { parsePatternName, renderPattern } from "./patterns.js";
+import { ROAD_SIGN_IMAGE, loadSheet, addSign } from "./road-signs.js";
 import { ICON_SOURCES, DEFAULT_ICON_SOURCE, customIconSources } from "./icon-sources.js";
 
 // Základná URL stránky (funguje na GitHub Pages aj lokálne).
@@ -174,6 +175,8 @@ let currentStyle = null;
  * sa dajú v developer móde prepínať naživo bez ďalšieho buildu.
  */
 let iconSets = [];
+/** The selected region's road sign sheet, read before its style is set. */
+let roadSigns = null;
 
 /** Sada, ktorú má štýl použiť (z úprav, inak prvá dostupná). */
 function currentIconSet() {
@@ -244,6 +247,8 @@ function styleFor(manifest) {
         ? `pmtiles://${baseUrl}/${region.transport}`
         : null,
     transportMaxzoom: region.transport_maxzoom || 14,
+    // the roads' `traffic_sign` layer, drawn when the region has its images
+    roadSigns: !!region.road_sign_sprite,
     // NÁZVY ÚZEMÍ (balík `hranice`) a NÁZVY VÔD (balík `vodstvo`). Obe vrstvy
     // existujú kvôli menu: `boundary` OpenMapTiles je čiara bez mena územia
     // a meno vody leží mimo jej geometrie.
@@ -397,6 +402,10 @@ function applyStyle(manifest) {
       // v sprite je až po builde, ale v prehliadači má byť vidieť HNEĎ, inak
       // by sa nedala vybrať a pozrieť. Toto je to isté miesto, kde sa
       // dokresľujú vzory: „štýl si pýta obrázok, ktorý v sprite nie je".
+      if (ROAD_SIGN_IMAGE.test(ev.id)) {
+        addSign(map, roadSigns, ev.id);
+        return;
+      }
       const vlastna = (overrides.customIcons || []).find((i) => i.name === ev.id);
       if (vlastna) {
         const img = new Image();
@@ -681,8 +690,9 @@ async function main() {
       applyStyle(manifest);
     }
   });
-  regionSelect.addEventListener("change", () => {
+  regionSelect.addEventListener("change", async () => {
     syncControls();
+    roadSigns = await loadSheet(baseUrl, manifest.regions[regionSelect.value]);
     applyStyle(manifest);
     const region = manifest.regions[regionSelect.value];
     // Staré hranice sa musia najprv PUSTIŤ: nový región je inde a `fitBounds`
@@ -696,6 +706,7 @@ async function main() {
     setDevMode(devCheck.checked, manifest)
   );
 
+  roadSigns = await loadSheet(baseUrl, manifest.regions[regionSelect.value]);
   applyStyle(manifest);
 
   // Developer mode sa zapína prepínačom v paneli alebo cez ?dev=1.

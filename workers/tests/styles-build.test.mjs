@@ -26,7 +26,7 @@ test("build.mjs writes every map type × theme, and each passes the style spec",
     execFileSync(process.execPath, [BUILD, "--base-url=https://example.org/maps", "--region=trnavsky",
       `--out=${out}`, `--sprite=${join(dir, "sdf.json")}`, `--fonts-dir=${fonts}`,
       "--dem-tiles=https://example.org/maps/tiles/trnavsky-terrain.pmtiles",
-      ...LAYERS.map((l) => `--${l}=true`)], { stdio: "pipe" });
+      ...LAYERS.map((l) => `--${l}=true`), "--road-signs=true"], { stdio: "pipe" });
 
     const expected = [];
     for (const type of MAP_TYPE_IDS) {
@@ -46,6 +46,8 @@ test("build.mjs writes every map type × theme, and each passes the style spec",
         assert.ok(Object.values(style.sources).some((s) => String(s.url).includes(`-${l}.pmtiles`)),
           `${file} has the ${l} source`);
       }
+      const sign = style.layers.find((l) => l.id === "road-sign");
+      assert.equal(sign?.source, "transport", `${file} draws the roads' signs`);
       if (spec) assert.deepEqual(spec.validateStyleMin(style).map((e) => e.message), [], file);
     }
   } finally {

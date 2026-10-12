@@ -184,8 +184,8 @@ def main():
     # 4. road restrictions are network attributes, and strings
     tag_mappings = schema.get("tag_mappings") or {}
     for i, b in enumerate(blocks, start=1):
-        # road blocks only – no `maxheight` on a ferry
-        if "highway" not in (b.get("include_when") or {}):
+        # road blocks only – no `maxheight` on a ferry or a sign
+        if "highway" not in (b.get("include_when") or {}) or b.get("geometry") == "point":
             continue
         attrs = {a.get("key") for a in (b.get("attributes") or [])
                  if isinstance(a, dict)}

@@ -28,6 +28,8 @@ class Site(unittest.TestCase):
             "tiles/manifest.json", "tiles/r.pmtiles", "tiles/r-trails.pmtiles", "tiles/r-routing.pmtiles",
             "tiles/r-rail.pmtiles", "tiles/r-rail-routing.pmtiles", "tiles/r-signs.json",
             "tiles/r-signs.png", "tiles/r-water.pmtiles", "tiles/r-terrain.pmtiles",
+            "tiles/r-transport.pmtiles", "tiles/r-roadsigns.json",
+            "tiles/r-roadsigns.png",
             "sprites/osm-liberty.json", "styles/r-svetla.json"]
 
     def setUp(self):
@@ -61,6 +63,27 @@ class Site(unittest.TestCase):
         sizes = files.part_sizes(files.base_parts(self.site, self.man))
         self.assertEqual(sizes["signs"]["files"], 2)
         self.assertEqual(sizes["signs"]["raw_size"], 2)
+
+    def test_road_sign_images_ride_with_roads_only(self):
+        roads = packages.package("roads")
+        got = self.rel(files.package_files(self.site, {}, roads))
+        self.assertIn("tiles/r-roadsigns.json", got)
+        self.assertIn("tiles/r-roadsigns.png", got)
+        self.assertNotIn("tiles/r-signs.png", got)
+        parts = [f for k, _, f in files.base_parts(self.site, self.man)]
+        roads_files = files.package_files(self.site, {}, roads)
+        base = self.rel(files.base_files(self.site, roads_files, keep=[f for p in parts for f in p]))
+        self.assertNotIn("tiles/r-roadsigns.png", base, "signs are the roads' only")
+        self.assertNotIn("tiles/r-transport.pmtiles", base)
+
+    def test_a_region_without_signs_lacks_nothing(self):
+        roads = packages.package("roads")
+        man = {"default_region": "r", "regions": {"r": {"transport": "tiles/r-transport.pmtiles",
+                                                        "routing": "tiles/r-routing.pmtiles"}}}
+        self.assertEqual(files.missing(man, roads), [])
+        del man["regions"]["r"]["routing"]
+        self.assertEqual(files.missing(man, roads), ["routing"])
+        self.assertEqual(files.missing({}, roads), [], "no manifest, nothing to tell")
 
     def test_viewer_and_glyphs_stay_out(self):
         with redirect_stdout(io.StringIO()):

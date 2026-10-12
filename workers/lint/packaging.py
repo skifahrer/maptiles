@@ -225,6 +225,12 @@ if "routing" not in (_roads.get("manifest") or []) \
         f"`-routing.pmtiles` in `suffixes`). Regenerating one layer runs without a "
         f"manifest, so without both it would come out without the network.")
 
+for _p in _reg.get("packages") or []:
+    for _k in sorted(set(_p.get("optional") or ()) - set(_p.get("manifest") or ())):
+        bad.append(
+            f"{REGISTRY}: package `{_p['key']}` calls `{_k}` optional, but its `manifest` "
+            f"doesn't list it – the key would never be packed.")
+
 # Pages really has those files
 with open(SITE, encoding="utf-8") as f:
     site_sh = f.read()

@@ -108,6 +108,15 @@ def signs_files(site, man):
 SIGNS_SUFFIXES = ("-signs.json", "-signs.png", "-signs@2x.json", "-signs@2x.png")
 
 
+def missing(man, p):
+    """Manifest keys of package `p` the region lacks, its optional ones left out."""
+    reg = catalog.region_entry(man)
+    if not reg:
+        return []
+    return [k for k in p.get("manifest") or ()
+            if not reg.get(k) and k not in (p.get("optional") or ())]
+
+
 def base_parts(site, man):
     """Parts of the base map: `[(key, description, files)]`, absent ones too (as `0`)."""
     return [

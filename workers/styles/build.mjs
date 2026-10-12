@@ -72,6 +72,7 @@ const pointsMaxzoom = Number(args["points-maxzoom"] || featuresMaxzoom);
 const hasPoints = args.points === "true" || args.points === "1";
 const transportMaxzoom = Number(args["transport-maxzoom"] || 14);
 const hasTransport = args.transport === "true" || args.transport === "1";
+const hasRoadSigns = args["road-signs"] === "true" || args["road-signs"] === "1";
 const boundariesMaxzoom = Number(args["boundaries-maxzoom"] || 12);
 const hasBoundaries = args.boundaries === "true" || args.boundaries === "1";
 const waterMaxzoom = Number(args["water-maxzoom"] || 14);
@@ -280,6 +281,7 @@ for (const type of MAP_TYPES) {
         ? `pmtiles://${baseUrl}/tiles/${region}-transport.pmtiles`
         : null,
       transportMaxzoom,
+      roadSigns: hasRoadSigns,
       boundariesUrl: hasBoundaries
         ? `pmtiles://${baseUrl}/tiles/${region}-boundaries.pmtiles`
         : null,
