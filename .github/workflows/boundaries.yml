@@ -130,7 +130,7 @@ jobs:
       # schema tests before the build (`examples`) – the one thing that tells the
       # truth about a schema without a whole run. They go first.
       - name: Boundary schema tests
-        run: java -jar planetiler.jar verify workers/boundaries/boundaries.yml
+        run: workers/lib/verify-schema.sh workers/boundaries/boundaries.yml
 
       # described in `workers/boundaries/build.sh`
       - name: Area boundaries from OSM → PMTiles

@@ -119,7 +119,7 @@ jobs:
         run: |
           mkdir -p data
           workers/lib/name-languages.sh workers/buildings/buildings.yml data/buildings.yml
-          java -jar planetiler.jar verify data/buildings.yml
+          workers/lib/verify-schema.sh data/buildings.yml
 
       - name: Settlements from OSM → PMTiles
         id: buildings

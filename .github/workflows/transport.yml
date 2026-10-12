@@ -133,8 +133,8 @@ jobs:
       # truth about a schema without a whole run. They go first.
       - name: Transport schema tests
         run: |
-          java -jar planetiler.jar verify workers/transport/transport.yml
-          java -jar planetiler.jar verify workers/transport/paths.yml
+          workers/lib/verify-schema.sh workers/transport/transport.yml
+          workers/lib/verify-schema.sh workers/transport/paths.yml
 
       # described in `workers/transport/build.sh`
       - name: Roads and paths from OSM → PMTiles

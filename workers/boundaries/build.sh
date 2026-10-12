@@ -7,6 +7,9 @@ set -euo pipefail
 mkdir -p _site/tiles data steps-out
 sudo apt-get update -qq
 sudo apt-get install -y -qq osmium-tool
+python3 -c 'import osmium' 2>/dev/null \
+  || sudo apt-get install -y -qq python3-pyosmium \
+  || python3 -m pip install --quiet --break-system-packages 'osmium>=3.6,<5'
 
 T_F=$(date +%s)
 osmium tags-filter --overwrite -o data/boundaries.osm.pbf \
@@ -14,6 +17,9 @@ osmium tags-filter --overwrite -o data/boundaries.osm.pbf \
 
 # the state border relation comes whole from `plan/pbf.sh`, so cut it to the region
 workers/lib/region-cut.sh data/boundaries.osm.pbf "$REGION_BBOX"
+
+python3 workers/boundaries/labels.py --pbf=data/boundaries.osm.pbf --out=data/boundaries-labels.osm.pbf
+mv data/boundaries-labels.osm.pbf data/boundaries.osm.pbf
 
 BEFORE=$(stat -c%s data/region.osm.pbf)
 AFTER=$(stat -c%s data/boundaries.osm.pbf)

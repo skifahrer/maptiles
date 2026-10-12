@@ -132,11 +132,59 @@ class Buildings(unittest.TestCase):
         self.assertNotIn("area_m2", tags[("w", 103)])
         self.assertNotIn("area_m2", tags[("w", 101)])
 
+    def test_a_place_with_a_point_is_named_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "p.osm.pbf")
+            r = subprocess.run([sys.executable, os.path.join(WORKERS, "buildings/areas.py"),
+                                "--pbf", os.path.join(FIXTURES, "places.osm"), "--out", out],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            tags = read(out)
+        self.assertNotIn("place", tags[("w", 200)], "same name, point inside")
+        self.assertNotIn("place", tags[("r", 300)], "same wikidata")
+        self.assertEqual(tags[("r", 300)]["admin_level"], "9")
+        self.assertEqual(tags[("w", 202)]["place"], "village", "no point of its own")
+        self.assertEqual(tags[("w", 203)]["place"], "village", "a namesake elsewhere")
+        self.assertIn("area_m2", tags[("w", 202)])
+        bystrica = box_m2(0.02, 0.015, 48.2375)
+        self.assertAlmostEqual(int(tags[("n", 100)]["area_m2"]), bystrica, delta=bystrica * 0.01)
+        self.assertIn("area_m2", tags[("n", 101)])
+        self.assertNotIn("area_m2", tags[("n", 102)])
+
     def test_ring_area(self):
         a = worker("buildings/areas.py")
         self.assertEqual(a.ring_area([(0, 0), (1, 1), (0, 0)]), 0.0)
         ring = [(17.1, 48.15), (17.1003, 48.15), (17.1003, 48.1501), (17.1, 48.1501), (17.1, 48.15)]
         self.assertAlmostEqual(a.ring_area(ring), box_m2(0.0003, 0.0001, 48.15), delta=1)
+
+
+@needs("osmium")
+class BoundaryLabels(unittest.TestCase):
+    def test_a_municipality_its_settlement_names_is_marked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "m.osm.pbf")
+            r = subprocess.run([sys.executable, os.path.join(WORKERS, "boundaries/labels.py"),
+                                "--pbf", os.path.join(FIXTURES, "municipalities.osm"), "--out", out],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            tags = read(out)
+        self.assertEqual(tags[("r", 301)].get("named_by_place"), "yes", "same name, point inside")
+        self.assertEqual(tags[("r", 302)].get("named_by_place"), "yes", "same wikidata")
+        self.assertNotIn("named_by_place", tags[("r", 303)], "a namesake elsewhere")
+        self.assertNotIn("named_by_place", tags[("r", 304)], "only municipalities")
+        self.assertEqual(tags[("r", 301)]["name"], "Svätý Jur")
+
+
+class PlaceTwins(unittest.TestCase):
+    def test_twins(self):
+        t = worker("lib/place_twins.py")
+        points = [(1, "A", "Q1", 17.0, 48.0), (2, "B", None, 17.5, 48.5), (3, "C", None, 30.0, 10.0)]
+        areas = [("a", "A-district", "Q1", (0, 0, 1, 1)),
+                 ("b", "B", None, (17.4, 48.4, 17.6, 48.6)),
+                 ("c", "C", None, (17.4, 48.4, 17.6, 48.6)),
+                 ("d", None, None, (17.4, 48.4, 17.6, 48.6))]
+        self.assertEqual(t.twins(points, areas), {"a": 1, "b": 2})
+        self.assertEqual(t.bbox([(1, 5), (3, 2), (2, 9)]), (1, 2, 3, 9))
 
 
 @needs("osmium")

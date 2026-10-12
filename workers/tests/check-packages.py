@@ -35,6 +35,7 @@ EXPECTED = [
     ("paths", "paths", {"class": "cable_car", "name": "Lanovka"}),
     ("boundaries", "boundary", {"admin_level": 8, "name": "Malá Obec"}),
     ("boundaries", "boundary_line", {}),
+    ("boundaries", "boundary_label", {"admin_level": 4, "name": "Bratislavský kraj"}),
     ("boundaries", "place", {"name": "Malá Obec"}),
     ("water", "waterway", {"class": "river", "name": "Mlynský potok", "name_en": "Mill Brook"}),
     ("water", "water", {"name": "Jazero"}),
@@ -52,6 +53,8 @@ EXPECTED = [
     ("features", "feature_line", {}),
     ("points", "feature_point", {"name": "Rozhľadňa"}),
 ]
+# its village point already says the name
+ABSENT = [("boundaries", "boundary_label", {"name": "Malá Obec"})]
 OUTSIDE_NAMES = {"Vonku", "Cudzie jazero"}
 
 
@@ -182,6 +185,9 @@ def check_all(work, key, packages):
     for archive, layer, attrs in EXPECTED:
         if archive in by_archive and not find(by_archive[archive], layer, attrs):
             problems.append(f"{archive}: no {layer} feature with {attrs}")
+    for archive, layer, attrs in ABSENT:
+        if archive in by_archive and find(by_archive[archive], layer, attrs):
+            problems.append(f"{archive}: a {layer} feature with {attrs} that shouldn't be there")
     check_routing(tiles, key, problems)
     if by_archive:
         check_style(work, key, by_archive, problems)

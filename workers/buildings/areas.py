@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Writes the area in m² onto buildings and places as tag `area_m2`."""
+"""Writes the area in m² onto buildings and places as `area_m2`; a place mapped twice keeps its point."""
 import argparse
 import math
+import os
+import sys
 from pathlib import Path
 
 import osmium
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
+from place_twins import bbox, twins  # noqa: E402
 
 R = 6371008.8
 
@@ -27,19 +32,40 @@ class Areas(osmium.SimpleHandler):
         super().__init__()
         self.ways = {}
         self.relations = {}
+        self.place_nodes = []
+        self.place_areas = []
+
+    def node(self, n):
+        if "place" in n.tags and n.location.valid():
+            self.place_nodes.append((n.id, n.tags.get("name"), n.tags.get("wikidata"),
+                                     n.location.lon, n.location.lat))
 
     def area(self, a):
         t = a.tags
         if "building" not in t and "place" not in t:
             return
         m2 = 0.0
+        ring = []
         for outer in a.outer_rings():
+            ring += points(outer)
             m2 += ring_area(points(outer))
             for inner in a.inner_rings(outer):
                 m2 -= ring_area(points(inner))
         if m2 <= 0:
             return
-        (self.ways if a.from_way() else self.relations)[a.orig_id()] = round(m2)
+        key = ("w" if a.from_way() else "r", a.orig_id())
+        (self.ways if a.from_way() else self.relations)[key[1]] = round(m2)
+        if "place" in t and ring:
+            self.place_areas.append((key, t.get("name"), t.get("wikidata"), bbox(ring)))
+
+    def twins(self):
+        """Place areas that have a place point, and the area each point takes over."""
+        pairs = twins(self.place_nodes, self.place_areas)
+        node_m2 = {}
+        for (kind, i), node in pairs.items():
+            m2 = (self.ways if kind == "w" else self.relations)[i]
+            node_m2[node] = max(node_m2.get(node, 0), m2)
+        return set(pairs), node_m2
 
 
 class Write(osmium.SimpleHandler):
@@ -47,17 +73,26 @@ class Write(osmium.SimpleHandler):
         super().__init__()
         self.p = areas
         self.w = writer
+        self.dropped, self.node_m2 = areas.twins()
 
     def node(self, n):
-        self.w.add_node(n)
+        m2 = self.node_m2.get(n.id)
+        self.w.add_node(n if m2 is None else n.replace(tags={**dict(n.tags), "area_m2": str(m2)}))
+
+    def tags(self, o, kind, m2):
+        tags = {**dict(o.tags), "area_m2": str(m2)}
+        # the point is drawn; the area would draw the name again
+        if (kind, o.id) in self.dropped:
+            tags.pop("place", None)
+        return tags
 
     def way(self, w):
         m2 = self.p.ways.get(w.id)
-        self.w.add_way(w if m2 is None else w.replace(tags={**dict(w.tags), "area_m2": str(m2)}))
+        self.w.add_way(w if m2 is None else w.replace(tags=self.tags(w, "w", m2)))
 
     def relation(self, r):
         m2 = self.p.relations.get(r.id)
-        self.w.add_relation(r if m2 is None else r.replace(tags={**dict(r.tags), "area_m2": str(m2)}))
+        self.w.add_relation(r if m2 is None else r.replace(tags=self.tags(r, "r", m2)))
 
 
 def main():
@@ -70,11 +105,13 @@ def main():
     areas.apply_file(a.pbf, locations=True, idx="flex_mem")
     Path(a.out).unlink(missing_ok=True)
     writer = osmium.SimpleWriter(a.out)
+    write = Write(areas, writer)
     try:
-        Write(areas, writer).apply_file(a.pbf)
+        write.apply_file(a.pbf)
     finally:
         writer.close()
-    print(f"Area: {len(areas.ways)} ways and {len(areas.relations)} relations")
+    print(f"Area: {len(areas.ways)} ways and {len(areas.relations)} relations; "
+          f"{len(write.dropped)} place areas left to their point")
 
 
 if __name__ == "__main__":
