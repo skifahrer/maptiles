@@ -90,6 +90,10 @@ while : ; do
       --layer=housenumber --below="$HN_MIN"
   fi
 
+  # traffic signs, as the roads carry them; without them the base map still draws
+  workers/tiles/signs.sh "$OUT" "$Z" "${CLIP[@]}" \
+    || echo "::warning::Traffic signs didn't get into the base map – it goes without them."
+
   # the region ends in the tiles, not in the style
   workers/lib/clip-tiles.sh "$OUT"
 

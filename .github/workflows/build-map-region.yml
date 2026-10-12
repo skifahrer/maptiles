@@ -917,6 +917,10 @@ jobs:
           path: planetiler.jar
           key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
 
+      # the base map's traffic signs (`tiles/signs.sh`), tested before the build
+      - name: Sign schema tests
+        run: workers/lib/verify-schema.sh workers/tiles/signs.yml
+
       # the `BUDGET_*` shares come from the workflow env
       - name: PBF → PMTiles (Planetiler, OpenMapTiles schema)
         id: tiles

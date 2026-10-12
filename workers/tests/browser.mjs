@@ -65,8 +65,12 @@ function site() {
       region[`${p}_maxzoom`] = 14;
     }
   }
-  // the signs with a one-sign sheet, so the viewer's own sign images are watched too
+  // the signs with a one-sign sheet, so the viewer's own sign images are watched too;
+  // the base archive gets the roads' sign layer, as `tiles/signs.sh` gives it the real one
   if (region.transport) {
+    execFileSync("python3", [join(ROOT, "workers", "tiles", "add-layer.py"),
+      `--into=${join(tiles, `${KEY}.pmtiles`)}`, `--from=${join(tiles, `${KEY}-transport.pmtiles`)}`,
+      "--layer=traffic_sign"], { stdio: "pipe" });
     const side = 48;
     writeFileSync(join(tiles, `${KEY}-roadsigns@2x.png`),
       encodePng({ width: side, height: side, data: Buffer.alloc(side * side * 4, 255) }));
