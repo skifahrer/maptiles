@@ -40,6 +40,29 @@ class Names(unittest.TestCase):
                          "Trnavský kraj – quick test 4 km²")
         self.assertEqual(catalog.catalog_name({}, "neznamy", "region"), "neznamy")
 
+    def test_registry_rename_reaches_the_catalog(self):
+        regions = {"kosicky": {"name": "Košice Region"}}
+        node = {"name": "Košický kraj"}
+        catalog.name_node(node, regions, "kosicky", "region")
+        self.assertEqual(node["name"], "Košice Region")
+        test = {"name": "Košický kraj – quick test 4 km²"}
+        catalog.name_node(test, regions, "kosicky_test4km2", "region")
+        self.assertEqual(test["name"], "Košice Region – quick test 4 km²")
+        unknown = {"name": "Kept"}
+        catalog.name_node(unknown, {}, "neznamy", "region")
+        self.assertEqual(unknown["name"], "Kept")
+        fresh = {}
+        catalog.name_node(fresh, {}, "neznamy", "region")
+        self.assertEqual(fresh["name"], "neznamy")
+
+    def test_registry_names_are_english(self):
+        with open(os.path.join(catalog._DATA, "regions.json"), encoding="utf-8") as f:
+            regions = json.load(f)
+        slovak = ("kraj", "Slovensko", "Česko", "Rakúsko", "Navigácia", "Svet")
+        for key, r in regions.items():
+            for word in slovak:
+                self.assertNotIn(word, r["name"], key)
+
     def test_tiles_paths(self):
         man = {"dem": "https://x/tiles/trnavsky-terrain.pmtiles"}
         reg = {"pmtiles": "tiles/t.pmtiles", "trails": "tiles/t-trails.pmtiles", "bbox": [1, 2, 3, 4]}

@@ -92,19 +92,34 @@ def tiles_paths(man, reg):
     return out
 
 
-def catalog_name(regions, key, kind):
-    """Human name of a region/area/country – from the registries, never made up."""
+def registry_name(regions, key, kind):
+    """The registry's name for a key, or None when it has none."""
     key, test = split_test(key)
     tail = f" – quick test {test} km²" if test else ""
     if kind == "area":
         try:
             with open(os.path.join(_DATA, "areas.json")) as f:
-                name = (json.load(f).get(key) or {}).get("name") or key
+                name = (json.load(f).get(key) or {}).get("name")
         except (OSError, ValueError):
-            name = key
-        return name + tail
-    r = regions.get(key) or {}
-    return (r.get("name") or key) + tail
+            name = None
+    else:
+        name = (regions.get(key) or {}).get("name")
+    return name + tail if name else None
+
+
+def catalog_name(regions, key, kind):
+    """Human name of a region/area/country – from the registries, never made up."""
+    base, test = split_test(key)
+    return registry_name(regions, key, kind) or base + (f" – quick test {test} km²" if test else "")
+
+
+def name_node(node, regions, key, kind):
+    """A rename in the registry reaches the catalog; an unknown key keeps its name."""
+    name = registry_name(regions, key, kind)
+    if name:
+        node["name"] = name
+    else:
+        node.setdefault("name", catalog_name(regions, key, kind))
 
 
 def now():
@@ -370,21 +385,21 @@ def write_catalog(path, parts, regions, uploaded, man, only="", merge=False,
 
     cat = cat or parts
     country = data.setdefault(cat[0], {})
-    country.setdefault("name", catalog_name(regions, cat[0], "region"))
+    name_node(country, regions, cat[0], "region")
     node = country                      # a whole-country build ends here
     if len(cat) > 1:
         regs = country.setdefault("regions", {})
         node = regs.setdefault(cat[1], {})
-        node.setdefault("name", catalog_name(regions, cat[1], "region"))
+        name_node(node, regions, cat[1], "region")
     if len(cat) > 2:
         subs = node.setdefault("subregions", {})
         node = subs.setdefault(cat[2], {})
-        node.setdefault("name", catalog_name(regions, cat[2], "area"))
+        name_node(node, regions, cat[2], "area")
 
     reg = region_entry(man)
     if only:
         # an addition, not a rewrite: a separate pipeline knows only its package
-        node.setdefault("name", catalog_name(regions, cat[-1], "region"))
+        name_node(node, regions, cat[-1], "region")
         node.setdefault("drive", "/".join(parts))
         # `updated_at` and `run` of the region say which run built the map
         node.setdefault("updated_at", data["_updated_at"])
