@@ -47,6 +47,12 @@ class Entries(unittest.TestCase):
         self.assertEqual(self.names("sk"), ["sk.ts.202", "sk.ts.maxspeed-50", "sk.ts.p1",
                                             "sk.ts.stop"])
 
+    def test_a_region_takes_only_the_signs_it_uses(self):
+        got = sorted(n for v in sp.entries(self.root, "sk", {"sk.ts.p1", "sk.ts.nothing"}).values()
+                     for n in v["names"])
+        self.assertEqual(got, ["sk.ts.p1"])
+        self.assertEqual(sp.entries(self.root, "sk", set()), {})
+
     def test_a_country_osm_has_not_been_read_for(self):
         self.assertEqual(sp.entries(self.root, "cz"), {})
 

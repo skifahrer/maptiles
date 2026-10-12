@@ -36,10 +36,12 @@ def supported(root, country):
     return out
 
 
-def entries(root, country):
-    """`{image file: {"names": [...], "sign": path, "uses": n}}` for the signs OSM supports."""
+def entries(root, country, used=None):
+    """`{image file: {"names": [...], "sign": path, "uses": n}}`; with `used`, only those names."""
     out = {}
     for name, (sign, uses) in sorted(supported(root, country).items()):
+        if used is not None and name not in used:
+            continue
         category, slug = sign.split("/")
         folder = os.path.join(root, "signs", category, slug)
         meta = os.path.join(folder, country, f"{slug}-{country}.json")
@@ -118,10 +120,15 @@ def main():
     ap.add_argument("--signs", required=True, help="checkout of skifahrer/traffic-signs")
     ap.add_argument("--country", required=True)
     ap.add_argument("--out", required=True, help="base name, without .json/.png")
+    ap.add_argument("--used", help="the region's sprite names, one per line (signs.py --names)")
     a = ap.parse_args()
-    found = entries(a.signs, a.country.lower())
+    used = None
+    if a.used:
+        with open(a.used, encoding="utf-8") as f:
+            used = {line.strip() for line in f if line.strip()}
+    found = entries(a.signs, a.country.lower(), used)
     if not found:
-        print(f"Country “{a.country}” has no sign OSM supports with an image – no road sign sprite.")
+        print(f"“{a.country}”: no sign this region uses has an image – no road sign sprite.")
         return
     n = write(found, a.out)
     names = sum(len(v["names"]) for v in found.values())

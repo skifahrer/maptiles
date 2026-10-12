@@ -2126,7 +2126,10 @@ Obrázky sú sprite `<kraj>-roadsigns.json/.png` (+`@2x`), ktorý
 značky, ktoré OSM podporuje**: tie, čo zbierkin súbor `osm/<cc>.json` páruje
 s obrázkom (hodnoty `traffic_sign`, ktoré v OSM naozaj sú, a tie, ktoré
 dokumentuje wiki; zbierka ho obnovuje každý týždeň). Meno obrázka počíta
-`signs.py` z hodnoty v OSM, takže dlaždice aj sprite hovoria rovnako. Každá
+`signs.py` z hodnoty v OSM, takže dlaždice aj sprite hovoria rovnako. **Sprite kraja
+nesie len značky, ktoré dlaždice kraja menujú** (`signs.py --names` → `sprite.py
+--used`) – Bratislavský kraj 18 obrázkov a ~65 kB namiesto celej krajiny. Aplikácia
+si ich skladá do jednej sady na krajinu, každú značku raz. Každá
 položka spritu nesie aj `label` (meno značky po jazykoch), `category` a `uses`
 (počet výskytov v OSM) – z nich kreslí aplikácia legendu. `maxspeed`,
 `maxweight`, `maxheight` a `maxwidth` berú číslo z rovnomenného tagu

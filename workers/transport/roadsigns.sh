@@ -22,7 +22,7 @@ COUNTRY=$(node --input-type=module -e \
 osmium tags-filter --overwrite -o data/roadsigns-in.osm.pbf \
   data/region.osm.pbf --expressions=workers/transport/signs-filter.txt
 python3 workers/transport/signs.py --pbf=data/roadsigns-in.osm.pbf \
-  --out=data/roadsigns.osm.pbf --country="$COUNTRY"
+  --out=data/roadsigns.osm.pbf --country="$COUNTRY" --names=data/roadsigns-used.txt
 if [ "$(osmium fileinfo -e -g data.count.nodes data/roadsigns.osm.pbf)" = 0 ]; then
   echo "No sign in this area – roads and the base map go without them."
   exit 0
@@ -46,7 +46,7 @@ if [ -n "$COUNTRY" ]; then
     "/signs/*/*/*.json" "/osm/${COUNTRY}.json"
   git -C data/traffic-signs checkout --quiet
   python3 workers/transport/sprite.py --signs=data/traffic-signs --country="$COUNTRY" \
-    --out="_site/tiles/${REGION_KEY}-roadsigns"
+    --used=data/roadsigns-used.txt --out="_site/tiles/${REGION_KEY}-roadsigns"
 else
   echo "::warning::${REGION_KEY} has no country – signs are in the tiles, but with no sprite to draw them."
 fi

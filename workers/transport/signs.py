@@ -99,11 +99,13 @@ def main():
     ap.add_argument("--pbf", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--country", default="")
+    ap.add_argument("--names", help="file for the sprite names the region uses, one per line")
     a = ap.parse_args()
 
     Path(a.out).unlink(missing_ok=True)
     writer = osmium.SimpleWriter(a.out)
     kept = named = 0
+    used = set()
     try:
         for n in osmium.FileProcessor(a.pbf, osmium.osm.NODE):
             tags = node_tags(dict(n.tags), a.country.lower())
@@ -111,9 +113,13 @@ def main():
                 continue
             kept += 1
             named += "sign" in tags
+            if "sign" in tags:
+                used.add(tags["sign"])
             writer.add_node(n.replace(tags=tags))
     finally:
         writer.close()
+    if a.names:
+        Path(a.names).write_text("".join(f"{n}\n" for n in sorted(used)), encoding="utf-8")
     print(f"Signs: {kept} nodes, {named} with a sprite name ({a.country or 'no country'})")
 
 
