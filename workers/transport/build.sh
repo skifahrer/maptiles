@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# The whole transport network from OSM → `{region}-transport.pmtiles`; see `transport.yml`.
-# A layer to use, downloadable alone; the style draws only road restrictions from it.
-# Its share of the page size comes from `BUDGET_TRANSPORT_PCT`.
+# OSM roads → `{region}-transport.pmtiles` (`transport.yml`), what cars don't fit →
+# `{region}-paths.pmtiles` (`paths.yml`); two packages, downloadable alone.
+# The style draws only road restrictions from them; both share `BUDGET_TRANSPORT_PCT`.
 
 set -euo pipefail
 mkdir -p _site/tiles data steps-out
@@ -21,7 +21,7 @@ printf '%s\t%s\t%s\t%s\n' "61" "Transport network prefilter" "$(( $(date +%s) - 
 
 # empty isn't an error for a small test; `contents.json` says the package is absent
 if [ "$AFTER" -lt 2000 ]; then
-  echo "::warning::This area has no road, ferry or aerialway – the \`roads\` package isn't made."
+  echo "::warning::This area has no road, path, ferry or aerialway – neither \`roads\` nor \`paths\` is made."
   echo "enabled=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi
@@ -31,10 +31,10 @@ case "$TZ_" in ''|*[!0-9]*) TZ_=14 ;; esac
 if [ "$TZ_" -gt 16 ]; then TZ_=16; fi
 
 # Planetiler silently drops `min_zoom` above maxzoom
-TOPZ=$(grep -oE 'min_zoom: [0-9]+' workers/transport/transport.yml \
-       | grep -oE '[0-9]+' | sort -n | tail -1)
+TOPZ=$(cat workers/transport/transport.yml workers/transport/paths.yml \
+       | grep -oE 'min_zoom: [0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)
 if [ "${TOPZ:-0}" -gt "$TZ_" ]; then
-  echo "::error::workers/transport/transport.yml has blocks with min_zoom up to ${TOPZ}, but tiles go to z${TZ_} – those never get in (for \`service\` roads that is every driveway). Raise transport_maxzoom to ${TOPZ}, or lower min_zoom of those blocks."
+  echo "::error::workers/transport/transport.yml or paths.yml has blocks with min_zoom up to ${TOPZ}, but tiles go to z${TZ_} – those never get in (for \`service\` roads that is every driveway). Raise transport_maxzoom to ${TOPZ}, or lower min_zoom of those blocks."
   exit 1
 fi
 
@@ -43,31 +43,37 @@ mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
 
 T_PM=$(date +%s)
 OUT="_site/tiles/${REGION_KEY}-transport.pmtiles"
-java -Xmx4g -jar planetiler.jar generate-custom \
-  --schema=workers/transport/transport.yml \
-  "${CLIP[@]}" \
-  --output="$OUT" \
-  --maxzoom="$TZ_" --render_maxzoom="$TZ_" \
-  --simplify_tolerance_at_max_zoom=0 \
-  --min_feature_size_at_max_zoom=0 \
-  --force
-# the region ends in the tiles, not in the style
-workers/lib/clip-tiles.sh "$OUT"
+PATHS_OUT="_site/tiles/${REGION_KEY}-paths.pmtiles"
+for pair in "transport:$OUT" "paths:$PATHS_OUT"; do
+  java -Xmx4g -jar planetiler.jar generate-custom \
+    --schema="workers/transport/${pair%%:*}.yml" \
+    "${CLIP[@]}" \
+    --output="${pair#*:}" \
+    --maxzoom="$TZ_" --render_maxzoom="$TZ_" \
+    --simplify_tolerance_at_max_zoom=0 \
+    --min_feature_size_at_max_zoom=0 \
+    --force
+  # the region ends in the tiles, not in the style
+  workers/lib/clip-tiles.sh "${pair#*:}"
+done
 
 MB=$(( $(stat -c%s "$OUT") / 1048576 ))
+PATHS_MB=$(( $(stat -c%s "$PATHS_OUT") / 1048576 ))
 
 # `deploy` checks the total again; the largest own-schema layer says its excess here
 LIMIT_MB="$SIZE_LIMIT_MB"
 case "$LIMIT_MB" in ''|*[!0-9]*) LIMIT_MB=900 ;; esac
 TBUDGET_MB=$(( LIMIT_MB * BUDGET_TRANSPORT_PCT / 100 ))
-if [ "$MB" -gt "$TBUDGET_MB" ]; then
-  echo "::warning::The transport network takes ${MB} MB, above its ${TBUDGET_MB} MB share of the page budget. Lower transport_maxzoom or raise BUDGET_TRANSPORT_PCT."
+if [ $(( MB + PATHS_MB )) -gt "$TBUDGET_MB" ]; then
+  echo "::warning::Roads and paths take $(( MB + PATHS_MB )) MB, above their ${TBUDGET_MB} MB share of the page budget. Lower transport_maxzoom or raise BUDGET_TRANSPORT_PCT."
 fi
 
 echo "enabled=true" >> "$GITHUB_OUTPUT"
 echo "maxzoom=$TZ_" >> "$GITHUB_OUTPUT"
 echo "size_mb=$MB" >> "$GITHUB_OUTPUT"
-ls -lh "$OUT"
-printf '%s\t%s\t%s\t%s\n' "62" "Transport network → PMTiles" "$(( $(date +%s) - T_PM ))" \
-  "maxzoom $TZ_, $(du -h "$OUT" | cut -f1)" \
+echo "paths_enabled=true" >> "$GITHUB_OUTPUT"
+echo "paths_size_mb=$PATHS_MB" >> "$GITHUB_OUTPUT"
+ls -lh "$OUT" "$PATHS_OUT"
+printf '%s\t%s\t%s\t%s\n' "62" "Roads and paths → PMTiles" "$(( $(date +%s) - T_PM ))" \
+  "maxzoom $TZ_, roads $(du -h "$OUT" | cut -f1), paths $(du -h "$PATHS_OUT" | cut -f1)" \
   >> steps-out/transport.tsv

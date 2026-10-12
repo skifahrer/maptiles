@@ -99,7 +99,7 @@ PM="$SITE/tiles/$REGION_KEY.pmtiles"
 # layers the style asks for must be in `_site`, or the layer is silently missing
 for pair in "contours:contours" "rocks:rocks" "trails:waymarked trails" \
             "features:landscape features" "points:points of interest" \
-            "transport:the road network (and road limits)" \
+            "transport:the road network (and road limits)" "paths:the paths" \
             "boundaries:boundaries" "water:water" "rail:railways" "buildings:settlements"; do
   src="${pair%%:*}"; label="${pair#*:}"
   jq -e ".sources.$src" "$STYLE" >/dev/null || continue

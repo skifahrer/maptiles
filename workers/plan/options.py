@@ -61,8 +61,8 @@ DEFAULTS = {
     "features": ("true", "make landscape features OpenMapTiles lacks"),
     "routing": ("true", "build the routing network of this region – it rides "
                         "in the base map and in package `roads`"),
-    "transport": ("true", "make the road network (roads, railways, ferries, "
-                          "lifts) with road limits – package `roads`"),
+    "transport": ("true", "make roads with road limits and ferries – package "
+                          "`roads` – and paths, steps and lifts – package `paths`"),
     # 14, not 15: the schema's highest `min_zoom` is 14
     "transport_maxzoom": ("14", "max zoom of road network tiles"),
     "boundaries": ("true", "make area boundaries and their names – package "

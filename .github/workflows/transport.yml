@@ -1,9 +1,9 @@
 name: Map · transport network
 
-# THE WHOLE TRANSPORT NETWORK from OSM into its own `.pmtiles`: roads from
-# motorways to steps, railways, trams and metro, ferries and aerialways. See the
-# `workers/transport/transport.yml` header. The same pattern as trails and
-# landscape features: the same PBF read a second time with its own schema.
+# ROADS AND PATHS from OSM, each into its own `.pmtiles`: roads a car can drive
+# and ferries (package `roads`), footways, paths, steps and aerialways (package
+# `paths`). See the `workers/transport/transport.yml` and `paths.yml` headers.
+# One prefiltered PBF, read once per schema.
 #
 # A file of its own because `build-map-region.yml` is near the 128 KiB cap, above
 # which GitHub quietly rejects a workflow. The cost: inputs are written twice
@@ -55,6 +55,9 @@ on:
       size_mb:
         description: "Layer size in MB"
         value: ${{ jobs.transport.outputs.size_mb }}
+      paths_enabled:
+        description: "Were the paths made? (package `paths`, same maxzoom as roads)"
+        value: ${{ jobs.transport.outputs.paths_enabled }}
     # `workflow_call` doesn't inherit secrets; without them the Drive cache can't
     # open and Planetiler (93 MB) is downloaded on every run.
     secrets:
@@ -81,6 +84,7 @@ jobs:
       enabled: ${{ steps.transport.outputs.enabled }}
       maxzoom: ${{ steps.transport.outputs.maxzoom }}
       size_mb: ${{ steps.transport.outputs.size_mb }}
+      paths_enabled: ${{ steps.transport.outputs.paths_enabled }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -128,10 +132,12 @@ jobs:
       # schema tests before the build (`examples`) – the one thing that tells the
       # truth about a schema without a whole run. They go first.
       - name: Transport schema tests
-        run: workers/lib/verify-schema.sh workers/transport/transport.yml
+        run: |
+          workers/lib/verify-schema.sh workers/transport/transport.yml
+          workers/lib/verify-schema.sh workers/transport/paths.yml
 
       # described in `workers/transport/build.sh`
-      - name: Transport network from OSM → PMTiles
+      - name: Roads and paths from OSM → PMTiles
         id: transport
         env:
           OPT_TRANSPORT_MAXZOOM: ${{ inputs.maxzoom }}

@@ -2,8 +2,8 @@ name: Map · Regenerate region layer
 
 # ONE LAYER OF ONE REGION ANEW – without rebuilding the map.
 #
-# Choices `what`: points, roads (the whole road network with the routing
-# network), boundaries, water, railways, history, settlements, contours, rocks, terrain.
+# Choices `what`: points, roads (the roads with the routing network), paths,
+# boundaries, water, railways, history, settlements, contours, rocks, terrain.
 # Only that package is overwritten on Drive.
 #
 # OSM layers take minutes (the same PBF as the map); DEM layers tens of minutes
@@ -42,6 +42,7 @@ on:
         options:
           - points
           - roads
+          - paths
           - boundaries
           - water
           - railways
@@ -398,13 +399,13 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # the road network with road limits; the same workflow the map build calls.
-  # Package `roads` carries the routing network too, built by job `routing`
-  # below – both run on the same choice, the package is overwritten whole.
+  # roads and paths; the same workflow the map build calls. Package `roads`
+  # carries the routing network too, built by job `routing` below – both run on
+  # the same choice, the package is overwritten whole.
   transport:
-    name: Roads & paths
+    name: Roads and paths
     needs: plan
-    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.what == 'roads' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (inputs.what == 'roads' || inputs.what == 'paths') }}
     uses: ./.github/workflows/transport.yml
     secrets: inherit                      # cache on Drive; `env` isn't inherited
     with:
@@ -607,7 +608,7 @@ jobs:
       - name: What came from the layer jobs
         run: |
           set -uo pipefail
-          echo "points=${{ needs.points.result }}, roads=${{ needs.transport.result }}, boundaries=${{ needs.boundaries.result }}, water=${{ needs.water.result }}, railways=${{ needs.railways.result }}, history=${{ needs.history.result }}, settlements=${{ needs.settlements.result }}, routing=${{ needs.routing.result }}, DEM layers=${{ needs.dem.result }} (contours=${{ needs.dem.outputs.res_contours }}, hillshading=${{ needs.dem.outputs.res_terrain }})"
+          echo "points=${{ needs.points.result }}, roads and paths=${{ needs.transport.result }}, boundaries=${{ needs.boundaries.result }}, water=${{ needs.water.result }}, railways=${{ needs.railways.result }}, history=${{ needs.history.result }}, settlements=${{ needs.settlements.result }}, routing=${{ needs.routing.result }}, DEM layers=${{ needs.dem.result }} (contours=${{ needs.dem.outputs.res_contours }}, hillshading=${{ needs.dem.outputs.res_terrain }})"
           find _site -type f -printf '%10s  %p\n' 2>/dev/null || true
 
       # the build's packer and catalog write, with `--only`: one package, the entry added to
@@ -621,7 +622,7 @@ jobs:
           CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
           # for OSM layers the layer's name – without it `contents.json` would say
           # “no_contours, no_rocks…” of a map the run never saw; empty for DEM layers
-          MAP_LAYERS: ${{ (inputs.what == 'points' || inputs.what == 'roads' || inputs.what == 'boundaries' || inputs.what == 'water' || inputs.what == 'railways' || inputs.what == 'history' || inputs.what == 'settlements') && inputs.what || '' }}
+          MAP_LAYERS: ${{ (inputs.what == 'points' || inputs.what == 'roads' || inputs.what == 'paths' || inputs.what == 'boundaries' || inputs.what == 'water' || inputs.what == 'railways' || inputs.what == 'history' || inputs.what == 'settlements') && inputs.what || '' }}
           CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
           CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
           CONTOUR_INTERVAL: ${{ needs.plan.outputs.opt_contour_interval }}
@@ -703,7 +704,7 @@ jobs:
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
           # the same values as the ZIP job – `contents.json` is made of them
-          MAP_LAYERS: ${{ (inputs.what == 'points' || inputs.what == 'roads' || inputs.what == 'boundaries' || inputs.what == 'water' || inputs.what == 'railways' || inputs.what == 'history' || inputs.what == 'settlements') && inputs.what || '' }}
+          MAP_LAYERS: ${{ (inputs.what == 'points' || inputs.what == 'roads' || inputs.what == 'paths' || inputs.what == 'boundaries' || inputs.what == 'water' || inputs.what == 'railways' || inputs.what == 'history' || inputs.what == 'settlements') && inputs.what || '' }}
           CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
           CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
           CONTOUR_INTERVAL: ${{ needs.plan.outputs.opt_contour_interval }}

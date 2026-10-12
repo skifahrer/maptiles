@@ -1,0 +1,200 @@
+# Planetiler custom schema – every OSM way cars don't fit, in one `.pmtiles`.
+# Footways, paths, cycleways, steps, pedestrian streets and aerialways; roads are
+# `transport.yml`. Reads the same prefiltered PBF. Zooms: lifts and pedestrian z11, paths z13.
+schema_name: FricoMaps paths
+schema_description: >-
+  Every way on foot, by bike or on a lift – footways, paths, cycleways,
+  steps, pedestrian streets and aerialways, with name, surface and access
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
+
+sources:
+  osm:
+    type: osm
+    local_path: data/transport.osm.pbf
+
+tag_mappings:
+  layer: integer
+
+definitions:
+  - &path_attrs
+    - key: class
+      type: match_value
+    - key: family
+      type: match_key
+    - key: name
+    - key: ref
+    - key: network
+    - key: access
+    - key: foot
+    - key: bicycle
+    - key: horse
+    - key: oneway
+    - key: surface
+    - key: smoothness
+    # how hard a mountain path is to walk, and whether it can be seen
+    - key: sac_scale
+    - key: trail_visibility
+    - key: bridge
+    - key: tunnel
+    - key: layer
+    - key: width
+    - key: incline
+    - key: osm_id
+      value: '${ feature.id }'
+      type: long
+    - key: osm_type
+      value: '${ feature.osm_type }'
+
+layers:
+  - id: paths
+    features:
+      # 1. pedestrian streets: from z11, with the streets around them
+      - source: osm
+        geometry: line
+        min_zoom: 11
+        include_when:
+          highway: [pedestrian]
+        attributes: *path_attrs
+
+      # 2. paths, footways, cycleways, steps: from z13; `elevator` and `ladder` keep it connected
+      - source: osm
+        geometry: line
+        min_zoom: 13
+        include_when:
+          highway: [path, footway, cycleway, bridleway, steps, corridor,
+                    via_ferrata, elevator, ladder]
+        attributes: *path_attrs
+
+      # 3. aerialways and lifts: from z11 – how people get up a mountain
+      - source: osm
+        geometry: line
+        min_zoom: 11
+        include_when:
+          aerialway: [cable_car, gondola, mixed_lift, chair_lift, drag_lift,
+                      t-bar, j-bar, platter, rope_tow, magic_carpet, zip_line,
+                      goods]
+        attributes: *path_attrs
+
+    tile_post_process:
+      merge_line_strings:
+        min_length: 0
+
+# tests: `java -jar planetiler.jar verify workers/transport/paths.yml`
+examples:
+  - name: A footway is a path from z13
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: footway
+        surface: gravel
+    output:
+      - layer: paths
+        geometry: line
+        min_zoom: 13
+        tags:
+          class: footway
+          family: highway
+          surface: gravel
+
+  - name: A mountain path carries how hard it is
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: path
+        sac_scale: demanding_mountain_hiking
+        trail_visibility: intermediate
+    output:
+      - layer: paths
+        geometry: line
+        min_zoom: 13
+        tags:
+          class: path
+          family: highway
+          sac_scale: demanding_mountain_hiking
+          trail_visibility: intermediate
+
+  - name: A pedestrian street is a path from z11
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: pedestrian
+        name: Hlavná
+    output:
+      - layer: paths
+        geometry: line
+        min_zoom: 11
+        tags:
+          class: pedestrian
+          family: highway
+          name: Hlavná
+
+  - name: A lift is part of the walking network – without it a floor breaks the route
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: elevator
+    output:
+      - layer: paths
+        geometry: line
+        min_zoom: 13
+        tags:
+          class: elevator
+          family: highway
+
+  - name: A ladder on a mountain path is walking network too
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: ladder
+    output:
+      - layer: paths
+        geometry: line
+        min_zoom: 13
+        tags:
+          class: ladder
+          family: highway
+
+  - name: An aerialway carries people, not cars
+    input:
+      source: osm
+      geometry: line
+      tags:
+        aerialway: gondola
+        name: Skalnaté pleso
+    output:
+      - layer: paths
+        geometry: line
+        min_zoom: 11
+        tags:
+          class: gondola
+          family: aerialway
+          name: Skalnaté pleso
+
+  - name: A road is not a path – the `roads` package carries it
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: residential
+    output: []
+
+  - name: A track is a road – a tractor drives it
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: track
+    output: []
+
+  - name: A ferry is a road – it carries cars
+    input:
+      source: osm
+      geometry: line
+      tags:
+        route: ferry
+    output: []

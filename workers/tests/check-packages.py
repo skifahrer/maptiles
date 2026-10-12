@@ -19,10 +19,10 @@ _WORKERS = os.path.dirname(_HERE)
 sys.path.insert(0, _HERE)
 import mini_region  # noqa: E402
 
-SCHEMAS = {"transport": ["transport"], "boundaries": ["boundaries"], "water": ["water"],
+SCHEMAS = {"transport": ["transport", "paths"], "boundaries": ["boundaries"], "water": ["water"],
            "rail": ["rail"], "history": ["history"], "buildings": ["buildings"],
            "trails": ["trails"], "features": ["features", "points"]}
-ARCHIVE = {"points": "points"}
+ARCHIVE = {"points": "points", "paths": "paths"}
 # clip-tiles.py keeps 100 m past the outline
 MARGIN_M = 100
 
@@ -31,6 +31,8 @@ EXPECTED = [
     ("transport", "transport", {"class": "primary", "ref": "I/61", "name": "Hlavná"}),
     ("transport", "transport", {"class": "motorway_link"}),
     ("transport", "addresses", {}),
+    ("paths", "paths", {"class": "path"}),
+    ("paths", "paths", {"class": "cable_car", "name": "Lanovka"}),
     ("boundaries", "boundary", {"admin_level": 8, "name": "Malá Obec"}),
     ("boundaries", "boundary_line", {}),
     ("boundaries", "boundary_label", {"admin_level": 4, "name": "Bratislavský kraj"}),
@@ -58,7 +60,7 @@ OUTSIDE_NAMES = {"Vonku", "Cudzie jazero"}
 
 def schema_layers(name):
     """`{layer id: (lowest min_zoom, geometries)}` from a schema yml."""
-    with open(os.path.join(_WORKERS, {"points": "features"}.get(name, name), f"{name}.yml")) as f:
+    with open(os.path.join(_WORKERS, {"points": "features", "paths": "transport"}.get(name, name), f"{name}.yml")) as f:
         doc = yaml.safe_load(f)
     out = {}
     for layer in doc["layers"]:
