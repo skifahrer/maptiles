@@ -13,6 +13,9 @@ opening a draft PR in rikimaps (an empty `chore: book ticket` commit is enough) 
 number in this repo's commits and PR title. Never guess the next number: two sessions end up
 with the same one.
 
+A draft PR you opened is yours to finish: once every commit the task needs is pushed, mark it
+ready for review and rewrite its title and description to say what it now does.
+
 ## Pull requests: merge only on green
 
 **Don't merge a PR until its checks are green and the pipeline really ran.**
