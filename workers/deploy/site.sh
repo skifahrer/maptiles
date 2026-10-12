@@ -84,6 +84,7 @@ jq -n \
   --argjson railsigns "$(find _site/tiles -maxdepth 1 -name "${REGION_KEY}-signs*" 2>/dev/null | sed 's|^_site/||' | sort | jq -R . | jq -s .)" \
   --argjson transport "$TRANSPORT_ENABLED" \
   --argjson trmaxzoom "$TRANSPORT_MAXZOOM" \
+  --argjson paths "${PATHS_ENABLED:-false}" \
   --argjson routing "$ROUTING_ENABLED" \
   --argjson contours "$CONTOURS_ENABLED" \
   --argjson cmaxzoom "$CONTOURS_MAXZOOM" \
@@ -188,6 +189,10 @@ jq -n \
       + (if $transport then {
         transport: ("tiles/" + $region + "-transport.pmtiles"),
         transport_maxzoom: $trmaxzoom
+      } else {} end)
+      + (if $paths then {
+        paths: ("tiles/" + $region + "-paths.pmtiles"),
+        paths_maxzoom: $trmaxzoom
       } else {} end)
       # routing network; `routing_zoom` is fixed z9, but a client has no other way to know the grid
       + (if $routing then {

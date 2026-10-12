@@ -84,6 +84,7 @@ for pair in "${CONTOURS:-}:contours:contours" \
             "${TRAILS:-}:trails:waymarked trails" \
             "${FEATURES:-}:features:landscape features" \
             "${POINTS:-}:points:points of interest" \
+            "${PATHS:-}:paths:paths" \
             "${BOUNDARIES:-}:boundaries:boundaries" \
             "${WATER:-}:water:water" \
             "${RAIL:-}:rail:railways" \

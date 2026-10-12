@@ -1,12 +1,12 @@
-# Planetiler custom schema – the whole OSM transport network in one `.pmtiles`.
-# Roads, ferries and aerialways with name, number, surface, access and restrictions;
-# railways are the `railways` package. Restriction values stay strings with their unit
-# (`double` would read "12'6\"" as 12 m). Not a routing graph – that is the routing package.
-# Zooms: motorway/trunk z6, secondary z9, other roads z11, track z12, paths z13, service z14.
-schema_name: FricoMaps transport network
+# Planetiler custom schema – every OSM road a car can drive, in one `.pmtiles`.
+# Roads, tracks and ferries with name, number, surface, access and restrictions; what
+# cars don't fit is `paths.yml`, railways the `railways` package. Restriction values stay
+# strings with their unit (`double` would read "12'6\"" as 12 m). Not a routing graph.
+# Zooms: motorway/trunk z6, secondary z9, other roads z11, track z12, service z14.
+schema_name: FricoMaps roads
 schema_description: >-
-  Everything one can travel on – roads from motorways to steps, ferries
-  and aerialways, with name, number, surface and access
+  Every road a car can drive – motorways to tracks, and ferries,
+  with name, number, surface, access and road limits
 attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 
 sources:
@@ -90,11 +90,11 @@ layers:
         geometry: line
         min_zoom: 11
         include_when:
-          highway: [unclassified, residential, living_street, pedestrian,
-                    road, busway, bus_guideway, escape, raceway]
+          highway: [unclassified, residential, living_street, road,
+                    busway, bus_guideway, escape, raceway]
         attributes: *transport_attrs
 
-      # 4. tracks: from z12 – dense in the countryside, and what one really walks
+      # 4. tracks: from z12 – a tractor or forestry truck drives them
       - source: osm
         geometry: line
         min_zoom: 12
@@ -102,16 +102,7 @@ layers:
           highway: [track]
         attributes: *transport_attrs
 
-      # 5. paths, footways, cycleways, steps: from z13; `elevator` and `ladder` keep it connected
-      - source: osm
-        geometry: line
-        min_zoom: 13
-        include_when:
-          highway: [path, footway, cycleway, bridleway, steps, corridor,
-                    via_ferrata, elevator, ladder]
-        attributes: *transport_attrs
-
-      # 6. `service`: from z14 – more of them than all other roads in a village
+      # 5. `service`: from z14 – more of them than all other roads in a village
       - source: osm
         geometry: line
         min_zoom: 14
@@ -119,22 +110,12 @@ layers:
           highway: [service]
         attributes: *transport_attrs
 
-      # 7. ferries: from z11 – sometimes the only way across a river
+      # 6. ferries: from z11 – sometimes the only way across a river
       - source: osm
         geometry: line
         min_zoom: 11
         include_when:
           route: [ferry]
-        attributes: *transport_attrs
-
-      # 8. aerialways and lifts: from z11 – transport like any other in the mountains
-      - source: osm
-        geometry: line
-        min_zoom: 11
-        include_when:
-          aerialway: [cable_car, gondola, mixed_lift, chair_lift, drag_lift,
-                      t-bar, j-bar, platter, rope_tow, magic_carpet, zip_line,
-                      goods]
         attributes: *transport_attrs
 
     # roads split at junctions merge, or twenty short segments get twenty shields
@@ -195,22 +176,6 @@ examples:
           oneway: "yes"
           surface: asphalt
 
-  - name: A footway is in the network too – from z13
-    input:
-      source: osm
-      geometry: line
-      tags:
-        highway: footway
-        surface: gravel
-    output:
-      - layer: transport
-        geometry: line
-        min_zoom: 13
-        tags:
-          class: footway
-          family: highway
-          surface: gravel
-
   - name: A bus guideway is a public transport road
     input:
       source: osm
@@ -225,33 +190,30 @@ examples:
           class: bus_guideway
           family: highway
 
-  - name: A lift is part of the walking network – without it a floor breaks the route
+  - name: A footway is a path, not a road – the `paths` package carries it
     input:
       source: osm
       geometry: line
       tags:
-        highway: elevator
-    output:
-      - layer: transport
-        geometry: line
-        min_zoom: 13
-        tags:
-          class: elevator
-          family: highway
+        highway: footway
+    output: []
 
-  - name: A ladder on a mountain path is walking network too
+  - name: A pedestrian street is a path – cars don't go there
     input:
       source: osm
       geometry: line
       tags:
-        highway: ladder
-    output:
-      - layer: transport
-        geometry: line
-        min_zoom: 13
-        tags:
-          class: ladder
-          family: highway
+        highway: pedestrian
+        name: Hlavná
+    output: []
+
+  - name: An aerialway is a path – it carries people, not cars
+    input:
+      source: osm
+      geometry: line
+      tags:
+        aerialway: gondola
+    output: []
 
   - name: A track has its own zoom (z12) and carries `tracktype`
     input:
@@ -301,22 +263,6 @@ examples:
           class: ferry
           family: route
           name: Prievoz Vojka – Kyselica
-
-  - name: An aerialway is transport, not an attraction
-    input:
-      source: osm
-      geometry: line
-      tags:
-        aerialway: gondola
-        name: Skalnaté pleso
-    output:
-      - layer: transport
-        geometry: line
-        min_zoom: 11
-        tags:
-          class: gondola
-          family: aerialway
-          name: Skalnaté pleso
 
   - name: A driveway is `service` – in the network, but only from z14
     input:

@@ -31,9 +31,10 @@ Mapa · Build map region      deväť jobov, tie dlhé bežia súbežne:
                                         (`dem-layers.yml` – vlastný workflow,
                                         volá ho aj pregenerovanie vrstvy)
                                trails   značené trasy z OSM relácií
-                               transport CELÁ cestná sieť (cesty,
-                                        trajekty, lanovky) aj s obmedzeniami
-                                        na ceste ─► balík `cesty`
+                               transport cesty, kam vojde auto (aj poľné
+                                        a trajekty), s obmedzeniami na ceste
+                                        ─► balík `roads`; chodníky, schody,
+                                        pešie zóny a lanovky ─► balík `paths`
                                hranice  hranice území a ich názvy ─► balík
                                         `hranice`
                                vodstvo  rieky, jazerá, more ─► balík `vodstvo`
@@ -2075,16 +2076,20 @@ o veľkosť sťahovania:
 
 | balík | čo v ňom je | z ktorých `.pmtiles` |
 |---|---|---|
-| `cesty` | CELÁ dopravná sieť **aj s obmedzeniami na ceste** (výška podjazdu, šírka, hmotnosť, rýchlosť, pruhy, stúpanie) | `-transport` |
+| `roads` | cesty, kam vojde auto – od diaľnice po poľnú cestu, aj trajekty – **s obmedzeniami na ceste** (výška podjazdu, šírka, hmotnosť, rýchlosť, pruhy, stúpanie) | `-transport` |
+| `paths` | kam auto nevojde: chodníky, cestičky, cyklotrasy, schody, pešie zóny, ferraty a lanovky – s povrchom, prístupom a náročnosťou (`sac_scale`) | `-paths` |
 | `body` | pramene, jaskyne, rozhľadne, pamiatky, banské dedičstvo, geodetické body | `-points` |
 | `hranice` | štát, kraj, okres a obec ako plochy aj čiary, s menom a úrovňou, plus body sídel | `-boundaries` |
 | `vodstvo` | rieky, potoky, kanály, jazerá, priehrady, zálivy, pobrežie – každý prvok aj s menom | `-water` |
 | `navigacia` | smerovacia sieť so značkami – cenu trasy počíta telefón | `-routing` |
 
-**`-transport.pmtiles` je celý balík `cesty`** a je to celá cestná
-a chodníková sieť kraja: cesty od diaľnice po schody, trajekty a lanovky –
-s menom, číslom, povrchom, prístupom a smerovosťou. Železnice v nej nie sú,
-nesie ich balík `zeleznice` ([`workers/transport/transport.yml`](transport/transport.yml)).
+**Sieť je rozdelená podľa toho, či tam vojde auto.** `-transport.pmtiles`
+(balík `roads`, [`transport.yml`](transport/transport.yml)) sú cesty od diaľnice
+po poľnú a lesnú cestu a trajekty; `-paths.pmtiles` (balík `paths`,
+[`paths.yml`](transport/paths.yml)) chodníky, cestičky, cyklotrasy, schody,
+pešie zóny, ferraty a lanovky. Oba z jedného predfiltrovaného PBF v jednom
+jobe, so spoločným rozpočtom `BUDGET_TRANSPORT_PCT`; žiadna trieda nie je
+v oboch (stráži `workers/lint/transport.py`). Železnice nesie balík `railways`.
 Cestná sieť v mape je vrstva `transportation` schémy OpenMapTiles: stavaná na
 **kreslenie**, so zjednodušenou geometriou a v jednom archíve s vodstvom,
 krajinnou pokrývkou a popismi – takže „chcem len siete, po ktorých sa dá

@@ -509,7 +509,7 @@ jobs:
         run: python3 workers/lint/navigation.py
 
       # the road network can shrink silently; a value with a unit must not become a number
-      - name: "Road network: filter, families, limits and `class`/`kind`"
+      - name: "Roads and paths: filter, families, limits and `class`/`kind`"
         run: python3 workers/lint/transport.py
 
       # a boundary without a name is a line again; the prefilter must fetch relation members

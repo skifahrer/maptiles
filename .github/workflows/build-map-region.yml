@@ -718,9 +718,9 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # the whole road network, the core of package `roads` (`workers/transport/transport.yml`)
+  # roads and paths, packages `roads` and `paths` (`workers/transport/transport.yml`, `paths.yml`)
   transport:
-    name: Road network
+    name: Roads and paths
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.opt_transport == 'true' }}
     uses: ./.github/workflows/transport.yml
@@ -1112,6 +1112,7 @@ jobs:
           FEATURES_MAXZOOM: ${{ needs.features.outputs.maxzoom || '15' }}
           POINTS_ENABLED: ${{ needs.features.outputs.points_enabled || 'false' }}
           TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
+          PATHS_ENABLED: ${{ needs.transport.outputs.paths_enabled || 'false' }}
           TRANSPORT_MAXZOOM: ${{ needs.transport.outputs.maxzoom || '14' }}
           ROUTING_ENABLED: ${{ needs.routing.outputs.enabled || 'false' }}
           BOUNDARIES_ENABLED: ${{ needs.boundaries.outputs.enabled || 'false' }}
@@ -1189,6 +1190,7 @@ jobs:
           TRAILS: ${{ needs.trails.outputs.enabled }}
           FEATURES: ${{ needs.features.outputs.enabled }}
           POINTS: ${{ needs.features.outputs.points_enabled }}
+          PATHS: ${{ needs.transport.outputs.paths_enabled }}
           BOUNDARIES: ${{ needs.boundaries.outputs.enabled }}
           WATER: ${{ needs.water.outputs.enabled }}
           RAIL: ${{ needs.railways.outputs.enabled }}
@@ -1211,6 +1213,7 @@ jobs:
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           FEATURES_ENABLED: ${{ needs.features.outputs.enabled || 'false' }}
           TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
+          PATHS_ENABLED: ${{ needs.transport.outputs.paths_enabled || 'false' }}
           BOUNDARIES_ENABLED: ${{ needs.boundaries.outputs.enabled || 'false' }}
           WATER_ENABLED: ${{ needs.water.outputs.enabled || 'false' }}
           RAIL_ENABLED: ${{ needs.railways.outputs.enabled || 'false' }}
@@ -1314,6 +1317,7 @@ jobs:
           CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
           FEATURES_ENABLED: ${{ needs.features.outputs.enabled || 'false' }}
           TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
+          PATHS_ENABLED: ${{ needs.transport.outputs.paths_enabled || 'false' }}
           BOUNDARIES_ENABLED: ${{ needs.boundaries.outputs.enabled || 'false' }}
           WATER_ENABLED: ${{ needs.water.outputs.enabled || 'false' }}
           RAIL_ENABLED: ${{ needs.railways.outputs.enabled || 'false' }}

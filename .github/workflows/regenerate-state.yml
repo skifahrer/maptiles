@@ -3,8 +3,8 @@ name: Map · Regenerate state
 # ONE LAYER ACROSS A COUNTRY IN ONE CLICK: over every region it runs
 # “Regenerate region layer” for the one thing you pick.
 #
-# The choices are `workers/state/jobs.py`. `points`, `roads`, `boundaries` and
-# `water` take minutes per region (the same PBF as the map; `roads` carry the
+# The choices are `workers/state/jobs.py`. `points`, `roads`, `paths`, `boundaries`
+# and `water` take minutes per region (the same PBF as the map; `roads` carry the
 # routing network too); `contours`, `rocks` and `terrain` tens of minutes to hours.
 #
 # A relay like “Build map state”: a job has a six-hour cap. The core is
@@ -31,6 +31,7 @@ on:
         options:
           - points
           - roads
+          - paths
           - boundaries
           - water
           - railways

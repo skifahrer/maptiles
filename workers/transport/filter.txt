@@ -1,4 +1,4 @@
-# PBF prefilter for `transport.yml` (`osmium tags-filter --expressions`): road OR ferry OR aerialway.
+# PBF prefilter for `transport.yml` and `paths.yml` (`osmium tags-filter --expressions`).
 # Restrictions come along: `tags-filter` keeps whole objects. Railways are the `railways` package.
 # Wider than the schema on purpose; `workers/lint/transport.py` guards the other way.
 

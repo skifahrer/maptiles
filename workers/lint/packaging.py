@@ -43,6 +43,7 @@ def fill(site):
                 "tiles/region-transport.pmtiles", "tiles/region-trails.pmtiles",
                 "tiles/region-points.pmtiles", "tiles/region-boundaries.pmtiles",
                 "tiles/region-water.pmtiles",
+                "tiles/region-paths.pmtiles",
                 "tiles/region-history.pmtiles",
                 "tiles/region-buildings.pmtiles",
                 "tiles/region-routing.pmtiles",
@@ -180,6 +181,7 @@ for kind, name in (("contours", "tiles/region-contours.pmtiles"),
                    ("rocks", "tiles/region-rocks.pmtiles"),
                    ("terrain", "tiles/region-terrain.pmtiles"),
                    ("roads", "tiles/region-transport.pmtiles"),
+                   ("paths", "tiles/region-paths.pmtiles"),
                    ("points", "tiles/region-points.pmtiles"),
                    ("boundaries", "tiles/region-boundaries.pmtiles"),
                    ("water", "tiles/region-water.pmtiles"),
@@ -205,7 +207,7 @@ for _k in sorted(_alive & _gone):
     bad.append(
         f"{REGISTRY}: package `{_k}` is alive AND in `retired`. `retired` means "
         f"“the old one is deleted” – it would vanish right after the run uploaded it.")
-for _k in ("roads", "boundaries", "water", "history", "settlements"):
+for _k in ("roads", "paths", "boundaries", "water", "history", "settlements"):
     if _k not in _alive:
         bad.append(
             f"{REGISTRY}: package `{_k}` isn't in the registry, so it isn't made and "

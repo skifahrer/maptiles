@@ -126,6 +126,8 @@ def layers():
         out.append("features")
     if env("TRANSPORT_ENABLED") == "true":
         out.append("transport")
+    if env("PATHS_ENABLED") == "true":
+        out.append("paths")
     if env("BOUNDARIES_ENABLED") == "true":
         out.append("boundaries")
     if env("WATER_ENABLED") == "true":

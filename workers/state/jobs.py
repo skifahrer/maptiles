@@ -49,9 +49,12 @@ COST = {
     # key: (name, what it is)
     "points": ("Points of interest",
                "springs, caves, lookouts, monuments and other point features"),
-    "roads": ("Roads & paths",
-              "the whole OSM road network with road limits (clearance, weight, "
+    "roads": ("Roads",
+              "every OSM road a car can drive, with road limits (clearance, weight, "
               "speed) and the routing network the phone routes on"),
+    "paths": ("Paths",
+              "footways, paths, cycleways, steps, pedestrian streets and lifts – "
+              "everything cars don't fit"),
     "boundaries": ("Boundaries and area names",
                    "state, region, district and municipality boundaries with their names"),
     "water": ("Water bodies",
