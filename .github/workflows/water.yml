@@ -128,7 +128,7 @@ jobs:
       # schema tests before the build (`examples`) – the one thing that tells the
       # truth about a schema without a whole run. They go first.
       - name: Water schema tests
-        run: java -jar planetiler.jar verify workers/water/water.yml
+        run: workers/lib/verify-schema.sh workers/water/water.yml
 
       # described in `workers/water/build.sh`
       - name: Water from OSM → PMTiles

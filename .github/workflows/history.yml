@@ -129,7 +129,7 @@ jobs:
         run: |
           mkdir -p data
           workers/lib/name-languages.sh workers/history/history.yml data/history.yml
-          java -jar planetiler.jar verify data/history.yml
+          workers/lib/verify-schema.sh data/history.yml
 
       # described in `workers/history/build.sh`
       - name: Army and history from OSM → PMTiles
