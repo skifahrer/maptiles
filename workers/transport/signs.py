@@ -108,6 +108,15 @@ def at_home(name, home, by_country):
     return ours[0] if ours else generic(home, folder)
 
 
+def tagged(tags):
+    """How a sign node is tagged, for people: `SK:253[50]`, `highway=stop`, `maxspeed + maxspeed=50`."""
+    raw = next((tags[k] for k in KEYS if tags.get(k)), None)
+    if raw is None:
+        return f"highway={tags.get('highway')}"
+    extra = raw if raw in FIGURES or raw in ENDS else None
+    return f"{raw} + {extra}={tags[extra]}" if extra and tags.get(extra) else raw
+
+
 def direction(tags):
     """Which way the sign faces: its own tag, else the key it came in."""
     for k in ("traffic_sign:direction", "direction"):
@@ -148,6 +157,7 @@ def main():
     ap.add_argument("--out", required=True, help="the same PBF, sign nodes named")
     ap.add_argument("--country", default="")
     ap.add_argument("--names", help="file for the sprite names the region uses, `name<TAB>count`")
+    ap.add_argument("--report", help="file for `tagged<TAB>name<TAB>count`, one row per tagging")
     ap.add_argument("--mapping", default=MAPPING)
     a = ap.parse_args()
     by_country = folders(a.mapping)
@@ -156,6 +166,7 @@ def main():
     writer = osmium.SimpleWriter(a.out)
     kept = 0
     used = Counter()
+    report = Counter()
     try:
         for o in osmium.FileProcessor(a.pbf):
             if o.is_node():
@@ -164,6 +175,7 @@ def main():
                     kept += 1
                     if "sign" in tags:
                         used[tags["sign"]] += 1
+                    report[(tagged(dict(o.tags)), tags.get("sign", ""))] += 1
                     o = o.replace(tags={**dict(o.tags), **tags})
                 writer.add_node(o)
             elif o.is_way():
@@ -174,6 +186,9 @@ def main():
         writer.close()
     if a.names:
         Path(a.names).write_text("".join(f"{n}\t{used[n]}\n" for n in sorted(used)), encoding="utf-8")
+    if a.report:
+        Path(a.report).write_text("".join(f"{t}\t{n}\t{c}\n" for (t, n), c in report.most_common()),
+                                  encoding="utf-8")
     print(f"Signs: {kept} nodes, {sum(used.values())} with a sprite name ({a.country or 'no country'})")
 
 

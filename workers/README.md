@@ -2153,7 +2153,11 @@ ide v balíku `roads` aj v základnej mape (časť `roadsigns`), takže značky
 kreslí každá z nich sama; štýl má `road-sign` zo základnej mapy
 a `road-sign-roads` z ciest a keď sú obe, druhá kópia značky sa pre kolíziu
 nenakreslí. Cesty pripravuje [`roadsigns.sh`](transport/roadsigns.sh) pred
-dlaždicovaním; keď niečo zlyhá, mapa ide bez značiek. **Sprite je v balíku dobrovoľný** (`"optional"`
+dlaždicovaním; keď niečo zlyhá, mapa ide bez značiek. **Súhrn jobu ciest vypíše značky kraja**
+([`signs-summary.py`](transport/signs-summary.py)): ako sú v OSM otagované,
+koľko ich je, na aký obrázok a priečinok zbierky sa mapujú a či sa kreslia
+(`not mapped` – chýba v `road-signs.json`, `no image` – zbierka ho pre krajinu
+nemá). **Sprite je v balíku dobrovoľný** (`"optional"`
 v `packages.json`): kraj bez značky alebo bez obrázka ide bez
 `road_sign_sprite` a publikovanie to nehlási ako chybu – chýbajúci povinný
 kľúč hlási varovaním. Štýl ich kreslí ako
