@@ -8,6 +8,10 @@ from pathlib import Path
 IMPLIED = {"stop": "stop", "give_way": "give_way", "traffic_signals": "traffic_signals",
            "speed_camera": "speed_camera"}
 KEYS = ("traffic_sign", "traffic_sign:forward", "traffic_sign:backward")
+FIGURES = ("maxspeed", "maxweight", "maxheight", "maxwidth")
+FIGURE = re.compile(r"^(\d+(?:[.,]\d+)?)\s*[a-z]*$")
+# the tag that turns a sign into its end sign
+ENDS = {"city_limit": "end", "overtaking": "yes"}
 COUNTRY = re.compile(r"^([A-Za-z]{2}):(.*)$")
 VALUE = re.compile(r"^(.*?)\[(.*?)\]")
 
@@ -45,6 +49,17 @@ def sign_name(value, country):
     return f"{cc}.ts.{key}-{code(val)}" if val.strip() else f"{cc}.ts.{key}"
 
 
+def figured(name, tags):
+    """`traffic_sign=maxspeed` takes its figure from `maxspeed`; an end sign gets `_end`."""
+    word = name.split(".ts.", 1)[1]
+    m = FIGURE.match(tags.get(word, "")) if word in FIGURES else None
+    if m:
+        return f"{name}-{code(m.group(1)).replace('.', '-')}"
+    if word in ENDS and tags.get(word) == ENDS[word]:
+        return f"{name}_end"
+    return name
+
+
 def direction(tags):
     """Which way the sign faces: its own tag, else the key it came in."""
     for k in ("traffic_sign:direction", "direction"):
@@ -65,9 +80,8 @@ def node_tags(tags, country):
     out = {k: v for k, v in tags.items()
            if k in KEYS or k in ("highway", "maxspeed", "name")}
     name = sign_name(raw, country) if raw else f"{country}.ts.{implied}" if country else None
-    # `traffic_sign=maxspeed` leaves the figure to `maxspeed`
-    if name and name.endswith(".ts.maxspeed") and tags.get("maxspeed", "").isdigit():
-        name += "-" + tags["maxspeed"]
+    if name:
+        name = figured(name, tags)
     if name:
         out["sign"] = name
     if raw:

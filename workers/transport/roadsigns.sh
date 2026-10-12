@@ -6,6 +6,7 @@ set -euo pipefail
 TZ_="${1:?maxzoom}"
 shift
 SIGNS_REPO="${SIGNS_REPO:-https://github.com/skifahrer/traffic-signs}"
+SIGNS_REF="${SIGNS_REF:-master}"
 
 python3 -c 'import osmium' 2>/dev/null \
   || sudo apt-get install -y -qq python3-pyosmium \
@@ -39,8 +40,10 @@ workers/lib/clip-tiles.sh "$OUT"
 if [ -n "$COUNTRY" ]; then
   # only this country's folders: the whole collection is hundreds of MB
   rm -rf data/traffic-signs
-  git clone --quiet --depth 1 --filter=blob:none --no-checkout "$SIGNS_REPO" data/traffic-signs
-  git -C data/traffic-signs sparse-checkout set --no-cone "/signs/*/*/${COUNTRY}/"
+  git clone --quiet --depth 1 --filter=blob:none --no-checkout --branch "$SIGNS_REF" \
+    "$SIGNS_REPO" data/traffic-signs
+  git -C data/traffic-signs sparse-checkout set --no-cone "/signs/*/*/${COUNTRY}/" \
+    "/signs/*/*/*.json" "/osm/${COUNTRY}.json"
   git -C data/traffic-signs checkout --quiet
   python3 workers/transport/sprite.py --signs=data/traffic-signs --country="$COUNTRY" \
     --out="_site/tiles/${REGION_KEY}-roadsigns"

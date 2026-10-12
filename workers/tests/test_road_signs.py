@@ -42,6 +42,21 @@ class NodeTags(unittest.TestCase):
         tags = s.node_tags({"traffic_sign": "maxspeed", "maxspeed": "40"}, "sk")
         self.assertEqual(tags["sign"], "sk.ts.maxspeed-40")
 
+    def test_limits_take_their_figure(self):
+        tags = s.node_tags({"traffic_sign": "maxweight", "maxweight": "7.5"}, "sk")
+        self.assertEqual(tags["sign"], "sk.ts.maxweight-7-5")
+        tags = s.node_tags({"traffic_sign": "maxheight", "maxheight": "3.8 m"}, "sk")
+        self.assertEqual(tags["sign"], "sk.ts.maxheight-3-8")
+        tags = s.node_tags({"traffic_sign": "maxspeed", "maxspeed": "none"}, "sk")
+        self.assertEqual(tags["sign"], "sk.ts.maxspeed")
+
+    def test_end_signs(self):
+        self.assertEqual(s.node_tags({"traffic_sign": "city_limit", "city_limit": "end"}, "sk")["sign"],
+                         "sk.ts.city_limit_end")
+        self.assertEqual(s.node_tags({"traffic_sign": "overtaking", "overtaking": "yes"}, "sk")["sign"],
+                         "sk.ts.overtaking_end")
+        self.assertEqual(s.node_tags({"traffic_sign": "SK:P1"}, "sk")["sign"], "sk.ts.p1")
+
     def test_forward_key_is_the_direction(self):
         tags = s.node_tags({"traffic_sign:forward": "SK:230"}, "sk")
         self.assertEqual((tags["sign"], tags["sign_direction"], tags["traffic_sign"]),

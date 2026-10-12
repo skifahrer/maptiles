@@ -2121,12 +2121,20 @@ smerovanie, a to si ho parsuje samo.
 `SK:253[50];SK:506` → `sk.ts.253-50`, holé `stop` alebo `highway=stop` dostane
 krajinu kraja (`sk.ts.stop`), `traffic_sign=maxspeed` číslo z `maxspeed`.
 Obrázky sú sprite `<kraj>-roadsigns.json/.png` (+`@2x`), ktorý
-[`sprite.py`](transport/sprite.py) kreslí z SVG zbierky
-[skifahrer/traffic-signs](https://github.com/skifahrer/traffic-signs) – len
-výstražné, regulačné a informačné značky krajiny kraja, meno je národný kód bez
-medzier a `§` (`P 6` → `cz.ts.p6`). Značka, ktorej obrázok zbierka nemá, sa
-nekreslí; hodnota bez vlastného obrázka (`SK:253[45]`) tiež nie – iná číslica
-na značke by klamala. Archív aj sprite idú v balíku `roads` aj v základnej
+[`sprite.py`](transport/sprite.py) kreslí zo zbierky
+[skifahrer/traffic-signs](https://github.com/skifahrer/traffic-signs) – **len
+značky, ktoré OSM podporuje**: tie, čo zbierkin súbor `osm/<cc>.json` páruje
+s obrázkom (hodnoty `traffic_sign`, ktoré v OSM naozaj sú, a tie, ktoré
+dokumentuje wiki; zbierka ho obnovuje každý týždeň). Meno obrázka počíta
+`signs.py` z hodnoty v OSM, takže dlaždice aj sprite hovoria rovnako. Každá
+položka spritu nesie aj `label` (meno značky po jazykoch), `category` a `uses`
+(počet výskytov v OSM) – z nich kreslí aplikácia legendu. `maxspeed`,
+`maxweight`, `maxheight` a `maxwidth` berú číslo z rovnomenného tagu
+(`sk.ts.maxweight-7-5`), `city_limit=end` a `overtaking=yes` sú koncové značky
+(`…_end`). Značka bez obrázka sa nekreslí; hodnota bez vlastného obrázka
+(`SK:253[45]`) tiež nie – iná číslica na značke by klamala. Vetvu zbierky
+mení `SIGNS_REF`.
+Archív aj sprite idú v balíku `roads` aj v základnej
 mape (časť `roadsigns`), stavia ich [`roadsigns.sh`](transport/roadsigns.sh)
 v jobe ciest; keď zlyhá, cesty idú bez značiek. Štýl ich kreslí ako
 `road-sign` od z16, na cestnej mape od z15, na turistickej, lyžiarskej
