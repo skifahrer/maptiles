@@ -1,6 +1,10 @@
+import os
+import subprocess
+import sys
+import tempfile
 import unittest
 
-from load import worker
+from load import WORKERS, needs, worker
 
 s = worker("transport/signs.py")
 
@@ -97,6 +101,49 @@ class MappedName(unittest.TestCase):
                  "highway=give_way": self.tiles(highway="give_way")}
         for key, name in cases.items():
             self.assertEqual(s.mapped_name(key, "sk"), name, key)
+
+
+OSM = """<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6">
+ <node id="1" version="1" lat="48.13" lon="17.12"><tag k="traffic_sign" v="SK:253[50]"/></node>
+ <node id="2" version="1" lat="48.14" lon="17.13"><tag k="highway" v="stop"/></node>
+ <node id="3" version="1" lat="48.15" lon="17.14"/>
+ <way id="10" version="1"><nd ref="2"/><nd ref="3"/><tag k="highway" v="residential"/></way>
+</osm>
+"""
+
+
+@needs("osmium")
+class Rewrite(unittest.TestCase):
+    def test_the_roads_keep_everything_and_signs_get_their_name(self):
+        # fix 1847: osmium.FileProcessor is missing from the runners' pyosmium 3
+        import osmium
+
+        with tempfile.TemporaryDirectory() as tmp:
+            src, out = os.path.join(tmp, "in.osm"), os.path.join(tmp, "out.osm.pbf")
+            with open(src, "w", encoding="utf-8") as f:
+                f.write(OSM)
+            r = subprocess.run([sys.executable, os.path.join(WORKERS, "transport/signs.py"),
+                                f"--pbf={src}", f"--out={out}", "--country=sk",
+                                f"--report={tmp}/report.tsv"], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            got = {}
+
+            class Read(osmium.SimpleHandler):
+                def node(self, n):
+                    got[("n", n.id)] = dict(n.tags)
+
+                def way(self, w):
+                    got[("w", w.id)] = dict(w.tags)
+
+            Read().apply_file(out)
+            with open(f"{tmp}/report.tsv", encoding="utf-8") as f:
+                report = f.read()
+        self.assertEqual(got[("n", 1)]["sign"], "sk.ts.253-50")
+        self.assertEqual(got[("n", 2)], {"highway": "stop", "sign": "sk.ts.stop"})
+        self.assertEqual(got[("n", 3)], {})
+        self.assertEqual(got[("w", 10)], {"highway": "residential"})
+        self.assertIn("highway=stop\tsk.ts.stop\t1", report)
 
 if __name__ == "__main__":
     unittest.main()

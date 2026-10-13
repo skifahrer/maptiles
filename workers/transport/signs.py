@@ -149,9 +149,46 @@ def node_tags(tags, country, by_country=None):
     return out
 
 
-def main():
+def rewrite(pbf, out, country, by_country):
+    """`out` is `pbf` with sign nodes named; returns `(signs, {name: n}, {(tagged, name): n})`."""
     import osmium
 
+    class Rewrite(osmium.SimpleHandler):
+        def __init__(self, writer):
+            super().__init__()
+            self.w = writer
+            self.kept = 0
+            self.used = Counter()
+            self.report = Counter()
+
+        def node(self, n):
+            tags = node_tags(dict(n.tags), country, by_country)
+            if tags is None:
+                self.w.add_node(n)
+                return
+            self.kept += 1
+            if "sign" in tags:
+                self.used[tags["sign"]] += 1
+            self.report[(tagged(dict(n.tags)), tags.get("sign", ""))] += 1
+            self.w.add_node(n.replace(tags={**dict(n.tags), **tags}))
+
+        def way(self, w):
+            self.w.add_way(w)
+
+        def relation(self, r):
+            self.w.add_relation(r)
+
+    Path(out).unlink(missing_ok=True)
+    writer = osmium.SimpleWriter(out)
+    try:
+        h = Rewrite(writer)
+        h.apply_file(pbf)
+    finally:
+        writer.close()
+    return h.kept, h.used, h.report
+
+
+def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pbf", required=True, help="the roads' prefiltered PBF")
     ap.add_argument("--out", required=True, help="the same PBF, sign nodes named")
@@ -160,30 +197,8 @@ def main():
     ap.add_argument("--report", help="file for `tagged<TAB>name<TAB>count`, one row per tagging")
     ap.add_argument("--mapping", default=MAPPING)
     a = ap.parse_args()
-    by_country = folders(a.mapping)
 
-    Path(a.out).unlink(missing_ok=True)
-    writer = osmium.SimpleWriter(a.out)
-    kept = 0
-    used = Counter()
-    report = Counter()
-    try:
-        for o in osmium.FileProcessor(a.pbf):
-            if o.is_node():
-                tags = node_tags(dict(o.tags), a.country.lower(), by_country)
-                if tags is not None:
-                    kept += 1
-                    if "sign" in tags:
-                        used[tags["sign"]] += 1
-                    report[(tagged(dict(o.tags)), tags.get("sign", ""))] += 1
-                    o = o.replace(tags={**dict(o.tags), **tags})
-                writer.add_node(o)
-            elif o.is_way():
-                writer.add_way(o)
-            elif o.is_relation():
-                writer.add_relation(o)
-    finally:
-        writer.close()
+    kept, used, report = rewrite(a.pbf, a.out, a.country.lower(), folders(a.mapping))
     if a.names:
         Path(a.names).write_text("".join(f"{n}\t{used[n]}\n" for n in sorted(used)), encoding="utf-8")
     if a.report:
