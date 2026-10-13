@@ -311,13 +311,18 @@ def main():
 
     # what really is in the folder; `None` = unknown, `{}` = empty
     live = None
-    try:
-        live = folder.ids_in(creds, fid)
-        log(f"The map folder holds {len(live)} files – catalog links to files no "
-            f"longer there are dropped by them.")
-    except Exception as exc:                       # noqa: BLE001
-        log(f"::warning::The map folder couldn't be listed ({exc}) – this run "
-            f"didn't check catalog links. Writing them as they are.")
+    for attempt in range(1, 5):
+        try:
+            live = folder.ids_in(creds, fid)
+            log(f"The map folder holds {len(live)} files – catalog links to files no "
+                f"longer there are dropped by them.")
+            break
+        except Exception as exc:                   # noqa: BLE001
+            if attempt == 4:
+                log(f"::warning::The map folder couldn't be listed ({exc}) – this run "
+                    f"didn't check catalog links. Writing them as they are.")
+            else:
+                time.sleep(2 ** attempt)
 
     if args.maps:
         # a test is written too, just into its own node
