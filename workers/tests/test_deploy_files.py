@@ -136,5 +136,31 @@ class PublishContents(unittest.TestCase):
         self.assertIn("trails", base["layers"])
 
 
+class PublishLiveIds(unittest.TestCase):
+    def setUp(self):
+        env = {"REGION_KEY": "trnavsky_test4", "AREA_KEY": "", "TEST_KM2": "0", "MAP_LAYERS": "",
+               "GITHUB_RUN_NUMBER": "5", "TRAILS_ENABLED": "true"}
+        with mock.patch.dict(os.environ, env):
+            self.publish = worker("deploy/publish-map.py")
+
+    def test_a_failed_listing_is_tried_again(self):
+        ids = mock.Mock(side_effect=[OSError("503"), {"a": 1}])
+        waits = []
+        with mock.patch.object(self.publish.folder, "ids_in", ids), \
+                redirect_stdout(io.StringIO()):
+            got = self.publish.live_ids("creds", "fid", sleep=waits.append)
+        self.assertEqual(got, {"a": 1})
+        self.assertEqual(waits, [2])
+
+    def test_a_listing_that_keeps_failing_is_unknown(self):
+        ids = mock.Mock(side_effect=OSError("503"))
+        with mock.patch.object(self.publish.folder, "ids_in", ids), \
+                redirect_stdout(io.StringIO()) as out:
+            got = self.publish.live_ids("creds", "fid", sleep=lambda _s: None)
+        self.assertIsNone(got)
+        self.assertEqual(ids.call_count, 4)
+        self.assertIn("::warning::", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

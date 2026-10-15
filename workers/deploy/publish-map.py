@@ -67,6 +67,23 @@ def log(msg):
     print(msg, flush=True)
 
 
+def live_ids(creds, fid, tries=4, sleep=time.sleep):
+    """Ids in the map folder; `None` = unknown, `{}` = empty."""
+    for attempt in range(1, tries + 1):
+        try:
+            live = folder.ids_in(creds, fid)
+        except Exception as exc:                   # noqa: BLE001
+            if attempt == tries:
+                log(f"::warning::The map folder couldn't be listed ({exc}) – this run "
+                    f"didn't check catalog links. Writing them as they are.")
+                return None
+            sleep(2 ** attempt)
+            continue
+        log(f"The map folder holds {len(live)} files – catalog links to files no "
+            f"longer there are dropped by them.")
+        return live
+
+
 def contents(kind, man, fmt="zip", parts=None):
     """`contents.json` for a package – what the file name once carried."""
     reg = catalog.region_entry(man)
@@ -314,15 +331,7 @@ def main():
                         f"moved to other packages. Deleted {count}× {name}, so nobody "
                         f"downloads it twice.")
 
-    # what really is in the folder; `None` = unknown, `{}` = empty
-    live = None
-    try:
-        live = folder.ids_in(creds, fid)
-        log(f"The map folder holds {len(live)} files – catalog links to files no "
-            f"longer there are dropped by them.")
-    except Exception as exc:                       # noqa: BLE001
-        log(f"::warning::The map folder couldn't be listed ({exc}) – this run "
-            f"didn't check catalog links. Writing them as they are.")
+    live = live_ids(creds, fid)
 
     if args.maps:
         # a test is written too, just into its own node
