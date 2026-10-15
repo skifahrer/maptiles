@@ -108,7 +108,10 @@ OSM = """<?xml version="1.0" encoding="UTF-8"?>
  <node id="1" version="1" lat="48.13" lon="17.12"><tag k="traffic_sign" v="SK:253[50]"/></node>
  <node id="2" version="1" lat="48.14" lon="17.13"><tag k="highway" v="stop"/></node>
  <node id="3" version="1" lat="48.15" lon="17.14"/>
- <way id="10" version="1"><nd ref="2"/><nd ref="3"/><tag k="highway" v="residential"/></way>
+ <node id="4" version="1" lat="48.16" lon="17.15"><tag k="traffic_sign" v="SK:C8"/></node>
+ <node id="5" version="1" lat="48.17" lon="17.16"><tag k="traffic_sign" v="SK:C9"/></node>
+ <way id="10" version="1"><nd ref="2"/><nd ref="3"/><nd ref="5"/><tag k="highway" v="residential"/></way>
+ <way id="11" version="1"><nd ref="4"/><nd ref="5"/><tag k="highway" v="cycleway"/></way>
 </osm>
 """
 
@@ -144,6 +147,9 @@ class Rewrite(unittest.TestCase):
         self.assertEqual(got[("n", 3)], {})
         self.assertEqual(got[("w", 10)], {"highway": "residential"})
         self.assertIn("highway=stop\tsk.ts.stop\t1", report)
+        self.assertEqual(got[("n", 4)]["sign_on"], "path")
+        self.assertNotIn("sign_on", got[("n", 5)], "a road crosses there")
+        self.assertNotIn("sign_on", got[("n", 2)])
 
 if __name__ == "__main__":
     unittest.main()

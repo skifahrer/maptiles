@@ -5427,8 +5427,13 @@ export function buildStyle({
   // the base map and the roads both carry the signs, so each draws alone;
   // together the second copy of a sign collides and isn't placed
   if (roadSigns) {
-    const signs = [["road-sign", "omt"], ...(transportUrl ? [["road-sign-roads", "transport"]] : [])];
-    for (const [id, source] of signs) {
+    const onPath = ["==", ["get", "way"], "path"];
+    const signs = [
+      ["road-sign", "omt", ["!", onPath]],
+      ["road-sign-paths", "omt", onPath],
+      ...(transportUrl ? [["road-sign-roads", "transport", ["!", onPath]]] : [])
+    ];
+    for (const [id, source, where] of signs) {
       add(
         {
           id,
@@ -5436,7 +5441,7 @@ export function buildStyle({
           source,
           "source-layer": "traffic_sign",
           minzoom: 16,
-          filter: ["has", "sign"],
+          filter: ["all", ["has", "sign"], where],
           layout: {
             "icon-image": ["get", "sign"],
             "icon-size": zl([[16, 0.75], [18, 1], [20, 1.4]]),

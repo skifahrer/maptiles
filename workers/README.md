@@ -2163,6 +2163,10 @@ v `packages.json`): kraj bez značky alebo bez obrázka ide bez
 kľúč hlási varovaním. Štýl ich kreslí ako
 `road-sign` od z16, na cestnej mape od z15, na turistickej, lyžiarskej
 a historickej nie.
+**Značka na ceste, kam auto nevojde** – uzol chodníka, cestičky, cyklotrasy
+či schodov a žiadnej cesty pre autá – má `way: path` (`signs.py` to zistí
+z ciest, na ktorých uzol leží) a kreslí ju `road-sign-paths` zo základnej mapy;
+v aplikácii patrí vrstve Paths, `road-sign` a `road-sign-roads` ju vynechávajú.
 
 **Rovnaké tagy dostáva aj NAVIGÁCIA.** Graf sa stavia z celých štátnych
 extraktov bez akéhokoľvek filtra ([`workers/routing/pbf.sh`](routing/pbf.sh)),

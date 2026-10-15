@@ -17,6 +17,9 @@ FIGURES = ("maxspeed", "maxweight", "maxheight", "maxwidth")
 FIGURE = re.compile(r"^(\d+(?:[.,]\d+)?)\s*[a-z]*$")
 # the tag that turns a sign into its end sign
 ENDS = {"city_limit": "end", "overtaking": "yes"}
+# `paths.yml`'s ways, where a car does not fit
+PATH_WAYS = {"pedestrian", "path", "footway", "cycleway", "bridleway", "steps", "corridor",
+             "via_ferrata", "elevator", "ladder"}
 COUNTRY = re.compile(r"^([A-Za-z]{2}):(.*)$")
 VALUE = re.compile(r"^(.*?)\[(.*?)\]")
 
@@ -149,9 +152,38 @@ def node_tags(tags, country, by_country=None):
     return out
 
 
+def on_paths(pbf, country):
+    """Ids of the sign nodes that stand on a path and on no road."""
+    import osmium
+
+    class Ways(osmium.SimpleHandler):
+        def __init__(self):
+            super().__init__()
+            self.signs = set()
+            self.path = set()
+            self.road = set()
+
+        def node(self, n):
+            if node_tags(dict(n.tags), country) is not None:
+                self.signs.add(n.id)
+
+        def way(self, w):
+            highway = w.tags.get("highway")
+            if not highway:
+                return
+            found = self.path if highway in PATH_WAYS else self.road
+            found.update(r.ref for r in w.nodes if r.ref in self.signs)
+
+    h = Ways()
+    h.apply_file(pbf)
+    return h.path - h.road
+
+
 def rewrite(pbf, out, country, by_country):
     """`out` is `pbf` with sign nodes named; returns `(signs, {name: n}, {(tagged, name): n})`."""
     import osmium
+
+    pathside = on_paths(pbf, country)
 
     class Rewrite(osmium.SimpleHandler):
         def __init__(self, writer):
@@ -170,6 +202,8 @@ def rewrite(pbf, out, country, by_country):
             if "sign" in tags:
                 self.used[tags["sign"]] += 1
             self.report[(tagged(dict(n.tags)), tags.get("sign", ""))] += 1
+            if n.id in pathside:
+                tags["sign_on"] = "path"
             self.w.add_node(n.replace(tags={**dict(n.tags), **tags}))
 
         def way(self, w):

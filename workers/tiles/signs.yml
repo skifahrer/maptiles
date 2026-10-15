@@ -30,6 +30,10 @@ layers:
           - key: direction
             value:
               tag_value: sign_direction
+          # `path` on a way cars don't fit: the Paths layer draws it
+          - key: way
+            value:
+              tag_value: sign_on
           - key: maxspeed
           - key: osm_id
             value: '${ feature.id }'

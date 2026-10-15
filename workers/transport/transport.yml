@@ -144,6 +144,10 @@ layers:
           - key: direction
             value:
               tag_value: sign_direction
+          # `path` on a way cars don't fit: the Paths layer draws it
+          - key: way
+            value:
+              tag_value: sign_on
           - key: maxspeed
           - key: osm_id
             value: '${ feature.id }'
@@ -432,6 +436,22 @@ examples:
           sign: sk.ts.253-50
           traffic_sign: "SK:253[50]"
           direction: forward
+
+  - name: A sign on a path says so, for the Paths layer
+    input:
+      source: osm
+      geometry: point
+      tags:
+        traffic_sign: "SK:C8"
+        sign: sk.ts.c8
+        sign_on: path
+    output:
+      - layer: traffic_sign
+        geometry: point
+        tags:
+          sign: sk.ts.c8
+          traffic_sign: "SK:C8"
+          way: path
 
   - name: A stop node is a sign without `traffic_sign`
     input:
