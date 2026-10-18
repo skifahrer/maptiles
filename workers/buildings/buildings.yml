@@ -91,13 +91,13 @@ layers:
           building: ["no"]
         attributes: *building_attrs
 
-  # the built-up area, until buildings take over at z12
+  # the built-up area z11 to z14, under the buildings from z12
   - id: settlement_area
     features:
       - source: osm
         geometry: polygon
-        min_zoom: 8
-        max_zoom: 11
+        min_zoom: 11
+        max_zoom: 14
         include_when:
           landuse: [residential, commercial, retail]
         attributes:
@@ -248,7 +248,7 @@ examples:
           class: hamlet
           name: Lazy
 
-  - name: A residential zone is the settlement's area up to z11, not a building
+  - name: A residential zone is the settlement's area z11 to z14, not a building
     input:
       source: osm
       geometry: polygon
@@ -257,8 +257,8 @@ examples:
     output:
       - layer: settlement_area
         geometry: polygon
-        min_zoom: 8
-        max_zoom: 11
+        min_zoom: 11
+        max_zoom: 14
         tags:
           class: residential
 
