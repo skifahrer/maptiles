@@ -97,5 +97,16 @@ class FileName(unittest.TestCase):
                              ["slovakia", "presovsky_test4km2"])
 
 
+class Layers(unittest.TestCase):
+    def test_points_are_named(self):
+        with env(FEATURES_ENABLED="true", POINTS_ENABLED="true"):
+            got = names.layers()
+        self.assertEqual(got[got.index("features") + 1], "points")
+
+    def test_no_points_no_token(self):
+        with env(FEATURES_ENABLED="true", POINTS_ENABLED="false"):
+            self.assertNotIn("points", names.layers())
+
+
 if __name__ == "__main__":
     unittest.main()
