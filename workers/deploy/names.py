@@ -124,6 +124,8 @@ def layers():
         out.append("trails")
     if env("FEATURES_ENABLED") == "true":
         out.append("features")
+    if env("POINTS_ENABLED") == "true":
+        out.append("points")
     if env("TRANSPORT_ENABLED") == "true":
         out.append("transport")
     if env("PATHS_ENABLED") == "true":
