@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * The viewer in Chromium over the mini region's packages: every map type × theme reaches
- * `idle` without an error or an image nobody draws, and developer mode applies an override.
+ * The viewer in Chromium over the mini region's packages: every map type and package map
+ * × theme reaches `idle` without an error or an image nobody draws, and developer mode
+ * applies an override.
  *
  *   node workers/tests/browser.mjs --work=<integration.py --work> --deps=<npm prefix>
  */
@@ -207,6 +208,32 @@ async function main() {
     }
   }
 
+  // each package as a map of its own; the base map last, for the checks below
+  const packages = await p.evaluate(() => [...document.getElementById("package").options].map((o) => o.value));
+  if (packages.length < 2) problems.push(`the map picker offers only ${packages.join(", ")}`);
+  for (const id of [...packages.slice(1), packages[0]]) {
+    for (const theme of Object.keys(THEMES)) {
+      await p.evaluate(([pk, th]) => {
+        for (const [el, v] of [["package", pk], ["theme", th]]) {
+          const select = document.getElementById(el);
+          if (select.value === v) continue;
+          window.__t.idle = false;
+          select.value = v;
+          select.dispatchEvent(new Event("change"));
+        }
+      }, [id, theme]);
+      try {
+        await p.waitForFunction(() => window.__t.idle, null, { timeout: 30000 });
+      } catch {
+        problems.push(`map ${id} / ${theme}: the map never reached idle`);
+      }
+      const drawn = await p.evaluate(() => window.__t.maps.at(-1).getStyle().layers.filter((l) => l.source).length);
+      if (!drawn) problems.push(`map ${id} / ${theme}: draws no layer`);
+      await report(p, console_, `map ${id} / ${theme}`);
+      console.log(`  map ${id} / ${theme}`);
+    }
+  }
+
   const overrides = { version: 2, layers: { [OVERRIDE.layer]: { paint: { [OVERRIDE.prop]: OVERRIDE.value } } } };
   const dev = await page("?dev=1", { "fricomaps.overrides": JSON.stringify(overrides) });
   const got = await dev.p.evaluate((o) => window.__t.maps.at(-1).getPaintProperty(o.layer, o.prop), OVERRIDE);
@@ -240,7 +267,7 @@ async function main() {
   await browser.close();
   server.close();
   for (const pr of [...new Set(problems)]) console.log(`::error::${pr}`);
-  console.log(`Viewer: ${MAP_TYPE_IDS.length * Object.keys(THEMES).length} styles, ${new Set(problems).size} problems`);
+  console.log(`Viewer: ${(MAP_TYPE_IDS.length + packages.length) * Object.keys(THEMES).length} styles, ${new Set(problems).size} problems`);
   process.exit(problems.length ? 1 : 0);
 }
 
