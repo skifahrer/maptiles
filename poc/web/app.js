@@ -24,6 +24,7 @@ import { labelLanguages, localName } from "./languages.js";
 import { parsePatternName, renderPattern } from "./patterns.js";
 import { ROAD_SIGN_IMAGE, loadSheet, addSign } from "./road-signs.js";
 import { ICON_SOURCES, DEFAULT_ICON_SOURCE, customIconSources } from "./icon-sources.js";
+import { BASE_PACKAGE, packagesOf, packageDef, normalizePackage, packageStyle } from "./packages.js";
 
 // Základná URL stránky (funguje na GitHub Pages aj lokálne).
 const baseUrl = new URL(".", location.href).href.replace(/\/$/, "");
@@ -40,6 +41,7 @@ maplibregl
 const $ = (id) => document.getElementById(id);
 const themeSelect = $("theme");
 const mapTypeSelect = $("maptype");
+const packageSelect = $("package");
 const regionSelect = $("region");
 const contoursCheck = $("contours");
 const rocksCheck = $("rocks");
@@ -74,6 +76,14 @@ mapTypeSelect.value = (() => {
     return DEFAULT_MAP_TYPE;
   }
 })();
+
+function storedPackage() {
+  try {
+    return localStorage.getItem("fricomaps.package");
+  } catch {
+    return BASE_PACKAGE;
+  }
+}
 
 /**
  * Región z adresy (`#map=15/49.17/20.11&region=zilinsky`), alebo null.
@@ -184,16 +194,22 @@ function currentIconSet() {
   return iconSets.find((s) => s.id === id) || iconSets[0] || null;
 }
 
+/** A package map draws every archive its package needs, whatever the switches say. */
+const inPackage = () => packageSelect.value !== BASE_PACKAGE;
+const archiveOn = (check) => inPackage() || check.checked;
+/** A package map takes no profile; the profile trims the base map. */
+const effectiveMapType = () => (inPackage() ? "zakladna" : mapTypeSelect.value);
+
 function styleFor(manifest) {
   const region = manifest.regions[regionSelect.value];
   const tileZ = region.maxzoom || manifest.maxzoom || MAX_TILE_Z;
   const demTiles = manifest.dem === null ? null : manifest.dem || DEFAULT_DEM_TILES;
   const set = currentIconSet();
 
-  return buildStyle({
+  const style = buildStyle({
     languages: LABEL_LANGUAGES,
     theme: themeSelect.value,
-    mapType: mapTypeSelect.value,
+    mapType: effectiveMapType(),
     tilesUrl: `pmtiles://${baseUrl}/${region.pmtiles}`,
     spriteUrl: set ? set.spriteUrl : `${baseUrl}/sprites/osm-liberty`,
     glyphsUrl:
@@ -201,29 +217,29 @@ function styleFor(manifest) {
     icons: set ? set.icons : [],
     iconSet: set ? set.id : DEFAULT_ICON_SOURCE,
     sdfIcons: set ? set.sdf : false,
-    fonts: manifest.fonts,
+    fonts: manifest.fonts || {},
     maxzoom: tileZ,
     contoursUrl:
-      region.contours && contoursCheck.checked
+      region.contours && archiveOn(contoursCheck)
         ? `pmtiles://${baseUrl}/${region.contours}`
         : null,
     contoursMaxzoom: region.contours_maxzoom || 14,
     // Skaly majú vlastný .pmtiles s vlastným maxzoomom – v mape sú vidieť
     // do maximálneho zoomu (nad `maxzoom` sa dlaždice naťahujú overzoomom).
     rocksUrl:
-      region.rocks && rocksCheck.checked
+      region.rocks && archiveOn(rocksCheck)
         ? `pmtiles://${baseUrl}/${region.rocks}`
         : null,
     rocksMaxzoom: region.rocks_maxzoom || 16,
     trailsUrl:
-      region.trails && trailsCheck.checked
+      region.trails && archiveOn(trailsCheck)
         ? `pmtiles://${baseUrl}/${region.trails}`
         : null,
     trailsMaxzoom: region.trails_maxzoom || 14,
     // Krajinné prvky (línie a plochy), ktoré schéma OpenMapTiles nemá –
     // vlastný .pmtiles (násypy, múry, vedenia, prieseky, zjazdovky).
     featuresUrl:
-      region.features && featuresCheck.checked
+      region.features && archiveOn(featuresCheck)
         ? `pmtiles://${baseUrl}/${region.features}`
         : null,
     featuresMaxzoom: region.features_maxzoom || 15,
@@ -233,7 +249,7 @@ function styleFor(manifest) {
     // pred rozdelením do vlastného súboru boli body súčasťou tej istej
     // vrstvy a nikto v aplikácii nečakal preň druhé zaškrtávacie políčko.
     pointsUrl:
-      region.points && featuresCheck.checked
+      region.points && archiveOn(featuresCheck)
         ? `pmtiles://${baseUrl}/${region.points}`
         : null,
     pointsMaxzoom: region.points_maxzoom || 15,
@@ -243,7 +259,7 @@ function styleFor(manifest) {
     // prepínač v paneli sa aj ďalej volá „Obmedzenia na ceste" – to je to,
     // čo sa ním zapína.
     transportUrl:
-      region.transport && roadsCheck.checked
+      region.transport && archiveOn(roadsCheck)
         ? `pmtiles://${baseUrl}/${region.transport}`
         : null,
     transportMaxzoom: region.transport_maxzoom || 14,
@@ -253,17 +269,17 @@ function styleFor(manifest) {
     // existujú kvôli menu: `boundary` OpenMapTiles je čiara bez mena územia
     // a meno vody leží mimo jej geometrie.
     boundariesUrl:
-      region.boundaries && boundariesCheck.checked
+      region.boundaries && archiveOn(boundariesCheck)
         ? `pmtiles://${baseUrl}/${region.boundaries}`
         : null,
     boundariesMaxzoom: region.boundaries_maxzoom || 12,
     waterUrl:
-      region.water && waterCheck.checked
+      region.water && archiveOn(waterCheck)
         ? `pmtiles://${baseUrl}/${region.water}`
         : null,
     waterMaxzoom: region.water_maxzoom || 14,
     buildingsUrl:
-      region.buildings && buildingsCheck.checked
+      region.buildings && archiveOn(buildingsCheck)
         ? `pmtiles://${baseUrl}/${region.buildings}`
         : null,
     buildingsMaxzoom: region.buildings_maxzoom || 14,
@@ -279,6 +295,14 @@ function styleFor(manifest) {
     demBounds: region.test_bbox || null,
     overrides,
     name: `FricoMaps – ${region.name}`
+  });
+  return packageStyle(style, packageSelect.value, {
+    dark: themeSelect.value === "tmava",
+    fonts: manifest.fonts || {},
+    railUrl: region.rail ? `pmtiles://${baseUrl}/${region.rail}` : null,
+    railMaxzoom: region.rail_maxzoom || 15,
+    historyUrl: region.history ? `pmtiles://${baseUrl}/${region.history}` : null,
+    historyMaxzoom: region.history_maxzoom || 14
   });
 }
 
@@ -317,7 +341,8 @@ function applyStyle(manifest) {
   document.body.classList.toggle("dark", themeKey === "tmava");
   hillshadeCheck.checked = overrides.hillshade === true;
 
-  const kind = mapTypeDef(mapTypeSelect.value);
+  const baseMap = !inPackage();
+  const kind = baseMap ? mapTypeDef(mapTypeSelect.value) : packageDef(packageSelect.value);
 
   metaEl.innerHTML =
     `Región: <b>${region.name}</b><br>` +
@@ -330,25 +355,25 @@ function applyStyle(manifest) {
       : "") +
     `Mapa: <b>${kind.label}</b> – ${kind.note}<br>` +
     `Dlaždice do z${tileZ}, zobrazenie do z${MAX_DISPLAY_Z} (overzoom)<br>` +
-    (region.contours
+    (baseMap && region.contours
       ? `Vrstevnice po ${region.contour_interval || 10} m, od z${TERRAIN_MIN_Z}<br>`
       : "") +
-    (region.rocks
+    (baseMap && region.rocks
       ? `Skalné plochy od z${TERRAIN_MIN_Z} do z${region.rocks_maxzoom || 16}` +
         (region.rock_slope ? `, od ${region.rock_slope}°` : "") +
         (region.rock_source ? ` (${region.rock_source})` : "") +
         "<br>"
       : "") +
-    (region.contours || region.rocks
+    (baseMap && (region.contours || region.rocks)
       ? `Výšky: ${
           (DEM_SOURCES[region.dem_source] || DEM_SOURCES[DEFAULT_DEM_SOURCE]).label
         }<br>`
       : "") +
-    (region.trails
+    (baseMap && region.trails
       ? `Značené trasy: ${region.trail_count || "?"} ` +
         `(pásiky vedľa cesty, farba podľa značky)<br>`
       : "") +
-    (region.features
+    (baseMap && region.features
       ? `Krajinné prvky do z${region.features_maxzoom || 15} ` +
         `(násypy, múry, vedenia, pramene, zjazdovky)<br>`
       : "") +
@@ -530,7 +555,7 @@ function setDevMode(on, manifest) {
       themeSelect.value = key;
       themeSelect.dispatchEvent(new Event("change"));
     },
-    getMapType: () => mapTypeSelect.value,
+    getMapType: effectiveMapType,
     getMap: () => map,
     getIconSets: () => iconSets,
     onChange: (next) => {
@@ -621,20 +646,36 @@ async function main() {
 
   const syncControls = () => {
     const region = manifest.regions[regionSelect.value];
-    $("row-contours").hidden = !region.contours;
-    $("row-rocks").hidden = !region.rocks;
-    $("row-trails").hidden = !region.trails;
-    $("row-features").hidden = !region.features;
-    $("row-roads").hidden = !region.transport;
-    $("row-boundaries").hidden = !region.boundaries;
-    $("row-water").hidden = !region.water;
-    $("row-buildings").hidden = !region.buildings;
+    const wanted = packageSelect.value || storedPackage();
+    packageSelect.replaceChildren(...packagesOf(region).map((p) => new Option(p.label, p.id)));
+    packageSelect.value = normalizePackage(wanted, region);
+    // the archive switches and the profile are the base map's
+    const base = !inPackage();
+    $("row-maptype").hidden = !base;
+    $("row-contours").hidden = !base || !region.contours;
+    $("row-rocks").hidden = !base || !region.rocks;
+    $("row-trails").hidden = !base || !region.trails;
+    $("row-features").hidden = !base || !region.features;
+    $("row-roads").hidden = !base || !region.transport;
+    $("row-boundaries").hidden = !base || !region.boundaries;
+    $("row-water").hidden = !base || !region.water;
+    $("row-buildings").hidden = !base || !region.buildings;
     $("row-terrain").hidden = manifest.dem === null;
     $("row-hillshade").hidden = manifest.dem === null;
   };
   syncControls();
 
   themeSelect.addEventListener("change", () => {
+    applyStyle(manifest);
+    dev?.refresh();
+  });
+  packageSelect.addEventListener("change", () => {
+    try {
+      localStorage.setItem("fricomaps.package", packageSelect.value);
+    } catch {
+      /* private mode – the map is simply not remembered */
+    }
+    syncControls();
     applyStyle(manifest);
     dev?.refresh();
   });

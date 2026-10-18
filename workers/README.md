@@ -221,6 +221,10 @@ Mapa · úpravy štýlu          style-overrides.json z developer módu
   lyžiarska, cestná, historická** a základná („všetko"). Typ mapy hovorí, *čo*
   mapa ukazuje; téma len to, *ako* to vyzerá. Viď
   [Typy máp](#typy-máp--čo-ktorá-mapa-ukazuje).
+- **Mapy balíkov:** [poc/web/packages.js](../poc/web/packages.js) – výber
+  „Mapa" na Pages ukáže okrem základnej mapy aj každý balík regiónu zvlášť
+  (cesty, chodníky, železnice a lanovky, armáda a história, hranice, vodstvo,
+  sídla, body) tak, ako ho kreslí aplikácia. Typ mapy patrí len základnej.
 - **Témy a štýlovanie:** [poc/web/themes.js](../poc/web/themes.js) – 4 farebné
   témy (Svetlá, Tmavá, Outdoor, Retro/Pastel), ~140 vrstiev pokrývajúcich celú
   OpenMapTiles schému: krajinná pokrývka, využitie územia, voda a vodné toky,
