@@ -4096,18 +4096,18 @@ export function buildStyle({
   );
   // balík `sidla` má každú budovu, aj tú, ktorú OpenMapTiles zahodí
   if (buildingsUrl) {
-    // the built-up area until z12, then its buildings
+    // the built-up area z11 to z14, fading under its buildings
     add(
       {
         id: "settlement-area",
         type: "fill",
         source: "buildings",
         "source-layer": "settlement_area",
-        minzoom: 8,
-        maxzoom: 12,
+        minzoom: 11,
+        maxzoom: 15,
         paint: {
           "fill-color": c.building,
-          "fill-opacity": zl([[8, 0.6], [11, 0.8]])
+          "fill-opacity": zl([[11, 0.8], [14, 0.5]])
         }
       },
       ["budovy", "Plocha sídla (balík sídla)", "area", { "fill-color": "building" }]
