@@ -18,6 +18,9 @@ ready for review and rewrite its title and description to say what it now does.
 
 ## Pull requests: merge only on green
 
+**Every merge goes through a pull request.** Never push, merge or cherry-pick into `master`
+directly – open a PR, even for a one-line fix or a docs change.
+
 **Don't merge a PR until its checks are green and the pipeline really ran.**
 
 - `Check · workflow lint`, `Check · catalog schema` and `Check · tests` are
