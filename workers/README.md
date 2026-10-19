@@ -1806,14 +1806,15 @@ tieňovanie vrstvou nad iným podkladom v aplikácii.
 
 Výška roviny je jedna na celý beh (medián výšky na okraji kraja, `vyska_roviny`):
 iná výška v inom páse alebo zoome by bola schod, teda tieňovaná čiara mimo
-kraja. `--edge` (predvolene 2 px) nechá za hranicou ešte kúsok skutočného
-terénu, aby tieňovanie NA hranici stálo na teréne a hrana roviny padla pod
-plochu `mimo`. Dlaždica bez jediného pixela kraja sa nezapíše vôbec.
+kraja. `--edge` (predvolene −1 px) začne rovinu pixel VNÚTRI kraja: aplikácia
+plochu `mimo` nekreslí (item 1444), takže hrana roviny musí byť tieňovaná ešte
+v kraji, nie za hranicou – za ňou je všade len rovina (item 2052). Dlaždica bez
+jediného pixela kraja sa nezapíše vôbec.
 
 **Cena je stena v 3D.** Terén sa na hranici kraja láme na rovinu, takže pri
 zapnutom 3D stojí po obvode regiónu zvislý múr (`v6` tam terén dopĺňal okolím
 pull-push pyramídou – múr nebol, ale tieňovanie slablo až stovky pixelov za
-hranicou). Podoba kódovania je **`v7`** (meno assetu v sklade aj kľúč cache),
+hranicou). Podoba kódovania je **`v8`** (meno assetu v sklade aj kľúč cache),
 inak by build vrátil staré dlaždice.
 
 Maska je rastrová a **bez shapely** – tá istá úvaha ako v `dem/coverage.py`: pri

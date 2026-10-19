@@ -137,6 +137,12 @@ def pixel_mask(rings, box, width, height, grow=0):
     import numpy as np
     minx, miny, maxx, maxy = box
     dx, dy = (maxx - minx) / width, (maxy - miny) / height
+    if grow < 0:
+        # shrunk on a padded box, so a strip's own edge isn't taken for the region's
+        k = int(-grow)
+        wide = pixel_mask(rings, (minx - k * dx, miny - k * dy, maxx + k * dx, maxy + k * dy),
+                          width + 2 * k, height + 2 * k)
+        return ~_dilate(~wide, k, np)[k:-k, k:-k]
     ex1, ey1, ex2, ey2 = (np.asarray(a, dtype=np.float64) for a in _edges(rings))
     mask = np.zeros((height, width), dtype=bool)
     if not len(ex1):

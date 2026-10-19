@@ -169,16 +169,16 @@ def main():
         bad.append("`workers/lib/region-mask.py` no longer has `pixel_mask` – "
                    "which PIXELS are in the region has one answer, beside the "
                    "tile one, not a second in `tiles.py`.")
-    # a margin: with `--edge 0` the last strip in the region would shade the plane's edge
-    edge = re.search(r'"--edge",\s*type=int,\s*default=(\d+)', src)
+    # the app draws no `outside` fill, so the plane's wall must stand inside the region
+    edge = re.search(r'"--edge",\s*type=int,\s*default=(-?\d+)', src)
     if not edge:
         bad.append("`terrain/tiles.py` lacks the `--edge` option (how many "
-                   "pixels of real terrain stay outside the region).")
-    elif int(edge.group(1)) < 1:
-        bad.append("`--edge` defaults to 0 pixels: the plane starts right at the "
-                   "region's edge, so the last strip of shading IN the region "
-                   "draws its edge, not terrain. The margin moves it under the "
-                   "`outside` fill.")
+                   "pixels of real terrain stay past the region's edge).")
+    elif int(edge.group(1)) > -1:
+        bad.append(f"`--edge` defaults to {edge.group(1)} pixels: the step from "
+                   "the terrain to the plane outside is shaded past the region's "
+                   "edge, and the app draws no `outside` fill over it. The "
+                   "plane must start at least a pixel inside (`-1`).")
 
     if bad:
         for b in bad:

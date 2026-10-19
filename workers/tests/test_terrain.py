@@ -1,5 +1,6 @@
 import io
 import math
+import os
 import unittest
 
 from load import needs, worker
@@ -56,6 +57,10 @@ class RegionMask(unittest.TestCase):
         self.assertFalse(mask[15, 15], "in the hole")
         grown = rmask.pixel_mask(SQUARE, box, 30, 30, grow=1)
         self.assertEqual(int(grown.sum()), 12 * 12)
+        shrunk = rmask.pixel_mask(SQUARE, box, 30, 30, grow=-1)
+        self.assertEqual(int(shrunk.sum()), 8 * 8)
+        inner = rmask.pixel_mask(SQUARE, (19.2, 49.2, 19.8, 49.8), 6, 6, grow=-1)
+        self.assertTrue(inner.all(), "a strip's own edge isn't the region's")
 
 
 @needs("numpy")
@@ -89,6 +94,28 @@ class Height(unittest.TestCase):
         g[2, 2] = 900.0
         known = np.ones((5, 5), dtype=bool)
         self.assertEqual(self.h.edge_height(g, known), 100.0)
+
+    def test_nothing_is_shaded_past_the_border(self):
+        # fix 2052: the app draws no `outside` fill, so the plane's wall showed past the border
+        np = self.np
+        box = (18.0, 48.0, 21.0, 51.0)
+        known = rmask.pixel_mask(SQUARE, box, 30, 30)
+        keep = rmask.pixel_mask(SQUARE, box, 30, 30, grow=self.edge())
+        terrain = np.random.default_rng(7).uniform(0.0, 2000.0, (30, 30))
+        g = np.pad(self.h.flatten_outside(terrain, keep, 500.0), 1, mode="edge")
+        # hillshade reads a pixel's 3 × 3 neighbourhood
+        rough = np.zeros((30, 30))
+        for dy in (0, 1, 2):
+            for dx in (0, 1, 2):
+                rough = np.maximum(rough, np.abs(g[dy:dy + 30, dx:dx + 30] - g[1:31, 1:31]))
+        self.assertEqual(float(rough[~known].max()), 0.0)
+        self.assertGreater(float(rough[known].max()), 0.0)
+
+    def edge(self):
+        import re
+        with open(os.path.join(os.path.dirname(__file__), "..", "terrain", "tiles.py")) as f:
+            src = f.read()
+        return int(re.search(r'"--edge",\s*type=int,\s*default=(-?\d+)', src).group(1))
 
     def test_flatten_outside(self):
         np = self.np

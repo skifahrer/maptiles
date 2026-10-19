@@ -10,7 +10,8 @@ The vertical step follows the horizontal pixel (`SLOPE_EPS × pixel`, plus the
 `FRAC_BITS_MARGIN` margin) – a coarse step makes terraces whose edges hillshade
 turns into a grid. `resampling()` picks by the pixel to cell ratio.
 
-Outside the region is a plane (`flatten_outside`) so nothing is shaded there.
+Outside the region is a plane (`flatten_outside`) so nothing is shaded there;
+it starts a pixel inside, so even its wall is shaded in the region, not past it.
 A tile without a single region pixel isn't written.
 
 Usage:
@@ -202,9 +203,9 @@ def main():
                          "and those overhanging get a plane outside")
     ap.add_argument("--grow", type=float, default=0.5,
                     help="how much of its side a tile may overhang the region")
-    ap.add_argument("--edge", type=int, default=2,
-                    help="how many pixels of real terrain stay outside the "
-                         "region before the plane starts")
+    ap.add_argument("--edge", type=int, default=-1,
+                    help="pixels of real terrain past the region's edge; "
+                         "negative = the plane starts that far inside")
     ap.add_argument("--maxzoom", type=int, default=12)
     ap.add_argument("--minzoom", type=int, default=0)
     ap.add_argument("--out", required=True, help="directory of {z}/{x}/{y}.<format> tiles")
@@ -233,8 +234,8 @@ def main():
         plane = plane_height(args.dem, rm, rings, w, s, e, n)
         print(f"Region clip: the region is {mask.pct:.0f} % of the bbox "
               f"(mask {mask.nx}×{mask.ny}); a tile may overhang "
-              f"{args.grow:g} of its side and outside (+{args.edge} px of "
-              f"terrain) is a plane at {plane} m – nothing is shaded there.",
+              f"{args.grow:g} of its side and outside ({args.edge:+d} px "
+              f"from the edge) is a plane at {plane} m – nothing is shaded there.",
               flush=True)
     else:
         print("::warning::No region polygon – the whole region bbox is drawn, "
@@ -327,7 +328,7 @@ def main():
             missing = grid <= NODATA + 1.0
             grid = fill_nodata(grid, missing)
 
-            # `--edge` px of terrain outside: the plane's edge falls under the `outside` fill
+            # a negative `--edge` keeps the plane's wall inside: the app draws no `outside` fill
             keep = None
             if rings is not None:
                 keep = rm.pixel_mask(rings, (minx, miny, maxx, maxy),

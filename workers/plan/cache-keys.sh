@@ -42,8 +42,8 @@ if [ "$TFMT" != png ]; then T_OPT="${T_OPT}-${TFMT}"; fi
 C_SETTINGS="contours-v11-c$CS-$B-i${CONTOUR_INTERVAL}-z${OPT_CONTOUR_MAXZOOM}-s${OPT_CONTOUR_SMOOTHING}h${CONTOUR_DEM_LOWPASS}t${CONTOUR_SIMPLIFY}x${CONTOUR_SMOOTH}${C_OPT}-a$RA"
 # `v3`: rocks clipped to the region polygon; `v2` reached to the whole bbox
 R_SETTINGS="rocks-v3-r$RS-$B-z${OPT_ROCK_MAXZOOM}p${OPT_ROCK_SOLID}d${OPT_ROCK_FILL_HOLES}-s${ROCK_SLOPE}g${OPT_ROCK_RES}-${ROCK_ALGO}v${ROCK_VEC_RES}t${ROCK_SIMPLIFY}x${ROCK_SMOOTH}-a$RA-${OPT_ROCK_IMG_ASSET}"
-# `v7`: flat past the region border; the asset name carries the same number (`workers/lint/terrain.py`)
-T_SETTINGS="terrain-v7-t$TS${T_OPT}-$B-z${OPT_TERRAIN_MAXZOOM}"
+# `v8`: flat from a pixel inside the region border; the asset name carries the same number (`workers/lint/terrain.py`)
+T_SETTINGS="terrain-v8-t$TS${T_OPT}-$B-z${OPT_TERRAIN_MAXZOOM}"
 
 {
   # ---------- whole keys: settings + fingerprints ----------
