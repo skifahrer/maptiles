@@ -35,7 +35,7 @@ case "$BITS" in ''|*[!0-9]*) BITS=auto ;; esac
 
 # the real maxzoom is known only after computing (the size cap may lower it),
 # so the name is a function; the encoding shape is written once
-ENC_VER=v7
+ENC_VER=v8
 # empty for the defaults, so assets already stored stay found
 ENC_OPT=""
 [ "$BITS" != auto ] && ENC_OPT="${ENC_OPT}-b${BITS}"
