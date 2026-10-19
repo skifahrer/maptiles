@@ -230,7 +230,8 @@ def check_dem(work, hole):
     n = s + 120 * cell
     hole_lon = w + (hole[2] + hole[3]) / 2 * cell
     hole_lat = n - (hole[0] + hole[1]) / 2 * cell
-    for what, lon, lat, lo, hi in (("hill top", w + 100 * cell, n - 100 * cell, 400, 520),
+    # the top lies on the region's south edge, flat since 2052; read the slope just inside
+    for what, lon, lat, lo, hi in (("hill top", w + 100 * cell, n - 90 * cell, 400, 520),
                                    ("NODATA hole", hole_lon, hole_lat, 190, 520)):
         z = 13
         fx = (lon + 180) / 360 * 2 ** z
