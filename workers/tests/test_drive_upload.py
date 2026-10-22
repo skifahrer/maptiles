@@ -28,11 +28,13 @@ class Drive:
 
     def __init__(self, size, faults=()):
         self.size, self.got, self.faults = size, b"", list(faults)
-        self.puts = []
+        self.puts, self.dead = [], set()
 
     def __call__(self, host, method, path, body, headers, timeout=300):
         rng = headers["Content-Range"]
         self.puts.append(rng)
+        if path in self.dead:
+            return self.answer(410, b"")
         if rng.startswith("bytes */"):
             if len(self.got) == self.size:
                 return self.answer(201, b'{"id": "F"}')
@@ -43,6 +45,10 @@ class Drive:
             return self.answer(400, b"")
         if fault == "drop":
             raise OSError("connection reset")
+        if fault == "gone":
+            self.dead.add(path)
+            self.got = b""
+            return self.answer(500, b"")
         if fault == "drop-after-half":
             self.got += body[:len(body) // 2]
             raise OSError("connection reset")
@@ -75,9 +81,10 @@ class Send(unittest.TestCase):
             self.addCleanup(p.stop)
 
     def send(self, drive, tries=4, creds=None):
+        sessions = iter(range(1, 99))
         with mock.patch.object(folder, "_request", drive), mock.patch("builtins.print"):
             return folder._send(creds or Creds(), self.path, len(self.DATA), "x",
-                                ("upload.example", "/s?id=1"), tries)
+                                lambda: ("upload.example", f"/s?id={next(sessions)}"), tries)
 
     def test_blocks_arrive_in_order(self):
         drive = Drive(len(self.DATA))
@@ -103,6 +110,12 @@ class Send(unittest.TestCase):
         self.assertEqual(self.send(drive, creds=creds), "F")
         self.assertEqual(creds.renewals, 1)
         self.assertEqual(drive.puts.count("bytes 8-15/20"), 2)
+
+    def test_a_gone_session_starts_over_in_a_new_one(self):
+        drive = Drive(len(self.DATA), [None, "gone"])
+        self.assertEqual(self.send(drive), "F")
+        self.assertEqual(drive.got, self.DATA)
+        self.assertEqual(drive.puts[-3:], ["bytes 0-7/20", "bytes 8-15/20", "bytes 16-19/20"])
 
     def test_server_errors_give_up_after_the_tries(self):
         drive = Drive(len(self.DATA), [(503, b"")] * 9)
