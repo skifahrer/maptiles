@@ -3921,7 +3921,7 @@ Odteraz:
 - **zrušíš beh dávky** → článok pri odchode zruší aj beh kraja, na ktorý
   čakal, takže nedobieha ešte hodiny „nezastaviteľne" ďalej.
 
-Zrušiť beh kraja môže aj GitHub sám (tri behy v skupine `concurrency: pages`)
+Zrušiť beh kraja môže aj GitHub sám (tri behy toho istého kraja v jednej skupine `concurrency`)
 a od ručného zrušenia sa to nedá odlíšiť — preto sa dávka nezastaví ticho
 a kolík v súhrne umožní pokračovať tam, kde prestala. Rozpis je vo
 [`workers/state/estafeta.sh`](state/estafeta.sh).

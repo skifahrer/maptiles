@@ -1,4 +1,6 @@
 name: Map · Regenerate region layer
+# the relay finds its run by the region at the end
+run-name: "${{ github.workflow }} · ${{ inputs.region }}"
 
 # ONE LAYER OF ONE REGION ANEW – without rebuilding the map.
 #

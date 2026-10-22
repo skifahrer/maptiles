@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -26,7 +27,13 @@ def never_started(run, answer, times=None):
     return dict(rule, times=times) if times else rule
 
 
-NEW_RUN = {"match": r"^run list", "out": "333"}
+def listed(*runs):
+    rows = [{"databaseId": i, "createdAt": at, "displayTitle": f"Map · Build map region · {r}"}
+            for i, r, at in runs]
+    return {"match": r"^run list", "out": json.dumps(rows)}
+
+
+NEW_RUN = listed(*[(333, r, "2999-01-01T00:00:00Z") for r in REGIONS])
 
 
 @needs_cmd("bash")
@@ -102,8 +109,14 @@ class Relay(unittest.TestCase):
         self.assertIn("isn't shrinking", r.stdout)
         self.assertEqual(self.gh, [])
 
+    def test_a_newer_run_of_another_region_isnt_taken(self):
+        r = self.relay("", [listed((333, REGIONS[0], "2999-01-01T00:00:00Z"),
+                                   (444, REGIONS[1], "2999-01-01T00:00:09Z"))])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(self.read("baton").startswith(f"333:{REGIONS[0]}|"))
+
     def test_no_run_found_stops_the_chain(self):
-        r = self.relay("", [{"match": r"^run list", "out": ""}])
+        r = self.relay("", [{"match": r"^run list", "out": "[]"}])
         self.assertEqual(r.returncode, 1)
         self.assertIn("didn't show", r.stdout)
         self.assertEqual(self.read("baton"), "")

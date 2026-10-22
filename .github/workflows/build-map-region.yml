@@ -1,4 +1,6 @@
 name: Map · Build map region
+# the relay finds its run by the region at the end
+run-name: "${{ github.workflow }} · ${{ inputs.region }}"
 
 # PBF export of the chosen region from osm.fr → Planetiler → PMTiles → GitHub Pages.
 #
@@ -163,7 +165,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  # Pages holds one map; Drive-only builds of different regions run side by side
+  group: ${{ inputs.publish_pages && 'pages' || format('build-map-region-{0}', inputs.region) }}
   cancel-in-progress: false
 
 env:

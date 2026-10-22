@@ -10,7 +10,9 @@ from stubs import Stubs, shadow_workers
 
 ROOT = os.path.dirname(WORKERS)
 REGIONS = worker("state/queue.py").regions_of(worker("state/queue.py").read(), "slovensko")
-NEW_RUN = {"match": r"^run list", "out": "333"}
+NEW_RUN = {"match": r"^run list", "out": json.dumps(
+    [{"databaseId": 333, "createdAt": "2999-01-01T00:00:00Z", "displayTitle": f"Map · {r}"}
+     for r in REGIONS])}
 DISPATCH = {"match": r"^workflow run"}
 
 

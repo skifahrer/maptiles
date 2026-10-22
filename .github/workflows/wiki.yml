@@ -1,4 +1,6 @@
 name: Map · Build wiki
+# the relay finds its run by the region at the end
+run-name: "${{ github.workflow }} · ${{ inputs.region }}"
 
 # A plain-text article (English and the country language) for every object with
 # `wikipedia`/`wikidata`, packed as `<region>-wikipedia.zip` and `.aar` onto Drive
