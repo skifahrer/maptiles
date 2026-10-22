@@ -185,22 +185,24 @@ relay_main() {
     rest="${REMAINING#*,}"
     [ "$rest" = "$REMAINING" ] && rest=""
     log "Starting region $region …"
-    # `workflow_dispatch` returns no id (204), so the run is found by its time
+    # `workflow_dispatch` returns no id (204); found by time and the region in its `run-name`
     before="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     start_region "$region"
     id=""
     for _ in $(seq 1 30); do
       sleep 5
       id="$(gh run list --repo "$REPO" --workflow "$REGION_WF" \
-              --event workflow_dispatch --branch "$REF" --limit 20 \
-              --json databaseId,createdAt \
-              --jq "[.[] | select(.createdAt >= \"$before\")] | sort_by(.createdAt) | last | .databaseId" \
+              --event workflow_dispatch --branch "$REF" --limit 50 \
+              --json databaseId,createdAt,displayTitle 2>/dev/null \
+            | jq -r --arg since "$before" --arg title " · $region" \
+                '[.[] | select(.createdAt >= $since and (.displayTitle | endswith($title)))]
+                 | sort_by(.createdAt) | last | .databaseId // empty' \
             2>/dev/null || true)"
       [ -n "$id" ] && [ "$id" != "null" ] && break
       id=""
     done
     if [ -z "$id" ]; then
-      # two regions at once would fight over cache and catalog, so waiting is a must
+      # without its id the batch can't tell when the region is done
       echo "::error::I started region $region, but its run didn't show in the $REGION_WF runs within two minutes. Without its id there's no waiting for it, so the chain ends here – start the remaining regions ($region,$rest) with the batch again."
       exit 1
     fi
