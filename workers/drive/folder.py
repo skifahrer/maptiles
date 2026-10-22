@@ -205,6 +205,7 @@ UPLOAD_CHUNK = 32 * 1024 * 1024
 
 # Drive's transient states: retried from where the session stopped
 RETRY_STATUS = (408, 429, 500, 502, 503, 504)
+SESSION_GONE = (404, 410)
 
 UPLOAD_PATH = ("/upload/drive/v3/files?uploadType=resumable"
                "&supportsAllDrives=true&fields=id,name,size")
@@ -334,7 +335,8 @@ def upload(creds, path, name, parent, description="", tries=4):
     size = os.path.getsize(path)
     meta = json.dumps({"name": name, "parents": [parent], **_meta(description)})
     return _send(creds, path, size, name,
-                 _session(creds, meta, size, "POST", UPLOAD_PATH), tries)
+                 lambda: _session(creds, meta, size, "POST", UPLOAD_PATH),
+                 tries)
 
 
 def update(creds, path, fid, name="", description="", tries=4):
@@ -342,7 +344,8 @@ def update(creds, path, fid, name="", description="", tries=4):
     size = os.path.getsize(path)
     meta = json.dumps(_meta(description))
     return _send(creds, path, size, name or fid,
-                 _session(creds, meta, size, "PATCH", _update_path(fid)),
+                 lambda: _session(creds, meta, size, "PATCH",
+                                  _update_path(fid)),
                  tries)
 
 
@@ -373,9 +376,9 @@ def _session(creds, meta, size, method, path):
     return parts.netloc, parts.path + (("?" + parts.query) if parts.query else "")
 
 
-def _send(creds, path, size, name, session, tries):
-    """Send a file in blocks into an open session. Returns the id."""
-    host, upath = session
+def _send(creds, path, size, name, open_session, tries):
+    """Send a file in blocks into a resumable session. Returns the id."""
+    host, upath = open_session()
     progress = Progress(size)
     sent = 0
     attempt = 0
@@ -410,6 +413,15 @@ def _send(creds, path, size, name, session, tries):
                 # replace an expired token and try the same block again
                 attempt += 1
                 creds.renew(None)
+                continue
+            if status in SESSION_GONE and attempt < tries:
+                # a dropped session takes no more blocks
+                attempt += 1
+                print(f"  (HTTP {status}, Drive dropped the session) – "
+                      f"starting over, try {attempt}", flush=True)
+                host, upath = open_session()
+                sent = 0
+                progress = Progress(size)
                 continue
             if status in RETRY_STATUS:
                 attempt += 1
