@@ -1129,7 +1129,7 @@ export const TRAIL_PITCH = TRAIL_STRIPE;
 // oblúkom širším než zákruta a v mape by z neho bola plocha.
 // Stráži to `workers/lint/trails.mjs`.
 export const TRAIL_OFFSET_ROAD = [
-  [9, 0.06], [11, 0.24], [13, 0.95], [14, 1.9], [16, 6.6], [20, 19.8]
+  [9, 0.06], [11, 0.24], [13, 0.95], [14, 1.9], [16, 6.6], [20, 66.8]
 ];
 export const TRAIL_OFFSET_PATH = [
   [9, 0.04], [11, 0.16], [13, 0.63], [14, 1.27], [16, 3.6], [20, 11.0]
@@ -3142,25 +3142,26 @@ export function applyLayerOrder(style, order) {
  * Je to tichá chyba, tak je na ňu kontrola (`workers/lint/style.mjs`) – toto
  * pole je jej jediný zdroj pravdy a preto je exportované.
  */
+// z20 is z16 ×12, about the road's real width when zoomed in close
 export const ROAD_DEFS = [
   ["motorway", "Diaľnice", ["motorway"], "motorway", "motorwayCasing",
-    [[4, 0.5], [6, 0.9], [10, 3], [14, 8], [16, 18], [20, 60]], 3, 4],
+    [[4, 0.5], [6, 0.9], [10, 3], [14, 8], [16, 18], [20, 216]], 3, 4],
   ["trunk", "Rýchlostné cesty", ["trunk"], "trunk", "roadCasing",
-    [[5, 0.45], [7, 0.8], [10, 2.6], [14, 7], [16, 16], [20, 52]], 2.6, 5],
+    [[5, 0.45], [7, 0.8], [10, 2.6], [14, 7], [16, 16], [20, 192]], 2.6, 5],
   ["primary", "Cesty I. triedy", ["primary"], "primary", "roadCasing",
-    [[6, 0.4], [8, 0.75], [10, 2.2], [14, 6.5], [16, 15], [20, 48]], 2.4, 6],
+    [[6, 0.4], [8, 0.75], [10, 2.2], [14, 6.5], [16, 15], [20, 180]], 2.4, 6],
   ["secondary", "Cesty II. triedy", ["secondary"], "secondary", "roadCasing",
-    [[8, 0.4], [10, 0.7], [12, 2], [14, 5], [16, 12], [20, 40]], 2, 8],
+    [[8, 0.4], [10, 0.7], [12, 2], [14, 5], [16, 12], [20, 144]], 2, 8],
   ["tertiary", "Cesty III. triedy", ["tertiary"], "secondary", "roadCasing",
-    [[9, 0.35], [11, 0.6], [12, 1.6], [14, 4.2], [16, 10], [20, 34]], 1.8, 9],
+    [[9, 0.35], [11, 0.6], [12, 1.6], [14, 4.2], [16, 10], [20, 120]], 1.8, 9],
   // `living_street` schéma nevydáva – `highway=living_street` mapuje na
   // `minor` rovnako ako `residential` a `unclassified`.
   ["minor", "Miestne cesty", ["minor", "raceway", "busway", "bus_guideway"], "minor", "roadCasing",
-    [[11, 0.3], [12, 0.6], [14, 3.5], [16, 9], [20, 32]], 1.6, 11],
+    [[11, 0.3], [12, 0.6], [14, 3.5], [16, 9], [20, 108]], 1.6, 11],
   ["service", "Účelové cesty", ["service"], "service", "roadCasing",
-    [[12, 0.3], [13, 0.5], [14, 2], [16, 6], [20, 22]], 1.2, 12],
+    [[12, 0.3], [13, 0.5], [14, 2], [16, 6], [20, 72]], 1.2, 12],
   ["pedestrian", "Pešie zóny", ["pedestrian"], "pedestrian", "roadCasing",
-    [[12, 0.3], [13, 0.6], [14, 2.4], [16, 7], [20, 24]], 1.2, 12]
+    [[12, 0.3], [13, 0.6], [14, 2.4], [16, 7], [20, 84]], 1.2, 12]
 ];
 
 /** Prípony troch priechodov ciest (tunel → povrch → most) – pre kontrolu. */
