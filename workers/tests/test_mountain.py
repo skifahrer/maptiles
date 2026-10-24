@@ -41,7 +41,7 @@ class Registry(unittest.TestCase):
 
     def test_the_form_offers_every_mountain(self):
         import yaml
-        with open(os.path.join(ROOT, ".github", "workflows", "mountain.yml")) as f:
+        with open(os.path.join(ROOT, ".github", "workflows", "build-mountain-region.yml")) as f:
             flow = yaml.safe_load(f)
         on = flow.get("on") or flow.get(True)
         offered = on["workflow_dispatch"]["inputs"]["mountain"]["options"]

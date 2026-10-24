@@ -1,4 +1,4 @@
-name: Map · Build mountain package
+name: Map · Build mountain region
 run-name: "${{ github.workflow }} · ${{ inputs.mountain }}"
 
 # ONE MOUNTAIN RANGE IN DETAIL – 2.5 m contours, rocks and a height model
@@ -19,13 +19,10 @@ on:
         type: choice
         options:
           - vysoke_tatry
-          - belianske_tatry
           - zapadne_tatry
           - nizke_tatry
           - mala_fatra
           - velka_fatra
-          - slovensky_raj
-          - pieniny
       rock_slope:
         description: "From which slope (°) terrain is rock (50 = faces, 40 = steep slopes too)"
         required: false
@@ -64,7 +61,7 @@ env:
   DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
   # what makes a mountain package finer than its region's layers
   MOUNTAIN_OPTIONS: >-
-    contour_interval=2.5 contour_maxzoom=16 contour_maxzoom_cap=16
+    contour_interval=2.5 contour_maxzoom=14 contour_maxzoom_cap=14
     contour_lowland_m=0 terrain_maxzoom=16 size_limit_mb=2000
   # shares of `size_limit_mb`; no Pages here, so the height model gets the most
   BUDGET_CONTOURS_PCT: "25"
