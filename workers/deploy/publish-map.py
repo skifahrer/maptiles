@@ -219,8 +219,10 @@ def main():
     ] + [(p["key"], p["description"], args.site, fs)
          for p, fs in own_packages]
     if mountain:
-        # a mountain adds layers to its regions; it has no map of its own
-        batch = [b for b in batch if b[0] in names.MOUNTAIN_PACKAGES]
+        # no base map; each package carries the styles, so any one of them draws alone
+        styles = all_files(os.path.join(args.site, "styles"))
+        batch = [(k, d, b, fs + styles if fs else fs) for k, d, b, fs in batch
+                 if k in names.MOUNTAIN_PACKAGES]
         if not any(b[3] for b in batch):
             raise SystemExit(f"::error::{args.site} holds none of the mountain's layers "
                              f"({', '.join(names.MOUNTAIN_PACKAGES)}) – nothing to publish.")

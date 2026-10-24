@@ -245,6 +245,27 @@ jobs:
           path: _site
           merge-multiple: true
 
+      # the map build's styles with the range's layers alone, so it draws without a region
+      - name: The range's styles
+        run: |
+          set -euo pipefail
+          # without the range's own heights no height model at all, not AWS's
+          DEM=(--dem-tiles=none)
+          if [ "$TERRAIN_ENABLED" = true ]; then
+            DEM=(--dem-tiles="pmtiles://$STYLE_BASE/tiles/$REGION_KEY-terrain.pmtiles"
+                 --dem-maxzoom="${TERRAIN_MAXZOOM:-16}")
+          fi
+          node workers/styles/build.mjs \
+            --base-url="$STYLE_BASE" --region="$REGION_KEY" --name="$MOUNTAIN_NAME" \
+            --contours="$CONTOURS_ENABLED" --contours-maxzoom="${CONTOURS_MAXZOOM:-14}" \
+            --rocks="$ROCKS_ENABLED" --rocks-maxzoom="${ROCKS_MAXZOOM:-16}" \
+            --dem-source="${CONTOURS_SOURCE:-dmr5}" --dem-tiles-source="${TERRAIN_SOURCE:-dmr5}" \
+            "${DEM[@]}" --overrides=poc/web/style-overrides.json --out=_site/styles
+          python3 workers/mountain/styles.py _site/styles
+        env:
+          # the app finds archives by file name, so the address is never fetched
+          STYLE_BASE: https://mountain.invalid
+
       # what the packer and the catalog read: bbox, zooms, models
       - name: The range's manifest
         run: python3 workers/mountain/manifest.py _site
