@@ -1,0 +1,319 @@
+name: Map · Build mountain package
+run-name: "${{ github.workflow }} · ${{ inputs.mountain }}"
+
+# ONE MOUNTAIN RANGE IN DETAIL – 2.5 m contours, rocks and a height model
+# from DMR 5.0 at 1 m, over the range alone (`workers/data/mountains.json`).
+#
+# The same DEM layers the map build makes (`dem-layers.yml`), on the range's
+# cut-out and with the cut-out's model for the height tiles too. Published as
+# packages `contours`, `rocks` and `terrain` under the country's `mountains`
+# in `maps.json`; the app draws them over the regions the range crosses.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mountain:
+        description: "Which range (workers/data/mountains.json)"
+        required: true
+        default: vysoke_tatry
+        type: choice
+        options:
+          - vysoke_tatry
+          - belianske_tatry
+          - zapadne_tatry
+          - nizke_tatry
+          - mala_fatra
+          - velka_fatra
+          - slovensky_raj
+          - pieniny
+      rock_slope:
+        description: "From which slope (°) terrain is rock (50 = faces, 40 = steep slopes too)"
+        required: false
+        default: "50"
+        type: string
+      rebuild:
+        description: "Compute a layer anew even when it is cached"
+        required: false
+        default: nothing
+        type: choice
+        options:
+          - nothing
+          - contours
+          - rocks
+          - terrain
+          - everything
+      test:
+        description: "Quick test: only 4 km² in the middle of the range"
+        required: false
+        default: false
+        type: boolean
+      # on top of MOUNTAIN_OPTIONS below, a later key wins
+      options:
+        description: "Rarely changed settings as key=value (see workers/plan/options.py)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+  DRIVE_CLIENT: ${{ vars.DRIVE_CLIENT }}
+  DRIVE_SECRET: ${{ secrets.DRIVE_SECRET }}
+  DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
+  # what makes a mountain package finer than its region's layers
+  MOUNTAIN_OPTIONS: >-
+    contour_interval=2.5 contour_maxzoom=16 contour_maxzoom_cap=16
+    contour_lowland_m=0 terrain_maxzoom=16 size_limit_mb=2000
+  # shares of `size_limit_mb`; no Pages here, so the height model gets the most
+  BUDGET_CONTOURS_PCT: "25"
+  BUDGET_ROCKS_PCT: "15"
+  BUDGET_TERRAIN_PCT: "40"
+
+jobs:
+  plan:
+    name: Preparation (range, settings)
+    runs-on: ubuntu-latest
+    outputs:
+      key: ${{ steps.mountain.outputs.key }}
+      country: ${{ steps.mountain.outputs.country }}
+      name: ${{ steps.mountain.outputs.name }}
+      area: ${{ steps.mountain.outputs.area }}
+      area_key: ${{ steps.mountain.outputs.area_key }}
+      bbox: ${{ steps.mountain.outputs.bbox }}
+      bboxkey: ${{ steps.mountain.outputs.bboxkey }}
+      km2: ${{ steps.mountain.outputs.km2 }}
+      day: ${{ steps.day.outputs.d }}
+      budget_contours_pct: ${{ env.BUDGET_CONTOURS_PCT }}
+      budget_rocks_pct: ${{ env.BUDGET_ROCKS_PCT }}
+      budget_terrain_pct: ${{ env.BUDGET_TERRAIN_PCT }}
+      opt_test_km2: ${{ steps.opts.outputs.opt_test_km2 }}
+      opt_publish: ${{ steps.opts.outputs.opt_publish }}
+      opt_apple_archive: ${{ steps.opts.outputs.opt_apple_archive }}
+      opt_size_limit_mb: ${{ steps.opts.outputs.opt_size_limit_mb }}
+      opt_contour_lines: ${{ steps.opts.outputs.opt_contour_lines }}
+      opt_rocks: ${{ steps.opts.outputs.opt_rocks }}
+      opt_terrain: ${{ steps.opts.outputs.opt_terrain }}
+      opt_contours: ${{ steps.opts.outputs.opt_contours }}
+      opt_contour_source: ${{ steps.opts.outputs.opt_contour_source }}
+      opt_rock_source: ${{ steps.opts.outputs.opt_rock_source }}
+      opt_rock_dem: ${{ steps.opts.outputs.opt_rock_dem }}
+      opt_shading_source: ${{ steps.opts.outputs.opt_shading_source }}
+      opt_ugkk_fallback: ${{ steps.opts.outputs.opt_ugkk_fallback }}
+      opt_ugkk_urls: ${{ steps.opts.outputs.opt_ugkk_urls }}
+      opt_contour_interval: ${{ steps.opts.outputs.opt_contour_interval }}
+      opt_contour_maxzoom: ${{ steps.opts.outputs.opt_contour_maxzoom }}
+      opt_contour_maxzoom_cap: ${{ steps.opts.outputs.opt_contour_maxzoom_cap }}
+      opt_contour_lowland_m: ${{ steps.opts.outputs.opt_contour_lowland_m }}
+      opt_contour_smoothing: ${{ steps.opts.outputs.opt_contour_smoothing }}
+      opt_rock_maxzoom: ${{ steps.opts.outputs.opt_rock_maxzoom }}
+      opt_rock_res: ${{ steps.opts.outputs.opt_rock_res }}
+      opt_rock_solid: ${{ steps.opts.outputs.opt_rock_solid }}
+      opt_rock_fill_holes: ${{ steps.opts.outputs.opt_rock_fill_holes }}
+      opt_terrain_maxzoom: ${{ steps.opts.outputs.opt_terrain_maxzoom }}
+      opt_terrain_frac_bits: ${{ steps.opts.outputs.opt_terrain_frac_bits }}
+      opt_terrain_format: ${{ steps.opts.outputs.opt_terrain_format }}
+      opt_reuse_layers: ${{ steps.opts.outputs.opt_reuse_layers }}
+      opt_contours_rebuild: ${{ steps.opts.outputs.opt_contours_rebuild }}
+      opt_rocks_rebuild: ${{ steps.opts.outputs.opt_rocks_rebuild }}
+      opt_terrain_rebuild: ${{ steps.opts.outputs.opt_terrain_rebuild }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Today's date for the cache key
+        id: day
+        run: echo "d=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      # all three layers from DMR 5.0: the 1 m LiDAR is what a mountain package is for
+      - name: Split the options
+        id: opts
+        run: |
+          set -euo pipefail
+          python3 workers/plan/options.py \
+            --options="$MOUNTAIN_OPTIONS $OPTIONS" \
+            --contour-source=dmr5 --rock-source=dmr5 --shading-source=dmr5 \
+            --rebuild='${{ inputs.rebuild }}' \
+            --test='${{ inputs.test }}' \
+            --publish-pages=false \
+            --out="$GITHUB_OUTPUT" \
+            --summary="$GITHUB_STEP_SUMMARY"
+        env:
+          OPTIONS: ${{ inputs.options }}
+
+      - name: Resolve the range
+        id: mountain
+        run: |
+          set -euo pipefail
+          python3 workers/mountain/plan.py --mountain='${{ inputs.mountain }}' \
+            --test-km2='${{ steps.opts.outputs.opt_test_km2 }}' --out="$GITHUB_OUTPUT"
+
+      # `dem-layers.yml` clips every layer to it, as to a region's outline
+      - name: Keep the range outline
+        uses: actions/upload-artifact@v7
+        with:
+          name: region-poly
+          path: data/region.geojson
+          retention-days: 1
+
+  dem:
+    name: Height-model layers
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    uses: ./.github/workflows/dem-layers.yml
+    secrets: inherit                      # Drive (stores and cache); `env` isn't inherited
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      mountain: ${{ 'true' }}
+      area: ${{ needs.plan.outputs.area }}
+      area_key: ${{ needs.plan.outputs.area_key }}
+      area_name: ${{ needs.plan.outputs.name }}
+      area_bbox: ${{ needs.plan.outputs.bbox }}
+      area_km2: ${{ needs.plan.outputs.km2 }}
+      dem_bbox: ${{ needs.plan.outputs.bbox }}
+      dem_bboxkey: ${{ needs.plan.outputs.bboxkey }}
+      test_km2: ${{ needs.plan.outputs.opt_test_km2 }}
+      day: ${{ needs.plan.outputs.day }}
+      opt_contours: ${{ needs.plan.outputs.opt_contours }}
+      opt_contour_lines: ${{ needs.plan.outputs.opt_contour_lines }}
+      opt_rocks: ${{ needs.plan.outputs.opt_rocks }}
+      opt_terrain: ${{ needs.plan.outputs.opt_terrain }}
+      opt_contour_source: ${{ needs.plan.outputs.opt_contour_source }}
+      opt_rock_source: ${{ needs.plan.outputs.opt_rock_source }}
+      opt_rock_dem: ${{ needs.plan.outputs.opt_rock_dem }}
+      opt_shading_source: ${{ needs.plan.outputs.opt_shading_source }}
+      # a mountain from Sonny would be no finer than its region
+      opt_ugkk_fallback: ${{ 'false' }}
+      opt_ugkk_urls: ${{ needs.plan.outputs.opt_ugkk_urls }}
+      opt_contour_interval: ${{ needs.plan.outputs.opt_contour_interval }}
+      opt_contour_maxzoom: ${{ needs.plan.outputs.opt_contour_maxzoom }}
+      opt_contour_maxzoom_cap: ${{ needs.plan.outputs.opt_contour_maxzoom_cap }}
+      opt_contour_lowland_m: ${{ needs.plan.outputs.opt_contour_lowland_m }}
+      opt_contour_smoothing: ${{ needs.plan.outputs.opt_contour_smoothing }}
+      rock_slope: ${{ inputs.rock_slope }}
+      opt_rock_maxzoom: ${{ needs.plan.outputs.opt_rock_maxzoom }}
+      opt_rock_res: ${{ needs.plan.outputs.opt_rock_res }}
+      opt_rock_solid: ${{ needs.plan.outputs.opt_rock_solid }}
+      opt_rock_fill_holes: ${{ needs.plan.outputs.opt_rock_fill_holes }}
+      opt_terrain_maxzoom: ${{ needs.plan.outputs.opt_terrain_maxzoom }}
+      opt_terrain_frac_bits: ${{ needs.plan.outputs.opt_terrain_frac_bits }}
+      opt_terrain_format: ${{ needs.plan.outputs.opt_terrain_format }}
+      opt_reuse_layers: ${{ needs.plan.outputs.opt_reuse_layers }}
+      opt_contours_rebuild: ${{ needs.plan.outputs.opt_contours_rebuild }}
+      opt_rocks_rebuild: ${{ needs.plan.outputs.opt_rocks_rebuild }}
+      opt_terrain_rebuild: ${{ needs.plan.outputs.opt_terrain_rebuild }}
+      opt_size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      budget_contours_pct: ${{ needs.plan.outputs.budget_contours_pct }}
+      budget_rocks_pct: ${{ needs.plan.outputs.budget_rocks_pct }}
+      budget_terrain_pct: ${{ needs.plan.outputs.budget_terrain_pct }}
+
+  publish:
+    name: Package to Drive and the catalog
+    needs: [plan, dem]
+    # half a new range would be a lying package
+    if: ${{ !cancelled() && needs.dem.result == 'success' && needs.plan.outputs.opt_publish == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      # `maps.json`, the one place anything reaches the repository
+      contents: write
+    outputs:
+      published: ${{ steps.publish.outcome }}
+    env:
+      REGION_KEY: ${{ needs.plan.outputs.key }}
+      AREA_KEY: whole
+      TEST_KM2: ${{ needs.plan.outputs.opt_test_km2 }}
+      MOUNTAIN_COUNTRY: ${{ needs.plan.outputs.country }}
+      MOUNTAIN_NAME: ${{ needs.plan.outputs.name }}
+      AREA_BBOX: ${{ needs.plan.outputs.bbox }}
+      CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
+      CONTOURS_MAXZOOM: ${{ needs.dem.outputs.contours_maxzoom }}
+      CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
+      CONTOUR_INTERVAL: ${{ needs.plan.outputs.opt_contour_interval }}
+      ROCKS_ENABLED: ${{ needs.dem.outputs.rocks_enabled || 'false' }}
+      ROCKS_MAXZOOM: ${{ needs.dem.outputs.rocks_maxzoom }}
+      ROCKS_SOURCE: ${{ needs.dem.outputs.rock_source }}
+      ROCK_SLOPE: ${{ needs.dem.outputs.rock_slope }}
+      TERRAIN_ENABLED: ${{ needs.dem.outputs.terrain_enabled || 'false' }}
+      TERRAIN_MAXZOOM: ${{ needs.dem.outputs.terrain_maxzoom }}
+      TERRAIN_SOURCE: ${{ needs.dem.outputs.terrain_dem_source }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Collect the layers
+        uses: actions/download-artifact@v8
+        with:
+          pattern: site-*
+          path: _site
+          merge-multiple: true
+
+      # what the packer and the catalog read: bbox, zooms, models
+      - name: The range's manifest
+        run: python3 workers/mountain/manifest.py _site
+
+      - name: Publish the packages to Drive and write maps.json
+        id: publish
+        run: |
+          set -euo pipefail
+          python3 workers/deploy/publish-map.py \
+            --site=_site --maps=maps.json \
+            --summary="$GITHUB_STEP_SUMMARY"
+
+      - name: Commit maps.json
+        if: ${{ steps.publish.outcome == 'success' }}
+        env:
+          MAPS_JSON: ${{ steps.publish.outputs.maps_file || 'maps.json' }}
+          BRANCH: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: workers/deploy/catalog.sh
+
+      - name: Keep the layers for Apple Archive
+        if: ${{ steps.publish.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: mountain-site
+          path: _site
+          retention-days: 1
+          compression-level: 0
+
+  apple-archive:
+    name: Package as Apple Archive (.aar)
+    needs: [plan, dem, publish]
+    if: ${{ !cancelled() && needs.publish.outputs.published == 'success' && needs.plan.outputs.opt_apple_archive == 'true' }}
+    runs-on: macos-latest
+    permissions:
+      contents: write     # `maps.json` – as `publish` does
+    env:
+      REGION_KEY: ${{ needs.plan.outputs.key }}
+      AREA_KEY: whole
+      TEST_KM2: ${{ needs.plan.outputs.opt_test_km2 }}
+      MOUNTAIN_COUNTRY: ${{ needs.plan.outputs.country }}
+      # the same values as the ZIP job – `contents.json` is made of them
+      CONTOURS_ENABLED: ${{ needs.dem.outputs.contours_enabled || 'false' }}
+      CONTOURS_SOURCE: ${{ needs.dem.outputs.contours_dem_source }}
+      CONTOUR_INTERVAL: ${{ needs.plan.outputs.opt_contour_interval }}
+      ROCKS_ENABLED: ${{ needs.dem.outputs.rocks_enabled || 'false' }}
+      ROCKS_SOURCE: ${{ needs.dem.outputs.rock_source }}
+      TERRAIN_ENABLED: ${{ needs.dem.outputs.terrain_enabled || 'false' }}
+      TERRAIN_SOURCE: ${{ needs.dem.outputs.terrain_dem_source }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Download the layers from the job before
+        uses: actions/download-artifact@v8
+        with:
+          name: mountain-site
+          path: _site
+      - name: Pack and upload .aar to Drive
+        id: publish
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: workers/deploy/apple-archive.sh
+      - name: Commit maps.json
+        if: ${{ steps.publish.outcome == 'success' }}
+        env:
+          MAPS_JSON: ${{ steps.publish.outputs.maps_file || 'maps.json' }}
+          BRANCH: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: workers/deploy/catalog.sh

@@ -183,6 +183,11 @@ on:
         required: false
         default: "webp"
         type: string
+      mountain:
+        description: "A mountain package: the cut-out is all of it, height tiles too (DMR 5.0 at 1 m)"
+        required: false
+        default: "false"
+        type: string
       # flags of the `rebuild` choice: drop that layer's cache and compute it anew
       opt_contours_rebuild:
         description: "Recompute contours even when cached"
@@ -374,6 +379,7 @@ jobs:
           SRC_CONTOURS: ${{ inputs.opt_contour_source }}
           SRC_ROCKS: ${{ inputs.opt_rock_dem }}
           SRC_TERRAIN: ${{ inputs.opt_shading_source }}
+          TERRAIN_CUTOUT: ${{ inputs.mountain }}
         run: workers/dem/check.sh
 
   # refilling height data: one workflow, a job per layer; they start themselves
@@ -522,6 +528,7 @@ jobs:
           OPT_TERRAIN_MAXZOOM: ${{ inputs.opt_terrain_maxzoom }}
           OPT_TERRAIN_FRAC_BITS: ${{ inputs.opt_terrain_frac_bits }}
           OPT_TERRAIN_FORMAT: ${{ inputs.opt_terrain_format }}
+          TERRAIN_CUTOUT: ${{ inputs.mountain }}
           OPT_CONTOUR_MAXZOOM_CAP: ${{ inputs.opt_contour_maxzoom_cap }}
           OPT_CONTOUR_LOWLAND_M: ${{ inputs.opt_contour_lowland_m }}
           ROCK_SLOPE: ${{ inputs.rock_slope }}
@@ -670,6 +677,7 @@ jobs:
           OPT_UGKK_FALLBACK: ${{ inputs.opt_ugkk_fallback }}
           # a test run mustn't touch the store; `rocks_rebuild` must skip it
           OPT_TEST_KM2: ${{ inputs.test_km2 }}
+          MOUNTAIN: ${{ inputs.mountain }}
           SLOPE_DIR: slope-chunks
           # Drive is latent, not narrow; past ~16 threads it answers 403
           SLOPE_JOBS: "6"
@@ -861,6 +869,7 @@ jobs:
           OPT_SIZE_LIMIT_MB: ${{ inputs.opt_size_limit_mb }}
           OPT_UGKK_FALLBACK: ${{ inputs.opt_ugkk_fallback }}
           OPT_TEST_KM2: ${{ inputs.test_km2 }}
+          MOUNTAIN: ${{ inputs.mountain }}
           SLOPE_DIR: slope-chunks
           SLOPE_JOBS: "6"
           # this step reads Drive the most: slope in parts of a 145 GB raster
@@ -1004,6 +1013,8 @@ jobs:
           TERRAIN_MAXZOOM: ${{ inputs.opt_terrain_maxzoom }}
           TERRAIN_FRAC_BITS: ${{ inputs.opt_terrain_frac_bits }}
           TERRAIN_FORMAT: ${{ inputs.opt_terrain_format }}
+          TERRAIN_CUTOUT: ${{ inputs.mountain }}
+          AREA_KEY: ${{ inputs.area_key }}
           TERRAIN_REBUILD: ${{ inputs.opt_terrain_rebuild }}
           # the hillshading budget is decided while computing tiles, not at the check
           SIZE_LIMIT_MB: ${{ inputs.opt_size_limit_mb }}

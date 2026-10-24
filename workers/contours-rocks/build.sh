@@ -36,7 +36,10 @@ contour_levels() {
 AREA_KEY="$AREA_KEY_IN"
 AREA_NAME="$AREA_NAME_IN"
 AREA_BBOX="$AREA_BBOX_IN"
-if [ "$AREA_KEY" != "whole" ]; then
+if [ "$AREA_KEY" != "whole" ] && [ "${MOUNTAIN:-false}" = true ]; then
+  echo "Contours and rocks of the mountain package \"$AREA_NAME\" ($AREA_BBOX, ${AREA_KM2} km²)."
+  IFS=, read -r W S E N <<< "$AREA_BBOX"
+elif [ "$AREA_KEY" != "whole" ]; then
   echo "::warning::Contours and rocks are computed ONLY on the cut-out \"$AREA_NAME\" ($AREA_BBOX, ${AREA_KM2} km²). The rest of the region gets none of them – this run is for testing, not deploying. For the whole region pick \"whole_region\" for the \"area\" input."
   IFS=, read -r W S E N <<< "$AREA_BBOX"
 fi

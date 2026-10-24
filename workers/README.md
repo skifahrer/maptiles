@@ -105,6 +105,13 @@ Mapa · Build svet            základná mapa CELÉHO sveta – podklad pod výb
                              ▲ NIE z planet.osm.pbf (80 GB sa na runner nezmestí)
                              ▲ cesty, sídla ani terén v nej nie sú
 
+Mapa · Build mountain        JEDNO POHORIE v detaile: vrstevnice po 2,5 m,
+package (manuálne, pohorie)  skaly a výškový model z DMR 5.0 v 1 m
+                             ─► balíky contours, rocks, terrain pod
+                               `<krajina>.mountains.<pohorie>` v `maps.json`
+                             ▲ ten istý `dem-layers.yml`, len na výreze
+                               pohoria a s `mountain: true`
+
 Dáta · výškové modely        Sonny 20m / ÚGKK DMR 3.5 ─► rezanie
 (sám, keď terén chýba)       na 1° dlaždice ─► sklad `dem-sonny`:
                              N49E019.tif + meta.json
@@ -1001,6 +1008,40 @@ doladenie prahov.
 | len výrazné steny | `options: rock_img_options="open=6"` |
 | presne ten asset, čo som si doladil ručne | `options: rock_img_asset=rockimg-…gpkg.zst` (vtedy sa nič nepočíta nanovo) |
 | len rýchlo overiť, či to vôbec niečo nájde | switch `test` (predvolene odškrtnutý, viď nižšie) |
+
+### Horské balíky: pohorie v detaile (`Mapa · Build mountain package`)
+
+Kraj má vrstevnice po 5 m a výškový model z 5 m dlaždíc DMR 5.0 – na celý kraj
+viac ani nejde (1° v 1 m má ~48 GB). Pohorie je ale malé, tak sa preň robí
+**vlastný balík z plného metrového LiDARu**:
+
+| | kraj | pohorie |
+|---|---|---|
+| vrstevnice | 5 m, do z14 | **2,5 m**, do **z16** (hlavné po 50 m, polovičné po 10 m) |
+| skaly | `rock_res: auto` | to isté, z toho istého sklonu |
+| výškový model (tieňovanie, 3D) | 5 m dlaždice, z13 – z15 | **výrez v 1 m**, do **z16** |
+
+Pohoria sú vo [`workers/data/mountains.json`](data/mountains.json): krajina
+a výrez z `areas.json` (meno, bbox a DMR 5.0 v 1 m pod tým istým menom, aký
+si berie testovací výrez). Workflow volá **ten istý `dem-layers.yml`** ako
+build mapy, s `mountain: true` – vtedy si aj tieňovanie berie model vo tvare
+výrezu (`TERRAIN_CUTOUT`, v kľúči cache aj v mene assetu `-cut`), nie 5 m
+dlaždice, a vrstevnice nevypisujú varovanie „len výrez, nie na nasadenie“.
+Výrez nesmie spadnúť na Sonnyho (`ugkk_fallback: false`): pohorie z 20 m
+modelu by nebolo jemnejšie než jeho kraj.
+
+**V katalógu je pod krajinou, nie pod krajom** – `slovensko.mountains.vysoke_tatry`
+(id `slovakia-vysoke_tatry`), lebo pohorie môže krížiť hranicu krajov (Tatry
+ležia v Prešovskom aj Žilinskom). Uzol má tvar kraja (`bbox`, zoomy, `tiles`,
+`maps`), ale len balíky `contours`, `rocks` a `terrain` – základnú mapu nemá,
+kreslí sa cez kraje, ktoré pretína. Na Drive leží v `slovensko/mountains/<pohorie>/`.
+
+**Interval 2,5 m nie je celé číslo**, a `build.sh` dovtedy počítal triedy
+v bashovej celočíselnej aritmetike (`$(( INTERVAL * 5 ))`) a v SQL cez
+`CAST(ele AS INTEGER) %` – 2,5 m by spadlo na 10 m. Triedy sa teraz počítajú
+v `awk` a v SQL cez `round`, a pri zlomkovom intervale ostávajú hlavná
+a polovičná vrstevnica na celých metroch (2,5 m → 50 a 10 m), aby ich popis
+neklamal o pol metra.
 
 ### Rýchly test: pár km² namiesto celého pohoria
 
