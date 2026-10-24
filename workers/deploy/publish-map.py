@@ -191,7 +191,8 @@ def main():
     # them too) and sized for the catalog; with `--only` the map isn't published
     pieces = base_parts(args.site, man)
     keep = [f for _k, _p, fs in pieces for f in fs]
-    if args.only:
+    mountain = bool(names.mountain_country())
+    if args.only or mountain:
         pieces = []
     # viewer and glyphs aren't packed; how much a package leaves out must show
     out_files, out_reasons = outside_packages(args.site, man)
@@ -217,6 +218,12 @@ def main():
          args.site, base_files(args.site, exclude, keep)),
     ] + [(p["key"], p["description"], args.site, fs)
          for p, fs in own_packages]
+    if mountain:
+        # a mountain adds layers to its regions; it has no map of its own
+        batch = [b for b in batch if b[0] in names.MOUNTAIN_PACKAGES]
+        if not any(b[3] for b in batch):
+            raise SystemExit(f"::error::{args.site} holds none of the mountain's layers "
+                             f"({', '.join(names.MOUNTAIN_PACKAGES)}) – nothing to publish.")
     # wikipedia has its own pipeline; without `--wiki` a map run would delete it
     if args.wiki or args.only == "wikipedia":
         batch.append(
@@ -236,7 +243,7 @@ def main():
             raise SystemExit(
                 f"::error::Package `{args.only}` has no files – nothing to "
                 f"publish. (Did the step that makes it run?)")
-    elif not batch[0][3]:
+    elif not mountain and not batch[0][3]:
         raise SystemExit(f"::error::{args.site} has no files – nothing to "
                          f"publish. (Did the `deploy` job get as far as "
                          f"assembling the site?)")
@@ -343,7 +350,7 @@ def main():
             man, only=args.only, merge="zip" not in formats, cat=cat,
             layers=layers(), owns=owns,
             # how much of the map is search – nowhere else to read it
-            base_parts=None if args.only else part_sizes(pieces),
+            base_parts=None if args.only or mountain else part_sizes(pieces),
             # retired packages and dead links out, `--only` too
             retired=RETIRED, live=live)
         if args.summary and changed:

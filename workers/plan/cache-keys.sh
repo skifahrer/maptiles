@@ -37,6 +37,8 @@ if [ "$LOWLAND" != 0 ]; then C_OPT="${C_OPT}-l${LOWLAND}"; fi
 T_OPT=""
 if [ "$TBITS" != auto ]; then T_OPT="${T_OPT}-b${TBITS}"; fi
 if [ "$TFMT" != png ]; then T_OPT="${T_OPT}-${TFMT}"; fi
+# height tiles from the cut-out (a mountain) are other tiles over the same bbox
+if [ "${TERRAIN_CUTOUT:-false}" != false ]; then T_OPT="${T_OPT}-cut${TERRAIN_CUTOUT}"; fi
 # v11: contours no longer carry rock settings; smoothing is in the key too,
 # the three values live in dem-layers.yml `env:`, not in hashed files
 C_SETTINGS="contours-v11-c$CS-$B-i${CONTOUR_INTERVAL}-z${OPT_CONTOUR_MAXZOOM}-s${OPT_CONTOUR_SMOOTHING}h${CONTOUR_DEM_LOWPASS}t${CONTOUR_SIMPLIFY}x${CONTOUR_SMOOTH}${C_OPT}-a$RA"

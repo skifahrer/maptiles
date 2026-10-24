@@ -96,8 +96,11 @@ def registry_name(regions, key, kind):
     """The registry's name for a key, or None when it has none."""
     key, test = split_test(key)
     tail = f" – quick test {test} km²" if test else ""
-    if kind == "area":
+    if kind in ("area", "mountain"):
         try:
+            if kind == "mountain":
+                with open(os.path.join(_DATA, "mountains.json")) as f:
+                    key = (json.load(f).get(key) or {}).get("area") or key
             with open(os.path.join(_DATA, "areas.json")) as f:
                 name = (json.load(f).get(key) or {}).get("name")
         except (OSError, ValueError):
@@ -156,6 +159,10 @@ def migrate_node(maps):
                 entry["parts"].setdefault(LEGACY_PARTS[key], entry["parts"].pop(key))
 
 
+# nodes nested in a node; a mountain belongs to its country, not to one region
+NESTS = ("regions", "subregions", names.MOUNTAINS)
+
+
 def node_id(regions, key, parent="", listed=True):
     """A node's id, unique across the catalog; `listed` = its key may be in `regions.json`."""
     base, test = split_test(key)
@@ -174,7 +181,7 @@ def stamp_ids(data, regions):
     while pending:
         node, key, parent, listed = pending.pop()
         node["id"] = node_id(regions, key, parent, listed)
-        for nest in ("regions", "subregions"):
+        for nest in NESTS:
             pending += [(v, k, node["id"], nest == "regions")
                         for k, v in (node.get(nest) or {}).items() if isinstance(v, dict)]
     return data
@@ -187,7 +194,7 @@ def migrate(data):
         node = pending.pop()
         if isinstance(node.get("maps"), dict):
             migrate_node(node["maps"])
-        for sub in ("regions", "subregions"):
+        for sub in NESTS:
             pending += [v for v in (node.get(sub) or {}).values() if isinstance(v, dict)]
     return data
 
@@ -352,7 +359,8 @@ def write_parts(maps, parts):
 
 
 COMMENT = ("Map catalog of finished maps on Google Drive – which there are and "
-           "where. The top key is the country, under it `regions` and `subregions`; "
+           "where. The top key is the country, under it `regions`, `subregions` and "
+           "`mountains`; "
            "`id` names a node uniquely across the catalog (its osm.fr path); keys starting with `_` are catalog metadata, not countries. Written at the "
            "end of a build by workers/deploy/publish-map.py; never edited by hand.")
 COMMENT_TEST = ("QUICK TEST runs – terrain covers only a few km² of the cut-out, so "
@@ -387,11 +395,15 @@ def write_catalog(path, parts, regions, uploaded, man, only="", merge=False,
     country = data.setdefault(cat[0], {})
     name_node(country, regions, cat[0], "region")
     node = country                      # a whole-country build ends here
-    if len(cat) > 1:
+    mountain = len(cat) > 2 and cat[1] == names.MOUNTAINS
+    if mountain:
+        node = country.setdefault(names.MOUNTAINS, {}).setdefault(cat[2], {})
+        name_node(node, regions, cat[2], "mountain")
+    if len(cat) > 1 and not mountain:
         regs = country.setdefault("regions", {})
         node = regs.setdefault(cat[1], {})
         name_node(node, regions, cat[1], "region")
-    if len(cat) > 2:
+    if len(cat) > 2 and not mountain:
         subs = node.setdefault("subregions", {})
         node = subs.setdefault(cat[2], {})
         name_node(node, regions, cat[2], "area")
@@ -444,7 +456,7 @@ def write_catalog(path, parts, regions, uploaded, man, only="", merge=False,
     if test_km2 not in ("", "0"):
         # the key number of a test: the map is the region, the terrain just that square
         entry["test_km2"] = test_km2
-    if area_bbox and (len(parts) > 2 or test_km2 not in ("", "0")):
+    if area_bbox and not mountain and (len(parts) > 2 or test_km2 not in ("", "0")):
         try:
             entry["area_bbox"] = [float(v) for v in area_bbox.split(",")]
         except ValueError:
@@ -463,8 +475,7 @@ def write_catalog(path, parts, regions, uploaded, man, only="", merge=False,
                          if k not in decided}
     if merge:
         # what this run doesn't know it must not delete – with `merge` the catalog is the base
-        kept = {k: v for k, v in node.items()
-                if k not in ("maps", "regions", "subregions")}
+        kept = {k: v for k, v in node.items() if k != "maps" and k not in NESTS}
         kept.update(entry)
         entry = kept
     for kind, name, size, fid, fmt, sha in uploaded:
@@ -477,8 +488,8 @@ def write_catalog(path, parts, regions, uploaded, man, only="", merge=False,
     tidy(entry["maps"], retired, live,
          {fid for _k, _n, _v, fid, _f, _s in uploaded})
 
-    # `subregions` belong to the node, not to this map
-    keep = {k: node[k] for k in ("regions", "subregions") if k in node}
+    # nested nodes belong to the node, not to this map
+    keep = {k: node[k] for k in NESTS if k in node}
     node.clear()
     node.update(entry)
     node.update(keep)

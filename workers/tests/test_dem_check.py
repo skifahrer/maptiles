@@ -71,6 +71,11 @@ class DemCheck(unittest.TestCase):
                             stores={"dem-dmr5-v2": [f"N49E019.tif:{BIG}", f"N49E020.tif:{BIG}"]})
         self.assertEqual((got["mirror_dmr5_area"], got["mirror_dmr5_tiles"]), ("", ""))
 
+    def test_a_mountains_terrain_reads_the_cutout(self):
+        got, _ = self.check(terrain="dmr5", AREA_KEY="vysoke_tatry", AREA_BBOX="20.0,49.1,20.3,49.25",
+                            TERRAIN_CUTOUT="true")
+        self.assertEqual((got["mirror_dmr5_asset"], got["mirror_dmr5_tiles"]), ("ugkk-vysoke_tatry.tif", ""))
+
     def test_rocks_from_dmr5_read_drive_directly(self):
         got, said = self.check(rocks="dmr5")
         self.assertEqual((got["mirror_rocks"], got["demkey_rocks"]), ("", ""))

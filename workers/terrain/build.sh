@@ -32,6 +32,9 @@ FMT="${TERRAIN_FORMAT:-webp}"
 case "$FMT" in png|webp) ;; *) FMT=webp ;; esac
 BITS="${TERRAIN_FRAC_BITS:-auto}"
 case "$BITS" in ''|*[!0-9]*) BITS=auto ;; esac
+# a mountain reads its cut-out (DMR 5.0 at 1 m), a region the 5 m tiles
+CUT_KEY=whole
+[ "${TERRAIN_CUTOUT:-false}" = true ] && CUT_KEY="${AREA_KEY:?cut-out key}"
 
 # the real maxzoom is known only after computing (the size cap may lower it),
 # so the name is a function; the encoding shape is written once
@@ -40,6 +43,7 @@ ENC_VER=v8
 ENC_OPT=""
 [ "$BITS" != auto ] && ENC_OPT="${ENC_OPT}-b${BITS}"
 [ "$FMT" != png ] && ENC_OPT="${ENC_OPT}-${FMT}"
+[ "$CUT_KEY" != whole ] && ENC_OPT="${ENC_OPT}-cut"
 # the overlap with the neighbouring region changes the tiles, so it is in the name too
 BORDER_M=$(python3 -c "import sys; sys.path.insert(0, 'workers/plan'); import area; print(int(area.BORDER_BUFFER_M))")
 asset_name() { echo "terrain-${REGION_KEY}-${TDEM}-z${1}-${ENC_VER}${ENC_OPT}-o${BORDER_M}.pmtiles"; }
@@ -76,9 +80,9 @@ if ! have_tiles; then
   sudo apt-get install -y -qq gdal-bin zstd
   python3 -m pip install --quiet numpy
   [ "$FMT" = webp ] && python3 -m pip install --quiet pillow
-  # no cut-out key is passed, so `dmr5` means the 5 m tiles; code 3 = "no model here"
+  # without a cut-out key `dmr5` means the 5 m tiles; code 3 = "no model here"
   set +e
-  workers/dem/fetch.sh "$BBOX" "dem/$TDEM" steps-out/terrain.tsv "$TDEM"
+  workers/dem/fetch.sh "$BBOX" "dem/$TDEM" steps-out/terrain.tsv "$TDEM" "$CUT_KEY"
   TRC=$?
   set -e
   if [ "$TRC" -eq 3 ]; then

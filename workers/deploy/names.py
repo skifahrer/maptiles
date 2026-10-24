@@ -55,6 +55,16 @@ def area_key():
     return "whole" if key == "cely" else key
 
 
+# a mountain package sits under its country, beside the regions
+MOUNTAINS = "mountains"
+MOUNTAIN_PACKAGES = ("terrain", "contours", "rocks")
+
+
+def mountain_country():
+    """The country of the mountain package this run builds, or ""."""
+    return safe(env("MOUNTAIN_COUNTRY")) if env("MOUNTAIN_COUNTRY") else ""
+
+
 def country_from_url(url):
     """`…/extracts/europe/austria/tirol-latest.osm.pbf` → `austria`, else `other`."""
     path = url.split("/extracts/", 1)[-1] if "/extracts/" in url else url
@@ -70,6 +80,8 @@ def drive_path(regions):
     custom_url = env("CUSTOM_PBF_URL")
     area = area_key()
 
+    if mountain_country():
+        return [mountain_country(), MOUNTAINS, safe(region_key)]
     if custom_url:
         # a custom PBF is not in `regions.json`; the region is what the user named it
         region = safe(env("CUSTOM_NAME") or region_key

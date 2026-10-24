@@ -4,7 +4,8 @@
 # A job of its own on macOS, the only place with `aa`. The same contents, names
 # and Drive folder as the ZIP job (`publish-map.py --format=aar`); the env must
 # match that job too (`MAP_LAYERS`), or `.aar` overwrites what it said of layers.
-# Plus ONLY/WIKI/SITE (which package) and BRANCH (where a fresh `maps.json` is).
+# Plus ONLY/WIKI/SITE (which package), MOUNTAIN_COUNTRY (a mountain's layers) and
+# BRANCH (where a fresh `maps.json` is).
 set -euo pipefail
 
 if ! command -v aa >/dev/null 2>&1; then
@@ -35,6 +36,14 @@ elif [ -n "$ONLY" ]; then
   SITE_DIR="${SITE:-_site}"
   ARGS+=(--only="$ONLY" --site="$SITE_DIR")
   echo "Packing one package: $ONLY from $SITE_DIR ($(du -sh "$SITE_DIR" | cut -f1))"
+elif [ -n "${MOUNTAIN_COUNTRY:-}" ]; then
+  # a mountain carries layers only, no styles or sprites of its own
+  if [ ! -f _site/tiles/manifest.json ]; then
+    echo "::error::The mountain's _site has no tiles/manifest.json – the catalog entry would lose bbox and zooms. It is written by workers/mountain/manifest.py in the publish job."
+    exit 1
+  fi
+  ARGS+=(--site=_site)
+  echo "Packing the mountain's layers ($(du -sh _site | cut -f1))"
 else
   # without the manifest `.aar` is no map and the catalog entry loses bbox and zooms
   if [ ! -f _site/tiles/manifest.json ]; then

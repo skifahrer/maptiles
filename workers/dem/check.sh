@@ -28,7 +28,7 @@ OUT="${GITHUB_OUTPUT:-/dev/null}"
 # which layer passes the cut-out key – see the header
 layer_area_key() {
   case "$1" in
-    terrain) echo whole ;;
+    terrain) [ "${TERRAIN_CUTOUT:-false}" = true ] && echo "$AREA_KEY" || echo whole ;;
     *) echo "$AREA_KEY" ;;
   esac
 }

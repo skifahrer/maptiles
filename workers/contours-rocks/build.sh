@@ -25,13 +25,21 @@ else
   echo "::warning::No region polygon (data/region.geojson) – the whole region bbox is computed, outside the region too. Beyond Slovakia DMR 5.0 is empty and the data's edge makes false rocks."
 fi
 INTERVAL="$CONTOUR_INTERVAL"
-case "$INTERVAL" in ''|*[!0-9]*) INTERVAL=10 ;; esac
+# a mountain's interval is fractional (2.5 m)
+case "$INTERVAL" in ''|.*|*.|*.*.*|*[!0-9.]*) INTERVAL=10 ;; esac
+# major and mid in metres; a fractional step keeps both whole (2.5 → 50, 10)
+contour_levels() {
+  awk -v i="$1" 'BEGIN { if (i * 5 == int(i * 5)) print i * 10, i * 5; else print i * 20, i * 4 }'
+}
 
 # the plan resolved the cut-out (`workers/plan/area.py`)
 AREA_KEY="$AREA_KEY_IN"
 AREA_NAME="$AREA_NAME_IN"
 AREA_BBOX="$AREA_BBOX_IN"
-if [ "$AREA_KEY" != "whole" ]; then
+if [ "$AREA_KEY" != "whole" ] && [ "${MOUNTAIN:-false}" = true ]; then
+  echo "Contours and rocks of the mountain package \"$AREA_NAME\" ($AREA_BBOX, ${AREA_KM2} km²)."
+  IFS=, read -r W S E N <<< "$AREA_BBOX"
+elif [ "$AREA_KEY" != "whole" ]; then
   echo "::warning::Contours and rocks are computed ONLY on the cut-out \"$AREA_NAME\" ($AREA_BBOX, ${AREA_KM2} km²). The rest of the region gets none of them – this run is for testing, not deploying. For the whole region pick \"whole_region\" for the \"area\" input."
   IFS=, read -r W S E N <<< "$AREA_BBOX"
 fi
@@ -222,8 +230,7 @@ PY
        "$CONTOUR_RASTER" work/raw.gpkg
 
   # `level` from the interval: every tenth is major, every fifth mid
-  MAJOR=$(( INTERVAL * 10 ))
-  MID=$(( INTERVAL * 5 ))
+  read -r MAJOR MID <<< "$(contour_levels "$INTERVAL")"
   echo "Contours: ${INTERVAL} m interval from model $CONTOUR_DEM, every ${MAJOR} m major and ${MID} m mid"
 
   # simplify, then round: stairs first, or each stair gets rounded on its own.
@@ -268,20 +275,24 @@ PY
     fi
   fi
 
+  # `ele` a multiple of $1, also for a fractional step
+  on_step() { echo "abs(ele - $1 * round(ele / $1)) < 0.001"; }
+
   # lowland lines are long and wavy, so every second one costs a lot and says little
   LOWLAND="${OPT_CONTOUR_LOWLAND_M:-300}"
   LOWLAND_SQL=""
   if [ "$LOWLAND" != 0 ]; then
-    LOWLAND_SQL="AND NOT (ele < $LOWLAND AND CAST(ele AS INTEGER) % $(( INTERVAL * 2 )) != 0)"
-    echo "Contours below ${LOWLAND} m: every $(( INTERVAL * 2 )) m"
+    EVERY2=$(awk -v i="$INTERVAL" 'BEGIN { print i * 2 }')
+    LOWLAND_SQL="AND NOT (ele < $LOWLAND AND NOT $(on_step "$EVERY2"))"
+    echo "Contours below ${LOWLAND} m: every ${EVERY2} m"
   fi
   python3 workers/lib/watch.py --label="sorting contours" \
     --watch-file=work/level.gpkg \
     -- ogr2ogr -f GPKG work/level.gpkg work/raw.gpkg -nln contours \
     "${SIMPL_ARGS[@]}" \
     -dialect SQLITE -sql "SELECT *, CASE
-         WHEN CAST(ele AS INTEGER) % $MAJOR = 0 THEN 'major'
-         WHEN CAST(ele AS INTEGER) % $MID  = 0 THEN 'mid'
+         WHEN $(on_step "$MAJOR") THEN 'major'
+         WHEN $(on_step "$MID") THEN 'mid'
          ELSE 'minor' END AS level
        FROM contours WHERE ele IS NOT NULL $LOWLAND_SQL"
 
