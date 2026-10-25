@@ -2,8 +2,9 @@ name: Map · Build mountain package
 run-name: "${{ github.workflow }} · ${{ inputs.mountain }}"
 
 # ONE MOUNTAIN RANGE IN DETAIL – 2.5 m contours, rocks and a height model
-# from DMR 5.0 at 1 m, roads and paths from OSM, and aerial photos of summer
-# and winter, over the range alone (`workers/data/mountains.json`).
+# from DMR 5.0 at 1 m (Sonny's 20 m beyond the Slovak border), roads, paths and
+# waymarked trails from OSM, and aerial photos of summer and winter, over the
+# range alone (`workers/data/mountains.json`) – across borders where it runs on.
 #
 # The same DEM layers the map build makes (`dem-layers.yml`), on the range's
 # cut-out and with the cut-out's model for the height tiles too; roads and
@@ -91,7 +92,8 @@ jobs:
       bbox: ${{ steps.mountain.outputs.bbox }}
       bboxkey: ${{ steps.mountain.outputs.bboxkey }}
       km2: ${{ steps.mountain.outputs.km2 }}
-      osmfr: ${{ steps.mountain.outputs.osmfr }}
+      osm: ${{ steps.mountain.outputs.osm }}
+      countries: ${{ steps.mountain.outputs.countries }}
       day: ${{ steps.day.outputs.d }}
       budget_contours_pct: ${{ env.BUDGET_CONTOURS_PCT }}
       budget_rocks_pct: ${{ env.BUDGET_ROCKS_PCT }}
@@ -180,11 +182,11 @@ jobs:
         uses: ./.github/actions/cache-restore
         with:
           path: data/region.osm.pbf
-          key: pbf-mountain-v1-${{ needs.plan.outputs.bboxkey }}-${{ needs.plan.outputs.day }}
+          key: pbf-mountain-v2-${{ needs.plan.outputs.key }}-${{ needs.plan.outputs.bboxkey }}-${{ needs.plan.outputs.day }}
 
-      - name: Cut the country's PBF to the range
+      - name: Cut every country's extract to the range and merge them
         env:
-          OSMFR_URL: ${{ needs.plan.outputs.osmfr }}
+          OSM_URLS: ${{ needs.plan.outputs.osm }}
           MOUNTAIN_BBOX: ${{ needs.plan.outputs.bbox }}
         run: workers/mountain/pbf.sh
 
@@ -196,7 +198,7 @@ jobs:
           path: data/region.osm.pbf
           key: ${{ steps.pbf-cache.outputs.cache-primary-key }}
 
-      - name: Keep the PBF for roads and paths
+      - name: Keep the PBF for roads, paths and trails
         uses: actions/upload-artifact@v7
         with:
           name: pbf
@@ -214,6 +216,71 @@ jobs:
       region_clip: ${{ 'true' }}
       size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
       day: ${{ needs.plan.outputs.day }}
+
+  trails:
+    name: Waymarked trails
+    needs: [plan, osm]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Prepare the timing folder
+        run: mkdir -p steps-out
+
+      - name: Download the range's PBF
+        uses: actions/download-artifact@v8
+        with:
+          name: pbf
+          path: data
+
+      - name: Download the range outline
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: region-poly
+          path: data
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Planetiler cache (restore)
+        id: planetiler-cache
+        uses: ./.github/actions/cache-restore
+        with:
+          path: planetiler.jar
+          key: planetiler-latest-${{ needs.plan.outputs.day }}
+
+      - name: Download Planetiler
+        run: workers/lib/planetiler.sh
+      - name: Planetiler cache (save)
+        if: ${{ always() && steps.planetiler-cache.outputs.cache-hit != 'true' && hashFiles('planetiler.jar') != '' }}
+        continue-on-error: true
+        uses: ./.github/actions/cache-save
+        with:
+          path: planetiler.jar
+          key: ${{ steps.planetiler-cache.outputs.cache-primary-key }}
+
+      - name: Trails from OSM relations → PMTiles
+        env:
+          OPT_TRAILS_MAXZOOM: "14"
+          OPT_REGION_CLIP: "true"
+          REGION_BBOX: ${{ needs.plan.outputs.bbox }}
+          REGION_KEY: ${{ needs.plan.outputs.key }}
+          SIZE_LIMIT_MB: ${{ needs.plan.outputs.opt_size_limit_mb }}
+        run: workers/trails/build.sh
+
+      - name: Upload the site part
+        if: ${{ always() && hashFiles('_site/**') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-trails
+          path: _site
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
 
   aerial:
     name: Aerial photos · ${{ matrix.season }}
@@ -320,9 +387,9 @@ jobs:
 
   publish:
     name: Package to Drive and the catalog
-    needs: [plan, dem, transport, aerial]
+    needs: [plan, dem, transport, trails, aerial]
     # half a new range would be a lying package
-    if: ${{ !cancelled() && needs.dem.result == 'success' && needs.transport.result == 'success' && needs.aerial.result == 'success' && needs.plan.outputs.opt_publish == 'true' }}
+    if: ${{ !cancelled() && needs.dem.result == 'success' && needs.transport.result == 'success' && needs.trails.result == 'success' && needs.aerial.result == 'success' && needs.plan.outputs.opt_publish == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       # `maps.json`, the one place anything reaches the repository
@@ -350,6 +417,8 @@ jobs:
       TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
       PATHS_ENABLED: ${{ needs.transport.outputs.paths_enabled || 'false' }}
       TRANSPORT_MAXZOOM: ${{ needs.transport.outputs.maxzoom }}
+      TRAILS_MAXZOOM: "14"
+      COUNTRIES: ${{ needs.plan.outputs.countries }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -361,9 +430,9 @@ jobs:
           path: _site
           merge-multiple: true
 
-      # a season without a `url` makes no file; `contents.json` names only what came
-      - name: Which photos came
-        run: workers/mountain/aerial-env.sh >> "$GITHUB_ENV"
+      # a season without a `url` or a range without a trail makes no file
+      - name: Which trails and photos came
+        run: workers/mountain/layers-env.sh >> "$GITHUB_ENV"
 
       # what the packer and the catalog read: bbox, zooms, models
       - name: The range's manifest
@@ -396,7 +465,7 @@ jobs:
 
   apple-archive:
     name: Package as Apple Archive (.aar)
-    needs: [plan, dem, transport, aerial, publish]
+    needs: [plan, dem, transport, trails, aerial, publish]
     if: ${{ !cancelled() && needs.publish.outputs.published == 'success' && needs.plan.outputs.opt_apple_archive == 'true' }}
     runs-on: macos-latest
     permissions:
@@ -424,8 +493,8 @@ jobs:
         with:
           name: mountain-site
           path: _site
-      - name: Which photos came
-        run: workers/mountain/aerial-env.sh >> "$GITHUB_ENV"
+      - name: Which trails and photos came
+        run: workers/mountain/layers-env.sh >> "$GITHUB_ENV"
       - name: Pack and upload .aar to Drive
         id: publish
         env:

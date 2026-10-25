@@ -67,7 +67,7 @@ class CacheKeys(unittest.TestCase):
             text = f.read()
         names = set(re.findall(r"\$\{?([A-Z][A-Z0-9_]+)", text)) - {"GITHUB_OUTPUT"}
         names -= {"B", "DC", "DR", "DT", "CS", "RS", "TS", "RA", "CCAP", "LOWLAND", "TBITS",
-                  "TFMT", "C_OPT", "T_OPT", "C_SETTINGS", "R_SETTINGS", "T_SETTINGS", "LEGACY"}
+                  "TFMT", "C_OPT", "T_OPT", "R_OPT", "C_SETTINGS", "R_SETTINGS", "T_SETTINGS", "LEGACY"}
         cls.inputs = sorted(names)
         cls.base = {n: f"v{i}" for i, n in enumerate(cls.inputs)}
         cls.base.update(AREA_IN="whole_region", AREA_KEY="whole", OPT_CONTOUR_SOURCE="dmr5",
@@ -93,6 +93,11 @@ class CacheKeys(unittest.TestCase):
         for name in self.inputs:
             with self.subTest(input=name):
                 self.assertNotEqual(self.keys(**{name: self.base[name] + "x"}), base)
+
+    def test_a_filled_cut_out_is_another_model(self):
+        base, filled = self.keys(DEM_FILL=""), self.keys(DEM_FILL="sonny")
+        for layer in ("contours", "rocks", "terrain"):
+            self.assertNotEqual(base[layer], filled[layer], layer)
 
     def test_layers_keep_their_own_keys(self):
         base = self.keys()

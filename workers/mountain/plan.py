@@ -38,10 +38,10 @@ def outline(bbox):
          "geometry": {"type": "Polygon", "coordinates": [ring]}}]}
 
 
-def osmfr_url(country):
-    """The country's osm.fr export, the range's OSM layers are cut from."""
-    osmfr = country["osmfr"]
-    return f"{OSMFR}/{osmfr['dir']}/{osmfr['slugs'][0]}.osm.pbf"
+def osm_urls(entry, country):
+    """Every extract the range's OSM layers are cut from; its country's when it names none."""
+    paths = entry.get("osm") or [f"{country['osmfr']['dir']}/{country['osmfr']['slugs'][0]}"]
+    return [f"{OSMFR}/{p}.osm.pbf" for p in paths]
 
 
 def poly(bbox):
@@ -82,7 +82,8 @@ def plan(key, test_km2=0.0, test_at="", mountains=None, areas=None, regions=None
         "bbox": ",".join(f"{v:g}" for v in bbox),
         "bboxkey": bbox_key(bbox),
         "km2": f"{area.bbox_km2(*bbox):.0f}",
-        "osmfr": osmfr_url(regions[country]),
+        "osm": " ".join(osm_urls(entry, regions[country])),
+        "countries": ",".join(entry.get("countries") or []),
     }
 
 
