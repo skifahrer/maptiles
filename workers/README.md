@@ -2795,6 +2795,12 @@ Je to podklad, ktorý si aplikácia nesie v sebe a kreslí ho namiesto prázdneh
 papiera, keď mapa nemá čo kresliť (rikimaps 2320). Namerané: **5,0 MB na z5,
 8,0 MB na z6**, strop 10 MB.
 
+Do aplikácie ide **len odtiaľto**: beh s `variant: ground` a `publish` ho dá
+na Drive a do `maps.json` ako uzol `svet_ground` (bez `regions`, takže ho
+aplikácia nevypíše medzi krajinami). Pred každým archívom si z neho Xcode Cloud
+vezme `tiles/svet_ground.pmtiles` (`tools/refresh-world-backdrop.py`
+v rikimaps); nový svet v aplikácii = nový beh tohto workflowu.
+
 Každý región v `download` nesie `id`, `name`, `parent`, `level`
 (svetadiel → štát → výsek) a **`pbf`, teda odkaz, ktorý sa dá naozaj
 stiahnuť**. Úrovne sa odkrývajú podľa zoomu (svetadiel od z0, štát od z2,
