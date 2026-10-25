@@ -17,6 +17,15 @@
     "bbox": [-180, -85.05, 180, 85.05],
     "note": "The world map in its `basic` form – state borders and download regions only, no water or lakes (input `variant` in world-map.yml, lookup workers/data/world-variants.json). ITS OWN KEY, not a suffix to `svet`, by rule 2 of CLAUDE.md: a name is a promise about extent, so `basic` must not land on `svet.zip` or its node in `maps.json` – whoever downloads “the world map” from the catalog must not get a map without seas. So `country` is `svet_basic` too: the package sits in its own Drive folder and is its own root node in the catalog, beside `svet`."
   },
+  "svet_ground": {
+    "id": "world_ground",
+    "name": "World – ground",
+    "country": "svet_ground",
+    "osm_name": "World",
+    "admin_level": 2,
+    "bbox": [-180, -85.05, 180, 85.05],
+    "note": "The world map in its `ground` form – sea, lakes, state borders and their names, no download regions (input `variant` in world-map.yml). Its own key for the reason `svet_basic` has one. The app bundles it as the ground of a map with nothing to draw."
+  },
   "navigacia_slovensko": {
     "id": "navigation_slovakia",
     "name": "Navigation – Slovakia",

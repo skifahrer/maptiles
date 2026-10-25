@@ -1,21 +1,22 @@
 name: Map · Build world
 
 # Basic world map – water, state borders and the regions OSM is split into for download.
-# Published to Drive under `<root>/svet/` (or `svet_basic/`) as its own `maps.json` node.
-# `basic` must never overwrite `svet.zip`: the name promises the extent.
+# Published to Drive under `<root>/svet/` (or `svet_basic/`, `svet_ground/`) as its own `maps.json` node.
+# `basic` and `ground` must never overwrite `svet.zip`: the name promises the extent.
 
 on:
   workflow_dispatch:
     inputs:
       # variants live in `workers/data/world-variants.json`; `choice` can't read a file
       variant:
-        description: "Map variant (basic = only state and region borders, up to 15 MB)"
+        description: "Map variant (basic = only state and region borders, up to 15 MB; ground = sea, lakes and state borders, up to 10 MB)"
         required: false
         default: "full"
         type: choice
         options:
           - "full"
           - "basic"
+          - "ground"
       maxzoom:
         description: "Tiles up to which zoom (the world is a base, not a map to walk)"
         required: false
@@ -28,7 +29,7 @@ on:
           - "7"
           - "8"
       limit_mb:
-        description: "Warn above this many MB of tiles (auto = by variant: full 250, basic 15)"
+        description: "Warn above this many MB of tiles (auto = by variant: full 250, basic 15, ground 10)"
         required: false
         default: "auto"
         type: string

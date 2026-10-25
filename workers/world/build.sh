@@ -34,7 +34,7 @@ if [ "$Z" -gt 8 ]; then
 fi
 if [ "$Z" -lt 3 ]; then Z=3; fi
 
-# `auto` = the variant's cap (full 250 MB, basic 15 MB)
+# `auto` = the variant's cap (full 250 MB, basic 15 MB, ground 10 MB)
 LIMIT_MB="${OPT_LIMIT_MB:-auto}"
 case "$LIMIT_MB" in ''|auto) LIMIT_MB="$VARIANT_LIMIT" ;; esac
 case "$LIMIT_MB" in *[!0-9]*) LIMIT_MB="$VARIANT_LIMIT" ;; esac
@@ -82,7 +82,7 @@ echo "::endgroup::"
 MB=$(( $(stat -c%s "$OUT") / 1048576 ))
 echo "Tiles: $(du -h "$OUT" | cut -f1) (${MB} MB) in $(( $(date +%s) - T_PM )) s"
 if [ "$MB" -gt "$LIMIT_MB" ]; then
-  echo "::warning::Tiles take ${MB} MB, above the ${LIMIT_MB} MB cap of variant $VARIANT. Lower maxzoom (now $Z) – water grows about 3× per level – switch to variant \`basic\` (no water or lakes), or raise the \`limit_mb\` input if such a package is fine."
+  echo "::warning::Tiles take ${MB} MB, above the ${LIMIT_MB} MB cap of variant $VARIANT. Lower maxzoom (now $Z) – water grows about 3× per level – switch to variant \`basic\` (no water or lakes) or \`ground\` (no download regions), or raise the \`limit_mb\` input if such a package is fine."
 fi
 
 # glyphs don't go into the package (the app carries its own); `_site` just tells the truth
