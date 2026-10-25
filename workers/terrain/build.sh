@@ -94,7 +94,7 @@ if ! have_tiles; then
     TDEM=sonny
     FELL_BACK=true
     # the file name carries the source (`asset_name` uses `TDEM`), so it fixes itself
-    workers/dem/fetch.sh "$BBOX" "dem/$TDEM" steps-out/terrain.tsv "$TDEM"
+    workers/dem/fetch.sh "$BBOX" "dem/$TDEM" steps-out/terrain.tsv "$TDEM" "$CUT_KEY"
   elif [ "$TRC" -ne 0 ]; then
     exit "$TRC"
   fi

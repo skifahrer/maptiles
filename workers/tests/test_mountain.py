@@ -243,5 +243,15 @@ class Styles(unittest.TestCase):
             styles.main([out])
 
 
+
+class TerrainFetch(unittest.TestCase):
+    def test_every_terrain_fetch_passes_the_cut_out_key(self):
+        with open(os.path.join(WORKERS, "terrain", "build.sh")) as f:
+            calls = re.findall(r"^\s*workers/dem/fetch\.sh (.*)$", f.read(), re.M)
+        self.assertEqual(len(calls), 2, "the model and the fallback to Sonny")
+        for call in calls:
+            self.assertTrue(call.rstrip().endswith('"$CUT_KEY"'), call)
+
+
 if __name__ == "__main__":
     unittest.main()
