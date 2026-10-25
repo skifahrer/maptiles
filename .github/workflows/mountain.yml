@@ -2,12 +2,14 @@ name: Map · Build mountain package
 run-name: "${{ github.workflow }} · ${{ inputs.mountain }}"
 
 # ONE MOUNTAIN RANGE IN DETAIL – 2.5 m contours, rocks and a height model
-# from DMR 5.0 at 1 m, over the range alone (`workers/data/mountains.json`).
+# from DMR 5.0 at 1 m, roads and paths from OSM, and aerial photos of summer
+# and winter, over the range alone (`workers/data/mountains.json`).
 #
 # The same DEM layers the map build makes (`dem-layers.yml`), on the range's
-# cut-out and with the cut-out's model for the height tiles too. Published as
-# packages `contours`, `rocks` and `terrain` under the country's `mountains`
-# in `maps.json`; the app draws them over the regions the range crosses.
+# cut-out and with the cut-out's model for the height tiles too; roads and
+# paths from `transport.yml`; photos from `workers/data/aerial.json`. Published
+# under `mountains.ranges` in `maps.json`, a category of its own beside the
+# countries; the app draws a range alone or over the regions it crosses.
 
 on:
   workflow_dispatch:
@@ -47,6 +49,11 @@ on:
         required: false
         default: false
         type: boolean
+      aerial_maxzoom:
+        description: "Deepest zoom of the aerial photos (empty = workers/data/aerial.json; z18 is ~4× z17)"
+        required: false
+        default: ""
+        type: string
       # on top of MOUNTAIN_OPTIONS below, a later key wins
       options:
         description: "Rarely changed settings as key=value (see workers/plan/options.py)"
@@ -84,6 +91,7 @@ jobs:
       bbox: ${{ steps.mountain.outputs.bbox }}
       bboxkey: ${{ steps.mountain.outputs.bboxkey }}
       km2: ${{ steps.mountain.outputs.km2 }}
+      osmfr: ${{ steps.mountain.outputs.osmfr }}
       day: ${{ steps.day.outputs.d }}
       budget_contours_pct: ${{ env.BUDGET_CONTOURS_PCT }}
       budget_rocks_pct: ${{ env.BUDGET_ROCKS_PCT }}
@@ -154,8 +162,110 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: region-poly
-          path: data/region.geojson
+          path: |
+            data/region.geojson
+            data/region.poly
           retention-days: 1
+
+  osm:
+    name: The range's OSM data
+    needs: plan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Range PBF cache (restore)
+        id: pbf-cache
+        uses: ./.github/actions/cache-restore
+        with:
+          path: data/region.osm.pbf
+          key: pbf-mountain-v1-${{ needs.plan.outputs.bboxkey }}-${{ needs.plan.outputs.day }}
+
+      - name: Cut the country's PBF to the range
+        env:
+          OSMFR_URL: ${{ needs.plan.outputs.osmfr }}
+          MOUNTAIN_BBOX: ${{ needs.plan.outputs.bbox }}
+        run: workers/mountain/pbf.sh
+
+      - name: Range PBF cache (save)
+        if: ${{ always() && steps.pbf-cache.outputs.cache-hit != 'true' && hashFiles('data/region.osm.pbf') != '' }}
+        continue-on-error: true
+        uses: ./.github/actions/cache-save
+        with:
+          path: data/region.osm.pbf
+          key: ${{ steps.pbf-cache.outputs.cache-primary-key }}
+
+      - name: Keep the PBF for roads and paths
+        uses: actions/upload-artifact@v7
+        with:
+          name: pbf
+          path: data/region.osm.pbf
+          retention-days: 1
+
+  transport:
+    name: Roads and paths
+    needs: [plan, osm]
+    uses: ./.github/workflows/transport.yml
+    secrets: inherit
+    with:
+      region_key: ${{ needs.plan.outputs.key }}
+      region_bbox: ${{ needs.plan.outputs.bbox }}
+      region_clip: ${{ 'true' }}
+      size_limit_mb: ${{ needs.plan.outputs.opt_size_limit_mb }}
+      day: ${{ needs.plan.outputs.day }}
+
+  aerial:
+    name: Aerial photos · ${{ matrix.season }}
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        season: [summer, winter]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Tile cache (restore)
+        id: tile-cache
+        uses: ./.github/actions/cache-restore
+        with:
+          path: aerial-cache
+          key: aerial-v1-${{ matrix.season }}-${{ needs.plan.outputs.bboxkey }}-z${{ inputs.aerial_maxzoom }}
+          restore-keys: aerial-v1-${{ matrix.season }}-${{ needs.plan.outputs.bboxkey }}-
+
+      - name: Photos → PMTiles
+        id: photos
+        env:
+          SEASON: ${{ matrix.season }}
+          BBOX: ${{ needs.plan.outputs.bbox }}
+          KEY: ${{ needs.plan.outputs.key }}
+          MAXZOOM: ${{ inputs.aerial_maxzoom }}
+        run: |
+          set -euo pipefail
+          python3 -c 'import pmtiles' 2>/dev/null \
+            || python3 -m pip install --quiet --break-system-packages pmtiles
+          python3 workers/mountain/aerial.py --season="$SEASON" --bbox="$BBOX" \
+            --maxzoom="$MAXZOOM" --cache=aerial-cache \
+            --out="_site/tiles/${KEY}-aerial_${SEASON}.pmtiles"
+
+      - name: Tile cache (save)
+        if: ${{ always() && steps.tile-cache.outputs.cache-hit != 'true' && hashFiles('aerial-cache/**') != '' }}
+        continue-on-error: true
+        uses: ./.github/actions/cache-save
+        with:
+          path: aerial-cache
+          key: ${{ steps.tile-cache.outputs.cache-primary-key }}
+
+      - name: Upload the site part
+        if: ${{ steps.photos.outputs.enabled == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-aerial-${{ matrix.season }}
+          path: _site
+          retention-days: 1
+          compression-level: 0
 
   dem:
     name: Height-model layers
@@ -210,9 +320,9 @@ jobs:
 
   publish:
     name: Package to Drive and the catalog
-    needs: [plan, dem]
+    needs: [plan, dem, transport, aerial]
     # half a new range would be a lying package
-    if: ${{ !cancelled() && needs.dem.result == 'success' && needs.plan.outputs.opt_publish == 'true' }}
+    if: ${{ !cancelled() && needs.dem.result == 'success' && needs.transport.result == 'success' && needs.aerial.result == 'success' && needs.plan.outputs.opt_publish == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       # `maps.json`, the one place anything reaches the repository
@@ -237,6 +347,9 @@ jobs:
       TERRAIN_ENABLED: ${{ needs.dem.outputs.terrain_enabled || 'false' }}
       TERRAIN_MAXZOOM: ${{ needs.dem.outputs.terrain_maxzoom }}
       TERRAIN_SOURCE: ${{ needs.dem.outputs.terrain_dem_source }}
+      TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
+      PATHS_ENABLED: ${{ needs.transport.outputs.paths_enabled || 'false' }}
+      TRANSPORT_MAXZOOM: ${{ needs.transport.outputs.maxzoom }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -247,6 +360,10 @@ jobs:
           pattern: site-*
           path: _site
           merge-multiple: true
+
+      # a season without a `url` makes no file; `contents.json` names only what came
+      - name: Which photos came
+        run: workers/mountain/aerial-env.sh >> "$GITHUB_ENV"
 
       # what the packer and the catalog read: bbox, zooms, models
       - name: The range's manifest
@@ -279,7 +396,7 @@ jobs:
 
   apple-archive:
     name: Package as Apple Archive (.aar)
-    needs: [plan, dem, publish]
+    needs: [plan, dem, transport, aerial, publish]
     if: ${{ !cancelled() && needs.publish.outputs.published == 'success' && needs.plan.outputs.opt_apple_archive == 'true' }}
     runs-on: macos-latest
     permissions:
@@ -297,6 +414,8 @@ jobs:
       ROCKS_SOURCE: ${{ needs.dem.outputs.rock_source }}
       TERRAIN_ENABLED: ${{ needs.dem.outputs.terrain_enabled || 'false' }}
       TERRAIN_SOURCE: ${{ needs.dem.outputs.terrain_dem_source }}
+      TRANSPORT_ENABLED: ${{ needs.transport.outputs.enabled || 'false' }}
+      PATHS_ENABLED: ${{ needs.transport.outputs.paths_enabled || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -305,6 +424,8 @@ jobs:
         with:
           name: mountain-site
           path: _site
+      - name: Which photos came
+        run: workers/mountain/aerial-env.sh >> "$GITHUB_ENV"
       - name: Pack and upload .aar to Drive
         id: publish
         env:

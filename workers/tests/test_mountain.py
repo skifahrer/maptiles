@@ -14,6 +14,7 @@ from load import WORKERS, worker
 ROOT = os.path.dirname(WORKERS)
 plan = worker("mountain/plan.py")
 manifest = worker("mountain/manifest.py")
+aerial = worker("mountain/aerial.py")
 names = worker("deploy/names.py")
 catalog = worker("deploy/catalog.py")
 
@@ -77,6 +78,16 @@ class Plan(unittest.TestCase):
         ring = plan.outline([1, 2, 3, 4])["features"][0]["geometry"]["coordinates"][0]
         self.assertEqual(ring, [[1, 2], [3, 2], [3, 4], [1, 4], [1, 2]])
 
+    def test_poly_closes_the_bbox_for_osmium(self):
+        lines = plan.poly([1, 2, 3, 4]).splitlines()
+        self.assertEqual(lines[:2], ["mountain", "1"])
+        self.assertEqual(lines[2].split(), lines[6].split())
+        self.assertEqual(lines[-2:], ["END", "END"])
+
+    def test_osm_comes_from_the_countrys_export(self):
+        self.assertEqual(plan.plan("vysoke_tatry")["osmfr"],
+                         "https://download.openstreetmap.fr/extracts/europe/slovakia-latest.osm.pbf")
+
 
 class Manifest(unittest.TestCase):
     def site(self, *kinds):
@@ -102,6 +113,20 @@ class Manifest(unittest.TestCase):
                          ("tiles/vysoke_tatry-terrain.pmtiles", 16, True))
         self.assertEqual(catalog.tiles_paths(got, reg)["terrain"], "tiles/vysoke_tatry-terrain.pmtiles")
 
+    def test_roads_paths_and_photos(self):
+        site = self.site("transport", "paths")
+        with open(os.path.join(site, "tiles", "vysoke_tatry-aerial_summer.pmtiles"), "wb") as f:
+            f.write(b"PMTiles\x03" + bytes(92) + bytes([8, 17]))
+        open(os.path.join(site, "tiles", "vysoke_tatry-roadsigns.png"), "wb").close()
+        with env(REGION_KEY="vysoke_tatry", AREA_BBOX="1,2,3,4", TRANSPORT_MAXZOOM="14"):
+            reg = manifest.manifest(site)["regions"]["vysoke_tatry"]
+        self.assertEqual((reg["transport"], reg["paths_maxzoom"]),
+                         ("tiles/vysoke_tatry-transport.pmtiles", 14))
+        self.assertEqual(reg["road_sign_sprite"], ["tiles/vysoke_tatry-roadsigns.png"])
+        self.assertEqual((reg["aerial_summer"], reg["aerial_summer_maxzoom"]),
+                         ("tiles/vysoke_tatry-aerial_summer.pmtiles", 17))
+        self.assertNotIn("aerial_winter", reg)
+
     def test_a_missing_layer_is_left_out(self):
         site = self.site("contours")
         with env(REGION_KEY="vysoke_tatry", AREA_BBOX="1,2,3,4", CONTOUR_INTERVAL="5"):
@@ -118,16 +143,16 @@ class Manifest(unittest.TestCase):
 
 
 class Names(unittest.TestCase):
-    def test_drive_folder_is_under_the_countrys_mountains(self):
+    def test_drive_folder_is_in_the_mountains_category(self):
         with env(REGION_KEY="vysoke_tatry", AREA_KEY="whole", MOUNTAIN_COUNTRY="slovensko"):
-            self.assertEqual(names.drive_path({}), ["slovensko", "mountains", "vysoke_tatry"])
+            self.assertEqual(names.drive_path({}), ["mountains", "vysoke_tatry"])
             self.assertEqual(names.file_name("contours"), "vysoke_tatry-contours.zip")
 
     def test_a_test_gets_its_own_node(self):
         with env(REGION_KEY="vysoke_tatry_test4", AREA_KEY="whole", TEST_KM2="4",
                  MOUNTAIN_COUNTRY="slovensko"):
             parts = names.drive_path({})
-            self.assertEqual(parts, ["slovensko", "mountains", "vysoke_tatry"])
+            self.assertEqual(parts, ["mountains", "vysoke_tatry"])
             self.assertEqual(names.catalog_path(parts)[-1], "vysoke_tatry_test4km2")
             self.assertEqual(names.file_name("rocks"), "vysoke_tatry-test4km2-rocks.zip")
 
@@ -161,12 +186,17 @@ class Catalog(unittest.TestCase):
                                             "contours_maxzoom": 16, "contour_interval": 2.5}}}
         uploaded = [("contours", "vysoke_tatry-contours.zip", 10, "id1", "zip", "a" * 64),
                     ("terrain", "vysoke_tatry-terrain.zip", 20, "id2", "zip", "b" * 64)]
-        return self.write(["slovensko", "mountains", "vysoke_tatry"], man, uploaded)
+        with env(MOUNTAIN_COUNTRY="slovensko"):
+            return self.write(["mountains", "vysoke_tatry"], man, uploaded)
 
-    def test_a_mountain_sits_under_its_country(self):
+    def test_a_mountain_sits_in_its_own_category(self):
         data = self.mountain()
-        node = data["slovensko"]["mountains"]["vysoke_tatry"]
-        self.assertEqual((node["id"], node["name"]), ("slovakia-vysoke_tatry", "Vysoké Tatry"))
+        self.assertEqual((data["mountains"]["id"], data["mountains"]["name"]),
+                         ("mountains", "Mountains"))
+        node = data["mountains"]["ranges"]["vysoke_tatry"]
+        self.assertEqual((node["id"], node["name"]), ("mountains-vysoke_tatry", "Vysoké Tatry"))
+        self.assertEqual((node["country"], node["drive"]), ("slovensko", "mountains/vysoke_tatry"))
+        self.assertNotIn("mountains", data["slovensko"])
         self.assertEqual(node["contour_interval"], 2.5)
         self.assertEqual(node["terrain_maxzoom"], 16)
         self.assertEqual(sorted(node["maps"]), ["contours", "terrain"])
@@ -177,8 +207,17 @@ class Catalog(unittest.TestCase):
         self.mountain()
         man = {"default_region": "slovensko", "regions": {"slovensko": {"bbox": [16, 47, 23, 50]}}}
         data = self.write(["slovensko"], man, [("", "slovensko.zip", 5, "id3", "zip", "c" * 64)])
-        self.assertIn("vysoke_tatry", data["slovensko"]["mountains"])
+        self.assertIn("vysoke_tatry", data["mountains"]["ranges"])
         self.assertIn("presovsky", data["slovensko"]["regions"])
+
+    def test_a_mountain_under_its_country_moves_to_the_category(self):
+        with open(self.path, "w") as f:
+            json.dump({"slovensko": {"name": "Slovakia", "regions": {},
+                                     "mountains": {"pieniny": {"name": "Pieniny", "maps": {}}}}}, f)
+        data = self.mountain()
+        self.assertEqual(sorted(data["mountains"]["ranges"]), ["pieniny", "vysoke_tatry"])
+        self.assertEqual(data["mountains"]["ranges"]["pieniny"]["country"], "slovensko")
+        self.assertNotIn("mountains", data["slovensko"])
 
 
 class Publish(unittest.TestCase):
@@ -186,7 +225,7 @@ class Publish(unittest.TestCase):
         site = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, site)
         os.makedirs(os.path.join(site, "tiles"))
-        for kind in ("contours", "rocks", "terrain"):
+        for kind in ("contours", "rocks", "terrain", "transport", "paths", "aerial_summer"):
             with open(os.path.join(site, "tiles", f"vysoke_tatry-{kind}.pmtiles"), "wb") as f:
                 f.write(b"x")
         with open(os.path.join(site, "tiles", "manifest.json"), "w") as f:
@@ -198,10 +237,45 @@ class Publish(unittest.TestCase):
             env={**os.environ, **CLEAR, "REGION_KEY": "vysoke_tatry", "AREA_KEY": "whole",
                  "MOUNTAIN_COUNTRY": "slovensko"})
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-        listed = re.findall(r"^\s+(vysoke_tatry\S*\.zip)", run.stdout, re.M)
-        self.assertEqual(sorted(listed), ["vysoke_tatry-contours.zip", "vysoke_tatry-rocks.zip",
+        listed = re.findall(r"^\s+(vysoke_tatry\S*\.zip) .* \d+ files", run.stdout, re.M)
+        self.assertIn("vysoke_tatry-aerial_winter.zip", run.stdout)
+        self.assertEqual(sorted(listed), ["vysoke_tatry-aerial_summer.zip",
+                                          "vysoke_tatry-contours.zip", "vysoke_tatry-paths.zip",
+                                          "vysoke_tatry-roads.zip", "vysoke_tatry-rocks.zip",
                                           "vysoke_tatry-terrain.zip"])
-        self.assertIn("slovensko/mountains/vysoke_tatry", run.stdout)
+        self.assertIn("mountains/vysoke_tatry", run.stdout)
+
+
+class Aerial(unittest.TestCase):
+    def test_every_tile_over_the_box_shallow_first(self):
+        got = aerial.wanted([20.16, 49.17, 20.17, 49.175], 14, 15)
+        self.assertEqual(got[0][0], 14)
+        self.assertEqual({z for z, _x, _y in got}, {14, 15})
+        self.assertEqual(len(got), len(set(got)))
+
+    def test_summer_has_a_source(self):
+        self.assertTrue(aerial.season("summer")["url"].endswith("{z}/{x}/{y}.jpg"))
+
+    def test_the_archive_is_jpeg_with_its_zooms(self):
+        try:
+            from pmtiles.reader import MmapSource, Reader
+        except ImportError:
+            self.skipTest("pmtiles isn't installed")
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        jpeg = os.path.join(tmp, "t.jpg")
+        with open(jpeg, "wb") as f:
+            f.write(b"\xff\xd8\xff" + bytes(20))
+        out = os.path.join(tmp, "x-aerial_summer.pmtiles")
+        aerial.write(out, {(8, 145, 89): jpeg, (9, 290, 178): jpeg}, [20, 49, 20.3, 49.2],
+                     8, 9, "x-aerial_summer")
+        with open(out, "rb") as f:
+            reader = Reader(MmapSource(f))
+            head = reader.header()
+            self.assertEqual((head["min_zoom"], head["max_zoom"]), (8, 9))
+            self.assertEqual(head["tile_type"].name, "JPEG")
+            self.assertEqual(reader.get(9, 290, 178)[:3], b"\xff\xd8\xff")
+        self.assertEqual(manifest.pmtiles_zooms(out), (8, 9))
 
 
 if __name__ == "__main__":

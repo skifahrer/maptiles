@@ -1,0 +1,18 @@
+{
+  "_comment": [
+    "Aerial photos a mountain package carries (`workers/mountain/aerial.py`), one package a season.",
+    "  url      XYZ JPEG tiles; empty = that season isn't built",
+    "  maxzoom  the deepest zoom taken; z17 is ~0.8 m a pixel and ~0.5 GB over the High Tatras",
+    "  minzoom  the shallowest zoom taken"
+  ],
+  "summer": {
+    "url": "https://ofmozaika2c.tiles.freemap.sk/{z}/{x}/{y}.jpg",
+    "minzoom": 8,
+    "maxzoom": 17
+  },
+  "winter": {
+    "url": "",
+    "minzoom": 8,
+    "maxzoom": 17
+  }
+}

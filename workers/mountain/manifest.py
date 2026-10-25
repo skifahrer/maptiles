@@ -3,6 +3,7 @@
 
 The values come through the environment, from what the DEM layers really made.
 """
+import glob
 import json
 import os
 import sys
@@ -16,6 +17,13 @@ def env(name, default=""):
     return (os.environ.get(name) or default).strip()
 
 
+def pmtiles_zooms(path):
+    """(min, max) zoom from a PMTiles v3 header."""
+    with open(path, "rb") as f:
+        head = f.read(102)
+    return (head[100], head[101]) if head[:7] == b"PMTiles" and len(head) == 102 else None
+
+
 def number(text):
     value = float(text)
     return int(value) if value.is_integer() else value
@@ -25,7 +33,8 @@ def manifest(site):
     key = env("REGION_KEY")
     tiles = os.path.join(site, "tiles")
     has = {kind: os.path.isfile(os.path.join(tiles, f"{key}-{kind}.pmtiles"))
-           for kind in ("contours", "rocks", "terrain")}
+           for kind in ("contours", "rocks", "terrain", "transport", "paths",
+                        "aerial_summer", "aerial_winter")}
     region = {"name": env("MOUNTAIN_NAME", key),
               "bbox": [float(v) for v in env("AREA_BBOX").split(",")],
               "mountain": True}
@@ -42,6 +51,19 @@ def manifest(site):
             region["rock_source"] = env("ROCKS_SOURCE")
     if has["contours"] or has["rocks"]:
         region["dem_source"] = env("CONTOURS_SOURCE", "dmr5")
+    for kind in ("transport", "paths"):
+        if has[kind]:
+            region[kind] = f"tiles/{key}-{kind}.pmtiles"
+            region[f"{kind}_maxzoom"] = int(env("TRANSPORT_MAXZOOM", "14"))
+    sprite = sorted(os.path.join("tiles", os.path.basename(p))
+                    for p in glob.glob(os.path.join(tiles, f"{key}-roadsigns*")))
+    if has["transport"] and sprite:
+        region["road_sign_sprite"] = sprite
+    for kind in ("aerial_summer", "aerial_winter"):
+        zooms = has[kind] and pmtiles_zooms(os.path.join(tiles, f"{key}-{kind}.pmtiles"))
+        if zooms:
+            region[kind] = f"tiles/{key}-{kind}.pmtiles"
+            region[f"{kind}_maxzoom"] = zooms[1]
     out = {"default_region": key,
            "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
            "regions": {key: region}}
@@ -57,7 +79,8 @@ def manifest(site):
 def main(args):
     site = args[0] if args else "_site"
     data = manifest(site)
-    if not any(k in data["regions"][data["default_region"]] for k in ("contours", "rocks")) \
+    held = ("contours", "rocks", "transport", "paths", "aerial_summer", "aerial_winter")
+    if not any(k in data["regions"][data["default_region"]] for k in held) \
             and "dem" not in data:
         raise SystemExit(f"::error::{site}/tiles holds none of the mountain's layers – "
                          f"nothing to package. (Did the DEM layers run?)")

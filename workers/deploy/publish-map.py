@@ -218,6 +218,8 @@ def main():
          args.site, base_files(args.site, exclude, keep)),
     ] + [(p["key"], p["description"], args.site, fs)
          for p, fs in own_packages]
+    if not mountain:
+        batch = [b for b in batch if b[0] not in names.MOUNTAIN_ONLY]
     if mountain:
         # a mountain adds layers to its regions; it has no map of its own
         batch = [b for b in batch if b[0] in names.MOUNTAIN_PACKAGES]
