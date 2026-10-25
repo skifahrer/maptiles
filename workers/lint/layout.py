@@ -31,7 +31,7 @@ KNOWN = {
     "tiles": "job `tiles`",
     "wiki": "workflow “Map · Build wiki” (wiki.yml)",
     "world": "workflow “Map · Build world” (world-map.yml)",
-    "mountain": "workflow “Map · Build mountain region” (build-mountain-region.yml)",
+    "mountain": "workflow “Map · Build mountain package” (mountain.yml)",
     "state": "the “… state” workflows (batches of a country's regions)",
     "assets": "job `assets`",
     "styles": "styles for web and iOS",

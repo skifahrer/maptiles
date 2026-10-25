@@ -2,13 +2,16 @@
   "_comment": [
     "Mountain packages: one range in more detail than its regions carry – 2.5 m",
     "contours, rocks and a height model from DMR 5.0 at 1 m. Published under the",
-    "country's `mountains` in `maps.json`, built by “Map · Build mountain region”.",
+    "country's `mountains` in `maps.json`, built by “Map · Build mountain package”.",
     "  country  key in `regions.json` (and the top key in `maps.json`)",
     "  area     the cut-out in `areas.json` – its name, bbox and DMR 5.0 at 1 m"
   ],
   "vysoke_tatry": { "country": "slovensko", "area": "vysoke_tatry" },
+  "belianske_tatry": { "country": "slovensko", "area": "belianske_tatry" },
   "zapadne_tatry": { "country": "slovensko", "area": "zapadne_tatry" },
   "nizke_tatry": { "country": "slovensko", "area": "nizke_tatry" },
   "mala_fatra": { "country": "slovensko", "area": "mala_fatra" },
-  "velka_fatra": { "country": "slovensko", "area": "velka_fatra" }
+  "velka_fatra": { "country": "slovensko", "area": "velka_fatra" },
+  "slovensky_raj": { "country": "slovensko", "area": "slovensky_raj" },
+  "pieniny": { "country": "slovensko", "area": "pieniny" }
 }

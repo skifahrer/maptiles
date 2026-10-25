@@ -106,7 +106,7 @@ Mapa · Build svet            základná mapa CELÉHO sveta – podklad pod výb
                              ▲ cesty, sídla ani terén v nej nie sú
 
 Mapa · Build mountain        JEDNO POHORIE v detaile: vrstevnice po 2,5 m,
-region (manuálne, pohorie)   skaly a výškový model z DMR 5.0 v 1 m
+package (manuálne, pohorie)  skaly a výškový model z DMR 5.0 v 1 m
                              ─► balíky contours, rocks, terrain pod
                                `<krajina>.mountains.<pohorie>` v `maps.json`
                              ▲ ten istý `dem-layers.yml`, len na výreze
@@ -1009,7 +1009,7 @@ doladenie prahov.
 | presne ten asset, čo som si doladil ručne | `options: rock_img_asset=rockimg-…gpkg.zst` (vtedy sa nič nepočíta nanovo) |
 | len rýchlo overiť, či to vôbec niečo nájde | switch `test` (predvolene odškrtnutý, viď nižšie) |
 
-### Horské balíky: pohorie v detaile (`Mapa · Build mountain region`)
+### Horské balíky: pohorie v detaile (`Mapa · Build mountain package`)
 
 Kraj má vrstevnice po 5 m a výškový model z 5 m dlaždíc DMR 5.0 – na celý kraj
 viac ani nejde (1° v 1 m má ~48 GB). Pohorie je ale malé, tak sa preň robí
@@ -1017,17 +1017,11 @@ viac ani nejde (1° v 1 m má ~48 GB). Pohorie je ale malé, tak sa preň robí
 
 | | kraj | pohorie |
 |---|---|---|
-| vrstevnice | 5 m, do z14 | **2,5 m**, do z14 ako kraj (hlavné po 50 m, polovičné po 10 m) |
+| vrstevnice | 5 m, do z14 | **2,5 m**, do **z16** (hlavné po 50 m, polovičné po 10 m) |
 | skaly | `rock_res: auto` | to isté, z toho istého sklonu |
 | výškový model (tieňovanie, 3D) | 5 m dlaždice, z13 – z15 | **výrez v 1 m**, do **z16** |
 
-Vrstevnice ostávajú na z14 ako kraj: aplikácia kreslí pohorie v tom istom zdroji
-ako kraje pod ním a vektorový zdroj má jeden maxzoom, takže z15 – z16 by sa
-sťahovali a nikdy nekreslili. Výškový model áno – jeho dlaždice aplikácia za
-zoomom kraja sama natiahne, takže pohorie v ňom siaha až po z16.
-
-Pohoria sú vo [`workers/data/mountains.json`](data/mountains.json) – na Slovensku
-Vysoké, Západné a Nízke Tatry, Malá a Veľká Fatra: krajina
+Pohoria sú vo [`workers/data/mountains.json`](data/mountains.json): krajina
 a výrez z `areas.json` (meno, bbox a DMR 5.0 v 1 m pod tým istým menom, aký
 si berie testovací výrez). Workflow volá **ten istý `dem-layers.yml`** ako
 build mapy, s `mountain: true` – vtedy si aj tieňovanie berie model vo tvare
