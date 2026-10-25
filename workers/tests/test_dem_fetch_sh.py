@@ -44,10 +44,10 @@ class Fetch(unittest.TestCase):
         rows = round((n - s) / ((e - w) / cells))
         write_dem(os.path.join(self.store, store, name), hill(cells)[:rows], box)
 
-    def fetch(self, source="sonny", area="whole", bbox=BBOX):
+    def fetch(self, source="sonny", area="whole", bbox=BBOX, fill=""):
         r = subprocess.run(["bash", "workers/dem/fetch.sh", bbox, "dem/x", "", source, area], cwd=self.work,
                            capture_output=True, text=True,
-                           env={**os.environ, "FAKE_STORE": self.store, **{k: "" for k in (
+                           env={**os.environ, "FAKE_STORE": self.store, "DEM_FILL": fill, **{k: "" for k in (
                                "DEM_STORE", "DMR5_STORE", "DMR35_STORE", "UGKK_STORE", "SONNY1_STORE")}})
         removed = os.path.join(self.store, "removed")
         if not os.path.exists(removed):
@@ -101,6 +101,25 @@ class Fetch(unittest.TestCase):
             self.assertIn("ugkk-vysoke_tatry.tif", f.read())
         r, _ = self.fetch(source="dmr5", area="male_karpaty", bbox="17,48,17.3,48.3")
         self.assertEqual(r.returncode, 3)
+
+    def height(self, lon, lat):
+        out = subprocess.run(["gdallocationinfo", "-valonly", "-wgs84", "dem/x/all.vrt", str(lon), str(lat)],
+                             cwd=self.work, capture_output=True, text=True, check=True).stdout
+        return float(out.split()[0])
+
+    def test_a_cutout_across_a_border_is_filled_beyond_it(self):
+        # the cut has no heights in its north, as DMR 5.0 has none in Poland
+        self.tile("dem-sonny", "N49E020.tif", (20, 49, 21, 50), cells=20)
+        cut = os.path.join(self.store, "dem-ugkk")
+        os.makedirs(cut, exist_ok=True)
+        write_dem(os.path.join(cut, "ugkk-vysoke_tatry.tif"), hill(30, hole=(0, 10, 0, 30)), (20, 49.1, 20.3, 49.4))
+        self.fetch(source="dmr5", area="vysoke_tatry", bbox="20,49.1,20.3,49.4")
+        own = self.height(20.15, 49.2)
+        self.assertLess(self.height(20.15, 49.35), -1000, "without a fill the hole stays")
+        r, _ = self.fetch(source="dmr5", area="vysoke_tatry", bbox="20,49.1,20.3,49.4", fill="sonny")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertGreater(self.height(20.15, 49.35), 0, "the north is the fill's")
+        self.assertAlmostEqual(self.height(20.15, 49.2), own, delta=1, msg="the cut wins where it has heights")
 
 
 if __name__ == "__main__":

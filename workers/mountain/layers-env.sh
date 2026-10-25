@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# `AERIAL_<SEASON>_ENABLED` for each season whose photos are in `_site`, as `names.layers` reads.
+# `<LAYER>_ENABLED` for the trails and each season's photos in `_site`, as `names.layers` reads.
 set -euo pipefail
+if [ -f "_site/tiles/${REGION_KEY}-trails.pmtiles" ]; then echo "TRAILS_ENABLED=true"; fi
 for season in summer winter; do
   if [ -f "_site/tiles/${REGION_KEY}-aerial_${season}.pmtiles" ]; then
     echo "AERIAL_${season^^}_ENABLED=true"

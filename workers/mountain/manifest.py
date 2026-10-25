@@ -33,7 +33,7 @@ def manifest(site):
     key = env("REGION_KEY")
     tiles = os.path.join(site, "tiles")
     has = {kind: os.path.isfile(os.path.join(tiles, f"{key}-{kind}.pmtiles"))
-           for kind in ("contours", "rocks", "terrain", "transport", "paths",
+           for kind in ("contours", "rocks", "terrain", "transport", "paths", "trails",
                         "aerial_summer", "aerial_winter")}
     region = {"name": env("MOUNTAIN_NAME", key),
               "bbox": [float(v) for v in env("AREA_BBOX").split(",")],
@@ -51,10 +51,15 @@ def manifest(site):
             region["rock_source"] = env("ROCKS_SOURCE")
     if has["contours"] or has["rocks"]:
         region["dem_source"] = env("CONTOURS_SOURCE", "dmr5")
+    if env("COUNTRIES"):
+        region["countries"] = env("COUNTRIES").split(",")
     for kind in ("transport", "paths"):
         if has[kind]:
             region[kind] = f"tiles/{key}-{kind}.pmtiles"
             region[f"{kind}_maxzoom"] = int(env("TRANSPORT_MAXZOOM", "14"))
+    if has["trails"]:
+        region.update(trails=f"tiles/{key}-trails.pmtiles",
+                      trails_maxzoom=int(env("TRAILS_MAXZOOM", "14")))
     sprite = sorted(os.path.join("tiles", os.path.basename(p))
                     for p in glob.glob(os.path.join(tiles, f"{key}-roadsigns*")))
     if has["transport"] and sprite:
@@ -79,7 +84,7 @@ def manifest(site):
 def main(args):
     site = args[0] if args else "_site"
     data = manifest(site)
-    held = ("contours", "rocks", "transport", "paths", "aerial_summer", "aerial_winter")
+    held = ("contours", "rocks", "transport", "paths", "trails", "aerial_summer", "aerial_winter")
     if not any(k in data["regions"][data["default_region"]] for k in held) \
             and "dem" not in data:
         raise SystemExit(f"::error::{site}/tiles holds none of the mountain's layers – "

@@ -58,7 +58,8 @@ def area_key():
 # mountains are a category of their own beside the countries, a range may cross a border
 MOUNTAINS = "mountains"
 RANGES = "ranges"
-MOUNTAIN_ONLY = ("aerial_summer", "aerial_winter")
+# a region's base map carries the trails; a range has no base map
+MOUNTAIN_ONLY = ("trails", "aerial_summer", "aerial_winter")
 MOUNTAIN_PACKAGES = ("terrain", "contours", "rocks", "roads", "paths") + MOUNTAIN_ONLY
 
 

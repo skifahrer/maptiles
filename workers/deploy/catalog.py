@@ -460,7 +460,7 @@ def write_catalog(path, parts, regions, uploaded, man, only="", merge=False,
               "trails_maxzoom", "features_maxzoom", "points_maxzoom",
               "transport_maxzoom", "paths_maxzoom", "boundaries_maxzoom", "water_maxzoom",
               "rail_maxzoom", "history_maxzoom", "buildings_maxzoom",
-              "aerial_summer_maxzoom", "aerial_winter_maxzoom"):
+              "aerial_summer_maxzoom", "aerial_winter_maxzoom", "countries"):
         if reg.get(k) is not None:
             entry[k] = reg[k]
     tiles = tiles_paths(man, reg)

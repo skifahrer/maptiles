@@ -1,17 +1,30 @@
 {
   "_comment": [
     "Mountain packages: one range in more detail than its regions carry – 2.5 m",
-    "contours, rocks and a height model from DMR 5.0 at 1 m. Published under the",
-    "country's `mountains` in `maps.json`, built by “Map · Build mountain package”.",
-    "  country  key in `regions.json` (and the top key in `maps.json`)",
-    "  area     the cut-out in `areas.json` – its name, bbox and DMR 5.0 at 1 m"
+    "contours, rocks and a height model from DMR 5.0 at 1 m, roads, paths, waymarked",
+    "trails and aerial photos. Published under `mountains.ranges` in `maps.json`, a",
+    "category of its own, built by “Map · Build mountain package”. A range crosses",
+    "borders: its OSM layers come from every extract it names, and its height model",
+    "is DMR 5.0 where Slovakia has it and Sonny's 20 m model beyond.",
+    "  country    key in `regions.json` whose data it is mostly made of",
+    "  area       the cut-out in `areas.json` – its name, bbox and DMR 5.0 at 1 m",
+    "  countries  ISO codes of every country it lies in",
+    "  osm        osm.fr extracts below `/extracts/`, cut to the bbox and merged"
   ],
-  "vysoke_tatry": { "country": "slovensko", "area": "vysoke_tatry" },
-  "belianske_tatry": { "country": "slovensko", "area": "belianske_tatry" },
-  "zapadne_tatry": { "country": "slovensko", "area": "zapadne_tatry" },
-  "nizke_tatry": { "country": "slovensko", "area": "nizke_tatry" },
-  "mala_fatra": { "country": "slovensko", "area": "mala_fatra" },
-  "velka_fatra": { "country": "slovensko", "area": "velka_fatra" },
-  "slovensky_raj": { "country": "slovensko", "area": "slovensky_raj" },
-  "pieniny": { "country": "slovensko", "area": "pieniny" }
+  "vysoke_tatry": { "country": "slovensko", "area": "vysoke_tatry", "countries": ["SK", "PL"],
+                    "osm": ["europe/slovakia-latest", "europe/poland/malopolskie-latest"] },
+  "belianske_tatry": { "country": "slovensko", "area": "belianske_tatry", "countries": ["SK", "PL"],
+                       "osm": ["europe/slovakia-latest", "europe/poland/malopolskie-latest"] },
+  "zapadne_tatry": { "country": "slovensko", "area": "zapadne_tatry", "countries": ["SK", "PL"],
+                     "osm": ["europe/slovakia-latest", "europe/poland/malopolskie-latest"] },
+  "nizke_tatry": { "country": "slovensko", "area": "nizke_tatry", "countries": ["SK"],
+                   "osm": ["europe/slovakia-latest"] },
+  "mala_fatra": { "country": "slovensko", "area": "mala_fatra", "countries": ["SK"],
+                  "osm": ["europe/slovakia-latest"] },
+  "velka_fatra": { "country": "slovensko", "area": "velka_fatra", "countries": ["SK"],
+                   "osm": ["europe/slovakia-latest"] },
+  "slovensky_raj": { "country": "slovensko", "area": "slovensky_raj", "countries": ["SK"],
+                     "osm": ["europe/slovakia-latest"] },
+  "pieniny": { "country": "slovensko", "area": "pieniny", "countries": ["SK", "PL"],
+               "osm": ["europe/slovakia-latest", "europe/poland/malopolskie-latest"] }
 }

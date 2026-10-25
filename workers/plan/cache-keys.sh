@@ -35,15 +35,22 @@ C_OPT=""
 if [ "$CCAP" != 16 ]; then C_OPT="${C_OPT}-zc${CCAP}"; fi
 if [ "$LOWLAND" != 0 ]; then C_OPT="${C_OPT}-l${LOWLAND}"; fi
 T_OPT=""
+R_OPT=""
 if [ "$TBITS" != auto ]; then T_OPT="${T_OPT}-b${TBITS}"; fi
 if [ "$TFMT" != png ]; then T_OPT="${T_OPT}-${TFMT}"; fi
 # height tiles from the cut-out (a mountain) are other tiles over the same bbox
 if [ "${TERRAIN_CUTOUT:-false}" != false ]; then T_OPT="${T_OPT}-cut${TERRAIN_CUTOUT}"; fi
+# a cut-out filled beyond the border is another model
+if [ -n "${DEM_FILL:-}" ]; then
+  C_OPT="${C_OPT}-f${DEM_FILL}"
+  T_OPT="${T_OPT}-f${DEM_FILL}"
+  R_OPT="-f${DEM_FILL}"
+fi
 # v11: contours no longer carry rock settings; smoothing is in the key too,
 # the three values live in dem-layers.yml `env:`, not in hashed files
 C_SETTINGS="contours-v11-c$CS-$B-i${CONTOUR_INTERVAL}-z${OPT_CONTOUR_MAXZOOM}-s${OPT_CONTOUR_SMOOTHING}h${CONTOUR_DEM_LOWPASS}t${CONTOUR_SIMPLIFY}x${CONTOUR_SMOOTH}${C_OPT}-a$RA"
 # `v3`: rocks clipped to the region polygon; `v2` reached to the whole bbox
-R_SETTINGS="rocks-v3-r$RS-$B-z${OPT_ROCK_MAXZOOM}p${OPT_ROCK_SOLID}d${OPT_ROCK_FILL_HOLES}-s${ROCK_SLOPE}g${OPT_ROCK_RES}-${ROCK_ALGO}v${ROCK_VEC_RES}t${ROCK_SIMPLIFY}x${ROCK_SMOOTH}-a$RA-${OPT_ROCK_IMG_ASSET}"
+R_SETTINGS="rocks-v3-r$RS-$B-z${OPT_ROCK_MAXZOOM}p${OPT_ROCK_SOLID}d${OPT_ROCK_FILL_HOLES}-s${ROCK_SLOPE}g${OPT_ROCK_RES}-${ROCK_ALGO}v${ROCK_VEC_RES}t${ROCK_SIMPLIFY}x${ROCK_SMOOTH}-a$RA-${OPT_ROCK_IMG_ASSET}${R_OPT}"
 # `v8`: flat from a pixel inside the region border; the asset name carries the same number (`workers/lint/terrain.py`)
 T_SETTINGS="terrain-v8-t$TS${T_OPT}-$B-z${OPT_TERRAIN_MAXZOOM}"
 

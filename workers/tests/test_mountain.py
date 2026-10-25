@@ -9,7 +9,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-from load import WORKERS, worker
+from load import WORKERS, needs_cmd, worker
 
 ROOT = os.path.dirname(WORKERS)
 plan = worker("mountain/plan.py")
@@ -61,8 +61,8 @@ class Plan(unittest.TestCase):
         self.assertEqual((got["key"], got["country"], got["area"], got["area_key"]),
                          ("vysoke_tatry", "slovensko", "vysoke_tatry", "vysoke_tatry"))
         self.assertEqual(got["name"], "Vysoké Tatry")
-        self.assertEqual(got["bbox"], "19.9,49.09,20.32,49.25")
-        self.assertEqual(got["bboxkey"], "19_9_49_09_20_32_49_25")
+        self.assertEqual(got["bbox"], "19.9,49.09,20.32,49.32")
+        self.assertEqual(got["bboxkey"], "19_9_49_09_20_32_49_32")
 
     def test_a_test_never_shares_keys_with_the_real_one(self):
         got = plan.plan("vysoke_tatry", test_km2=4)
@@ -84,9 +84,25 @@ class Plan(unittest.TestCase):
         self.assertEqual(lines[2].split(), lines[6].split())
         self.assertEqual(lines[-2:], ["END", "END"])
 
-    def test_osm_comes_from_the_countrys_export(self):
-        self.assertEqual(plan.plan("vysoke_tatry")["osmfr"],
+    def test_the_high_tatras_cross_into_poland(self):
+        got = plan.plan("vysoke_tatry")
+        self.assertEqual(got["countries"], "SK,PL")
+        self.assertEqual(got["osm"].split(), [
+            "https://download.openstreetmap.fr/extracts/europe/slovakia-latest.osm.pbf",
+            "https://download.openstreetmap.fr/extracts/europe/poland/malopolskie-latest.osm.pbf"])
+        self.assertGreater(float(got["bbox"].split(",")[3]), 49.3, "Zakopane's side of the range")
+
+    def test_a_range_without_extracts_takes_its_countrys(self):
+        mountains = {"x": {"country": "slovensko", "area": "pieniny"}}
+        self.assertEqual(plan.plan("x", mountains=mountains)["osm"],
                          "https://download.openstreetmap.fr/extracts/europe/slovakia-latest.osm.pbf")
+
+    def test_every_range_names_its_countries_and_extracts(self):
+        for key, entry in registry("mountains.json").items():
+            if key.startswith("_"):
+                continue
+            self.assertIn("SK", entry["countries"], key)
+            self.assertEqual(len(entry["osm"]), len(entry["countries"]), key)
 
 
 class Manifest(unittest.TestCase):
@@ -118,8 +134,12 @@ class Manifest(unittest.TestCase):
         with open(os.path.join(site, "tiles", "vysoke_tatry-aerial_summer.pmtiles"), "wb") as f:
             f.write(b"PMTiles\x03" + bytes(92) + bytes([8, 17]))
         open(os.path.join(site, "tiles", "vysoke_tatry-roadsigns.png"), "wb").close()
-        with env(REGION_KEY="vysoke_tatry", AREA_BBOX="1,2,3,4", TRANSPORT_MAXZOOM="14"):
+        open(os.path.join(site, "tiles", "vysoke_tatry-trails.pmtiles"), "wb").close()
+        with env(REGION_KEY="vysoke_tatry", AREA_BBOX="1,2,3,4", TRANSPORT_MAXZOOM="14",
+                 COUNTRIES="SK,PL"):
             reg = manifest.manifest(site)["regions"]["vysoke_tatry"]
+        self.assertEqual(reg["trails"], "tiles/vysoke_tatry-trails.pmtiles")
+        self.assertEqual(reg["countries"], ["SK", "PL"])
         self.assertEqual((reg["transport"], reg["paths_maxzoom"]),
                          ("tiles/vysoke_tatry-transport.pmtiles", 14))
         self.assertEqual(reg["road_sign_sprite"], ["tiles/vysoke_tatry-roadsigns.png"])
@@ -225,7 +245,7 @@ class Publish(unittest.TestCase):
         site = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, site)
         os.makedirs(os.path.join(site, "tiles"))
-        for kind in ("contours", "rocks", "terrain", "transport", "paths", "aerial_summer"):
+        for kind in ("contours", "rocks", "terrain", "transport", "paths", "trails", "aerial_summer"):
             with open(os.path.join(site, "tiles", f"vysoke_tatry-{kind}.pmtiles"), "wb") as f:
                 f.write(b"x")
         with open(os.path.join(site, "tiles", "manifest.json"), "w") as f:
@@ -242,8 +262,42 @@ class Publish(unittest.TestCase):
         self.assertEqual(sorted(listed), ["vysoke_tatry-aerial_summer.zip",
                                           "vysoke_tatry-contours.zip", "vysoke_tatry-paths.zip",
                                           "vysoke_tatry-roads.zip", "vysoke_tatry-rocks.zip",
-                                          "vysoke_tatry-terrain.zip"])
+                                          "vysoke_tatry-terrain.zip", "vysoke_tatry-trails.zip"])
         self.assertIn("mountains/vysoke_tatry", run.stdout)
+
+
+OSM = """<?xml version='1.0' encoding='UTF-8'?>
+<osm version="0.6" generator="test">
+{}
+</osm>
+"""
+NODE = '<node id="{}" version="1" timestamp="2026-01-01T00:00:00Z" lat="{}" lon="{}"/>'
+
+
+@needs_cmd("osmium", "curl")
+class Extracts(unittest.TestCase):
+    def extract(self, folder, name, nodes):
+        xml = os.path.join(folder, name + ".osm")
+        with open(xml, "w") as f:
+            f.write(OSM.format("\n".join(NODE.format(*n) for n in nodes)))
+        pbf = os.path.join(folder, name + ".osm.pbf")
+        subprocess.run(["osmium", "cat", "-o", pbf, xml], check=True)
+        return "file://" + pbf
+
+    def test_extracts_are_cut_to_the_box_and_merged_once(self):
+        work = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, work)
+        # node 2 lies on the border and is in both countries' extracts
+        sk = self.extract(work, "sk", [(1, 49.15, 20.1), (2, 49.2, 20.1), (5, 48.0, 20.1)])
+        pl = self.extract(work, "pl", [(2, 49.2, 20.1), (3, 49.3, 20.0)])
+        run = subprocess.run(["bash", os.path.join(WORKERS, "mountain", "pbf.sh")], cwd=work,
+                             capture_output=True, text=True,
+                             env={**os.environ, "OSM_URLS": f"{sk} {pl}",
+                                  "MOUNTAIN_BBOX": "19.9,49.09,20.32,49.32"})
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        ids = subprocess.run(["osmium", "cat", "-f", "opl", os.path.join(work, "data", "region.osm.pbf")],
+                             capture_output=True, text=True, check=True).stdout.split()
+        self.assertEqual(sorted(i for i in ids if i.startswith("n")), ["n1", "n2", "n3"])
 
 
 class Aerial(unittest.TestCase):
