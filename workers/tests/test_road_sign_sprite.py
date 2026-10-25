@@ -88,6 +88,14 @@ class Entries(unittest.TestCase):
         self.assertEqual(stop["uses"], 104)
         self.assertEqual(stop["label"], {"en": "Stop", "sk": "Stoj"})
 
+    def test_translations_fill_languages_without_an_official_name(self):
+        os.makedirs(os.path.join(self.root, "names"))
+        for language, name in (("sk", "Stoj!"), ("hu", "Állj")):
+            with open(os.path.join(self.root, "names", language + ".json"), "w") as f:
+                json.dump({"regulatory/stop": name, "warning/danger": "x"}, f)
+        stop = next(v for v in self.entries(self.used).values() if v["sign"] == "regulatory/stop")
+        self.assertEqual(stop["label"], {"en": "Stop", "sk": "Stoj", "hu": "Állj"})
+
     def test_a_folder_missing_from_the_checkout_is_skipped(self):
         self.assertEqual(self.entries({"sk.ts.101": 1, "sk.ts.p1": 1}).keys(),
                          self.entries({"sk.ts.p1": 1}).keys() | self.entries({"sk.ts.101": 1}).keys())

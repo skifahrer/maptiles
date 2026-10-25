@@ -35,6 +35,7 @@ def needed(country, used, mapping=MAPPING):
 def entries(root, country, used, mapping=MAPPING):
     """`{image file: {"names": [...], "sign": folder, "uses": n}}`, `uses` the region's count."""
     out = {}
+    translated = translations(root)
     for name, sign in needed(country, used, mapping).items():
         category, slug = sign.split("/")
         folder = os.path.join(root, "signs", category, slug)
@@ -46,7 +47,7 @@ def entries(root, country, used, mapping=MAPPING):
         if not os.path.isfile(image):
             continue
         entry = out.setdefault(image, {"names": [], "sign": sign, "uses": 0,
-                                       "label": labels(folder, slug)})
+                                       "label": labels(folder, slug, sign, translated)})
         entry["names"].append(name)
         entry["uses"] += used[name]
     return out
@@ -59,13 +60,32 @@ def read_used(path):
         return {r[0]: int(r[1]) if len(r) > 1 else 0 for r in rows}
 
 
-def labels(folder, slug):
-    """The sign's name by language, from the collection's `<slug>.json`."""
+def labels(folder, slug, sign=None, translated=None):
+    """The sign's official names from `<slug>.json`, then the collection's translations."""
     try:
         with open(os.path.join(folder, f"{slug}.json"), encoding="utf-8") as f:
-            return json.load(f)
+            out = json.load(f)
     except (OSError, ValueError):
-        return {}
+        out = {}
+    for language, names in (translated or {}).items():
+        if sign in names:
+            out.setdefault(language, names[sign])
+    return out
+
+
+def translations(root):
+    """`{language: {sign folder: name}}` from the collection's `names/<language>.json`."""
+    out = {}
+    folder = os.path.join(root, "names")
+    for file in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
+        if not file.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(folder, file), encoding="utf-8") as f:
+                out[file[:-5]] = json.load(f)
+        except (OSError, ValueError):
+            continue
+    return out
 
 
 def raster(path, side):

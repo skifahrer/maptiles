@@ -2185,7 +2185,10 @@ stiahne zo zbierky len ich priečinky – Bratislavský kraj ~20 obrázkov, ~400
 zo zbierky a ~70 kB spritu. Aplikácia si ich skladá do jednej sady na krajinu,
 každú značku raz. Každá
 položka spritu nesie aj `label` (meno značky po jazykoch), `category` a `uses`
-(počet výskytov v kraji) – z nich kreslí aplikácia legendu. `maxspeed`,
+(počet výskytov v kraji) – z nich kreslí aplikácia legendu. `label` je úradné
+meno z `<značka>.json` a pre jazyky, ktoré ho nemajú, preklad zo zbierky
+`names/<jazyk>.json` (jazyky aplikácie), takže legenda je celá v jazyku
+aplikácie. `maxspeed`,
 `maxweight`, `maxheight` a `maxwidth` berú číslo z rovnomenného tagu
 (`sk.ts.maxweight-7-5`), `city_limit=end` a `overtaking=yes` sú koncové značky
 (`…_end`). Značka bez obrázka sa nekreslí; hodnota bez vlastného obrázka
