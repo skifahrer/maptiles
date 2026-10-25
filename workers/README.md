@@ -105,12 +105,13 @@ Mapa · Build svet            základná mapa CELÉHO sveta – podklad pod výb
                              ▲ NIE z planet.osm.pbf (80 GB sa na runner nezmestí)
                              ▲ cesty, sídla ani terén v nej nie sú
 
-Mapa · Build mountain        JEDNO POHORIE v detaile: vrstevnice po 2,5 m,
+Mapa · Build mountain        JEDNO POHORIE v detaile: vrstevnice po 2 m,
 package (manuálne, pohorie)  skaly a výškový model z DMR 5.0 v 1 m, cesty,
-                             chodníky a značené trasy z OSM, letecké snímky
+                             chodníky, vodstvo a body z OSM, letecké snímky
                              leta a zimy – aj za hranicou (Tatry v Poľsku)
                              ─► balíky contours, rocks, terrain, roads,
-                               paths, trails, aerial_summer, aerial_winter pod
+                               paths, water, points, aerial_summer,
+                               aerial_winter pod
                                `mountains.ranges.<pohorie>` v `maps.json`
                              ▲ ten istý `dem-layers.yml`, len na výreze
                                pohoria a s `mountain: true`; cesty cez
@@ -1022,7 +1023,7 @@ viac ani nejde (1° v 1 m má ~48 GB). Pohorie je ale malé, tak sa preň robí
 
 | | kraj | pohorie |
 |---|---|---|
-| vrstevnice | 5 m, do z14 | **2,5 m**, do **z16** (hlavné po 50 m, polovičné po 10 m) |
+| vrstevnice | 5 m, do z14 | **2 m**, do **z16** (hlavné po 20 m, polovičné po 10 m) |
 | skaly | `rock_res: auto` | to isté, z toho istého sklonu |
 | výškový model (tieňovanie, 3D) | 5 m dlaždice, z13 – z15 | **výrez v 1 m**, do **z16** |
 
@@ -1060,9 +1061,13 @@ s `area: vysoke_tatry`, dovtedy pás pri hranici dopĺňa Sonny.
 **Cesty a chodníky** (`roads`, `paths`) robí ten istý `transport.yml` ako kraj,
 z toho zlúčeného PBF. Smerovaciu sieť pohorie nemá – navigácia ide z krajov.
 
-**Značené trasy** (`trails`) robí ten istý `workers/trails/build.sh` ako kraj.
-Kraj ich nesie v základnej mape; pohorie ju nemá, tak sú balíkom samy pre seba
-(v `packages.json` `part_of: base`, kraju sa ako balík nevypisujú).
+**Vodstvo a body** (`water`, `points`) robí ten istý `water.yml` a
+`workers/features/build.sh` ako kraj, z toho zlúčeného PBF; z features job ide
+do pohoria len polovica s bodmi.
+
+**Značené trasy pohorie nemá** – kreslia ich jeho chodníky (`paths`). Balík
+`trails` z predošlých behov je v `MOUNTAIN_RETIRED`
+([`deploy/names.py`](deploy/names.py)): beh ho na Drive zmaže a z katalógu vyhodí.
 
 **Letecké snímky** (`aerial_summer`, `aerial_winter`) sú JPEG dlaždice z adresy
 vo [`workers/data/aerial.json`](data/aerial.json), zabalené do rastrového

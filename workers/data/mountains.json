@@ -1,8 +1,8 @@
 {
   "_comment": [
-    "Mountain packages: one range in more detail than its regions carry – 2.5 m",
-    "contours, rocks and a height model from DMR 5.0 at 1 m, roads, paths, waymarked",
-    "trails and aerial photos. Published under `mountains.ranges` in `maps.json`, a",
+    "Mountain packages: one range in more detail than its regions carry – 2 m",
+    "contours, rocks and a height model from DMR 5.0 at 1 m, roads, paths, water,",
+    "points and aerial photos. Published under `mountains.ranges` in `maps.json`, a",
     "category of its own, built by “Map · Build mountain package”. A range crosses",
     "borders: its OSM layers come from every extract it names, and its height model",
     "is DMR 5.0 where Slovakia has it and Sonny's 20 m model beyond.",

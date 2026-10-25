@@ -126,7 +126,7 @@
       "symbol": "figure.hiking",
       "part_of": "base",
       "app_detail": "Marked hiking, cycling and ski routes, in their colours",
-      "description": "waymarked routes from OSM relations – hiking, cycling, ski, horse routes and via ferratas, with their colour and mark (.pmtiles); a region's base map carries them, a mountain package has them as a package of its own",
+      "description": "waymarked routes from OSM relations – hiking, cycling, ski, horse routes and via ferratas, with their colour and mark (.pmtiles); a region's base map carries them; a mountain package draws them with its paths",
       "sources": ["osm"],
       "manifest": ["trails"],
       "suffixes": ["-trails.pmtiles"],
