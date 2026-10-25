@@ -39,9 +39,12 @@ fi
 rm -rf data/traffic-signs
 git clone --quiet --depth 1 --filter=blob:none --no-checkout --branch "$SIGNS_REF" \
   "$SIGNS_REPO" data/traffic-signs
-while read -r sign; do
-  printf '/signs/%s/%s/\n/signs/%s/%s.json\n' "$sign" "$COUNTRY" "$sign" "${sign#*/}"
-done <<<"$FOLDERS" | git -C data/traffic-signs sparse-checkout set --no-cone --stdin
+{
+  echo /names/
+  while read -r sign; do
+    printf '/signs/%s/%s/\n/signs/%s/%s.json\n' "$sign" "$COUNTRY" "$sign" "${sign#*/}"
+  done <<<"$FOLDERS"
+} | git -C data/traffic-signs sparse-checkout set --no-cone --stdin
 git -C data/traffic-signs checkout --quiet
 python3 workers/transport/sprite.py --signs=data/traffic-signs --country="$COUNTRY" \
   --used=data/roadsigns-used.txt --out="_site/tiles/${REGION_KEY}-roadsigns"
