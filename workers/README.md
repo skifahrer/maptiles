@@ -106,11 +106,15 @@ Mapa · Build svet            základná mapa CELÉHO sveta – podklad pod výb
                              ▲ cesty, sídla ani terén v nej nie sú
 
 Mapa · Build mountain        JEDNO POHORIE v detaile: vrstevnice po 2,5 m,
-package (manuálne, pohorie)  skaly a výškový model z DMR 5.0 v 1 m
-                             ─► balíky contours, rocks, terrain pod
-                               `<krajina>.mountains.<pohorie>` v `maps.json`
+package (manuálne, pohorie)  skaly a výškový model z DMR 5.0 v 1 m, cesty
+                             a chodníky z OSM, letecké snímky leta a zimy
+                             ─► balíky contours, rocks, terrain, roads,
+                               paths, aerial_summer, aerial_winter pod
+                               `mountains.ranges.<pohorie>` v `maps.json`
                              ▲ ten istý `dem-layers.yml`, len na výreze
-                               pohoria a s `mountain: true`
+                               pohoria a s `mountain: true`; cesty cez
+                               `transport.yml` z PBF krajiny orezaného na
+                               výrez
 
 Dáta · výškové modely        Sonny 20m / ÚGKK DMR 3.5 ─► rezanie
 (sám, keď terén chýba)       na 1° dlaždice ─► sklad `dem-sonny`:
@@ -1030,11 +1034,24 @@ dlaždice, a vrstevnice nevypisujú varovanie „len výrez, nie na nasadenie“
 Výrez nesmie spadnúť na Sonnyho (`ugkk_fallback: false`): pohorie z 20 m
 modelu by nebolo jemnejšie než jeho kraj.
 
-**V katalógu je pod krajinou, nie pod krajom** – `slovensko.mountains.vysoke_tatry`
-(id `slovakia-vysoke_tatry`), lebo pohorie môže krížiť hranicu krajov (Tatry
-ležia v Prešovskom aj Žilinskom). Uzol má tvar kraja (`bbox`, zoomy, `tiles`,
-`maps`), ale len balíky `contours`, `rocks` a `terrain` – základnú mapu nemá,
-kreslí sa cez kraje, ktoré pretína. Na Drive leží v `slovensko/mountains/<pohorie>/`.
+**V katalógu je to kategória sama pre seba, nie krajina** – `mountains.ranges.vysoke_tatry`
+(id `mountains-vysoke_tatry`), lebo pohorie môže krížiť hranicu krajov aj štátov
+(Tatry ležia v Prešovskom aj Žilinskom kraji a v Poľsku). Uzol má tvar kraja
+(`bbox`, zoomy, `tiles`, `maps`) a `country` – krajinu, z ktorej dát je. Základnú
+mapu nemá: kreslí sa sám, alebo cez kraje, ktoré pretína. Na Drive leží
+v `mountains/<pohorie>/`. Pohorie, ktoré ešte visí pod krajinou
+(`slovensko.mountains`), presunie do kategórie každý zápis katalógu (`migrate`).
+
+**Cesty a chodníky** (`roads`, `paths`) robí ten istý `transport.yml` ako kraj,
+z PBF krajiny orezaného na výrez (`workers/mountain/pbf.sh`). Smerovaciu sieť
+pohorie nemá – navigácia ide z krajov.
+
+**Letecké snímky** (`aerial_summer`, `aerial_winter`) sú JPEG dlaždice z adresy
+vo [`workers/data/aerial.json`](data/aerial.json), zabalené do rastrového
+`.pmtiles` (`workers/mountain/aerial.py`). Leto je ortofotomozaika
+(`ofmozaika2c.tiles.freemap.sk`) do z17 – nad Tatrami ~0,5 GB; z18 je
+štvornásobok. Zima zatiaľ adresu nemá, takže sa jej balík nerobí. freemap.sk
+je dobrovoľnícky server: sťahujú 4 spojenia a dlaždice ostávajú v cache na Drive.
 
 **Interval 2,5 m nie je celé číslo**, a `build.sh` dovtedy počítal triedy
 v bashovej celočíselnej aritmetike (`$(( INTERVAL * 5 ))`) a v SQL cez

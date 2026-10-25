@@ -70,6 +70,28 @@
       "regenerate": "rocks"
     },
     {
+      "key": "aerial_summer",
+      "app": "Summer aerial photos",
+      "symbol": "sun.max.fill",
+      "app_detail": "Aerial photos of the land in summer, under the map",
+      "description": "orthophoto mosaic taken in summer, as JPEG raster tiles (raster .pmtiles)",
+      "sources": ["ortofoto", "freemap"],
+      "manifest": ["aerial_summer"],
+      "suffixes": ["-aerial_summer.pmtiles"],
+      "origin": "site"
+    },
+    {
+      "key": "aerial_winter",
+      "app": "Winter aerial photos",
+      "symbol": "snowflake",
+      "app_detail": "Aerial photos of the land under snow, under the map",
+      "description": "orthophoto mosaic taken in winter, as JPEG raster tiles (raster .pmtiles)",
+      "sources": ["ortofoto", "freemap"],
+      "manifest": ["aerial_winter"],
+      "suffixes": ["-aerial_winter.pmtiles"],
+      "origin": "site"
+    },
+    {
       "key": "roads",
       "app": "Roads",
       "symbol": "road.lanes",
