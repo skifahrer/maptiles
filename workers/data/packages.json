@@ -70,6 +70,28 @@
       "regenerate": "rocks"
     },
     {
+      "key": "aerial_summer",
+      "app": "Summer aerial photos",
+      "symbol": "sun.max.fill",
+      "app_detail": "Aerial photos of the land in summer, under the map",
+      "description": "orthophoto mosaic taken in summer, as JPEG raster tiles (raster .pmtiles)",
+      "sources": ["ortofoto", "freemap"],
+      "manifest": ["aerial_summer"],
+      "suffixes": ["-aerial_summer.pmtiles"],
+      "origin": "site"
+    },
+    {
+      "key": "aerial_winter",
+      "app": "Winter aerial photos",
+      "symbol": "snowflake",
+      "app_detail": "Aerial photos of the land under snow, under the map",
+      "description": "orthophoto mosaic taken in winter, as JPEG raster tiles (raster .pmtiles)",
+      "sources": ["ortofoto", "freemap"],
+      "manifest": ["aerial_winter"],
+      "suffixes": ["-aerial_winter.pmtiles"],
+      "origin": "site"
+    },
+    {
       "key": "roads",
       "app": "Roads",
       "symbol": "road.lanes",
@@ -97,6 +119,18 @@
       "suffixes": ["-paths.pmtiles"],
       "origin": "site",
       "regenerate": "paths"
+    },
+    {
+      "key": "trails",
+      "app": "Waymarked trails",
+      "symbol": "figure.hiking",
+      "part_of": "base",
+      "app_detail": "Marked hiking, cycling and ski routes, in their colours",
+      "description": "waymarked routes from OSM relations – hiking, cycling, ski, horse routes and via ferratas, with their colour and mark (.pmtiles); a region's base map carries them, a mountain package has them as a package of its own",
+      "sources": ["osm"],
+      "manifest": ["trails"],
+      "suffixes": ["-trails.pmtiles"],
+      "origin": "site"
     },
     {
       "key": "points",

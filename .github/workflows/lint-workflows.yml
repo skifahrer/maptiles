@@ -259,6 +259,9 @@ jobs:
           keyless = set(re.findall(r"^\s*([a-z|]+]?)\)\s*echo whole\s*;;",
                                    m.group(1), re.M))
           keyless = {v for entry in keyless for v in entry.strip(")").split("|")}
+          # a layer whose key hangs on a switch may call either way
+          either = set(re.findall(r"^\s*([a-z]+)\).*\|\|\s*echo whole\s*;;",
+                                  m.group(1), re.M))
 
           bad = 0
           for paths, layers in CALLS.items():
@@ -285,7 +288,7 @@ jobs:
                   passes = nargs >= 5   # bbox, folder, tsv, source, cut-out key
                   for layer in layers:
                       expects = layer not in keyless
-                      if passes != expects:
+                      if passes != expects and layer not in either:
                           print(f"::error file={path}::layer `{layer}` calls "
                                 f"dem/fetch.sh with {nargs} arguments ("
                                 f"{'passing' if passes else 'not passing'} the cut-out "
@@ -295,7 +298,7 @@ jobs:
                                 f"from another (run 31307163093).")
                           bad += 1
           print(f"layers without a cut-out key per check.sh: "
-                f"{sorted(keyless)}; mismatches: {bad}")
+                f"{sorted(keyless)}; either way: {sorted(either)}; mismatches: {bad}")
           sys.exit(1 if bad else 0)
           PY
 

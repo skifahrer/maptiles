@@ -43,6 +43,16 @@
     "work": "Slovakia hi-res shading tiles",
     "source_url": "https://www.freemap.sk/"
   },
+  "ortofoto": {
+    "holder": "GKÚ Bratislava, NLC Zvolen",
+    "work": "Ortofotomozaika SR",
+    "source_url": "https://www.geoportal.sk"
+  },
+  "freemap": {
+    "holder": "freemap.sk",
+    "work": "Orthophoto tiles",
+    "source_url": "https://www.freemap.sk/"
+  },
   "sonny": {
     "holder": "Sonny",
     "work": "Sonny's LiDAR DTM",

@@ -529,6 +529,8 @@ jobs:
           OPT_TERRAIN_FRAC_BITS: ${{ inputs.opt_terrain_frac_bits }}
           OPT_TERRAIN_FORMAT: ${{ inputs.opt_terrain_format }}
           TERRAIN_CUTOUT: ${{ inputs.mountain }}
+          # a range across a border: Sonny goes on where DMR 5.0 stops
+          DEM_FILL: ${{ inputs.mountain == 'true' && 'sonny' || '' }}
           OPT_CONTOUR_MAXZOOM_CAP: ${{ inputs.opt_contour_maxzoom_cap }}
           OPT_CONTOUR_LOWLAND_M: ${{ inputs.opt_contour_lowland_m }}
           ROCK_SLOPE: ${{ inputs.rock_slope }}
@@ -678,6 +680,8 @@ jobs:
           # a test run mustn't touch the store; `rocks_rebuild` must skip it
           OPT_TEST_KM2: ${{ inputs.test_km2 }}
           MOUNTAIN: ${{ inputs.mountain }}
+          # a range across a border: Sonny goes on where DMR 5.0 stops
+          DEM_FILL: ${{ inputs.mountain == 'true' && 'sonny' || '' }}
           SLOPE_DIR: slope-chunks
           # Drive is latent, not narrow; past ~16 threads it answers 403
           SLOPE_JOBS: "6"
@@ -870,6 +874,8 @@ jobs:
           OPT_UGKK_FALLBACK: ${{ inputs.opt_ugkk_fallback }}
           OPT_TEST_KM2: ${{ inputs.test_km2 }}
           MOUNTAIN: ${{ inputs.mountain }}
+          # a range across a border: Sonny goes on where DMR 5.0 stops
+          DEM_FILL: ${{ inputs.mountain == 'true' && 'sonny' || '' }}
           SLOPE_DIR: slope-chunks
           SLOPE_JOBS: "6"
           # this step reads Drive the most: slope in parts of a 145 GB raster
@@ -1014,6 +1020,8 @@ jobs:
           TERRAIN_FRAC_BITS: ${{ inputs.opt_terrain_frac_bits }}
           TERRAIN_FORMAT: ${{ inputs.opt_terrain_format }}
           TERRAIN_CUTOUT: ${{ inputs.mountain }}
+          # a range across a border: Sonny goes on where DMR 5.0 stops
+          DEM_FILL: ${{ inputs.mountain == 'true' && 'sonny' || '' }}
           AREA_KEY: ${{ inputs.area_key }}
           TERRAIN_REBUILD: ${{ inputs.opt_terrain_rebuild }}
           # the hillshading budget is decided while computing tiles, not at the check

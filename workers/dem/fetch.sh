@@ -9,7 +9,8 @@
 #
 # The cut-out key switches the DMR 5.0 shape: contours and rocks pass it,
 # hillshading doesn't; change those calls and `check-dem`'s layer table with them.
-# Output: `<directory>/tiles/N49E019.tif …` and `<directory>/all.vrt`.
+# Output: `<directory>/tiles/N49E019.tif …` and `<directory>/all.vrt`. A cut-out goes
+# over `DEM_FILL`'s tiles where it has no heights, when that is set.
 set -euo pipefail
 
 BBOX="$1"
@@ -41,6 +42,10 @@ if [ "$FORM" = "area" ]; then
     exit 3
   fi
   gdalbuildvrt -q "$DIR/all.vrt" "$DIR/$UASSET"
+  # a range across a border: DMR 5.0 stops at it, `DEM_FILL` goes on beyond
+  if [ -n "${DEM_FILL:-}" ] && "$0" "$BBOX" "$DIR/fill" "" "$DEM_FILL"; then
+    python3 "$HERE/backfill.py" --cut="$DIR/$UASSET" --fill="$DIR/fill/all.vrt" --out="$DIR/all.vrt"
+  fi
   SIZE=$(du -h "$DIR/$UASSET" | cut -f1)
   echo "$SRC_LABEL from the store: $UASSET, $SIZE"
   gdalinfo "$DIR/$UASSET" | grep -E "Pixel Size|Size is" || true

@@ -59,7 +59,7 @@ def entries(node, where):
         return out
     if isinstance(node.get("maps"), dict):
         out.append((where, node))
-    for key in ("regions", "subregions"):
+    for key in ("regions", "subregions", "ranges"):
         for k, v in (node.get(key) or {}).items():
             out += entries(v, f"{where}/{k}" if where else k)
     return out

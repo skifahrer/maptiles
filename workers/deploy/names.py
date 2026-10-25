@@ -55,9 +55,12 @@ def area_key():
     return "whole" if key == "cely" else key
 
 
-# a mountain package sits under its country, beside the regions
+# mountains are a category of their own beside the countries, a range may cross a border
 MOUNTAINS = "mountains"
-MOUNTAIN_PACKAGES = ("terrain", "contours", "rocks")
+RANGES = "ranges"
+# a region's base map carries the trails; a range has no base map
+MOUNTAIN_ONLY = ("trails", "aerial_summer", "aerial_winter")
+MOUNTAIN_PACKAGES = ("terrain", "contours", "rocks", "roads", "paths") + MOUNTAIN_ONLY
 
 
 def mountain_country():
@@ -81,7 +84,7 @@ def drive_path(regions):
     area = area_key()
 
     if mountain_country():
-        return [mountain_country(), MOUNTAINS, safe(region_key)]
+        return [MOUNTAINS, safe(region_key)]
     if custom_url:
         # a custom PBF is not in `regions.json`; the region is what the user named it
         region = safe(env("CUSTOM_NAME") or region_key
@@ -152,6 +155,8 @@ def layers():
         out.append("history")
     if env("BUILDINGS_ENABLED") == "true":
         out.append("buildings")
+    out += [s for s in ("aerial_summer", "aerial_winter")
+            if env(f"{s.upper()}_ENABLED") == "true"]
     return out
 
 

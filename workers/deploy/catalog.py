@@ -80,7 +80,7 @@ def region_entry(man):
 
 TILE_LAYERS = ("pmtiles", "contours", "rocks", "trails", "features", "points",
                "transport", "paths", "boundaries", "water", "rail", "rail_routing",
-               "history", "buildings")
+               "history", "buildings", "aerial_summer", "aerial_winter")
 
 
 def tiles_paths(man, reg):
@@ -159,8 +159,9 @@ def migrate_node(maps):
                 entry["parts"].setdefault(LEGACY_PARTS[key], entry["parts"].pop(key))
 
 
-# nodes nested in a node; a mountain belongs to its country, not to one region
-NESTS = ("regions", "subregions", names.MOUNTAINS)
+# nodes nested in a node; ranges sit in the mountains category, not in a country
+NESTS = ("regions", "subregions", names.RANGES)
+MOUNTAINS_NAME = "Mountains"
 
 
 def node_id(regions, key, parent="", listed=True):
@@ -187,8 +188,20 @@ def stamp_ids(data, regions):
     return data
 
 
+def move_mountains(data):
+    """Ranges once sat under their country; they are a category of their own now."""
+    for key, country in list(data.items()):
+        if key.startswith("_") or key == names.MOUNTAINS or not isinstance(country, dict):
+            continue
+        for slug, mountain in (country.pop(names.MOUNTAINS, None) or {}).items():
+            mountain.setdefault("country", key)
+            category = data.setdefault(names.MOUNTAINS, {"name": MOUNTAINS_NAME})
+            category.setdefault(names.RANGES, {}).setdefault(slug, mountain)
+
+
 def migrate(data):
     """Every node of the catalog on today's keys; a run on older code may still write old ones."""
+    move_mountains(data)
     pending = [v for k, v in data.items() if not k.startswith("_") and isinstance(v, dict)]
     while pending:
         node = pending.pop()
@@ -359,8 +372,8 @@ def write_parts(maps, parts):
 
 
 COMMENT = ("Map catalog of finished maps on Google Drive – which there are and "
-           "where. The top key is the country, under it `regions`, `subregions` and "
-           "`mountains`; "
+           "where. The top key is the country, under it `regions` and `subregions`; "
+           "`mountains` is no country but the category of ranges (`ranges`); "
            "`id` names a node uniquely across the catalog (its osm.fr path); keys starting with `_` are catalog metadata, not countries. Written at the "
            "end of a build by workers/deploy/publish-map.py; never edited by hand.")
 COMMENT_TEST = ("QUICK TEST runs – terrain covers only a few km² of the cut-out, so "
@@ -392,13 +405,16 @@ def write_catalog(path, parts, regions, uploaded, man, only="", merge=False,
     data["_updated_at"], data["_updated_ts"] = now()
 
     cat = cat or parts
-    country = data.setdefault(cat[0], {})
-    name_node(country, regions, cat[0], "region")
-    node = country                      # a whole-country build ends here
-    mountain = len(cat) > 2 and cat[1] == names.MOUNTAINS
+    mountain = len(cat) > 1 and cat[0] == names.MOUNTAINS
     if mountain:
-        node = country.setdefault(names.MOUNTAINS, {}).setdefault(cat[2], {})
-        name_node(node, regions, cat[2], "mountain")
+        category = data.setdefault(names.MOUNTAINS, {})
+        category["name"] = MOUNTAINS_NAME
+        node = category.setdefault(names.RANGES, {}).setdefault(cat[1], {})
+        name_node(node, regions, cat[1], "mountain")
+    else:
+        country = data.setdefault(cat[0], {})
+        name_node(country, regions, cat[0], "region")
+        node = country                  # a whole-country build ends here
     if len(cat) > 1 and not mountain:
         regs = country.setdefault("regions", {})
         node = regs.setdefault(cat[1], {})
@@ -435,12 +451,16 @@ def write_catalog(path, parts, regions, uploaded, man, only="", merge=False,
         "layers": list(layers or []),
         "maps": {},
     }
+    if mountain:
+        # the country whose data the range is made of
+        entry["country"] = names.mountain_country() or node.get("country")
     # what a choice needs before unpacking: every zoom cap and every DEM source
     for k in ("bbox", "maxzoom", "contours_maxzoom", "contour_interval",
               "rocks_maxzoom", "rock_slope", "dem_source", "rock_source",
               "trails_maxzoom", "features_maxzoom", "points_maxzoom",
               "transport_maxzoom", "paths_maxzoom", "boundaries_maxzoom", "water_maxzoom",
-              "rail_maxzoom", "history_maxzoom", "buildings_maxzoom"):
+              "rail_maxzoom", "history_maxzoom", "buildings_maxzoom",
+              "aerial_summer_maxzoom", "aerial_winter_maxzoom", "countries"):
         if reg.get(k) is not None:
             entry[k] = reg[k]
     tiles = tiles_paths(man, reg)
