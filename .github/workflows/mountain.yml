@@ -78,6 +78,8 @@ env:
   BUDGET_CONTOURS_PCT: "25"
   BUDGET_ROCKS_PCT: "15"
   BUDGET_TERRAIN_PCT: "40"
+  # `workers/trails/build.sh` reads it, as the region build gives it
+  BUDGET_TRAILS_PCT: "3"
 
 jobs:
   plan:
