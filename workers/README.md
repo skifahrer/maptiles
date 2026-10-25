@@ -1039,15 +1039,8 @@ modelu by nebolo jemnejšie než jeho kraj.
 **V katalógu je pod krajinou, nie pod krajom** – `slovensko.mountains.vysoke_tatry`
 (id `slovakia-vysoke_tatry`), lebo pohorie môže krížiť hranicu krajov (Tatry
 ležia v Prešovskom aj Žilinskom). Uzol má tvar kraja (`bbox`, zoomy, `tiles`,
-`maps`), ale len balíky `contours`, `rocks` a `terrain` – základnú mapu nemá.
-Na Drive leží v `slovensko/mountains/<pohorie>/`.
-
-**Pohorie je samostatný balík, kraj pod ním netreba.** Každý z troch balíkov nesie
-aj štýly pohoria: tie isté, aké robí build mapy (`workers/styles/build.mjs`), len
-[`workers/mountain/styles.py`](mountain/styles.py) z nich nechá zdroje `contours`,
-`rocks` a `dem` s ich vrstvami a papier pod nimi – bez základnej mapy a spritu.
-Aplikácia tak pohorie nakreslí aj samé, s 3D terénom; s krajom pod ním ho kreslí
-na mieste krajových vrstevníc, skál a výšok.
+`maps`), ale len balíky `contours`, `rocks` a `terrain` – základnú mapu nemá,
+kreslí sa cez kraje, ktoré pretína. Na Drive leží v `slovensko/mountains/<pohorie>/`.
 
 **Interval 2,5 m nie je celé číslo**, a `build.sh` dovtedy počítal triedy
 v bashovej celočíselnej aritmetike (`$(( INTERVAL * 5 ))`) a v SQL cez

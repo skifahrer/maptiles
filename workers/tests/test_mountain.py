@@ -14,7 +14,6 @@ from load import WORKERS, worker
 ROOT = os.path.dirname(WORKERS)
 plan = worker("mountain/plan.py")
 manifest = worker("mountain/manifest.py")
-styles = worker("mountain/styles.py")
 names = worker("deploy/names.py")
 catalog = worker("deploy/catalog.py")
 
@@ -192,9 +191,6 @@ class Publish(unittest.TestCase):
                 f.write(b"x")
         with open(os.path.join(site, "tiles", "manifest.json"), "w") as f:
             json.dump({"default_region": "vysoke_tatry", "regions": {"vysoke_tatry": {}}}, f)
-        os.makedirs(os.path.join(site, "styles"))
-        with open(os.path.join(site, "styles", "vysoke_tatry-light.json"), "w") as f:
-            f.write("{}")
         run = subprocess.run(
             ["python3", os.path.join(WORKERS, "deploy", "publish-map.py"),
              f"--site={site}", "--maps=", "--dry-run"],
@@ -206,41 +202,6 @@ class Publish(unittest.TestCase):
         self.assertEqual(sorted(listed), ["vysoke_tatry-contours.zip", "vysoke_tatry-rocks.zip",
                                           "vysoke_tatry-terrain.zip"])
         self.assertIn("slovensko/mountains/vysoke_tatry", run.stdout)
-        self.assertEqual(len(re.findall(r"vysoke_tatry-\w+\.zip .* – 2 files", run.stdout)), 3,
-                         "each package carries the styles beside its archive")
-
-
-class Styles(unittest.TestCase):
-    def test_the_map_builds_style_keeps_the_ranges_layers_alone(self):
-        if not shutil.which("node"):
-            self.skipTest("node")
-        out = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, out)
-        built = subprocess.run(
-            ["node", os.path.join(WORKERS, "styles", "build.mjs"), "--base-url=https://mountain.invalid",
-             "--region=vysoke_tatry", "--name=Vysoké Tatry", "--contours=true", "--rocks=true",
-             "--dem-source=dmr5", "--dem-tiles-source=dmr5", "--dem-maxzoom=16",
-             "--dem-tiles=pmtiles://https://mountain.invalid/tiles/vysoke_tatry-terrain.pmtiles",
-             f"--out={out}"], capture_output=True, text=True, cwd=ROOT)
-        self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
-        with redirect_stdout(io.StringIO()):
-            styles.main([out])
-        with open(os.path.join(out, "vysoke_tatry-svetla.json"), encoding="utf-8") as f:
-            style = json.load(f)
-        self.assertEqual(sorted(style["sources"]), ["contours", "dem", "rocks"])
-        self.assertEqual(style["terrain"]["source"], "dem")
-        self.assertNotIn("sprite", style)
-        drawn = {layer.get("source") for layer in style["layers"]}
-        self.assertEqual(drawn - {None}, {"contours", "rocks"} | ({"dem"} & drawn))
-        self.assertTrue(any(layer["type"] == "background" for layer in style["layers"]))
-
-    def test_a_style_without_the_ranges_layers_fails(self):
-        out = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, out)
-        with open(os.path.join(out, "x-light.json"), "w") as f:
-            json.dump({"sources": {"omt": {}}, "layers": [{"id": "a", "source": "omt"}]}, f)
-        with redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
-            styles.main([out])
 
 
 if __name__ == "__main__":
