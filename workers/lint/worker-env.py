@@ -72,59 +72,76 @@ def read_vars(s):
     optional = set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::?[-=+])", s))
     out = set(re.findall(r"\$\{#?([A-Za-z_][A-Za-z0-9_]*)", s))
     out |= set(re.findall(r"\$([A-Za-z_][A-Za-z0-9_]*)", s))
+    out |= arithmetic_names(s)
     # embedded node/python read the environment their own way
     out |= set(re.findall(r"process\.env\.([A-Za-z_][A-Za-z0-9_]*)", s))
     out |= set(re.findall(r"environ(?:\.get\(|\[)[\"']([A-Za-z_][A-Za-z0-9_]*)", s))
     return out - optional
 
+def arithmetic_names(s):
+    """Bash arithmetic reads a name without `$`: `$(( LIMIT * SHARE_PCT ))`."""
+    out = set()
+    for line in s.split("\n"):
+        while re.search(r"\$\((?!\()[^()]*\)", line):
+            line = re.sub(r"\$\((?!\()[^()]*\)", "0", line)
+        for expr in re.findall(r"\$\(\((.*?)\)\)", line):
+            expr = re.sub(r"\$\{[^}]*\}|\$\w+", "0", expr)
+            out |= set(re.findall(r"(?<![\w#])([A-Za-z_][A-Za-z0-9_]*)", expr))
+    return out
+
 # a workflow expression's opening token, assembled so this file never contains it
 OPEN = "$" + "{" * 2
 
-bad = 0
-for path in sorted(glob.glob(".github/workflows/*.yml")):
-    wf = yaml.safe_load(open(path)) or {}
-    for job_name, job in (wf.get("jobs") or {}).items():
-        for st in job.get("steps") or []:
-            run = (st.get("run") or "").strip()
-            m = re.fullmatch(r"(?:bash\s+|sh\s+)?(workers/[\w./-]+\.sh)", run)
-            if not m:
-                continue
-            script = m.group(1)
-            if not os.path.exists(script):
-                print(f"::error file={path}::{job_name} / "
-                      f"{st.get('name')}: {script} doesn't exist")
-                bad += 1
-                continue
-            text = open(script).read()
-            if OPEN in text:
-                print(f"::error file={script}::a workflow expression "
-                      f"({OPEN} …) is left in it – the shell doesn't "
-                      f"evaluate it, it ends up as plain text")
-                bad += 1
-            given = (set(wf.get("env") or {}) | set(job.get("env") or {})
-                    | set(st.get("env") or {}) | assigned(text) | BUILTIN)
-            missing = sorted(v for v in read_vars(text)
-                           if v not in given and not v.isdigit()
-                           and not ("__SOURCED__" in given and v.islower()))
-            if missing:
-                print(f"::error file={path}::{job_name} / "
-                      f"{st.get('name')} → {script}: the script reads "
-                      f"{missing} from the environment, but the step doesn't "
-                      f"give it. Add it to the step's `env:` – otherwise it "
-                      f"runs with an empty string and doesn't fail.")
-                bad += 1
+def main():
+    bad = 0
+    for path in sorted(glob.glob(".github/workflows/*.yml")):
+        wf = yaml.safe_load(open(path)) or {}
+        for job_name, job in (wf.get("jobs") or {}).items():
+            for st in job.get("steps") or []:
+                run = (st.get("run") or "").strip()
+                m = re.fullmatch(r"(?:bash\s+|sh\s+)?(workers/[\w./-]+\.sh)", run)
+                if not m:
+                    continue
+                script = m.group(1)
+                if not os.path.exists(script):
+                    print(f"::error file={path}::{job_name} / "
+                          f"{st.get('name')}: {script} doesn't exist")
+                    bad += 1
+                    continue
+                text = open(script).read()
+                if OPEN in text:
+                    print(f"::error file={script}::a workflow expression "
+                          f"({OPEN} …) is left in it – the shell doesn't "
+                          f"evaluate it, it ends up as plain text")
+                    bad += 1
+                given = (set(wf.get("env") or {}) | set(job.get("env") or {})
+                        | set(st.get("env") or {}) | assigned(text) | BUILTIN)
+                missing = sorted(v for v in read_vars(text)
+                               if v not in given and not v.isdigit()
+                               and not ("__SOURCED__" in given and v.islower()))
+                if missing:
+                    print(f"::error file={path}::{job_name} / "
+                          f"{st.get('name')} → {script}: the script reads "
+                          f"{missing} from the environment, but the step doesn't "
+                          f"give it. Add it to the step's `env:` – otherwise it "
+                          f"runs with an empty string and doesn't fail.")
+                    bad += 1
 
-    # `steps.<id>.outputs` must have its step
-    for job_name, job in (wf.get("jobs") or {}).items():
-        ids = {s["id"] for s in (job.get("steps") or []) if s.get("id")}
-        blob = yaml.dump(job, allow_unicode=True)
-        for ref in sorted(set(re.findall(
-                r"steps\.([A-Za-z0-9_-]+)\.outputs", blob))):
-            if ref not in ids:
-                print(f"::error file={path}::job '{job_name}' "
-                      f"refers to steps.{ref}.outputs, but has no such "
-                      f"step (it has: {sorted(ids)}). A renamed step = a "
-                      f"quietly empty job output.")
-                bad += 1
-print(f"workers scripts and their env: {bad} errors")
-sys.exit(1 if bad else 0)
+        # `steps.<id>.outputs` must have its step
+        for job_name, job in (wf.get("jobs") or {}).items():
+            ids = {s["id"] for s in (job.get("steps") or []) if s.get("id")}
+            blob = yaml.dump(job, allow_unicode=True)
+            for ref in sorted(set(re.findall(
+                    r"steps\.([A-Za-z0-9_-]+)\.outputs", blob))):
+                if ref not in ids:
+                    print(f"::error file={path}::job '{job_name}' "
+                          f"refers to steps.{ref}.outputs, but has no such "
+                          f"step (it has: {sorted(ids)}). A renamed step = a "
+                          f"quietly empty job output.")
+                    bad += 1
+    print(f"workers scripts and their env: {bad} errors")
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
