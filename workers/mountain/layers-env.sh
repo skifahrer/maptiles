@@ -4,6 +4,7 @@ set -euo pipefail
 if [ -f "_site/tiles/${REGION_KEY}-trails.pmtiles" ]; then echo "TRAILS_ENABLED=true"; fi
 for season in summer winter; do
   if [ -f "_site/tiles/${REGION_KEY}-aerial_${season}.pmtiles" ]; then
-    echo "AERIAL_${season^^}_ENABLED=true"
+    # `tr`, not `${season^^}`: the macOS runner's bash is 3.2
+    echo "AERIAL_$(printf '%s' "$season" | tr '[:lower:]' '[:upper:]')_ENABLED=true"
   fi
 done
