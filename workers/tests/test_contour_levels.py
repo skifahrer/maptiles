@@ -26,6 +26,9 @@ class ContourLevels(unittest.TestCase):
         self.assertEqual(self.levels(5), (50, 25))
         self.assertEqual(self.levels(10), (100, 50))
 
+    def test_a_ranges_two_metres(self):
+        self.assertEqual(self.levels(2), (20, 10))
+
     def test_a_fractional_interval_keeps_whole_metres(self):
         self.assertEqual(self.levels(2.5), (50, 10))
 

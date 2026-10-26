@@ -222,7 +222,8 @@ def main():
         batch = [b for b in batch if b[0] not in names.MOUNTAIN_ONLY]
     if mountain:
         # a mountain adds layers to its regions; it has no map of its own
-        batch = [b for b in batch if b[0] in names.MOUNTAIN_PACKAGES]
+        batch = [b for b in batch if b[0] in names.MOUNTAIN_PACKAGES] \
+            + [(k, d, b, []) for k, d, b, _fs in batch if k in names.MOUNTAIN_RETIRED]
         if not any(b[3] for b in batch):
             raise SystemExit(f"::error::{args.site} holds none of the mountain's layers "
                              f"({', '.join(names.MOUNTAIN_PACKAGES)}) – nothing to publish.")

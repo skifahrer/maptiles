@@ -49,6 +49,12 @@ class Registry(unittest.TestCase):
         known = [k for k in registry("mountains.json") if not k.startswith("_")]
         self.assertEqual(sorted(offered), sorted(known))
 
+    def test_a_range_has_contours_every_two_metres(self):
+        import yaml
+        with open(os.path.join(ROOT, ".github", "workflows", "mountain.yml")) as f:
+            options = yaml.safe_load(f)["env"]["MOUNTAIN_OPTIONS"].split()
+        self.assertIn("contour_interval=2", options)
+
     def test_exaggeration_is_the_styles(self):
         with open(os.path.join(ROOT, "poc", "web", "themes.js"), encoding="utf-8") as f:
             found = re.search(r"DEFAULT_TERRAIN_EXAGGERATION = ([\d.]+)", f.read())
@@ -134,11 +140,14 @@ class Manifest(unittest.TestCase):
         with open(os.path.join(site, "tiles", "vysoke_tatry-aerial_summer.pmtiles"), "wb") as f:
             f.write(b"PMTiles\x03" + bytes(92) + bytes([8, 17]))
         open(os.path.join(site, "tiles", "vysoke_tatry-roadsigns.png"), "wb").close()
-        open(os.path.join(site, "tiles", "vysoke_tatry-trails.pmtiles"), "wb").close()
+        for kind in ("trails", "water", "points"):
+            open(os.path.join(site, "tiles", f"vysoke_tatry-{kind}.pmtiles"), "wb").close()
         with env(REGION_KEY="vysoke_tatry", AREA_BBOX="1,2,3,4", TRANSPORT_MAXZOOM="14",
-                 COUNTRIES="SK,PL"):
+                 COUNTRIES="SK,PL", WATER_MAXZOOM="14"):
             reg = manifest.manifest(site)["regions"]["vysoke_tatry"]
-        self.assertEqual(reg["trails"], "tiles/vysoke_tatry-trails.pmtiles")
+        self.assertNotIn("trails", reg, "a range's Paths draw its trails")
+        self.assertEqual((reg["water"], reg["water_maxzoom"]), ("tiles/vysoke_tatry-water.pmtiles", 14))
+        self.assertEqual((reg["points"], reg["points_maxzoom"]), ("tiles/vysoke_tatry-points.pmtiles", 15))
         self.assertEqual(reg["countries"], ["SK", "PL"])
         self.assertEqual((reg["transport"], reg["paths_maxzoom"]),
                          ("tiles/vysoke_tatry-transport.pmtiles", 14))
@@ -245,7 +254,8 @@ class Publish(unittest.TestCase):
         site = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, site)
         os.makedirs(os.path.join(site, "tiles"))
-        for kind in ("contours", "rocks", "terrain", "transport", "paths", "trails", "aerial_summer"):
+        for kind in ("contours", "rocks", "terrain", "transport", "paths", "water", "points",
+                     "aerial_summer"):
             with open(os.path.join(site, "tiles", f"vysoke_tatry-{kind}.pmtiles"), "wb") as f:
                 f.write(b"x")
         with open(os.path.join(site, "tiles", "manifest.json"), "w") as f:
@@ -261,8 +271,11 @@ class Publish(unittest.TestCase):
         self.assertIn("vysoke_tatry-aerial_winter.zip", run.stdout)
         self.assertEqual(sorted(listed), ["vysoke_tatry-aerial_summer.zip",
                                           "vysoke_tatry-contours.zip", "vysoke_tatry-paths.zip",
-                                          "vysoke_tatry-roads.zip", "vysoke_tatry-rocks.zip",
-                                          "vysoke_tatry-terrain.zip", "vysoke_tatry-trails.zip"])
+                                          "vysoke_tatry-points.zip", "vysoke_tatry-roads.zip",
+                                          "vysoke_tatry-rocks.zip", "vysoke_tatry-terrain.zip",
+                                          "vysoke_tatry-water.zip"])
+        self.assertRegex(run.stdout, r"vysoke_tatry-trails\.zip .* NOT IN THIS BUILD",
+                         "the old trails package is deleted, not left behind")
         self.assertIn("mountains/vysoke_tatry", run.stdout)
 
 
