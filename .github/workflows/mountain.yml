@@ -333,8 +333,8 @@ jobs:
           MAXZOOM: ${{ inputs.aerial_maxzoom }}
         run: |
           set -euo pipefail
-          python3 -c 'import pmtiles' 2>/dev/null \
-            || python3 -m pip install --quiet --break-system-packages pmtiles
+          python3 -c 'import pmtiles, PIL' 2>/dev/null \
+            || python3 -m pip install --quiet --break-system-packages pmtiles pillow
           python3 workers/mountain/aerial.py --season="$SEASON" --bbox="$BBOX" \
             --maxzoom="$MAXZOOM" --cache=aerial-cache \
             --out="_site/tiles/${KEY}-aerial_${SEASON}.pmtiles"

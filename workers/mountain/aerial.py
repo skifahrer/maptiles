@@ -23,7 +23,7 @@ def _load(name, path):
 
 
 _tiles = _load("shading_tiles", os.path.join(_WORKERS, "rocks-shading", "tiles.py"))
-Fetcher, tile_range = _tiles.Fetcher, _tiles.tile_range
+Fetcher, tile_range, lonlat_to_tile = _tiles.Fetcher, _tiles.tile_range, _tiles.lonlat_to_tile
 
 
 def season(name, path=os.path.join(_WORKERS, "data", "aerial.json")):
@@ -40,6 +40,34 @@ def wanted(bbox, minzoom, maxzoom):
     for z in range(minzoom, maxzoom + 1):
         x0, y0, x1, y1 = tile_range(bbox, z)
         out += [(z, x, y) for x in range(x0, x1) for y in range(y0, y1)]
+    return out
+
+
+def window(bbox, z, x, y, size):
+    """The box's pixels in the tile, or None when the tile lies wholly inside it."""
+    w, s, e, n = bbox
+    left, top = lonlat_to_tile(w, n, z)
+    right, bottom = lonlat_to_tile(e, s, z)
+    px = [round(min(max((v - o) * size, 0), size))
+          for v, o in ((left, x), (top, y), (right, x), (bottom, y))]
+    return None if px == [0, 0, size, size] else tuple(px)
+
+
+def cut(path, bbox, z, x, y):
+    """A tile crossing the box's edge, as a WebP clear beyond it; else the JPEG as it is."""
+    from PIL import Image, ImageDraw  # noqa: PLC0415
+
+    with Image.open(path) as img:
+        box = window(bbox, z, x, y, img.width)
+        if box is None:
+            return path
+        mask = Image.new("L", img.size, 0)
+        if box[2] > box[0] and box[3] > box[1]:
+            ImageDraw.Draw(mask).rectangle((box[0], box[1], box[2] - 1, box[3] - 1), fill=255)
+        clear = img.convert("RGBA")
+    clear.putalpha(mask)
+    out = path + ".cut.webp"
+    clear.save(out, "WEBP", quality=85)
     return out
 
 
@@ -98,7 +126,7 @@ def main():
         for z, x, y in wanted(bbox, minzoom, maxzoom):
             path = fetcher.path(z, x, y)
             if os.path.isfile(path) and os.path.getsize(path) > 0:
-                tiles[(z, x, y)] = path
+                tiles[(z, x, y)] = cut(path, bbox, z, x, y)
         if fetcher.n_fail > len(tiles) * 0.02:
             raise SystemExit(f"::error::{fetcher.n_fail} {args.season} tiles failed – "
                              f"a package with holes isn't published. Run it again; "
