@@ -9,7 +9,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-from load import WORKERS, needs_cmd, worker
+from load import WORKERS, needs, needs_cmd, worker
 
 ROOT = os.path.dirname(WORKERS)
 plan = worker("mountain/plan.py")
@@ -319,6 +319,31 @@ class Aerial(unittest.TestCase):
         self.assertEqual(got[0][0], 14)
         self.assertEqual({z for z, _x, _y in got}, {14, 15})
         self.assertEqual(len(got), len(set(got)))
+
+    def test_a_tile_inside_the_box_is_whole(self):
+        x, y = (int(v) for v in aerial.lonlat_to_tile(20.1, 49.2, 14))
+        self.assertIsNone(aerial.window([19.9, 49.09, 20.32, 49.32], 14, x, y, 256))
+
+    def test_a_tile_on_the_edge_keeps_only_the_box(self):
+        left, top, right, bottom = aerial.window([19.9, 49.09, 20.32, 49.32], 8, 142, 87, 256)
+        self.assertTrue(0 < left < right < 256 and 0 < top < bottom < 256)
+
+    @needs("PIL")
+    def test_beyond_the_box_is_clear(self):
+        from PIL import Image
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        bbox = [19.9, 49.09, 20.32, 49.32]
+        jpeg = os.path.join(tmp, "t.jpg")
+        Image.new("RGB", (256, 256), (40, 90, 40)).save(jpeg, "JPEG")
+        x, y = (int(v) for v in aerial.lonlat_to_tile(20.1, 49.2, 14))
+        self.assertEqual(aerial.cut(jpeg, bbox, 14, x, y), jpeg)
+        left, top, right, bottom = aerial.window(bbox, 8, 142, 87, 256)
+        with Image.open(aerial.cut(jpeg, bbox, 8, 142, 87)) as got:
+            self.assertEqual(got.format, "WEBP")
+            alpha = got.getchannel("A")
+            self.assertEqual(alpha.getpixel((0, 0)), 0)
+            self.assertEqual(alpha.getpixel(((left + right) // 2, (top + bottom) // 2)), 255)
 
     def test_summer_has_a_source(self):
         self.assertTrue(aerial.season("summer")["url"].endswith("{z}/{x}/{y}.jpg"))
