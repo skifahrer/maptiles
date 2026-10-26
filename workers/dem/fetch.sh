@@ -43,7 +43,12 @@ if [ "$FORM" = "area" ]; then
   fi
   gdalbuildvrt -q "$DIR/all.vrt" "$DIR/$UASSET"
   # a range across a border: DMR 5.0 stops at it, `DEM_FILL` goes on beyond
-  if [ -n "${DEM_FILL:-}" ] && "$0" "$BBOX" "$DIR/fill" "" "$DEM_FILL"; then
+  if [ -n "${DEM_FILL:-}" ]; then
+    # a hole beyond the border reads as sea level: a cliff in 3D, so no package
+    if ! "$0" "$BBOX" "$DIR/fill" "" "$DEM_FILL"; then
+      echo "::error::No $DEM_FILL heights beyond the border of $AREA_KEY – a package with a hole isn't published. Run the workflow 'Data · elevation models' with $DEM_FILL."
+      exit 1
+    fi
     python3 "$HERE/backfill.py" --cut="$DIR/$UASSET" --fill="$DIR/fill/all.vrt" --out="$DIR/all.vrt"
   fi
   SIZE=$(du -h "$DIR/$UASSET" | cut -f1)

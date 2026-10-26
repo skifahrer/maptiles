@@ -353,6 +353,8 @@ jobs:
       mirror_contours: ${{ steps.check.outputs.mirror_contours }}
       mirror_rocks: ${{ steps.check.outputs.mirror_rocks }}
       mirror_terrain: ${{ steps.check.outputs.mirror_terrain }}
+      # a range across a border: the model beyond it (`DEM_FILL`)
+      mirror_fill: ${{ steps.check.outputs.mirror_fill }}
       # DMR 5.0 is refilled through `Data · DMR 5.0` by SHAPE, not layer: a
       # cut-out and 1° tiles are two assets and both may be missing
       mirror_dmr5_area: ${{ steps.check.outputs.mirror_dmr5_area }}
@@ -380,6 +382,7 @@ jobs:
           SRC_ROCKS: ${{ inputs.opt_rock_dem }}
           SRC_TERRAIN: ${{ inputs.opt_shading_source }}
           TERRAIN_CUTOUT: ${{ inputs.mountain }}
+          DEM_FILL: ${{ inputs.mountain == 'true' && 'sonny' || '' }}
         run: workers/dem/check.sh
 
   # refilling height data: one workflow, a job per layer; they start themselves
@@ -422,6 +425,19 @@ jobs:
     secrets: inherit                      # Drive, as above
     with:
       what: ${{ needs.check-dem.outputs.mirror_terrain }}
+      area: ${{ inputs.area }}
+      custom_url: ${{ inputs.opt_ugkk_urls }}
+
+  mirror-fill:
+    name: Refill the height model (beyond the border)
+    needs: check-dem
+    if: ${{ !cancelled() && needs.check-dem.outputs.mirror_fill != '' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/update-dem.yml
+    secrets: inherit                      # Drive, as above
+    with:
+      what: ${{ needs.check-dem.outputs.mirror_fill }}
       area: ${{ inputs.area }}
       custom_url: ${{ inputs.opt_ugkk_urls }}
 
@@ -479,7 +495,7 @@ jobs:
   # save and rebuild must share it, or the cache silently falls apart
   keys:
     name: Cache keys
-    needs: [check-dem, mirror-contours, mirror-rocks, mirror-terrain,
+    needs: [check-dem, mirror-contours, mirror-rocks, mirror-terrain, mirror-fill,
             mirror-dmr5-area, mirror-dmr5-tiles]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
