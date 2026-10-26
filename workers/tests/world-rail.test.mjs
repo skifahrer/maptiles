@@ -13,7 +13,7 @@ const WORLD = fileURLToPath(new URL("../world/style.mjs", import.meta.url));
 
 test("world style: every variant and theme, relative links, valid", () => {
   const spec = styleSpec();
-  for (const variant of ["full", "basic"]) {
+  for (const variant of ["full", "basic", "ground"]) {
     const dir = mkdtempSync(join(tmpdir(), "world-"));
     try {
       execFileSync(process.execPath, [WORLD, `--out=${dir}`, `--variant=${variant}`], { stdio: "pipe" });

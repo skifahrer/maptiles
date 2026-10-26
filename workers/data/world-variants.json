@@ -6,7 +6,7 @@
     "guarded by `workers/lint/world.py`.",
     "",
     "A variant only PICKS layers from `world.yml`; sources nobody reads aren't downloaded.",
-    "`basic` has its own region key (`svet_basic`), so it never overwrites the full map."
+    "`basic` and `ground` have their own region keys, so neither overwrites the full map."
   ],
 
   "_names": {
@@ -38,6 +38,18 @@
     "_comment": [
       "No water and no lakes. Labels stay: they name the borders and regions",
       "for a few tens of kB, and without seas only labels give orientation."
+    ]
+  },
+
+  "ground": {
+    "label": "ground – sea, lakes, state borders and their names (up to 10 MB)",
+    "region": "svet_ground",
+    "layers": ["water", "boundary", "place"],
+    "limit_mb": 10,
+    "glyphs": "from_data",
+    "_comment": [
+      "The ground the app bundles under a map with nothing to draw.",
+      "No download regions: they are most of what the full map weighs."
     ]
   }
 }
