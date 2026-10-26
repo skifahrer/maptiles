@@ -1,7 +1,7 @@
 name: Map · Build mountain package
 run-name: "${{ github.workflow }} · ${{ inputs.mountain }}"
 
-# ONE MOUNTAIN RANGE IN DETAIL – 2 m contours, rocks and a height model
+# ONE MOUNTAIN RANGE IN DETAIL – 5 m contours, rocks and a height model
 # from DMR 5.0 at 1 m (Sonny's 20 m beyond the Slovak border), roads, paths,
 # water and points of interest from OSM, and aerial photos of summer and winter,
 # over the range alone (`workers/data/mountains.json`) – across borders where it
@@ -74,7 +74,7 @@ env:
   DRIVE_REFRESH: ${{ secrets.DRIVE_REFRESH }}
   # what makes a mountain package finer than its region's layers
   MOUNTAIN_OPTIONS: >-
-    contour_interval=2 contour_maxzoom=16 contour_maxzoom_cap=16
+    contour_interval=5 contour_maxzoom=16 contour_maxzoom_cap=16
     contour_lowland_m=0 terrain_maxzoom=17 size_limit_mb=2000
   # shares of `size_limit_mb`; no Pages here, so the height model gets the most
   BUDGET_CONTOURS_PCT: "25"

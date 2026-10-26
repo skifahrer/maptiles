@@ -49,11 +49,11 @@ class Registry(unittest.TestCase):
         known = [k for k in registry("mountains.json") if not k.startswith("_")]
         self.assertEqual(sorted(offered), sorted(known))
 
-    def test_a_range_has_contours_every_two_metres(self):
+    def test_a_range_has_contours_every_five_metres(self):
         import yaml
         with open(os.path.join(ROOT, ".github", "workflows", "mountain.yml")) as f:
             options = yaml.safe_load(f)["env"]["MOUNTAIN_OPTIONS"].split()
-        self.assertIn("contour_interval=2", options)
+        self.assertIn("contour_interval=5", options)
 
     def test_exaggeration_is_the_styles(self):
         with open(os.path.join(ROOT, "poc", "web", "themes.js"), encoding="utf-8") as f:
