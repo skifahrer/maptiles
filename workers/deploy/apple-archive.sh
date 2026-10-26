@@ -54,8 +54,9 @@ else
     echo "::error::_site has no styles folder – without styles the .aar is no map, just tiles. See the step “Collect the assembled part of the site”."
     exit 1
   fi
-  # the app reads only `.aar`, and a style without a sprite draws no icon
-  if [ -z "$(find _site/sprites -name '*.json' -print -quit 2>/dev/null)" ]; then
+  # the app reads only `.aar`, and a style without a sprite draws no icon; the world map uses none
+  if grep -qs '"sprite"[[:space:]]*:' _site/styles/*.json \
+     && [ -z "$(find _site/sprites -name '*.json' -print -quit 2>/dev/null)" ]; then
     echo "::error::_site has no sprites – the app reads .aar and without them the map draws not one icon. See the step “Collect the site pieces”."
     exit 1
   fi

@@ -8,8 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       # variants live in `workers/data/world-variants.json`; `choice` can't read a file
+      # basic = state and region borders, ground = sea, lakes and state borders
       variant:
-        description: "Map variant (basic = only state and region borders, up to 15 MB; ground = sea, lakes and state borders, up to 10 MB)"
+        description: "Map variant (full, basic = borders only, ground = sea, lakes and borders)"
         required: false
         default: "full"
         type: choice

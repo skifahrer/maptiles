@@ -52,6 +52,22 @@ class Guards(unittest.TestCase):
                       env=s.env(ONLY="wikipedia", WIKI=os.path.join(work, "none"), TEST_KM2="0"))
             self.assertIn("there are no articles", r.stdout)
 
+    def test_apple_archive_wants_sprites_only_when_a_style_has_one(self):
+        work = work_dir(self, {"deploy/publish-map.py": "print('packed')\n"})
+        site = os.path.join(work, "_site")
+        os.makedirs(os.path.join(site, "tiles"))
+        os.makedirs(os.path.join(site, "styles"))
+        with open(os.path.join(site, "tiles/manifest.json"), "w") as f:
+            f.write("{}")
+        style = os.path.join(site, "styles/svet-svetla.json")
+        with Stubs(aa=[{"match": ".*"}]) as s:
+            for doc, code in (({"version": 8}, 0), ({"version": 8, "sprite": "x"}, 1)):
+                with open(style, "w") as f:
+                    json.dump(doc, f)
+                r = s.run(["bash", "workers/deploy/apple-archive.sh"], cwd=work, env=s.env(TEST_KM2="0"))
+                self.assertEqual(r.returncode, code, r.stdout + r.stderr)
+            self.assertIn("has no sprites", r.stdout)
+
 
 class PublishResults(unittest.TestCase):
     def publish(self, work, **env):
