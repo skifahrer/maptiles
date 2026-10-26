@@ -107,6 +107,12 @@ class Fetch(unittest.TestCase):
                              cwd=self.work, capture_output=True, text=True, check=True).stdout
         return float(out.split()[0])
 
+    def test_a_cutout_without_its_fill_stops(self):
+        self.tile("dem-ugkk", "ugkk-vysoke_tatry.tif", (20, 49.1, 20.3, 49.25), cells=30)
+        r, _ = self.fetch(source="dmr5", area="vysoke_tatry", bbox="20,49.1,20.3,49.25", fill="sonny")
+        self.assertEqual(r.returncode, 1, "a hole beyond the border isn't published")
+        self.assertIn("::error::No sonny heights", r.stdout)
+
     def test_a_cutout_across_a_border_is_filled_beyond_it(self):
         # the cut has no heights in its north, as DMR 5.0 has none in Poland
         self.tile("dem-sonny", "N49E020.tif", (20, 49, 21, 50), cells=20)

@@ -76,6 +76,17 @@ class DemCheck(unittest.TestCase):
                             TERRAIN_CUTOUT="true")
         self.assertEqual((got["mirror_dmr5_asset"], got["mirror_dmr5_tiles"]), ("ugkk-vysoke_tatry.tif", ""))
 
+    def test_a_range_across_a_border_refills_what_goes_on_beyond_it(self):
+        ugkk = {"dem-ugkk": ["ugkk-vysoke_tatry.tif:5"]}
+        got, _ = self.check(terrain="dmr5", AREA_KEY="vysoke_tatry", AREA_BBOX=BBOX, TERRAIN_CUTOUT="true",
+                            DEM_FILL="sonny", stores=ugkk)
+        self.assertEqual((got["mirror_fill"], got["mirror_terrain"]), ("sonny", ""))
+        filled, _ = self.check(terrain="dmr5", AREA_KEY="vysoke_tatry", AREA_BBOX=BBOX, TERRAIN_CUTOUT="true",
+                               DEM_FILL="sonny", stores={**ugkk, "dem-sonny": [f"N49E019.tif:{BIG}",
+                                                                              f"N49E020.tif:{BIG}"]})
+        self.assertEqual(filled["mirror_fill"], "")
+        self.assertNotEqual(filled["demkey_terrain"], got["demkey_terrain"], "a refill builds the model again")
+
     def test_rocks_from_dmr5_read_drive_directly(self):
         got, said = self.check(rocks="dmr5")
         self.assertEqual((got["mirror_rocks"], got["demkey_rocks"]), ("", ""))

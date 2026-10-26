@@ -12,7 +12,7 @@
 #   SRC_CONTOURS=dmr5 SRC_ROCKS=dmr5 SRC_TERRAIN=dmr5 \
 #   GDRIVE_CREDENTIALS=… workers/dem/check.sh
 #
-# Into $GITHUB_OUTPUT: `demkey_<layer>`, `mirror_<layer>`, `mirror_dmr5_area`,
+# Into $GITHUB_OUTPUT: `demkey_<layer>`, `mirror_<layer>`, `mirror_fill`, `mirror_dmr5_area`,
 # `mirror_dmr5_asset`, `mirror_dmr5_tiles`.
 set -euo pipefail
 
@@ -29,6 +29,7 @@ OUT="${GITHUB_OUTPUT:-/dev/null}"
 layer_area_key() {
   case "$1" in
     terrain) [ "${TERRAIN_CUTOUT:-false}" = true ] && echo "$AREA_KEY" || echo whole ;;
+    fill) echo whole ;;
     *) echo "$AREA_KEY" ;;
   esac
 }
@@ -156,6 +157,18 @@ PY
   ' | sha256sum | cut -c1-12)
 }
 
+# a range across a border: what goes on beyond it is in every layer's key
+FILLKEY=""
+MIRROR_FILL=""
+if [ -n "${DEM_FILL:-}" ]; then
+  DEMKEY=""
+  NEED_SRC=""
+  check_source fill "$DEM_FILL"
+  FILLKEY="$DEMKEY"
+  MIRROR_FILL="$NEED_SRC"
+fi
+echo "mirror_fill=$MIRROR_FILL" >> "$OUT"
+
 for pair in \
   "contours:${SRC_CONTOURS:-}" \
   "rocks:${SRC_ROCKS:-}" \
@@ -170,6 +183,9 @@ for pair in \
   # an empty source = the layer is off (or rocks come from hillshading)
   elif [ -n "$src" ] && [ "$src" != 'none' ] && [ "$src" != 'ziadne' ]; then
     check_source "$layer" "$src"
+  fi
+  if [ -n "$FILLKEY" ]; then
+    DEMKEY=$(printf '%s %s' "$DEMKEY" "$FILLKEY" | sha256sum | cut -c1-12)
   fi
   echo "demkey_$layer=$DEMKEY" >> "$OUT"
   echo "mirror_$layer=$NEED_SRC" >> "$OUT"
