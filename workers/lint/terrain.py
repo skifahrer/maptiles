@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(_WORKERS, "lib"))
 import cell  # noqa: E402
 
 # zooms hillshading really runs on
-ZOOMS = range(5, 17)
+ZOOMS = range(5, 18)
 
 
 def main():

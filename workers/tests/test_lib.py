@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from unittest import mock
 
 from load import worker
 
@@ -71,6 +72,35 @@ class Cell(unittest.TestCase):
         self.assertEqual(cell.terrain_zoom_for(10_000, lo=5), 5)
         self.assertEqual(cell.terrain_zoom_for(0.01), 16)
         self.assertEqual(cell.terrain_zoom_for(0.01, hi=14), 14)
+
+
+class CellMetres(unittest.TestCase):
+    def measure(self, wkt, step=0.000013739492018):
+        info = {"geoTransform": [19.9, step, 0, 49.25, 0, -step],
+                "coordinateSystem": {"wkt": wkt}}
+        done = subprocess.CompletedProcess([], 0, stdout=json.dumps(info))
+        with mock.patch.object(cell.subprocess, "run", return_value=done):
+            return cell.dem_cell_metres("dem.tif", 49.17)
+
+    def test_geographic_in_metres(self):
+        dx, dy = self.measure('GEOGCRS["WGS 84",DATUM["World Geodetic System 1984"]]')
+        self.assertAlmostEqual(dx, 1.0, delta=0.05)
+        self.assertAlmostEqual(dy, 1.52, delta=0.05)
+
+    def test_compound_with_egm2008_in_metres(self):
+        dx, _ = self.measure('COMPOUNDCRS["WGS 84 + EGM2008 height",\n'
+                             '    GEOGCRS["WGS 84",DATUM["World Geodetic System 1984"]],\n'
+                             '    VERTCRS["EGM2008 height"]]')
+        self.assertAlmostEqual(dx, 1.0, delta=0.05)
+        self.assertEqual(cell.resampling(cell.tile_m_per_px(16, 49.17), dx), "cubicspline")
+
+    def test_wkt1_compound_in_metres(self):
+        dx, _ = self.measure('COMPD_CS["WGS 84 + EGM2008 height",GEOGCS["WGS 84"],VERT_CS["EGM2008"]]')
+        self.assertAlmostEqual(dx, 1.0, delta=0.05)
+
+    def test_projected_kept(self):
+        dx, dy = self.measure('PROJCRS["ETRS89 / LAEA Europe"]', step=5.0)
+        self.assertEqual((dx, dy), (5.0, 5.0))
 
 
 class ContourBlocks(unittest.TestCase):

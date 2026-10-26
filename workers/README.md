@@ -1025,7 +1025,7 @@ viac ani nejde (1° v 1 m má ~48 GB). Pohorie je ale malé, tak sa preň robí
 |---|---|---|
 | vrstevnice | 5 m, do z14 | **2 m**, do **z16** (hlavné po 20 m, polovičné po 10 m) |
 | skaly | `rock_res: auto` | to isté, z toho istého sklonu |
-| výškový model (tieňovanie, 3D) | 5 m dlaždice, z13 – z15 | **výrez v 1 m**, do **z16** |
+| výškový model (tieňovanie, 3D) | 5 m dlaždice, z13 – z15 | **výrez v 1 m**, do **z17** |
 
 Pohoria sú vo [`workers/data/mountains.json`](data/mountains.json): krajina
 a výrez z `areas.json` (meno, bbox a DMR 5.0 v 1 m pod tým istým menom, aký
@@ -1033,6 +1033,11 @@ si berie testovací výrez). Workflow volá **ten istý `dem-layers.yml`** ako
 build mapy, s `mountain: true` – vtedy si aj tieňovanie berie model vo tvare
 výrezu (`TERRAIN_CUTOUT`, v kľúči cache aj v mene assetu `-cut`), nie 5 m
 dlaždice, a vrstevnice nevypisujú varovanie „len výrez, nie na nasadenie“.
+Výškový model ide do **z17**: pixel má 0,8 m, je teda jemnejší než 1 m bunka
+LiDARu, z ktorého sa počítajú skaly – 3D reliéf má tú istú kresbu ako skalné
+steny. Pri z16 (1,6 m) splývali dve bunky do jedného pixla. Každý zoom je
+štvornásobok, preto má model v pohorí 55 % rozpočtu (`BUDGET_TERRAIN_PCT`) a
+väčšie pohorie, ktoré sa doňho nezmestí, skončí o zoom nižšie s varovaním.
 Výrez nesmie spadnúť na Sonnyho (`ugkk_fallback: false`): pohorie z 20 m
 modelu by nebolo jemnejšie než jeho kraj.
 
