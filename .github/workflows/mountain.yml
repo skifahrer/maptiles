@@ -75,11 +75,12 @@ env:
   # what makes a mountain package finer than its region's layers
   MOUNTAIN_OPTIONS: >-
     contour_interval=2 contour_maxzoom=16 contour_maxzoom_cap=16
-    contour_lowland_m=0 terrain_maxzoom=16 size_limit_mb=2000
+    contour_lowland_m=0 terrain_maxzoom=17 size_limit_mb=2000
   # shares of `size_limit_mb`; no Pages here, so the height model gets the most
   BUDGET_CONTOURS_PCT: "25"
   BUDGET_ROCKS_PCT: "15"
-  BUDGET_TERRAIN_PCT: "40"
+  # z17 (0.8 m pixel) shows the 1 m LiDAR the rocks come from; it is 4× z16
+  BUDGET_TERRAIN_PCT: "55"
   # `workers/features/build.sh` reads it, as the region build gives it
   BUDGET_FEATURES_PCT: "4"
 
