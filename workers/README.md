@@ -105,7 +105,7 @@ Mapa · Build svet            základná mapa CELÉHO sveta – podklad pod výb
                              ▲ NIE z planet.osm.pbf (80 GB sa na runner nezmestí)
                              ▲ cesty, sídla ani terén v nej nie sú
 
-Mapa · Build mountain        JEDNO POHORIE v detaile: vrstevnice po 2 m,
+Mapa · Build mountain        JEDNO POHORIE v detaile: vrstevnice po 5 m,
 package (manuálne, pohorie)  skaly a výškový model z DMR 5.0 v 1 m, cesty,
                              chodníky, vodstvo a body z OSM, letecké snímky
                              leta a zimy – aj za hranicou (Tatry v Poľsku)
