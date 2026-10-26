@@ -223,7 +223,7 @@ export const THEMES = {
     aerodromeIcon: "#6a6a80",
     onewayIcon: "#8a7a6a",
     roadLimit: "#b02a1a",
-    houseText: "#a09488",
+    houseText: "#6b6157",
     // hlavná skupina bodov typu mapy, nech sa dá zvýrazniť zvlášť
     historicPoi: "#8a4a2a",
     miningPoi: "#5a5a6a",
@@ -349,7 +349,7 @@ export const THEMES = {
     aerodromeIcon: "#8a8ab0",
     onewayIcon: "#7a7a90",
     roadLimit: "#c0503c",
-    houseText: "#6a6678",
+    houseText: "#aba6bb",
     historicPoi: "#d08a5a",
     miningPoi: "#9a9ab0",
     skiPoi: "#5ad0e8",
@@ -472,7 +472,7 @@ export const THEMES = {
     aerodromeIcon: "#4a5a7a",
     onewayIcon: "#6a5a45",
     roadLimit: "#8f2414",
-    houseText: "#8a7a60",
+    houseText: "#5e5240",
     historicPoi: "#8a3a10",
     miningPoi: "#5a5548",
     skiPoi: "#0894b8",
@@ -595,7 +595,7 @@ export const THEMES = {
     aerodromeIcon: "#7a7a95",
     onewayIcon: "#a89080",
     roadLimit: "#d4604a",
-    houseText: "#b0a294",
+    houseText: "#7a6658",
     historicPoi: "#a06a4a",
     miningPoi: "#8a8078",
     skiPoi: "#7ab8c0",
@@ -5492,13 +5492,14 @@ export function buildStyle({
       layout: {
         "text-field": ["get", "housenumber"],
         "text-font": REG,
-        "text-size": zl([[17, 9], [20, 12]]),
+        "text-size": zl([[17, 10], [20, 13]]),
         "text-allow-overlap": false
       },
       paint: {
         "text-color": c.houseText,
         "text-halo-color": c.textHalo,
-        "text-halo-width": 1
+        // read over a building's roof, not bare ground
+        "text-halo-width": 1.5
       }
     },
     [
