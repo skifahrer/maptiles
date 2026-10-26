@@ -5164,6 +5164,8 @@ export function buildStyle({
       id: "park-name",
       type: "symbol",
       "source-layer": "park",
+      // the outline is cut per tile, so labelling it repeats the name on every tile
+      filter: ["==", ["geometry-type"], "Point"],
       minzoom: 11,
       layout: {
         "text-field": nameExpr,
