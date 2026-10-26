@@ -2,6 +2,7 @@
 """How many metres one cell is – and what follows from it (no numpy: the lint job runs it)."""
 import json
 import math
+import re
 import subprocess
 
 # Web Mercator metres are equatorial, so scale to our latitude
@@ -69,6 +70,11 @@ def resampling(px_m, cell_m):
     return "cubicspline"
 
 
+# a compound CRS (`EPSG:4326+3855`, heights over EGM2008) is in degrees too
+_GEOGRAPHIC = re.compile(r'\s*(?:BOUNDCRS\[\s*SOURCECRS\[\s*)?'
+                         r'(?:(?:COMPOUNDCRS|COMPD_CS)\[\s*"[^"]*"\s*,\s*)?(?:GEOGCRS|GEOGCS)\[')
+
+
 def dem_cell_metres(dem, lat=DEFAULT_LAT):
     """Source DEM cell in metres, measured from the raster: `(dx, dy)` or `(None, None)`."""
     try:
@@ -78,7 +84,7 @@ def dem_cell_metres(dem, lat=DEFAULT_LAT):
         gt = info["geoTransform"]
         wkt = info.get("coordinateSystem", {}).get("wkt", "")
         dx, dy = abs(gt[1]), abs(gt[5])
-        if wkt.startswith("GEOGCRS") or wkt.startswith("GEOGCS"):
+        if _GEOGRAPHIC.match(wkt):
             return (dx * M_PER_DEG_LON_EQ * math.cos(math.radians(lat)),
                     dy * M_PER_DEG_LAT)
         return dx, dy
