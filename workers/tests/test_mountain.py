@@ -160,6 +160,16 @@ class Manifest(unittest.TestCase):
                          ("tiles/vysoke_tatry-terrain.pmtiles", 16, True))
         self.assertEqual(catalog.tiles_paths(got, reg)["terrain"], "tiles/vysoke_tatry-terrain.pmtiles")
 
+    def test_borders_and_nature_are_the_boundaries_package(self):
+        site = self.site("range-boundaries")
+        with env(REGION_KEY="vysoke_tatry", AREA_BBOX="19.9,49.09,20.32,49.32", BOUNDARIES_MAXZOOM="14"):
+            got = manifest.manifest(site)
+        reg = got["regions"]["vysoke_tatry"]
+        self.assertEqual((reg["boundaries"], reg["boundaries_maxzoom"]),
+                         ("tiles/vysoke_tatry-range-boundaries.pmtiles", 14))
+        self.assertEqual(catalog.tiles_paths(got, reg)["boundaries"],
+                         "tiles/vysoke_tatry-range-boundaries.pmtiles")
+
     def test_the_app_gets_the_outline(self):
         site = self.site("terrain")
         with env(REGION_KEY="vysoke_tatry", AREA_BBOX="19.9,49.09,20.32,49.32"):

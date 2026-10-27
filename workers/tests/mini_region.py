@@ -114,6 +114,18 @@ def build():
                    admin_level=level, name=name, **{"name__de": name + " (de)"})
     o.node(17.145, 48.138, place="village", name="Malá Obec", population="900", **{"name__de": "Kleindorf"})
 
+    # a range's borders: a settlement part, a park, a mountain range, a ridge, a valley
+    part = o.way(o.ring(square(17.145, 48.14, 600), every_m=25))
+    o.relation([("w", part, "outer")], type="boundary", boundary="administrative",
+               admin_level="11", name="Osada")
+    park = o.way(o.ring(square(17.16, 48.13, 2000), every_m=25))
+    o.relation([("w", park, "outer")], type="boundary", boundary="national_park",
+               protect_class="2", name="Národný park")
+    unit = o.way(o.ring(square(17.15, 48.13, 3000), every_m=40))
+    o.relation([("w", unit, "outer")], type="boundary", boundary="geomorphological-unit", name="Pohorie")
+    o.way(o.line([(17.17, 48.142), (17.185, 48.146)]), natural="ridge", name="Hrebeň")
+    o.way(o.line([(17.165, 48.12), (17.18, 48.128)]), natural="valley", name="Dolina")
+
     # water: a river, a lake multipolygon, a spring, a lake outside
     o.way(o.line([(17.105, 48.115), (17.15, 48.122), (17.198, 48.126)]),
           waterway="river", name="Mlynský potok", **{"name__en": "Mill Brook"})

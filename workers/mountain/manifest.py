@@ -47,7 +47,7 @@ def manifest(site):
     tiles = os.path.join(site, "tiles")
     has = {kind: os.path.isfile(os.path.join(tiles, f"{key}-{kind}.pmtiles"))
            for kind in ("contours", "rocks", "terrain", "transport", "paths", "water",
-                        "points", "aerial_summer", "aerial_winter")}
+                        "points", "range-boundaries", "aerial_summer", "aerial_winter")}
     region = {"name": env("MOUNTAIN_NAME", key),
               "bbox": [float(v) for v in env("AREA_BBOX").split(",")],
               "mountain": True}
@@ -77,6 +77,10 @@ def manifest(site):
         if has[kind]:
             region[kind] = f"tiles/{key}-{kind}.pmtiles"
             region[f"{kind}_maxzoom"] = int(env(f"{kind.upper()}_MAXZOOM", default))
+    # the range's own schema, so its file is no region's `boundaries` to the app's atlas
+    if has["range-boundaries"]:
+        region["boundaries"] = f"tiles/{key}-range-boundaries.pmtiles"
+        region["boundaries_maxzoom"] = int(env("BOUNDARIES_MAXZOOM", "14"))
     sprite = sorted(os.path.join("tiles", os.path.basename(p))
                     for p in glob.glob(os.path.join(tiles, f"{key}-roadsigns*")))
     if has["transport"] and sprite:
@@ -101,8 +105,8 @@ def manifest(site):
 def main(args):
     site = args[0] if args else "_site"
     data = manifest(site)
-    held = ("contours", "rocks", "transport", "paths", "water", "points", "aerial_summer",
-            "aerial_winter")
+    held = ("contours", "rocks", "transport", "paths", "water", "points", "boundaries",
+            "aerial_summer", "aerial_winter")
     if not any(k in data["regions"][data["default_region"]] for k in held) \
             and "dem" not in data:
         raise SystemExit(f"::error::{site}/tiles holds none of the mountain's layers – "

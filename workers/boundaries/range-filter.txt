@@ -1,0 +1,16 @@
+# PBF prefilter for `range.yml` (`osmium tags-filter`): `filter.txt`, and the range's nature.
+# `r/` is needed: a park's border is a relation of ways without the tag.
+
+r/boundary=administrative
+w/boundary=administrative
+n/place
+r/place
+
+# parks, reserves and mountain ranges; OSM spells the unit both ways
+r/boundary=national_park,protected_area,geomorphological-unit,geomorphological_unit
+w/boundary=national_park,protected_area,geomorphological-unit,geomorphological_unit
+r/natural=mountain_range
+w/natural=mountain_range
+
+# ridges, arêtes and valleys are lines
+w/natural=ridge,arete,valley

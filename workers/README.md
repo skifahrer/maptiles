@@ -1079,6 +1079,16 @@ aj meno assetu výškového modelu nesú jej hash. Manifest ju dá aplikácii
 (`regions.<pohorie>.outline`), aby pohorie kreslila namiesto kraja len v nej;
 `maps.json` má ďalej len bbox. Skúšobný štvorec (`test_km2`) ostáva obdĺžnikom.
 
+**Hranice a prírodné celky** (`boundaries`) robí ten istý `boundaries.yml` ako
+kraj, ale so schémou pohoria `workers/boundaries/range.yml` (`schema: range`,
+filter `range-filter.txt`, do z14): krajské vrstvy tak, ako sú, k tomu časti
+obcí (`admin_level` 9–11: Štrbské Pleso, Smokovce, Kalatówki), národné parky
+a rezervácie aj geomorfologické celky ako pomenované plochy (`nature_area`,
+`nature_label`) a hrebene, arety a doliny ako pomenované čiary (`ridge`,
+`valley`). Súbor je `<pohorie>-range-boundaries.pmtiles`, aby ho atlas aplikácie
+nemiešal s balíkom `boundaries` kraja – kreslí ho aplikácia sama, nie štýl.
+`tests/test_boundaries.py` drží krajské bloky oboch schém rovnaké.
+
 **Cesty a chodníky** (`roads`, `paths`) robí ten istý `transport.yml` ako kraj,
 z toho zlúčeného PBF. Smerovaciu sieť pohorie nemá – navigácia ide z krajov.
 
