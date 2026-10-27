@@ -1049,17 +1049,20 @@ mapu nemá: kreslí sa sám, alebo cez kraje, ktoré pretína. Na Drive leží
 v `mountains/<pohorie>/`. Pohorie, ktoré ešte visí pod krajinou
 (`slovensko.mountains`), presunie do kategórie každý zápis katalógu (`migrate`).
 
-**Pohorie ide cez hranicu.** Vysoké, Západné a Belianske Tatry aj Pieniny ležia
-aj v Poľsku: v `mountains.json` majú `countries` (ISO) a `osm` – výrezy osm.fr,
-z ktorých sa ich OSM vrstvy robia. `workers/mountain/pbf.sh` každý oreže na bbox
-pohoria a zlúči ich (`osmium merge` nechá cestu na hranici raz); keď osm.fr
-neodpovie, skúsi ten istý výrez na Geofabriku. Bbox Vysokých a Západných Tatier
-siaha na sever po 49,32°, aby v ňom bola poľská strana.
+**Pohorie končí tam, kde výškový model.** DMR 5.0 je len Slovensko, a tak
+pohorie, ktoré cez hranicu siaha, končí na nej: jeho okraj je orezaný na pokrytie
+modelu (`coverage_osm` v `dem-sources.json`, relácia Slovenska 14296). Vysoké
+a Západné Tatry aj Pieniny tak nemajú poľskú stranu z 20 m modelu, ktorá by
+vedľa lidaru vyzerala ako iná mapa. V `mountains.json` majú `countries` (ISO)
+a `osm` – výrezy osm.fr, z ktorých sa robia OSM vrstvy; `workers/mountain/pbf.sh`
+každý oreže na bbox a zlúči ich (`osmium merge` nechá cestu na hranici raz), keď
+osm.fr neodpovie, skúsi Geofabrik. Pohorie v Poľsku by pridalo výrez, nie okraj.
 
-DMR 5.0 sa na hranici končí, preto výškový model pohoria dopĺňa Sonny 20 m
+Bbox ostáva rámec na sťahovanie (výrez DMR 5.0, snímky); kreslí sa okraj. Pás
+za okrajom dopĺňa Sonny 20 m
 (`DEM_FILL`, `workers/dem/backfill.py`): VRT má Sonnyho pod výrezom, výrez vyhráva
-všade, kde má výšku. V Poľsku sú teda vrstevnice, tieňovanie a 3D z 20 m modelu,
-na Slovensku z 1 m. Výplň dostane projekciu výrezu (`EPSG:4326+3855`) – inak
+všade, kde má výšku – za okrajom je to len pixel, o ktorý výškový model presahuje.
+Výplň dostane projekciu výrezu (`EPSG:4326+3855`) – inak
 ho `gdalbuildvrt` ako „inú projekciu“ vynechá a celé pohorie je z 20 m, čo sa
 stalo prvým buildom s povinnou výplňou. Výplň je v kľúči cache aj v mene assetu
 (`-fsonny2`; `-fsonny` sú tie bez výrezu). Výškový model pohoria siaha pixel za
@@ -1068,11 +1071,12 @@ bbox (`--edge=1`, `-e1`), aby ho aplikácia mohla odrezať presne na čiare bbox
 s `area: vysoke_tatry`, dovtedy pás pri hranici dopĺňa Sonny.
 
 **Okraj pohoria.** Pohorie s `outline` v `mountains.json` nekončí na obdĺžniku
-bboxu, ale na hranici území z OSM: Vysoké Tatry na hranici TANAP-u a poľského
-TPN (relácie 6757027 a 2226518), orezanej na bbox. `workers/mountain/outline.py
---mountain=vysoke_tatry` ju stiahne z Nominatimu, zlúči, zahodí ostrovčeky pod
-1 km², zjednoduší na ~11 m a zapíše do `workers/data/outlines/<pohorie>.geojson`
-(v repozitári, aby bol build opakovateľný). Plán z nej spraví `data/region.geojson`
+bboxu, ale na hranici území z OSM: Vysoké Tatry na hranici TANAP-u (relácia
+6757027), orezanej na bbox a na pokrytie DMR 5.0. `workers/mountain/outline.py
+--all` urobí okraj každého pohoria: územia z OSM (alebo bbox), v bboxe a v pokrytí
+modelu; stiahne ich z Nominatimu, zahodí ostrovčeky pod 1 km², zjednoduší na
+~11 m a zapíše do `workers/data/outlines/<pohorie>.geojson` (v repozitári, aby bol
+build opakovateľný). Pohorie celé v pokrytí a bez území súbor nemá – je to bbox. Plán z nej spraví `data/region.geojson`
 a `.poly`, takže výškový model, vrstevnice, skaly aj OSM vrstvy sa orežú na ňu;
 letecké snímky orezáva `aerial.py --poly`. Kľúč výškových vrstiev (`shapekey`)
 aj meno assetu výškového modelu nesú jej hash. Manifest ju dá aplikácii
