@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Resolve a mountain package to its country, cut-out, keys and outline (`data/region.geojson`).
 
+The outline is `data/outlines/<range>.geojson` where the range has one, else its box.
+
     python3 workers/mountain/plan.py --mountain=vysoke_tatry --out=$GITHUB_OUTPUT
 """
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -38,17 +41,48 @@ def outline(bbox):
          "geometry": {"type": "Polygon", "coordinates": [ring]}}]}
 
 
+def outline_file(key):
+    path = os.path.join(_DATA, "outlines", f"{key}.geojson")
+    return path if os.path.isfile(path) else None
+
+
+def shape(key, bbox):
+    """The range's own outline where it has one, else its box."""
+    path = outline_file(key)
+    if not path:
+        return outline(bbox)
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def rings(fc):
+    """`[(ring, is_hole)]` of every polygon in a FeatureCollection."""
+    out = []
+    for feat in fc["features"]:
+        geom = feat["geometry"]
+        polys = [geom["coordinates"]] if geom["type"] == "Polygon" else geom["coordinates"]
+        out += [(ring, i > 0) for poly in polys for i, ring in enumerate(poly)]
+    return out
+
+
 def osm_urls(entry, country):
     """Every extract the range's OSM layers are cut from; its country's when it names none."""
     paths = entry.get("osm") or [f"{country['osmfr']['dir']}/{country['osmfr']['slugs'][0]}"]
     return [f"{OSMFR}/{p}.osm.pbf" for p in paths]
 
 
-def poly(bbox):
-    """The cut-out as an osmium/Planetiler `.poly`, for the OSM layers."""
-    ring = outline(bbox)["features"][0]["geometry"]["coordinates"][0]
-    points = "".join(f"   {x:.7f} {y:.7f}\n" for x, y in ring)
-    return f"mountain\n1\n{points}END\nEND\n"
+def poly(fc):
+    """The outline as an osmium/Planetiler `.poly`, for the OSM layers."""
+    text = "mountain\n"
+    for i, (ring, hole) in enumerate(rings(fc), start=1):
+        points = "".join(f"   {x:.7f} {y:.7f}\n" for x, y in ring)
+        text += f"{'!' if hole else ''}{i}\n{points}END\n"
+    return text + "END\n"
+
+
+def digest(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()[:8]
 
 
 def plan(key, test_km2=0.0, test_at="", mountains=None, areas=None, regions=None):
@@ -67,6 +101,7 @@ def plan(key, test_km2=0.0, test_at="", mountains=None, areas=None, regions=None
     bbox = [float(v) for v in areas[cut]["bbox"]]
     name = areas[cut]["name"]
     region_key, area_key = key, cut
+    drawn = outline_file(key) if test_km2 <= 0 else None
     if test_km2 > 0:
         bbox = area.test_square(bbox, test_km2, test_at)
         # a test never shares a cache, store asset or catalog node with the real one
@@ -81,6 +116,8 @@ def plan(key, test_km2=0.0, test_at="", mountains=None, areas=None, regions=None
         "name": name,
         "bbox": ",".join(f"{v:g}" for v in bbox),
         "bboxkey": bbox_key(bbox),
+        # what the layers clip to: the outline's own key, so a new edge recomputes them
+        "shapekey": bbox_key(bbox) + (f"_o{digest(drawn)}" if drawn else ""),
         "km2": f"{area.bbox_km2(*bbox):.0f}",
         "osm": " ".join(osm_urls(entry, regions[country])),
         "countries": ",".join(entry.get("countries") or []),
@@ -100,10 +137,11 @@ def main():
     got = plan(args.mountain, args.test_km2, args.test_at)
     os.makedirs(os.path.dirname(args.geojson) or ".", exist_ok=True)
     bbox = [float(v) for v in got["bbox"].split(",")]
+    drawn = shape(got["key"], bbox)
     with open(args.geojson, "w") as f:
-        json.dump(outline(bbox), f)
+        json.dump(drawn, f)
     with open(args.poly, "w") as f:
-        f.write(poly(bbox))
+        f.write(poly(drawn))
     text = "".join(f"{k}={v}\n" for k, v in got.items())
     sys.stdout.write(text)
     if args.out:

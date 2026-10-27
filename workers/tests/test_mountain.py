@@ -15,6 +15,7 @@ ROOT = os.path.dirname(WORKERS)
 plan = worker("mountain/plan.py")
 manifest = worker("mountain/manifest.py")
 aerial = worker("mountain/aerial.py")
+outline = worker("mountain/outline.py")
 names = worker("deploy/names.py")
 catalog = worker("deploy/catalog.py")
 
@@ -85,10 +86,34 @@ class Plan(unittest.TestCase):
         self.assertEqual(ring, [[1, 2], [3, 2], [3, 4], [1, 4], [1, 2]])
 
     def test_poly_closes_the_bbox_for_osmium(self):
-        lines = plan.poly([1, 2, 3, 4]).splitlines()
+        lines = plan.poly(plan.outline([1, 2, 3, 4])).splitlines()
         self.assertEqual(lines[:2], ["mountain", "1"])
         self.assertEqual(lines[2].split(), lines[6].split())
         self.assertEqual(lines[-2:], ["END", "END"])
+
+    def test_poly_marks_a_hole(self):
+        square = [[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]]
+        hole = [[1, 1], [2, 1], [2, 2], [1, 1]]
+        fc = {"features": [{"geometry": {"type": "Polygon", "coordinates": [square, hole]}}]}
+        lines = plan.poly(fc).splitlines()
+        self.assertIn("!2", lines)
+
+    def test_the_high_tatras_follow_the_parks(self):
+        drawn = plan.shape("vysoke_tatry", [19.9, 49.09, 20.32, 49.32])
+        rings = plan.rings(drawn)
+        self.assertEqual([hole for _, hole in rings], [False])
+        self.assertGreater(len(rings[0][0]), 100, "the parks' edge, not the box's four corners")
+        lons = [x for x, _ in rings[0][0]]
+        lats = [y for _, y in rings[0][0]]
+        self.assertTrue(19.9 <= min(lons) and max(lons) <= 20.32 and 49.09 <= min(lats)
+                        and max(lats) <= 49.32, "inside the box")
+
+    def test_an_outline_has_a_key_of_its_own(self):
+        got = plan.plan("vysoke_tatry")
+        self.assertTrue(got["shapekey"].startswith(got["bboxkey"] + "_o"))
+        self.assertEqual(plan.plan("nizke_tatry")["shapekey"], plan.plan("nizke_tatry")["bboxkey"])
+        self.assertEqual(plan.plan("vysoke_tatry", test_km2=4)["shapekey"],
+                         plan.plan("vysoke_tatry", test_km2=4)["bboxkey"], "a test square is a box")
 
     def test_the_high_tatras_cross_into_poland(self):
         got = plan.plan("vysoke_tatry")
@@ -134,6 +159,15 @@ class Manifest(unittest.TestCase):
         self.assertEqual((got["dem"], got["dem_maxzoom"], got["terrain_3d"]),
                          ("tiles/vysoke_tatry-terrain.pmtiles", 16, True))
         self.assertEqual(catalog.tiles_paths(got, reg)["terrain"], "tiles/vysoke_tatry-terrain.pmtiles")
+
+    def test_the_app_gets_the_outline(self):
+        site = self.site("terrain")
+        with env(REGION_KEY="vysoke_tatry", AREA_BBOX="19.9,49.09,20.32,49.32"):
+            reg = manifest.manifest(site)["regions"]["vysoke_tatry"]
+        self.assertEqual(len(reg["outline"]), 1, "one polygon")
+        self.assertGreater(len(reg["outline"][0][0]), 100)
+        with env(REGION_KEY="nizke_tatry", AREA_BBOX="19.05,48.83,20.2,49.08"):
+            self.assertNotIn("outline", manifest.manifest(site)["regions"]["nizke_tatry"])
 
     def test_roads_paths_and_photos(self):
         site = self.site("transport", "paths")
@@ -313,6 +347,26 @@ class Extracts(unittest.TestCase):
         self.assertEqual(sorted(i for i in ids if i.startswith("n")), ["n1", "n2", "n3"])
 
 
+@needs("shapely")
+class Outline(unittest.TestCase):
+    def square(self, w, s, e, n):
+        return {"type": "Polygon", "coordinates": [[[w, s], [e, s], [e, n], [w, n], [w, s]]]}
+
+    def test_two_parks_become_one_edge_inside_the_box(self):
+        parks = [self.square(19.8, 49.0, 20.1, 49.25), self.square(20.1, 49.1, 20.4, 49.3),
+                 self.square(20.2, 49.299, 20.201, 49.3)]
+        got = outline.outline(parks, [19.9, 49.09, 20.32, 49.32], [1, 2, 3])
+        geom = got["features"][0]["geometry"]
+        self.assertEqual(geom["type"], "Polygon", "joined, the islet dropped")
+        lons = [x for x, _ in geom["coordinates"][0]]
+        self.assertEqual((min(lons), max(lons)), (19.9, 20.32))
+        self.assertEqual(got["features"][0]["properties"]["osm_relations"], [1, 2, 3])
+
+    def test_nothing_in_the_box_stops(self):
+        with self.assertRaises(SystemExit):
+            outline.outline([self.square(10, 10, 11, 11)], [19.9, 49.09, 20.32, 49.32], [1])
+
+
 class Aerial(unittest.TestCase):
     def test_every_tile_over_the_box_shallow_first(self):
         got = aerial.wanted([20.16, 49.17, 20.17, 49.175], 14, 15)
@@ -344,6 +398,27 @@ class Aerial(unittest.TestCase):
             alpha = got.getchannel("A")
             self.assertEqual(alpha.getpixel((0, 0)), 0)
             self.assertEqual(alpha.getpixel(((left + right) // 2, (top + bottom) // 2)), 255)
+
+    @needs("PIL")
+    def test_photos_follow_the_outline(self):
+        from PIL import Image
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        bbox = [19.9, 49.09, 20.32, 49.32]
+        rings = aerial._mask.rings_from_geojson(
+            os.path.join(WORKERS, "data", "outlines", "vysoke_tatry.geojson"))
+        jpeg = os.path.join(tmp, "t.jpg")
+        Image.new("RGB", (256, 256), (40, 90, 40)).save(jpeg, "JPEG")
+        gerlach = (int(v) for v in aerial.lonlat_to_tile(20.134, 49.164, 14))
+        self.assertEqual(aerial.cut(jpeg, bbox, 14, *gerlach, rings), jpeg)
+        zdiar = (int(v) for v in aerial.lonlat_to_tile(20.27, 49.275, 15))
+        self.assertIsNone(aerial.cut(jpeg, bbox, 15, *zdiar, rings), "in the box, beyond the parks")
+        with Image.open(aerial.cut(jpeg, bbox, 8, 142, 87, rings)) as got:
+            alpha = got.getchannel("A")
+            px = lambda lon, lat: tuple(int((v - o) * 256) for v, o in
+                                        zip(aerial.lonlat_to_tile(lon, lat, 8), (142, 87)))
+            self.assertEqual(alpha.getpixel(px(20.134, 49.164)), 255)
+            self.assertEqual(alpha.getpixel(px(20.27, 49.275)), 0)
 
     def test_summer_has_a_source(self):
         self.assertTrue(aerial.season("summer")["url"].endswith("{z}/{x}/{y}.jpg"))

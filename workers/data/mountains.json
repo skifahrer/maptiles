@@ -9,10 +9,13 @@
     "  country    key in `regions.json` whose data it is mostly made of",
     "  area       the cut-out in `areas.json` – its name, bbox and DMR 5.0 at 1 m",
     "  countries  ISO codes of every country it lies in",
-    "  osm        osm.fr extracts below `/extracts/`, cut to the bbox and merged"
+    "  osm        osm.fr extracts below `/extracts/`, cut to the bbox and merged",
+    "  outline    OSM relations (TANAP, TPN) whose areas inside the bbox are its edge;",
+    "             `workers/mountain/outline.py` writes them to `outlines/<range>.geojson`"
   ],
   "vysoke_tatry": { "country": "slovensko", "area": "vysoke_tatry", "countries": ["SK", "PL"],
-                    "osm": ["europe/slovakia-latest", "europe/poland/malopolskie-latest"] },
+                    "osm": ["europe/slovakia-latest", "europe/poland/malopolskie-latest"],
+                    "outline": [6757027, 2226518] },
   "belianske_tatry": { "country": "slovensko", "area": "belianske_tatry", "countries": ["SK", "PL"],
                        "osm": ["europe/slovakia-latest", "europe/poland/malopolskie-latest"] },
   "zapadne_tatry": { "country": "slovensko", "area": "zapadne_tatry", "countries": ["SK", "PL"],

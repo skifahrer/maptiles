@@ -96,6 +96,7 @@ jobs:
       area_key: ${{ steps.mountain.outputs.area_key }}
       bbox: ${{ steps.mountain.outputs.bbox }}
       bboxkey: ${{ steps.mountain.outputs.bboxkey }}
+      shapekey: ${{ steps.mountain.outputs.shapekey }}
       km2: ${{ steps.mountain.outputs.km2 }}
       osm: ${{ steps.mountain.outputs.osm }}
       countries: ${{ steps.mountain.outputs.countries }}
@@ -324,6 +325,13 @@ jobs:
           key: aerial-v1-${{ matrix.season }}-${{ needs.plan.outputs.bboxkey }}-z${{ inputs.aerial_maxzoom }}
           restore-keys: aerial-v1-${{ matrix.season }}-${{ needs.plan.outputs.bboxkey }}-
 
+      - name: Download the range outline
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: region-poly
+          path: data
+
       - name: Photos → PMTiles
         id: photos
         env:
@@ -336,7 +344,7 @@ jobs:
           python3 -c 'import pmtiles, PIL' 2>/dev/null \
             || python3 -m pip install --quiet --break-system-packages pmtiles pillow
           python3 workers/mountain/aerial.py --season="$SEASON" --bbox="$BBOX" \
-            --maxzoom="$MAXZOOM" --cache=aerial-cache \
+            --maxzoom="$MAXZOOM" --cache=aerial-cache --poly=data/region.geojson \
             --out="_site/tiles/${KEY}-aerial_${SEASON}.pmtiles"
 
       - name: Tile cache (save)
@@ -371,7 +379,8 @@ jobs:
       area_bbox: ${{ needs.plan.outputs.bbox }}
       area_km2: ${{ needs.plan.outputs.km2 }}
       dem_bbox: ${{ needs.plan.outputs.bbox }}
-      dem_bboxkey: ${{ needs.plan.outputs.bboxkey }}
+      # the layers clip to the outline, so a new edge is a new key
+      dem_bboxkey: ${{ needs.plan.outputs.shapekey }}
       test_km2: ${{ needs.plan.outputs.opt_test_km2 }}
       day: ${{ needs.plan.outputs.day }}
       opt_contours: ${{ needs.plan.outputs.opt_contours }}
