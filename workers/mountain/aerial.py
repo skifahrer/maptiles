@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""A mountain's aerial photos: XYZ JPEG tiles over its box → one raster `.pmtiles`.
+"""A mountain's aerial photos: XYZ JPEG tiles over its box → one raster `.pmtiles`, cut to its outline.
 
     python3 workers/mountain/aerial.py --season=summer --bbox=19.9,49.09,20.32,49.25 \
-        --out=_site/tiles/vysoke_tatry-aerial_summer.pmtiles --cache=aerial-cache
+        --poly=data/region.geojson --out=_site/tiles/vysoke_tatry-aerial_summer.pmtiles
 """
 import argparse
 import importlib.util
@@ -24,6 +24,7 @@ def _load(name, path):
 
 _tiles = _load("shading_tiles", os.path.join(_WORKERS, "rocks-shading", "tiles.py"))
 Fetcher, tile_range, lonlat_to_tile = _tiles.Fetcher, _tiles.tile_range, _tiles.lonlat_to_tile
+_mask = _load("region_mask", os.path.join(_WORKERS, "lib", "region-mask.py"))
 
 
 def season(name, path=os.path.join(_WORKERS, "data", "aerial.json")):
@@ -53,17 +54,38 @@ def window(bbox, z, x, y, size):
     return None if px == [0, 0, size, size] else tuple(px)
 
 
-def cut(path, bbox, z, x, y):
-    """A tile crossing the box's edge, as a WebP clear beyond it; else the JPEG as it is."""
+def outline_mask(rings, z, x, y, size):
+    """The outline's pixels in the tile: 255 inside, 0 beyond, holes clear."""
+    from PIL import Image, ImageDraw  # noqa: PLC0415
+
+    mask = Image.new("L", (size, size), 0)
+    draw = ImageDraw.Draw(mask)
+    for ring, hole in sorted(rings, key=lambda r: r[1]):
+        points = [((tx - x) * size, (ty - y) * size)
+                  for tx, ty in (lonlat_to_tile(lon, lat, z) for lon, lat in ring)]
+        draw.polygon(points, fill=0 if hole else 255)
+    return mask
+
+
+def cut(path, bbox, z, x, y, rings=None):
+    """A tile crossing the edge, as a WebP clear beyond it; inside, the JPEG; beyond, None."""
     from PIL import Image, ImageDraw  # noqa: PLC0415
 
     with Image.open(path) as img:
-        box = window(bbox, z, x, y, img.width)
-        if box is None:
-            return path
-        mask = Image.new("L", img.size, 0)
-        if box[2] > box[0] and box[3] > box[1]:
-            ImageDraw.Draw(mask).rectangle((box[0], box[1], box[2] - 1, box[3] - 1), fill=255)
+        if rings:
+            mask = outline_mask(rings, z, x, y, img.width)
+            low, high = mask.getextrema()
+            if high == 0:
+                return None
+            if low == 255:
+                return path
+        else:
+            box = window(bbox, z, x, y, img.width)
+            if box is None:
+                return path
+            mask = Image.new("L", img.size, 0)
+            if box[2] > box[0] and box[3] > box[1]:
+                ImageDraw.Draw(mask).rectangle((box[0], box[1], box[2] - 1, box[3] - 1), fill=255)
         clear = img.convert("RGBA")
     clear.putalpha(mask)
     out = path + ".cut.webp"
@@ -103,6 +125,7 @@ def main():
     ap.add_argument("--bbox", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--cache", default="aerial-cache")
+    ap.add_argument("--poly", default="", help="the range's outline (GeoJSON); else its box")
     ap.add_argument("--url", default="", help="instead of the season's own")
     ap.add_argument("--maxzoom", default="", help="instead of the season's own")
     # a volunteer server: few connections, and the cache spares it the next run
@@ -118,6 +141,9 @@ def main():
         minzoom = int(conf.get("minzoom", 8))
         maxzoom = int(args.maxzoom or conf.get("maxzoom", 17))
         fetcher = Fetcher(url, os.path.join(args.cache, args.season), jobs=args.jobs, ua="project")
+        rings = _mask.rings_from_geojson(args.poly) if args.poly and os.path.isfile(args.poly) else None
+        if args.poly and not rings:
+            print(f"::warning::No outline at {args.poly} – the photos are cut to the box.")
         tiles = {}
         for z in range(minzoom, maxzoom + 1):
             x0, y0, x1, y1 = tile_range(bbox, z)
@@ -126,7 +152,9 @@ def main():
         for z, x, y in wanted(bbox, minzoom, maxzoom):
             path = fetcher.path(z, x, y)
             if os.path.isfile(path) and os.path.getsize(path) > 0:
-                tiles[(z, x, y)] = cut(path, bbox, z, x, y)
+                kept = cut(path, bbox, z, x, y, rings)
+                if kept:
+                    tiles[(z, x, y)] = kept
         if fetcher.n_fail > len(tiles) * 0.02:
             raise SystemExit(f"::error::{fetcher.n_fail} {args.season} tiles failed – "
                              f"a package with holes isn't published. Run it again; "

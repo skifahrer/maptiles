@@ -47,6 +47,10 @@ ENC_OPT=""
 # a range's heights run a pixel past its box, so the app can cut them on its line
 EDGE=-1
 [ "$CUT_KEY" != whole ] && EDGE=1 && ENC_OPT="${ENC_OPT}-e1"
+# a range is cut to its outline, so a stored one of another edge isn't taken
+if [ "$CUT_KEY" != whole ] && [ -s data/region.geojson ]; then
+  ENC_OPT="${ENC_OPT}-p$(sha256sum data/region.geojson | cut -c1-8)"
+fi
 # a stored filled cut-out from before `-f…2` holds the fill alone
 [ -n "${DEM_FILL:-}" ] && ENC_OPT="${ENC_OPT}-f${DEM_FILL}2"
 # the overlap with the neighbouring region changes the tiles, so it is in the name too

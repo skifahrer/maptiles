@@ -11,6 +11,8 @@ import time
 
 # the style's own number (`poc/web/themes.js`), so the client never invents another
 TERRAIN_EXAGGERATION = 1.3
+OUTLINES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "data", "outlines")
 
 
 def env(name, default=""):
@@ -29,6 +31,17 @@ def number(text):
     return int(value) if value.is_integer() else value
 
 
+def outline(key):
+    """The range's outline as MultiPolygon coordinates, or None for its box."""
+    path = os.path.join(OUTLINES, f"{key}.geojson")
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        geoms = [feat["geometry"] for feat in json.load(f)["features"]]
+    return [poly for g in geoms
+            for poly in ([g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"])]
+
+
 def manifest(site):
     key = env("REGION_KEY")
     tiles = os.path.join(site, "tiles")
@@ -38,6 +51,9 @@ def manifest(site):
     region = {"name": env("MOUNTAIN_NAME", key),
               "bbox": [float(v) for v in env("AREA_BBOX").split(",")],
               "mountain": True}
+    # the app stands the range in for its regions inside this line, not the box
+    if outline(key):
+        region["outline"] = outline(key)
     if has["contours"]:
         region.update(contours=f"tiles/{key}-contours.pmtiles",
                       contours_maxzoom=int(env("CONTOURS_MAXZOOM", "16")),

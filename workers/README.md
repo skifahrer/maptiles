@@ -1067,6 +1067,18 @@ bbox (`--edge=1`, `-e1`), aby ho aplikácia mohla odrezať presne na čiare bbox
 `ugkk-vysoke_tatry.tif` bol z menšieho bboxu – nový urobí „Data · DMR 5.0“
 s `area: vysoke_tatry`, dovtedy pás pri hranici dopĺňa Sonny.
 
+**Okraj pohoria.** Pohorie s `outline` v `mountains.json` nekončí na obdĺžniku
+bboxu, ale na hranici území z OSM: Vysoké Tatry na hranici TANAP-u a poľského
+TPN (relácie 6757027 a 2226518), orezanej na bbox. `workers/mountain/outline.py
+--mountain=vysoke_tatry` ju stiahne z Nominatimu, zlúči, zahodí ostrovčeky pod
+1 km², zjednoduší na ~11 m a zapíše do `workers/data/outlines/<pohorie>.geojson`
+(v repozitári, aby bol build opakovateľný). Plán z nej spraví `data/region.geojson`
+a `.poly`, takže výškový model, vrstevnice, skaly aj OSM vrstvy sa orežú na ňu;
+letecké snímky orezáva `aerial.py --poly`. Kľúč výškových vrstiev (`shapekey`)
+aj meno assetu výškového modelu nesú jej hash. Manifest ju dá aplikácii
+(`regions.<pohorie>.outline`), aby pohorie kreslila namiesto kraja len v nej;
+`maps.json` má ďalej len bbox. Skúšobný štvorec (`test_km2`) ostáva obdĺžnikom.
+
 **Cesty a chodníky** (`roads`, `paths`) robí ten istý `transport.yml` ako kraj,
 z toho zlúčeného PBF. Smerovaciu sieť pohorie nemá – navigácia ide z krajov.
 
