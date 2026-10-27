@@ -44,6 +44,9 @@ ENC_OPT=""
 [ "$BITS" != auto ] && ENC_OPT="${ENC_OPT}-b${BITS}"
 [ "$FMT" != png ] && ENC_OPT="${ENC_OPT}-${FMT}"
 [ "$CUT_KEY" != whole ] && ENC_OPT="${ENC_OPT}-cut"
+# a range's heights run a pixel past its box, so the app can cut them on its line
+EDGE=-1
+[ "$CUT_KEY" != whole ] && EDGE=1 && ENC_OPT="${ENC_OPT}-e1"
 # a stored filled cut-out from before `-f…2` holds the fill alone
 [ -n "${DEM_FILL:-}" ] && ENC_OPT="${ENC_OPT}-f${DEM_FILL}2"
 # the overlap with the neighbouring region changes the tiles, so it is in the name too
@@ -103,7 +106,7 @@ if ! have_tiles; then
   echo "::group::Terrain tiles to z$TZ from model $TDEM, $FMT, fraction bits $BITS (cap ${TBUDGET_MB} MB)"
   # `--poly` stops shading at the region's edge; without a polygon the whole bbox
   python3 workers/terrain/tiles.py --dem="dem/$TDEM/all.vrt" --bbox="$BBOX" \
-    --poly=data/region.geojson \
+    --poly=data/region.geojson --edge="$EDGE" \
     --minzoom=5 --maxzoom="$TZ" --budget-mb="$TBUDGET_MB" --out=terrain-png \
     --format="$FMT" --max-frac-bits="$([ "$BITS" = auto ] && echo -1 || echo "$BITS")"
   # `tiles.py` writes the maxzoom made – the size cap may have lowered it

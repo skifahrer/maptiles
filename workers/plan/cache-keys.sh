@@ -39,7 +39,7 @@ R_OPT=""
 if [ "$TBITS" != auto ]; then T_OPT="${T_OPT}-b${TBITS}"; fi
 if [ "$TFMT" != png ]; then T_OPT="${T_OPT}-${TFMT}"; fi
 # height tiles from the cut-out (a mountain) are other tiles over the same bbox
-if [ "${TERRAIN_CUTOUT:-false}" != false ]; then T_OPT="${T_OPT}-cut${TERRAIN_CUTOUT}"; fi
+if [ "${TERRAIN_CUTOUT:-false}" != false ]; then T_OPT="${T_OPT}-cut${TERRAIN_CUTOUT}-e1"; fi
 # a cut-out filled beyond the border is another model; 2: before it, the fill had dropped the cut
 if [ -n "${DEM_FILL:-}" ]; then
   C_OPT="${C_OPT}-f${DEM_FILL}2"
