@@ -1,0 +1,522 @@
+# Planetiler custom schema – a mountain range's borders: `boundaries.yml` and more.
+# The regional layers as they are, plus settlement parts (`admin_level` 9–11: Štrbské
+# Pleso, Smokovce, Kalatówki), parks, reserves and mountain ranges (`nature_area`,
+# `nature_label`), and the ridges and valleys a hiker names (`ridge`, `valley`).
+# `tests/test_boundaries.py` keeps the regional blocks the same as `boundaries.yml`.
+schema_name: FricoMaps range borders
+schema_description: >-
+  A range's administrative borders down to settlement parts, its parks, reserves and
+  mountain ranges as named areas, and its ridges and valleys as named lines
+attribution: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
+
+sources:
+  osm:
+    type: osm
+    local_path: data/boundaries.osm.pbf
+
+# `admin_level` is a string in OSM but an order, so a number; `population` too
+tag_mappings:
+  admin_level: integer
+  population: long
+
+definitions:
+  # area attributes written ONCE – area and line carry the same
+  - &area_attrs
+    - key: name
+    - key: name_en
+      value:
+        tag_value: "name:en"
+    - key: admin_level
+    - key: ref
+    # `wikidata` links to anything else (our Wikipedia package too)
+    - key: wikidata
+    - key: wikipedia
+    - key: osm_id
+      value: '${ feature.id }'
+      type: long
+    - key: osm_type
+      value: '${ feature.osm_type }'
+
+layers:
+  # 1. the area as a polygon – "which district is this point in"
+  - id: boundary
+    features:
+      # state: from z2
+      - source: osm
+        geometry: polygon
+        min_zoom: 2
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["2"]
+        attributes: *area_attrs
+
+      # region (and whatever is level 3 and 4 in a state): from z4
+      - source: osm
+        geometry: polygon
+        min_zoom: 4
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["3", "4"]
+        attributes: *area_attrs
+
+      # --- okres: od z6 ---
+      - source: osm
+        geometry: polygon
+        min_zoom: 6
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["5", "6", "7"]
+        attributes: *area_attrs
+
+      # municipality: from z8 – the densest level
+      - source: osm
+        geometry: polygon
+        min_zoom: 8
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["8"]
+        attributes: *area_attrs
+      # settlement parts and city parts: what a hiker calls a place in the Tatras
+      - source: osm
+        geometry: polygon
+        min_zoom: 12
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["9", "10", "11"]
+        attributes: *area_attrs
+
+  # 2. the same border as a line – the polygon fill would cover the map, so this is drawn
+  - id: boundary_line
+    features:
+      - source: osm
+        geometry: line
+        min_zoom: 2
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["2"]
+        attributes: *area_attrs
+      - source: osm
+        geometry: line
+        min_zoom: 4
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["3", "4"]
+        attributes: *area_attrs
+      - source: osm
+        geometry: line
+        min_zoom: 6
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["5", "6", "7"]
+        attributes: *area_attrs
+      - source: osm
+        geometry: line
+        min_zoom: 8
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["8"]
+        attributes: *area_attrs
+      # settlement parts and city parts: what a hiker calls a place in the Tatras
+      - source: osm
+        geometry: line
+        min_zoom: 12
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["9", "10", "11"]
+        attributes: *area_attrs
+
+    # segments with equal values merge, or one border gets twenty labels
+    tile_post_process:
+      merge_line_strings:
+        min_length: 0
+
+  # one point per area: a polygon label repeats in every tile the area touches
+  - id: boundary_label
+    features:
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 2
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["2"]
+        attributes: *area_attrs
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 4
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["3", "4"]
+        attributes: *area_attrs
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 6
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["5", "6", "7"]
+        attributes: *area_attrs
+      # the settlement's own label already says it (`labels.py`)
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 8
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["8"]
+        exclude_when:
+          named_by_place: "yes"
+        attributes: *area_attrs
+      # settlement parts and city parts: what a hiker calls a place in the Tatras
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 12
+        include_when:
+          __all__:
+            - boundary: administrative
+            - admin_level: ["9", "10", "11"]
+        attributes: *area_attrs
+
+  # 3. where the name is drawn – the settlement point, better than a polygon centroid
+  - id: place
+    features:
+      - source: osm
+        geometry: point
+        min_zoom: 2
+        include_when:
+          place: [country, state, region, province]
+        attributes: &place_attrs
+          - key: class
+            type: match_value
+          - key: name
+          - key: name_en
+            value:
+              tag_value: "name:en"
+          - key: population
+          - key: capital
+          - key: wikidata
+          - key: osm_id
+            value: '${ feature.id }'
+            type: long
+          - key: osm_type
+            value: '${ feature.osm_type }'
+
+      - source: osm
+        geometry: point
+        min_zoom: 5
+        include_when:
+          place: [county, district, municipality]
+        attributes: *place_attrs
+
+      - source: osm
+        geometry: point
+        min_zoom: 6
+        include_when:
+          place: [city, town]
+        attributes: *place_attrs
+
+      # villages and hamlets are most numerous, so from z10
+      - source: osm
+        geometry: point
+        min_zoom: 10
+        include_when:
+          place: [village, hamlet, isolated_dwelling, suburb, quarter,
+                  neighbourhood, borough]
+        attributes: *place_attrs
+
+  # 4. parks, reserves and mountain ranges as areas – "which range is this point in"
+  - id: nature_area
+    features:
+      - source: osm
+        geometry: polygon
+        min_zoom: 8
+        include_when:
+          boundary: national_park
+        attributes: &nature_attrs
+          - key: class
+            value: national_park
+          - key: name
+          - key: name_en
+            value:
+              tag_value: "name:en"
+          - key: protect_class
+          - key: wikidata
+          - key: osm_id
+            value: '${ feature.id }'
+            type: long
+      # nature reserves: a valley or a gorge, so from z10
+      - source: osm
+        geometry: polygon
+        min_zoom: 10
+        include_when:
+          boundary: protected_area
+        attributes: &reserve_attrs
+          - key: class
+            value: protected_area
+          - key: name
+          - key: name_en
+            value:
+              tag_value: "name:en"
+          - key: protect_class
+          - key: wikidata
+          - key: osm_id
+            value: '${ feature.id }'
+            type: long
+      # OSM spells the geomorphological unit with a hyphen and with an underscore
+      - source: osm
+        geometry: polygon
+        min_zoom: 8
+        include_when:
+          __any__:
+            - boundary: [geomorphological-unit, geomorphological_unit]
+            - natural: mountain_range
+        attributes: &range_attrs
+          - key: class
+            value: mountain_range
+          - key: name
+          - key: name_en
+            value:
+              tag_value: "name:en"
+          - key: wikidata
+          - key: osm_id
+            value: '${ feature.id }'
+            type: long
+
+  # one point per area, as `boundary_label`
+  - id: nature_label
+    features:
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 8
+        include_when:
+          boundary: national_park
+        attributes: *nature_attrs
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 10
+        include_when:
+          boundary: protected_area
+        attributes: *reserve_attrs
+      - source: osm
+        geometry: polygon_point_on_surface
+        min_zoom: 8
+        include_when:
+          __any__:
+            - boundary: [geomorphological-unit, geomorphological_unit]
+            - natural: mountain_range
+        attributes: *range_attrs
+
+  # 5. ridges and arêtes, the name runs along the line
+  - id: ridge
+    features:
+      - source: osm
+        geometry: line
+        min_zoom: 12
+        include_when:
+          natural: [ridge, arete]
+        attributes: &line_attrs
+          - key: class
+            type: match_value
+          - key: name
+          - key: name_en
+            value:
+              tag_value: "name:en"
+          - key: osm_id
+            value: '${ feature.id }'
+            type: long
+    tile_post_process:
+      merge_line_strings:
+        min_length: 0
+
+  # 6. valleys and gullies, mapped as a line down their floor
+  - id: valley
+    features:
+      - source: osm
+        geometry: line
+        min_zoom: 12
+        include_when:
+          natural: valley
+        attributes: *line_attrs
+    tile_post_process:
+      merge_line_strings:
+        min_length: 0
+
+# TESTS: `java -jar planetiler.jar verify workers/boundaries/range.yml`
+examples:
+  - name: A municipality is from z8, as in a region
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        boundary: administrative
+        admin_level: "8"
+        name: Vysoké Tatry
+    output:
+      - layer: boundary
+        geometry: polygon
+        min_zoom: 8
+        tags:
+          name: Vysoké Tatry
+          admin_level: 8
+      - layer: boundary_label
+        geometry: point
+        min_zoom: 8
+        tags:
+          name: Vysoké Tatry
+          admin_level: 8
+
+  - name: A settlement part is an area from z12 with its name
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        boundary: administrative
+        admin_level: "11"
+        name: Tatranská Polianka
+    output:
+      - layer: boundary
+        geometry: polygon
+        min_zoom: 12
+        tags:
+          name: Tatranská Polianka
+          admin_level: 11
+      - layer: boundary_label
+        geometry: point
+        min_zoom: 12
+        tags:
+          name: Tatranská Polianka
+          admin_level: 11
+
+  - name: A national park is a named area from z8
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        boundary: national_park
+        protect_class: "2"
+        name: Tatranský národný park
+    output:
+      - layer: nature_area
+        geometry: polygon
+        min_zoom: 8
+        tags:
+          class: national_park
+          name: Tatranský národný park
+          protect_class: "2"
+      - layer: nature_label
+        geometry: point
+        min_zoom: 8
+        tags:
+          class: national_park
+          name: Tatranský národný park
+          protect_class: "2"
+
+  - name: A reserve in a valley is from z10
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        boundary: protected_area
+        protect_class: "1"
+        name: Mengusovská dolina
+    output:
+      - layer: nature_area
+        geometry: polygon
+        min_zoom: 10
+        tags:
+          class: protected_area
+          name: Mengusovská dolina
+          protect_class: "1"
+      - layer: nature_label
+        geometry: point
+        min_zoom: 10
+        tags:
+          class: protected_area
+          name: Mengusovská dolina
+          protect_class: "1"
+
+  - name: A geomorphological unit with a hyphen is a mountain range
+    input:
+      source: osm
+      geometry: polygon
+      tags:
+        boundary: geomorphological-unit
+        name: Belianske Tatry
+    output:
+      - layer: nature_area
+        geometry: polygon
+        min_zoom: 8
+        tags:
+          class: mountain_range
+          name: Belianske Tatry
+      - layer: nature_label
+        geometry: point
+        min_zoom: 8
+        tags:
+          class: mountain_range
+          name: Belianske Tatry
+
+  - name: A ridge is a named line from z12
+    input:
+      source: osm
+      geometry: line
+      tags:
+        natural: ridge
+        name: Jamský hrebeň
+    output:
+      - layer: ridge
+        geometry: line
+        min_zoom: 12
+        tags:
+          class: ridge
+          name: Jamský hrebeň
+
+  - name: An arête is a ridge too
+    input:
+      source: osm
+      geometry: line
+      tags:
+        natural: arete
+        name: Zameczki
+    output:
+      - layer: ridge
+        geometry: line
+        min_zoom: 12
+        tags:
+          class: arete
+          name: Zameczki
+
+  - name: A valley is a named line from z12
+    input:
+      source: osm
+      geometry: line
+      tags:
+        natural: valley
+        name: Rysa
+    output:
+      - layer: valley
+        geometry: line
+        min_zoom: 12
+        tags:
+          class: valley
+          name: Rysa
+
+  - name: A peak belongs to the points, not the borders
+    input:
+      source: osm
+      geometry: point
+      tags:
+        natural: peak
+        name: Gerlach
+    output: []

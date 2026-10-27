@@ -21,8 +21,10 @@ import mini_region  # noqa: E402
 
 SCHEMAS = {"transport": ["transport", "paths"], "boundaries": ["boundaries"], "water": ["water"],
            "rail": ["rail"], "history": ["history"], "buildings": ["buildings"],
-           "trails": ["trails"], "features": ["features", "points"]}
-ARCHIVE = {"points": "points", "paths": "paths"}
+           "trails": ["trails"], "features": ["features", "points"], "range-boundaries": ["range"]}
+ARCHIVE = {"points": "points", "paths": "paths", "range": "range-boundaries"}
+# drawn by the app, not by the published styles
+UNSTYLED = {"range-boundaries"}
 # clip-tiles.py keeps 100 m past the outline
 MARGIN_M = 100
 
@@ -37,6 +39,12 @@ EXPECTED = [
     ("boundaries", "boundary_line", {}),
     ("boundaries", "boundary_label", {"admin_level": 4, "name": "Bratislavský kraj"}),
     ("boundaries", "place", {"name": "Malá Obec"}),
+    ("range-boundaries", "boundary", {"admin_level": 8, "name": "Malá Obec"}),
+    ("range-boundaries", "boundary_label", {"admin_level": 11, "name": "Osada"}),
+    ("range-boundaries", "nature_area", {"class": "national_park", "name": "Národný park"}),
+    ("range-boundaries", "nature_label", {"class": "mountain_range", "name": "Pohorie"}),
+    ("range-boundaries", "ridge", {"class": "ridge", "name": "Hrebeň"}),
+    ("range-boundaries", "valley", {"class": "valley", "name": "Dolina"}),
     ("water", "waterway", {"class": "river", "name": "Mlynský potok", "name_en": "Mill Brook"}),
     ("water", "water", {"name": "Jazero"}),
     ("water", "water_point", {"name": "Studnička"}),
@@ -54,13 +62,15 @@ EXPECTED = [
     ("points", "feature_point", {"name": "Rozhľadňa"}),
 ]
 # its village point already says the name
-ABSENT = [("boundaries", "boundary_label", {"name": "Malá Obec"})]
+ABSENT = [("boundaries", "boundary_label", {"name": "Malá Obec"}),
+          ("boundaries", "boundary", {"name": "Osada"}), ("boundaries", "boundary", {"name": "Národný park"})]
 OUTSIDE_NAMES = {"Vonku", "Cudzie jazero"}
 
 
 def schema_layers(name):
     """`{layer id: (lowest min_zoom, geometries)}` from a schema yml."""
-    with open(os.path.join(_WORKERS, {"points": "features", "paths": "transport"}.get(name, name), f"{name}.yml")) as f:
+    folder = {"points": "features", "paths": "transport", "range": "boundaries"}.get(name, name)
+    with open(os.path.join(_WORKERS, folder, f"{name}.yml")) as f:
         doc = yaml.safe_load(f)
     out = {}
     for layer in doc["layers"]:
@@ -189,8 +199,9 @@ def check_all(work, key, packages):
         if archive in by_archive and find(by_archive[archive], layer, attrs):
             problems.append(f"{archive}: a {layer} feature with {attrs} that shouldn't be there")
     check_routing(tiles, key, problems)
-    if by_archive:
-        check_style(work, key, by_archive, problems)
+    styled = {a: f for a, f in by_archive.items() if a not in UNSTYLED}
+    if styled:
+        check_style(work, key, styled, problems)
     return problems
 
 

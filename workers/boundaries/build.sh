@@ -11,9 +11,20 @@ python3 -c 'import osmium' 2>/dev/null \
   || sudo apt-get install -y -qq python3-pyosmium \
   || python3 -m pip install --quiet --break-system-packages 'osmium>=3.6,<5'
 
+# a range's borders (`range.yml`) carry its parks, ranges, ridges and valleys too
+SCHEMA_NAME="${BOUNDARIES_SCHEMA:-boundaries}"
+FILTER=workers/boundaries/filter.txt
+SUFFIX=boundaries
+case "$SCHEMA_NAME" in
+  boundaries) ;;
+  range) FILTER=workers/boundaries/range-filter.txt; SUFFIX=range-boundaries ;;
+  *) echo "::error::BOUNDARIES_SCHEMA is \`boundaries\` or \`range\`, not \`$SCHEMA_NAME\`."; exit 1 ;;
+esac
+SCHEMA="workers/boundaries/${SCHEMA_NAME}.yml"
+
 T_F=$(date +%s)
 osmium tags-filter --overwrite -o data/boundaries.osm.pbf \
-  data/region.osm.pbf --expressions=workers/boundaries/filter.txt
+  data/region.osm.pbf --expressions="$FILTER"
 
 # the state border relation comes whole from `plan/pbf.sh`, so cut it to the region
 workers/lib/region-cut.sh data/boundaries.osm.pbf "$REGION_BBOX"
@@ -40,19 +51,19 @@ case "$BZ_" in ''|*[!0-9]*) BZ_=12 ;; esac
 if [ "$BZ_" -gt 16 ]; then BZ_=16; fi
 
 # Planetiler silently drops `min_zoom` above maxzoom
-TOPZ=$(grep -oE 'min_zoom: [0-9]+' workers/boundaries/boundaries.yml \
+TOPZ=$(grep -oE 'min_zoom: [0-9]+' "$SCHEMA" \
        | grep -oE '[0-9]+' | sort -n | tail -1)
 if [ "${TOPZ:-0}" -gt "$BZ_" ]; then
-  echo "::error::workers/boundaries/boundaries.yml has blocks with min_zoom up to ${TOPZ}, but tiles go to z${BZ_} – those never get in (villages and hamlets are most settlements). Raise boundaries_maxzoom to ${TOPZ}, or lower min_zoom of those blocks."
+  echo "::error::$SCHEMA has blocks with min_zoom up to ${TOPZ}, but tiles go to z${BZ_} – those never get in (villages and hamlets are most settlements). Raise boundaries_maxzoom to ${TOPZ}, or lower min_zoom of those blocks."
   exit 1
 fi
 
 # the whole state border relation needs the region cut too; districts nest, so none splits
 T_PM=$(date +%s)
-OUT="_site/tiles/${REGION_KEY}-boundaries.pmtiles"
+OUT="_site/tiles/${REGION_KEY}-${SUFFIX}.pmtiles"
 mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
 java -Xmx4g -jar planetiler.jar generate-custom \
-  --schema=workers/boundaries/boundaries.yml \
+  --schema="$SCHEMA" \
   "${CLIP[@]}" \
   --output="$OUT" \
   --maxzoom="$BZ_" --render_maxzoom="$BZ_" \

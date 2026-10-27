@@ -49,7 +49,7 @@ def prepare(work, jar):
     return stubs
 
 
-def run_build(work, stubs, package):
+def run_build(work, stubs, package, **extra):
     """One `build.sh`; returns (ok, its GITHUB_OUTPUT as a dict, log)."""
     out = os.path.join(work, f"{package}.out")
     open(out, "w").close()
@@ -60,6 +60,7 @@ def run_build(work, stubs, package):
     env.update({f"BUDGET_{p.upper()}_PCT": "100" for p in PACKAGES})
     # empty = the build's own default zoom
     env.update({f"OPT_{p.upper()}_MAXZOOM": "" for p in PACKAGES})
+    env.update(extra)
     t0 = time.time()
     r = subprocess.run(["bash", f"workers/{package}/build.sh"], cwd=work, env=env,
                        capture_output=True, text=True)
@@ -205,6 +206,13 @@ def main():
             failed.append(package)
             print(f"::error::{package}: build.sh {'failed' if not ok else 'made no package'}:\n"
                   + "\n".join(log.splitlines()[-30:]))
+    if not args.only or "boundaries" in packages:
+        # a mountain range's borders: the same build with its own schema
+        ok, outputs, log = run_build(work, stubs, "boundaries", BOUNDARIES_SCHEMA="range")
+        packages.append("range-boundaries")
+        if not ok or outputs.get("enabled") != "true":
+            failed.append("range-boundaries")
+            print("::error::range-boundaries: build.sh failed:\n" + "\n".join(log.splitlines()[-30:]))
     if not args.only:
         ok, log = routing(work)
         if not ok:

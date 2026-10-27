@@ -59,6 +59,9 @@ jobs:
             'osmium>=3.6,<5' numpy pillow pmtiles mapbox-vector-tile shapely
       - name: Download Planetiler
         run: workers/lib/planetiler.sh
+      # a mountain build is the only other place this schema runs
+      - name: Range borders schema tests
+        run: workers/lib/verify-schema.sh workers/boundaries/range.yml
       - name: Build and read back
         run: python3 workers/tests/integration.py --dem --jar planetiler.jar --work "$RUNNER_TEMP/mini"
       # the versions index.html loads from unpkg, so the page runs without the CDN
