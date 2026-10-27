@@ -44,6 +44,8 @@ ENC_OPT=""
 [ "$BITS" != auto ] && ENC_OPT="${ENC_OPT}-b${BITS}"
 [ "$FMT" != png ] && ENC_OPT="${ENC_OPT}-${FMT}"
 [ "$CUT_KEY" != whole ] && ENC_OPT="${ENC_OPT}-cut"
+# a stored filled cut-out from before `-f…2` holds the fill alone
+[ -n "${DEM_FILL:-}" ] && ENC_OPT="${ENC_OPT}-f${DEM_FILL}2"
 # the overlap with the neighbouring region changes the tiles, so it is in the name too
 BORDER_M=$(python3 -c "import sys; sys.path.insert(0, 'workers/plan'); import area; print(int(area.BORDER_BUFFER_M))")
 asset_name() { echo "terrain-${REGION_KEY}-${TDEM}-z${1}-${ENC_VER}${ENC_OPT}-o${BORDER_M}.pmtiles"; }

@@ -99,6 +99,11 @@ class CacheKeys(unittest.TestCase):
         for layer in ("contours", "rocks", "terrain"):
             self.assertNotEqual(base[layer], filled[layer], layer)
 
+    def test_a_filled_cut_out_from_before_the_backfill_fix_is_not_reused(self):
+        filled = self.keys(DEM_FILL="sonny")
+        for layer in ("contours", "terrain"):
+            self.assertIn("-fsonny2", filled[layer], layer)
+
     def test_layers_keep_their_own_keys(self):
         base = self.keys()
         rocks = self.keys(OPT_ROCK_RES="2")

@@ -1,5 +1,7 @@
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -9,6 +11,8 @@ tiles = worker("dem/tiles.py")
 target = worker("dem/target.py")
 coverage = worker("dem/coverage.py")
 trust = worker("dem/trust.py")
+BACKFILL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "dem", "backfill.py")
 
 SOURCES = {"sonny": {"label": "Sonny", "store": "dem-sonny"},
            "dmr5": {"label": "DMR 5.0", "store": "dem-dmr5-v2", "store_area": "dem-ugkk"}}
@@ -138,6 +142,31 @@ class EmptyTile(unittest.TestCase):
             self.assertAlmostEqual(coverage.covers_own_degree(coverage.extent_of(info), (19, 49)), 100)
             self.assertIsNone(tiles.elevation_range(dst, exact=True))
             self.assertLessEqual(os.path.getsize(dst), tiles.EMPTY_MAX_BYTES)
+
+
+@needs_cmd("gdal_create", "gdalbuildvrt", "gdallocationinfo")
+class Backfill(unittest.TestCase):
+    def raster(self, path, srs, ullr, size, height):
+        subprocess.run(["gdal_create", "-q", "-of", "GTiff", "-outsize", *map(str, size),
+                        "-bands", "1", "-ot", "Float32", "-burn", str(height),
+                        "-a_nodata", "-9999", "-a_srs", srs, "-a_ullr", *map(str, ullr), path],
+                       check=True)
+
+    def height(self, path, lon, lat):
+        return float(subprocess.run(["gdallocationinfo", "-valonly", "-wgs84", path,
+                                     str(lon), str(lat)],
+                                    check=True, capture_output=True, text=True).stdout)
+
+    def test_cut_with_egm2008_heights_stays_over_the_fill(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fill, cut = os.path.join(tmp, "fill.tif"), os.path.join(tmp, "cut.tif")
+            out = os.path.join(tmp, "all.vrt")
+            self.raster(fill, "EPSG:4326", (19.8, 49.4, 20.4, 49.0), (60, 40), 1000)
+            self.raster(cut, "EPSG:4326+3855", (19.9, 49.32, 20.32, 49.09), (420, 230), 2000)
+            subprocess.run([sys.executable, BACKFILL, f"--cut={cut}", f"--fill={fill}",
+                            f"--out={out}"], check=True, capture_output=True)
+            self.assertEqual(self.height(out, 20.1, 49.2), 2000)
+            self.assertEqual(self.height(out, 19.85, 49.35), 1000)
 
 
 if __name__ == "__main__":
