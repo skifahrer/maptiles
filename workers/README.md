@@ -1059,7 +1059,11 @@ siaha na sever po 49,32°, aby v ňom bola poľská strana.
 DMR 5.0 sa na hranici končí, preto výškový model pohoria dopĺňa Sonny 20 m
 (`DEM_FILL`, `workers/dem/backfill.py`): VRT má Sonnyho pod výrezom, výrez vyhráva
 všade, kde má výšku. V Poľsku sú teda vrstevnice, tieňovanie a 3D z 20 m modelu,
-na Slovensku z 1 m. Výplň je v kľúči cache (`-fsonny`). Starý výrez
+na Slovensku z 1 m. Výplň dostane projekciu výrezu (`EPSG:4326+3855`) – inak
+ho `gdalbuildvrt` ako „inú projekciu“ vynechá a celé pohorie je z 20 m, čo sa
+stalo prvým buildom s povinnou výplňou. Výplň je v kľúči cache aj v mene assetu
+(`-fsonny2`; `-fsonny` sú tie bez výrezu). Výškový model pohoria siaha pixel za
+bbox (`--edge=1`, `-e1`), aby ho aplikácia mohla odrezať presne na čiare bboxu. Starý výrez
 `ugkk-vysoke_tatry.tif` bol z menšieho bboxu – nový urobí „Data · DMR 5.0“
 s `area: vysoke_tatry`, dovtedy pás pri hranici dopĺňa Sonny.
 

@@ -16,17 +16,20 @@ from cell import dem_cell_metres, resampling  # noqa: E402
 
 
 def band(path):
-    """(data type, nodata) of the first band."""
+    """(data type, nodata, CRS as WKT) of the first band."""
     info = json.loads(subprocess.run(["gdalinfo", "-json", path], check=True,
                                      capture_output=True, text=True).stdout)
     first = info["bands"][0]
-    return first["type"], first.get("noDataValue")
+    return first["type"], first.get("noDataValue"), info.get("coordinateSystem", {}).get("wkt", "")
 
 
-def commands(cut, fill, out, kind, nodata, kernel):
-    """A VRT of the fill in the cut's type (gdalbuildvrt skips a mixed one), then both."""
+def commands(cut, fill, out, kind, nodata, kernel, srs=None):
+    """A VRT of the fill in the cut's type and CRS (gdalbuildvrt skips a mixed one), then both."""
     typed = out[:-len(".vrt")] + "-fill.vrt"
     translate = ["gdal_translate", "-q", "-of", "VRT", "-ot", kind]
+    # the cut's `+3855` heights label, else gdalbuildvrt drops the cut as another projection
+    if srs:
+        translate += ["-a_srs", srs]
     if nodata is not None:
         translate += ["-a_nodata", str(nodata)]
     # the later source wins where it has heights: the cut over the fill
@@ -41,11 +44,16 @@ def main():
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
-    kind, nodata = band(args.cut)
+    kind, nodata, wkt = band(args.cut)
+    srs = None
+    if wkt:
+        srs = args.out[:-len(".vrt")] + "-srs.wkt"
+        with open(srs, "w", encoding="utf-8") as f:
+            f.write(wkt)
     px_m, _ = dem_cell_metres(args.cut)
     cell_m, _ = dem_cell_metres(args.fill)
     kernel = resampling(px_m, cell_m)
-    for cmd in commands(args.cut, args.fill, args.out, kind, nodata, kernel):
+    for cmd in commands(args.cut, args.fill, args.out, kind, nodata, kernel, srs):
         subprocess.run(cmd, check=True)
     print(f"{args.cut} over {args.fill} ({cell_m or 0:.0f} m, {kernel}) → {args.out}")
     return 0

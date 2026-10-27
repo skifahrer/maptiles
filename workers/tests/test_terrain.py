@@ -117,6 +117,12 @@ class Height(unittest.TestCase):
             src = f.read()
         return int(re.search(r'"--edge",\s*type=int,\s*default=(-?\d+)', src).group(1))
 
+    def test_a_range_runs_past_its_box(self):
+        with open(os.path.join(os.path.dirname(__file__), "..", "terrain", "build.sh")) as f:
+            src = f.read()
+        self.assertIn('[ "$CUT_KEY" != whole ] && EDGE=1', src)
+        self.assertIn('--edge="$EDGE"', src)
+
     def test_flatten_outside(self):
         np = self.np
         g = np.array([[1.0, 2.0], [3.0, 4.0]])
