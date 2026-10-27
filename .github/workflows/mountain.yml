@@ -188,7 +188,7 @@ jobs:
         uses: ./.github/actions/cache-restore
         with:
           path: data/region.osm.pbf
-          key: pbf-mountain-v2-${{ needs.plan.outputs.key }}-${{ needs.plan.outputs.bboxkey }}-${{ needs.plan.outputs.day }}
+          key: pbf-mountain-v3-${{ needs.plan.outputs.key }}-${{ needs.plan.outputs.bboxkey }}-${{ needs.plan.outputs.day }}
 
       - name: Cut every country's extract to the range and merge them
         env:

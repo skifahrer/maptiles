@@ -4,12 +4,18 @@
 set -euo pipefail
 mkdir -p data
 
-if [ -s data/region.osm.pbf ]; then
-  echo "PBF from cache ✓ ($(du -h data/region.osm.pbf | cut -f1))"
-  exit 0
-fi
 command -v osmium >/dev/null \
   || { sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool; }
+
+# an object twice stops every later osmium step
+if [ -s data/region.osm.pbf ]; then
+  if [ "$(osmium fileinfo -e -g data.multiple_versions data/region.osm.pbf)" = "no" ]; then
+    echo "PBF from cache ✓ ($(du -h data/region.osm.pbf | cut -f1))"
+    exit 0
+  fi
+  echo "::warning::The cached PBF holds an object twice – cut again."
+  rm -f data/region.osm.pbf
+fi
 
 # osm.fr first, as every build; Geofabrik spells the same extracts the same way
 mirror() { printf '%s' "$1" | sed 's#^https://download.openstreetmap.fr/extracts/#https://download.geofabrik.de/#'; }
