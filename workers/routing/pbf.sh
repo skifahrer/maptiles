@@ -50,9 +50,12 @@ if [ "${#FILES[@]}" -eq 1 ]; then
 else
   # `merge`, not `cat`: border nodes are unified by id, or the graph splits in two
   echo "::group::Merging ${#FILES[@]} extracts (osmium merge)"
-  osmium merge --overwrite -o data/routing.osm.pbf "${FILES[@]}"
-  echo "::endgroup::"
+  osmium merge --overwrite -o data/merged.osm.pbf "${FILES[@]}"
   rm -f "${FILES[@]}"
+  # extracts of different days hold a border object twice; time-filter keeps the newer
+  osmium time-filter --overwrite -o data/routing.osm.pbf data/merged.osm.pbf
+  rm -f data/merged.osm.pbf
+  echo "::endgroup::"
 fi
 
 MB=$(( $(stat -c%s data/routing.osm.pbf) / 1048576 ))
