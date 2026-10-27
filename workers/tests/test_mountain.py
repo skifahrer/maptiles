@@ -383,6 +383,26 @@ class Extracts(unittest.TestCase):
         subprocess.run(["osmium", "extract", "-s", "smart", "-b", "19.9,49.09,20.32,49.32",
                         "-o", os.path.join(work, "cut.osm.pbf"), pbf], check=True)
 
+    def test_a_cached_pbf_holding_an_object_twice_is_cut_again(self):
+        work = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, work)
+        sk = self.extract(work, "sk", [(1, 49.15, 20.1), (2, 49.2, 20.1)])
+        pl = self.extract(work, "pl", [(2, 49.2, 20.1, 4), (3, 49.3, 20.0)])
+        os.makedirs(os.path.join(work, "data"))
+        pbf = os.path.join(work, "data", "region.osm.pbf")
+        # the broken cache: osmium merge keeps both versions
+        subprocess.run(["osmium", "merge", "-o", pbf, sk[len("file://"):], pl[len("file://"):]],
+                       check=True)
+        run = subprocess.run(["bash", os.path.join(WORKERS, "mountain", "pbf.sh")], cwd=work,
+                             capture_output=True, text=True,
+                             env={**os.environ, "OSM_URLS": f"{sk} {pl}",
+                                  "MOUNTAIN_BBOX": "19.9,49.09,20.32,49.32"})
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("cut again", run.stdout)
+        twice = subprocess.run(["osmium", "fileinfo", "-e", "-g", "data.multiple_versions", pbf],
+                               capture_output=True, text=True, check=True).stdout.strip()
+        self.assertEqual(twice, "no")
+
 
 @needs("shapely")
 class Outline(unittest.TestCase):
