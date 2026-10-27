@@ -29,11 +29,11 @@ for url in $OSM_URLS; do
   cuts+=("data/cut-$i.osm.pbf")
 done
 
-# a way on the border is in both extracts; merge keeps one copy of each object
+# extracts of different days hold one object twice; merge would keep both versions
 if [ "${#cuts[@]}" -eq 1 ]; then
   mv "${cuts[0]}" data/region.osm.pbf
 else
-  osmium merge --overwrite -o data/region.osm.pbf "${cuts[@]}"
+  osmium apply-changes --overwrite -o data/region.osm.pbf "${cuts[@]}"
   rm -f "${cuts[@]}"
 fi
 echo "$(du -h data/region.osm.pbf | cut -f1) of OSM over $MOUNTAIN_BBOX"
