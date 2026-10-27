@@ -161,6 +161,8 @@ on:
 
 permissions:
   contents: read
+  # the day's OSM extracts other runs uploaded
+  actions: read
   pages: write
   id-token: write
 
@@ -293,6 +295,7 @@ jobs:
     secrets: inherit
     permissions:
       contents: write
+      actions: read
     with:
       region: ${{ inputs.region }}
       region_key: ${{ needs.plan.outputs.key }}
@@ -308,6 +311,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # the day's OSM extracts other runs uploaded
+      actions: read
       # `write`: the preparation also switches the Pages source to Actions
       pages: write
     outputs:
@@ -462,6 +467,18 @@ jobs:
           # the version guards against older PBFs; the test square is in the
           # key too, or a real run would take the stored 4 km² as the region
           key: pbf-v6-${{ inputs.region }}-${{ steps.opts.outputs.opt_custom_pbf_url }}-${{ steps.opts.outputs.opt_crop_bbox }}-t${{ steps.opts.outputs.opt_test_km2 }}-a${{ inputs.area }}${{ steps.opts.outputs.opt_area_bbox }}-at${{ steps.opts.outputs.opt_test_at }}-${{ steps.day.outputs.d }}
+
+      # each extract downloaded once a day for every job (docs/extract-cache.md)
+      - name: Extracts the region is cut from
+        id: extract-urls
+        if: ${{ steps.pbf-cache.outputs.cache-hit != 'true' && steps.opts.outputs.opt_custom_pbf_url == '' }}
+        run: python3 workers/lib/extract-urls.py --region='${{ inputs.region }}' --out="$GITHUB_OUTPUT"
+
+      - name: Extracts of the day
+        if: ${{ steps.extract-urls.outputs.urls != '' }}
+        uses: ./.github/actions/extracts
+        with:
+          urls: ${{ steps.extract-urls.outputs.urls }}
 
       - name: Download the PBF of the region only
         id: region

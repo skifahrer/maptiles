@@ -26,6 +26,8 @@ PY
 )
 echo "Area \`$AREA\`: ${#PBFS[@]} extract(s) – ${PBFS[*]}"
 
+. "$(dirname "$0")/../lib/extract.sh"
+
 # hundreds of MB to GBs: the plan before the slow part
 echo "::group::Downloading PBF"
 i=0
@@ -35,8 +37,9 @@ for p in "${PBFS[@]}"; do
   out="data/$(basename "$p").osm.pbf"
   echo "[$i/${#PBFS[@]}] $BASE/$p-latest.osm.pbf"
   # a foreign server's short outage must not fail an hours-long build
-  curl -fSL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 60 \
-    -o "$out" "$BASE/$p-latest.osm.pbf"
+  extract_taken "$BASE/$p-latest.osm.pbf" "$out" \
+    || curl -fSL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 60 \
+      -o "$out" "$BASE/$p-latest.osm.pbf"
   echo "    $(du -h "$out" | cut -f1)"
   FILES+=("$out")
 done

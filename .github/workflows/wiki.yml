@@ -146,6 +146,8 @@ on:
 
 permissions:
   contents: read
+  # the day's OSM extracts other runs uploaded
+  actions: read
 
 env:
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
@@ -181,6 +183,8 @@ jobs:
     # the run commits `maps.json`
     permissions:
       contents: write
+      # the day's OSM extracts other runs uploaded
+      actions: read
     outputs:
       key: ${{ steps.region.outputs.key }}
       enabled: ${{ steps.wiki.outputs.enabled }}
@@ -191,6 +195,17 @@ jobs:
 
       - name: Prepare folders
         run: mkdir -p steps-out data
+
+      - name: Extracts the region is cut from
+        id: extract-urls
+        if: ${{ inputs.custom_pbf_url == '' }}
+        run: python3 workers/lib/extract-urls.py --region='${{ inputs.region }}' --out="$GITHUB_OUTPUT"
+
+      - name: Extracts of the day
+        if: ${{ steps.extract-urls.outputs.urls != '' }}
+        uses: ./.github/actions/extracts
+        with:
+          urls: ${{ steps.extract-urls.outputs.urls }}
 
       # the same script as Build map picks the region's PBF
       - name: Download the PBF of this region only

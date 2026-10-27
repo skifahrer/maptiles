@@ -17,6 +17,8 @@ if [ -s data/region.osm.pbf ]; then
   rm -f data/region.osm.pbf
 fi
 
+. "$(dirname "$0")/../lib/extract.sh"
+
 # osm.fr first, as every build; Geofabrik spells the same extracts the same way
 mirror() { printf '%s' "$1" | sed 's#^https://download.openstreetmap.fr/extracts/#https://download.geofabrik.de/#'; }
 
@@ -24,7 +26,9 @@ cuts=()
 i=0
 for url in $OSM_URLS; do
   i=$((i + 1))
-  if ! curl -fL --retry 3 --retry-delay 5 -o data/extract.osm.pbf "$url"; then
+  if extract_taken "$url" data/extract.osm.pbf; then
+    :
+  elif ! curl -fL --retry 3 --retry-delay 5 -o data/extract.osm.pbf "$url"; then
     echo "::warning::$url didn't download – trying $(mirror "$url")"
     curl -fL --retry 3 --retry-delay 5 -o data/extract.osm.pbf "$(mirror "$url")"
   fi

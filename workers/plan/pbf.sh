@@ -23,9 +23,12 @@ if [ -s data/region.osm.pbf ]; then
   echo "PBF from cache ✓ ($(du -h data/region.osm.pbf | cut -f1))"
 fi
 
+. "$(dirname "$0")/../lib/extract.sh"
+
 # `$2` is the target: the parent extract downloads aside
 download() { # $1 = URL, $2 = file
   [ -n "$CACHED" ] && return 0
+  extract_taken "$1" "${2:-data/region.osm.pbf}" && return 0
   echo "Trying: $1"
   curl -fL --retry 3 --retry-delay 5 -o "${2:-data/region.osm.pbf}" "$1"
 }
