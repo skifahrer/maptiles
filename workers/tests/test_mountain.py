@@ -115,13 +115,20 @@ class Plan(unittest.TestCase):
         self.assertEqual(plan.plan("vysoke_tatry", test_km2=4)["shapekey"],
                          plan.plan("vysoke_tatry", test_km2=4)["bboxkey"], "a test square is a box")
 
-    def test_the_high_tatras_cross_into_poland(self):
+    def test_the_high_tatras_end_where_the_lidar_does(self):
         got = plan.plan("vysoke_tatry")
-        self.assertEqual(got["countries"], "SK,PL")
-        self.assertEqual(got["osm"].split(), [
-            "https://download.openstreetmap.fr/extracts/europe/slovakia-latest.osm.pbf",
-            "https://download.openstreetmap.fr/extracts/europe/poland/malopolskie-latest.osm.pbf"])
-        self.assertGreater(float(got["bbox"].split(",")[3]), 49.3, "Zakopane's side of the range")
+        self.assertEqual(got["countries"], "SK")
+        self.assertEqual(got["osm"].split(),
+                         ["https://download.openstreetmap.fr/extracts/europe/slovakia-latest.osm.pbf"])
+        rings = plan.rings(plan.shape("vysoke_tatry", [19.9, 49.09, 20.32, 49.32]))
+        lats_at_morskie_oko = [y for x, y in rings[0][0] if abs(x - 20.071) < 0.01]
+        self.assertTrue(lats_at_morskie_oko and max(lats_at_morskie_oko) < 49.195,
+                        "the border runs south of Morskie Oko, so the range does too")
+
+    def test_every_range_crossing_the_border_has_an_outline(self):
+        for key in ("vysoke_tatry", "zapadne_tatry", "pieniny"):
+            self.assertIsNotNone(plan.outline_file(key), key)
+        self.assertIsNone(plan.outline_file("nizke_tatry"), "wholly in Slovakia, its box")
 
     def test_a_range_without_extracts_takes_its_countrys(self):
         mountains = {"x": {"country": "slovensko", "area": "pieniny"}}
@@ -375,6 +382,18 @@ class Outline(unittest.TestCase):
     def test_nothing_in_the_box_stops(self):
         with self.assertRaises(SystemExit):
             outline.outline([self.square(10, 10, 11, 11)], [19.9, 49.09, 20.32, 49.32], [1])
+
+    def test_a_range_ends_where_its_model_does(self):
+        slovakia = self.square(19.0, 48.0, 20.2, 49.25)
+        got = outline.outline([], [19.9, 49.09, 20.32, 49.32], [], coverage=slovakia)
+        lons = [x for x, _ in got["features"][0]["geometry"]["coordinates"][0]]
+        lats = [y for _, y in got["features"][0]["geometry"]["coordinates"][0]]
+        self.assertEqual((max(lons), max(lats)), (20.2, 49.25))
+        self.assertEqual(got["features"][0]["properties"]["model"], "dmr5")
+
+    def test_a_box_wholly_in_its_model_is_kept(self):
+        slovakia = self.square(19.0, 48.0, 21.0, 50.0)
+        self.assertIsNone(outline.outline([], [19.9, 49.09, 20.32, 49.32], [], coverage=slovakia))
 
 
 class Aerial(unittest.TestCase):
