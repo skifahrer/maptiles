@@ -150,7 +150,7 @@
     ],
     "cell_m": 5,
     "cell_m_area": 1,
-    "_comment_coverage": "OSM relation of where it has heights (Slovakia): a range's outline ends there.",
+    "_comment_coverage": "Mountain packages only (`mountain/outline.py`): a range ends where this OSM relation (Slovakia) does. Regions don't read it.",
     "coverage_osm": 14296,
     "attribution": "ÚGKK SR – DMR 5.0",
     "verified": true,
