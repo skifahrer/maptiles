@@ -66,6 +66,8 @@ on:
 
 permissions:
   contents: read
+  # the day's OSM extracts other runs uploaded
+  actions: read
 
 env:
   GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
@@ -189,6 +191,19 @@ jobs:
         with:
           path: data/region.osm.pbf
           key: pbf-mountain-v3-${{ needs.plan.outputs.key }}-${{ needs.plan.outputs.bboxkey }}-${{ needs.plan.outputs.day }}
+
+      - name: Extracts the range is cut from
+        id: extract-urls
+        if: ${{ steps.pbf-cache.outputs.cache-hit != 'true' }}
+        env:
+          OSM_URLS: ${{ needs.plan.outputs.osm }}
+        run: python3 workers/lib/extract-urls.py --each="$OSM_URLS" --out="$GITHUB_OUTPUT"
+
+      - name: Extracts of the day
+        if: ${{ steps.extract-urls.outputs.urls != '' }}
+        uses: ./.github/actions/extracts
+        with:
+          urls: ${{ steps.extract-urls.outputs.urls }}
 
       - name: Cut every country's extract to the range and merge them
         env:

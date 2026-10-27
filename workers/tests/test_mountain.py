@@ -383,6 +383,19 @@ class Extracts(unittest.TestCase):
         subprocess.run(["osmium", "extract", "-s", "smart", "-b", "19.9,49.09,20.32,49.32",
                         "-o", os.path.join(work, "cut.osm.pbf"), pbf], check=True)
 
+    def test_the_extract_of_the_day_is_taken_not_downloaded(self):
+        work = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, work)
+        sk = self.extract(work, "sk", [(1, 49.15, 20.1), (2, 49.2, 20.1)])
+        os.makedirs(os.path.join(work, "extracts"))
+        shutil.move(sk[len("file://"):], os.path.join(work, "extracts", "sk.osm.pbf"))
+        run = subprocess.run(["bash", os.path.join(WORKERS, "mountain", "pbf.sh")], cwd=work,
+                             capture_output=True, text=True,
+                             env={**os.environ, "OSM_URLS": sk,
+                                  "MOUNTAIN_BBOX": "19.9,49.09,20.32,49.32"})
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("Extract of the day: sk.osm.pbf", run.stdout)
+
     def test_a_cached_pbf_holding_an_object_twice_is_cut_again(self):
         work = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, work)

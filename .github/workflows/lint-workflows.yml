@@ -302,6 +302,10 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
+      # without `actions: read` the extract cache quietly does nothing
+      - name: The extracts action may read artifacts
+        run: python3 workers/lint/extracts.py
+
       # the DMR 5.0 path must stay whole (`workers/lint/dmr5-pipeline.py`)
       - name: DMR 5.0 is refilled by its own pipeline
         run: python3 workers/lint/dmr5-pipeline.py
