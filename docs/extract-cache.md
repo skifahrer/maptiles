@@ -41,7 +41,7 @@ The composite action `.github/actions/extract` takes `dir`, `slug`, `day` and `p
 1. **Look up** `extract-…-<day>` through
    `GET /repos/{repo}/actions/artifacts?name=…`, newest first, not expired. If it is found,
    download it with `actions/download-artifact` (`run-id`, `github-token`). Done.
-2. **Someone else is downloading** if a `-fetching` marker younger than `stale` (20 min)
+2. **Someone else is downloading** if a `-fetching` marker younger than `stale` (30 min)
    exists. Poll every 30 s until the extract appears, then take it as in 1. If the marker
    goes stale first, carry on as below: the job that left it is gone.
 3. **Claim it**: upload this run's `-fetching` marker, then list the markers again. The
@@ -83,9 +83,11 @@ Downloading another run's artifact needs `actions: read`. Workflows that use the
 - `Check · mini region` runs the action for real: the first leg downloads, the second takes
   the artifact.
 
-## 7. Open questions
+## 7. Decided
 
-- Is 20 minutes right for `stale`? It must outlast the slowest download of the largest
-  extract we use, which no run has measured yet.
+- `stale` is 30 minutes, to outlast the slowest download of the largest extract.
+
+## 8. Open questions
+
 - Should a range or routing area also store its *merged* extract as an artifact? For now it
   doesn't: the merge takes seconds, so the day's Drive cache of the cut PBF is enough.
