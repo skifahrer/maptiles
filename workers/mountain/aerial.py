@@ -93,6 +93,11 @@ def cut(path, bbox, z, x, y, rings=None):
     return out
 
 
+def zoom(value, default):
+    """A zoom as the form takes it, `18` or `z18`."""
+    return int(str(value).strip().lstrip("zZ") or default)
+
+
 def e7(value):
     return int(round(value * 1e7))
 
@@ -139,7 +144,7 @@ def main():
     if url:
         bbox = [float(v) for v in args.bbox.split(",")]
         minzoom = int(conf.get("minzoom", 8))
-        maxzoom = int(args.maxzoom or conf.get("maxzoom", 17))
+        maxzoom = zoom(args.maxzoom, conf.get("maxzoom", 17))
         fetcher = Fetcher(url, os.path.join(args.cache, args.season), jobs=args.jobs, ua="project")
         rings = _mask.rings_from_geojson(args.poly) if args.poly and os.path.isfile(args.poly) else None
         if args.poly and not rings:

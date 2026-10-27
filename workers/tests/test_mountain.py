@@ -335,7 +335,7 @@ OSM = """<?xml version='1.0' encoding='UTF-8'?>
 {}
 </osm>
 """
-NODE = '<node id="{}" version="1" timestamp="2026-01-01T00:00:00Z" lat="{}" lon="{}"/>'
+NODE = '<node id="{}" version="{}" timestamp="2026-01-01T00:00:00Z" lat="{}" lon="{}"/>'
 
 
 @needs_cmd("osmium", "curl")
@@ -343,7 +343,8 @@ class Extracts(unittest.TestCase):
     def extract(self, folder, name, nodes):
         xml = os.path.join(folder, name + ".osm")
         with open(xml, "w") as f:
-            f.write(OSM.format("\n".join(NODE.format(*n) for n in nodes)))
+            f.write(OSM.format("\n".join(NODE.format(i, v, lat, lon)
+                                          for i, lat, lon, v in ((n + (1,))[:4] for n in nodes))))
         pbf = os.path.join(folder, name + ".osm.pbf")
         subprocess.run(["osmium", "cat", "-o", pbf, xml], check=True)
         return "file://" + pbf
@@ -362,6 +363,25 @@ class Extracts(unittest.TestCase):
         ids = subprocess.run(["osmium", "cat", "-f", "opl", os.path.join(work, "data", "region.osm.pbf")],
                              capture_output=True, text=True, check=True).stdout.split()
         self.assertEqual(sorted(i for i in ids if i.startswith("n")), ["n1", "n2", "n3"])
+
+    def test_an_object_in_both_extracts_at_two_versions_is_kept_once(self):
+        work = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, work)
+        sk = self.extract(work, "sk", [(1, 49.15, 20.1), (2, 49.2, 20.1)])
+        pl = self.extract(work, "pl", [(2, 49.2, 20.1, 4), (3, 49.3, 20.0)])
+        run = subprocess.run(["bash", os.path.join(WORKERS, "mountain", "pbf.sh")], cwd=work,
+                             capture_output=True, text=True,
+                             env={**os.environ, "OSM_URLS": f"{sk} {pl}",
+                                  "MOUNTAIN_BBOX": "19.9,49.09,20.32,49.32"})
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        pbf = os.path.join(work, "data", "region.osm.pbf")
+        lines = subprocess.run(["osmium", "cat", "-f", "opl", pbf],
+                               capture_output=True, text=True, check=True).stdout.splitlines()
+        self.assertEqual([line.split()[:2] for line in lines],
+                         [["n1", "v1"], ["n2", "v4"], ["n3", "v1"]])
+        # what water's region cut runs on it
+        subprocess.run(["osmium", "extract", "-s", "smart", "-b", "19.9,49.09,20.32,49.32",
+                        "-o", os.path.join(work, "cut.osm.pbf"), pbf], check=True)
 
 
 @needs("shapely")
@@ -397,6 +417,10 @@ class Outline(unittest.TestCase):
 
 
 class Aerial(unittest.TestCase):
+    def test_the_zoom_is_taken_with_or_without_its_z(self):
+        self.assertEqual([aerial.zoom(v, 17) for v in ("z18", "18", "", " Z16 ")],
+                         [18, 18, 17, 16])
+
     def test_every_tile_over_the_box_shallow_first(self):
         got = aerial.wanted([20.16, 49.17, 20.17, 49.175], 14, 15)
         self.assertEqual(got[0][0], 14)
