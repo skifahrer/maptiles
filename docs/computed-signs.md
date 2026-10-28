@@ -37,8 +37,8 @@ The number is never baked: limits differ per vehicle (Slovakia: motorway 130 for
 | 4 | the app reads dictionary `f1abaa00` and still reads `e97d6ec6` archives; `RoutingCost` takes the limit from the regulations | skifahrer/rikimaps#2490 | merged |
 | 5 | the regulations reach the phone: `roadsigns.sh` already checks traffic-signs out, it copies `regulations/<country>.json` into the package beside the signs | here | to do |
 | 6 | the same context on the roads layer: `transport/speed.py` writes it on each way of the roads' PBF | #358 | merged |
-| 7 | computed sign points where the context changes along a road, layer `computed_sign`; style layer `road-sign-computed` asks for image `computed.<country>.<context>`, which the app draws with the law's number for a car | #358, ticket 2499 here and in the app | points merged; drawing in PR |
-| 7b | `traffic_sign=city_limit` nodes as the stronger evidence for a village's start and end | here | to do |
+| 7 | computed sign points where the context changes along a road, layer `computed_sign`; style layer `road-sign-computed` asks for image `computed.<country>.<context>`, which the app draws with the law's number for a car | #358, #359, rikimaps#2499 | merged |
+| 7b | `traffic_sign=city_limit` nodes as the stronger evidence for a village's start and end | #360 | PR |
 | 8 | the other dictionary countries' regulations (CZ, AT, HU, PL, DE, UA, SI, CH, HR, RO), each from its law's text | skifahrer/traffic-signs | to do |
 
 ## Computed signs (`computed_sign` in the roads package)
@@ -47,8 +47,13 @@ A point stands 15 m past the junction where a road carries on (same `ref`, `name
 class) into a stretch of another context, and faces the traffic entering it: `direction`
 in degrees, `speed_context` and `country` to look the limit up by, `osm_way` of the
 stretch. None where the stretch is signed (`maxspeed`), against a one-way, or on a side
-street. The roads layer is per way, so a way running out of a village is one context
-until 7b splits it.
+street. The roads layer is per way, so a way running out of a village is one context.
+
+Where a town sign (`traffic_sign=city_limit`) stands on a road, its signs win: one each way,
+15 m from it, the village's context going in and the open road's going out. The village side
+is the one the sign faces (a begin sign faces the traffic entering, `city_limit=end` the
+traffic leaving), else the side with clearly more built-up land in its first 300 m; with
+neither, no sign. Junction signs within 250 m of a town sign are dropped.
 
 ## Rollout: the app first
 
