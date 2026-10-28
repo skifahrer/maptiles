@@ -15,6 +15,9 @@ w/aerialway
 nwr/addr:housenumber
 nwr/addr:conscriptionnumber
 
+# built-up areas, which a road's speed context is measured against (`speed.py`)
+wr/landuse=residential,commercial,retail
+
 # traffic signs; `signs.py` names their images in place
 n/traffic_sign
 n/traffic_sign:forward

@@ -41,6 +41,26 @@ fi
 # the map's own region cut
 mapfile -t CLIP < <(workers/lib/region-clip.sh "$REGION_BBOX")
 
+# each road's speed context, and computed signs where it changes; without them roads still draw
+T_SP=$(date +%s)
+python3 -c 'import shapely, numpy' 2>/dev/null \
+  || python3 -m pip install --quiet --break-system-packages shapely numpy
+python3 -c 'import osmium' 2>/dev/null \
+  || python3 -m pip install --quiet --break-system-packages 'osmium>=3.6,<5'
+SPEED_COUNTRY=$(node --input-type=module -e \
+  'import { regionCountry } from "./workers/rail/signs.mjs"; console.log(regionCountry(process.argv[1]))' \
+  "$REGION_KEY" || true)
+if python3 workers/transport/speed.py --pbf=data/transport.osm.pbf \
+     --out=data/transport-speed.osm.pbf --signs=data/computed-signs.geojson \
+     --country="$SPEED_COUNTRY"; then
+  mv data/transport-speed.osm.pbf data/transport.osm.pbf
+else
+  echo "::warning::Speed context wasn't computed – roads go without it and without computed signs."
+  : > data/computed-signs.geojson
+fi
+printf '%s\t%s\t%s\t%s\n' "61.2" "Speed context and computed signs" "$(( $(date +%s) - T_SP ))" \
+  "$(grep -o '"Feature"' data/computed-signs.geojson | wc -l) signs" >> steps-out/transport.tsv
+
 # sign nodes named for the `traffic_sign` layer, their images packed; without them roads still draw
 T_RS=$(date +%s)
 workers/transport/roadsigns.sh || {

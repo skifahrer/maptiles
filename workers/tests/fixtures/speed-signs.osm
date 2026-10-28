@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="hand">
+  <node id="1" version="1" lat="48.2020" lon="17.0800"/>
+  <node id="2" version="1" lat="48.2020" lon="17.1000"/>
+  <node id="3" version="1" lat="48.2020" lon="17.1100"/>
+  <node id="4" version="1" lat="48.2020" lon="17.1300"/>
+  <node id="5" version="1" lat="48.2150" lon="17.1100"/>
+  <node id="11" version="1" lat="48.2000" lon="17.1000"/>
+  <node id="12" version="1" lat="48.2000" lon="17.1100"/>
+  <node id="13" version="1" lat="48.2050" lon="17.1100"/>
+  <node id="14" version="1" lat="48.2050" lon="17.1000"/>
+  <way id="200" version="1">
+    <nd ref="1"/><nd ref="2"/>
+    <tag k="highway" v="primary"/><tag k="ref" v="2"/>
+  </way>
+  <way id="201" version="1">
+    <nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="primary"/><tag k="ref" v="2"/>
+  </way>
+  <way id="202" version="1">
+    <nd ref="3"/><nd ref="4"/>
+    <tag k="highway" v="primary"/><tag k="ref" v="2"/>
+  </way>
+  <way id="203" version="1">
+    <nd ref="3"/><nd ref="5"/>
+    <tag k="highway" v="residential"/>
+  </way>
+  <way id="900" version="1">
+    <nd ref="11"/><nd ref="12"/><nd ref="13"/><nd ref="14"/><nd ref="11"/>
+    <tag k="landuse" v="residential"/>
+  </way>
+</osm>
