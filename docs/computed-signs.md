@@ -1,0 +1,55 @@
+# Computed traffic signs – default speeds by road context
+
+Ticket 2490 (booked in skifahrer/rikimaps). Most roads carry no `maxspeed`: their limit
+is what the country's law sets for a built-up area, outside one, a motorway… This work
+gives every road that limit, and later draws it on the map as a sign.
+
+## The split: context in the road, number in the app
+
+| Where | What | Why there |
+|---|---|---|
+| map pipeline (here) | each road's **context**: `urban`, `rural`, `motorway`, `urban_motorway`, `motorroad`, `urban_motorroad`, `living_street` | needs built-up areas and the whole PBF; done once per region |
+| skifahrer/traffic-signs | `regulations/<country>.json`: the limit per context and vehicle, with the section of the law | a change of law is one file, no map is rebuilt |
+| Riki Maps | signed `maxspeed`, else the regulations' limit for the context and the vehicle | a truck and a car differ on the same road |
+
+The number is never baked: limits differ per vehicle (Slovakia: motorway 130 for a car,
+100 for a bus, 90 for a lorry) and laws change.
+
+## How a road's context is decided (`workers/routing/context.py`)
+
+1. Only motor roads get one (`MOTOR`); a footway has no default car speed.
+2. What a mapper wrote wins: `maxspeed:type`, `source:maxspeed`, `zone:maxspeed`,
+   `zone:traffic` or `maxspeed` as `<country>:<zone>` (`SK:urban`, `DE:rural`,
+   `SK:motorway`, `CZ:living_street`).
+3. `highway=living_street` is `living_street`; `highway=motorway(_link)` is a motorway,
+   `motorroad=yes` a motor road, the rest a plain road.
+4. Built-up or not, where no tag says: an edge with at least half its length inside
+   `landuse=residential|commercial|retail` is urban. The areas are buffered by 30 m so the
+   gardens and a church between two residential areas don't break a village.
+
+## Plan
+
+| # | Step | Where | State |
+|---|---|---|---|
+| 1 | `regulations.schema.json` | skifahrer/schemas#25 | PR |
+| 2 | `regulations/sk.json` from Zákon 8/2009 § 16, § 59 | skifahrer/traffic-signs#53 | PR |
+| 3 | `speed_context` on every motor edge of the routing tiles | this repo | PR |
+| 4 | the app reads dictionary `f1abaa00` and still reads `e97d6ec6` archives; `RoutingCost` takes the limit from the regulations | skifahrer/rikimaps#2490 | to do, **before 3 merges** |
+| 5 | the regulations reach the phone: `roadsigns.sh` already checks traffic-signs out, it copies `regulations/<country>.json` into the package beside the signs | here | to do |
+| 6 | the same context on the roads layer (`transport.yml`): `context.py` writes it into the PBF as a tag, so Planetiler and the routing tiles read one answer | here | to do |
+| 7 | computed sign points where the context changes along a road; `traffic_sign=city_limit` nodes as the stronger evidence for a village's start and end | here and the app | to do |
+| 8 | the other dictionary countries' regulations (CZ, AT, HU, PL, DE, UA, SI, CH, HR, RO), each from its law's text | skifahrer/traffic-signs | to do |
+
+## Rollout: the app first
+
+Adding `speed_context` changes the dictionary id (`e97d6ec6` → `f1abaa00`), and today's
+app refuses an archive of another id. The key is appended last, so every older index still
+means the same: an app that knows `f1abaa00` can read an `e97d6ec6` archive as it is. Step 4
+ships that first; only then does step 3 merge and regions get rebuilt.
+
+## Known limits of the first version
+
+- One context per edge. An edge running from a village into fields is whichever covers
+  more of it; step 7 splits it where the context changes.
+- Town signs (`traffic_sign=city_limit`) aren't read yet.
+- The country is the archive's (`--country`), not the edge's, as in `docs/routing-tiles.md`.

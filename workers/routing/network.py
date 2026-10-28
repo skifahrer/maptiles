@@ -8,6 +8,7 @@ from collections import Counter
 import osmium
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import context                                                    # noqa: E402
 import format as fmt                                              # noqa: E402
 import tags as tags_mod                                           # noqa: E402
 
@@ -128,6 +129,7 @@ class _Edges(osmium.SimpleHandler):
             return
 
         direction = _direction(picked)
+        road = context.road(t)
         start = 0
         for i in range(1, len(points)):
             if points[i][0] not in self.junctions and i != len(points) - 1:
@@ -139,14 +141,17 @@ class _Edges(osmium.SimpleHandler):
                 continue
             for ref, lat, lon in (piece[0], piece[-1]):
                 self.network.nodes[ref] = (lat, lon)
-            self.network.edges.append({
+            edge = {
                 "way": w.id,
                 "from": piece[0][0], "to": piece[-1][0],
                 "geom": [(lat, lon) for _r, lat, lon in piece[1:-1]],
                 "length_cm": _length_cm(piece),
                 "direction": direction,
                 "tags": picked,
-            })
+            }
+            if road:
+                edge["road"] = road
+            self.network.edges.append(edge)
 
 
 def _direction(tags):
@@ -245,7 +250,7 @@ def _via_ways(by_way, z, network):
 
 
 def load(pbf, dictionary=None):
-    """PBF → `Network`; three passes, since relations come after ways in the file."""
+    """PBF → `Network`; restrictions, junctions, edges, then built-up areas for the context."""
     dictionary = dictionary or tags_mod.dictionary()
     network = Network()
 
@@ -262,4 +267,5 @@ def load(pbf, dictionary=None):
     edges = _Edges(dictionary, junctions, network)
     edges.apply_file(pbf, locations=True, idx="flex_mem")
     _resolve_restrictions(network, rs.restrictions)
+    context.assign(network, context.BuiltUp(context.built_up_areas(pbf)))
     return network

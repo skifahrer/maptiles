@@ -6,6 +6,9 @@ import os
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
+import context                                                    # noqa: E402
+
 LOOKUP = os.path.join(os.path.dirname(_HERE), "data", "routing-tags.json")
 
 # key kinds; a tile value is encoded by them
@@ -129,6 +132,8 @@ def filter_expressions(s=None):
              for key, values in s.network.items()]
     # turn restrictions; `tags-filter` pulls members itself (without `-R`)
     lines.append("r/type=restriction")
+    # the built-up areas a road's speed context is measured against
+    lines.append(f"wr/landuse={','.join(context.BUILT_UP)}")
     return lines
 
 

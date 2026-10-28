@@ -12,6 +12,9 @@ python3 -c 'import osmium' 2>/dev/null \
   || python3 -m pip install --quiet --break-system-packages 'osmium>=3.6,<5'
 python3 -c 'import pmtiles' 2>/dev/null \
   || python3 -m pip install --quiet --break-system-packages pmtiles
+# built-up areas for each road's speed context
+python3 -c 'import shapely, numpy' 2>/dev/null \
+  || python3 -m pip install --quiet --break-system-packages shapely numpy
 
 # classes come from the tag dictionary, not a second list here
 T_F=$(date +%s)
