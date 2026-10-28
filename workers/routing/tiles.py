@@ -365,6 +365,9 @@ def main():
     print(f"{args.out}: {len(bodies)} tiles (z{ZOOM}–z{zoom_max}, {split_count} "
           f"split), {size / 1048576:.1f} MB, "
           f"largest {big[0][0] // 1024} kB")
+    contexts = getattr(network, "contexts", None)
+    if contexts:
+        print("Speed context: " + ", ".join(f"{k}×{n}" for k, n in contexts.most_common()))
     dropped = network.dropped.most_common(10)
     if dropped:
         print("Values outside the dictionary (dropped): "

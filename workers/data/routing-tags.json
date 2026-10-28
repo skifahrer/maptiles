@@ -16,6 +16,8 @@
     "A value outside the list is dropped and counted by `tiles.py`.",
     "`name` is for instructions and the first key cut when over budget.",
     "`country` is not an OSM tag: the edge's country, for the vignette.",
+    "`speed_context` isn't either: which default limit applies (`routing/context.py`).",
+    "A new key goes LAST, so an older archive's indices still mean the same.",
     "",
     "CHANGING THIS FILE CHANGES THE DICTIONARY `id` in every tile; archives with",
     "different ids must never join (`workers/lint/routing-tiles.py`). The id is",
@@ -373,6 +375,18 @@
         "RO"
       ],
       "what": "the edge's country – input for the vignette, not an OSM tag"
+    },
+    "speed_context": {
+      "values": [
+        "urban",
+        "rural",
+        "motorway",
+        "urban_motorway",
+        "motorroad",
+        "urban_motorroad",
+        "living_street"
+      ],
+      "what": "which default limit of the country's law applies (`regulations/<country>.json` in traffic-signs) – from `workers/routing/context.py`, not an OSM tag"
     }
   },
   "_access": {

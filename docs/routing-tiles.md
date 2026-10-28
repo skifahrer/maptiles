@@ -122,6 +122,16 @@ sa do telefónu nedostane – je to zároveň páka na veľkosť archívu.
 a je v každej dlaždici. Archívy s rôznym `id` sa spojiť nesmú: index by
 ukazoval na inú hodnotu a trasa by vyšla, len iná.
 
+**Rýchlostný kontext** (`speed_context`) tiež nie je značka z OSM: hovorí, ktorá
+predvolená rýchlosť zo zákona krajiny na hrane platí – `urban`, `rural`,
+`motorway`, `urban_motorway`, `motorroad`, `urban_motorroad`, `living_street`.
+Počíta ho [`workers/routing/context.py`](../workers/routing/context.py): najprv
+to, čo napísal mapovač (`SK:urban` v `maxspeed:type` a spol.), potom zástavba –
+hrana, ktorej aspoň polovica leží v `landuse=residential|commercial|retail`, je
+v obci. Číslo v archíve nie je; telefón ho berie z `regulations/<krajina>.json`
+v traffic-signs podľa vozidla. Prečo a čo ďalej: [`computed-signs.md`](computed-signs.md).
+Kľúč je v slovníku posledný, takže indexy starších sa nepohli.
+
 ## Poradie uzlov
 
 `rank` je miesto uzla v poradí eliminácie pre CCH a počíta sa **nad celým
