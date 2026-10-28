@@ -56,11 +56,10 @@ if python3 workers/transport/speed.py --pbf=data/transport.osm.pbf \
   mv data/transport-speed.osm.pbf data/transport.osm.pbf
 else
   echo "::warning::Speed context wasn't computed – roads go without it and without computed signs."
-  echo '{"type": "FeatureCollection", "features": []}' > data/computed-signs.geojson
+  : > data/computed-signs.geojson
 fi
 printf '%s\t%s\t%s\t%s\n' "61.2" "Speed context and computed signs" "$(( $(date +%s) - T_SP ))" \
-  "$(python3 -c 'import json; print(len(json.load(open("data/computed-signs.geojson"))["features"]))') signs" \
-  >> steps-out/transport.tsv
+  "$(grep -o '"Feature"' data/computed-signs.geojson | wc -l) signs" >> steps-out/transport.tsv
 
 # sign nodes named for the `traffic_sign` layer, their images packed; without them roads still draw
 T_RS=$(date +%s)

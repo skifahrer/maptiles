@@ -80,6 +80,15 @@ class Region(unittest.TestCase):
                          [(200, 270), (201, 90), (201, 270), (202, 90)])
         self.assertEqual({f["properties"]["country"] for f in features}, {"SK"})
 
+    def test_no_sign_is_an_empty_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            geo = os.path.join(tmp, "signs.geojson")
+            subprocess.run([sys.executable, os.path.join(WORKERS, "transport", "speed.py"),
+                            "--pbf", os.path.join(FIXTURES, "speed-context.osm"),
+                            "--out", os.path.join(tmp, "out.osm.pbf"), "--signs", geo],
+                           check=True, capture_output=True)
+            self.assertEqual(os.path.getsize(geo), 0, "an empty `features` list kills Planetiler")
+
 
 if __name__ == "__main__":
     unittest.main()

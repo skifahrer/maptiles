@@ -171,7 +171,9 @@ def main():
     contexts = classify(ways, context.BuiltUp(context.built_up_areas(a.pbf)))
     rewrite(a.pbf, a.out, contexts)
     found = signs(ways, contexts)
-    Path(a.signs).write_text(json.dumps(geojson(found, a.country.upper())), encoding="utf-8")
+    # Planetiler's GeoJSON reader dies on an empty `features` list, not on an empty file
+    Path(a.signs).write_text(json.dumps(geojson(found, a.country.upper())) if found else "",
+                             encoding="utf-8")
     counted = Counter(contexts.values())
     print(f"Speed context: {len(contexts)} ways ("
           + ", ".join(f"{k}×{n}" for k, n in counted.most_common()) + f"), {len(found)} computed signs")
