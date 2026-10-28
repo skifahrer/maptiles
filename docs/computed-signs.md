@@ -36,8 +36,8 @@ The number is never baked: limits differ per vehicle (Slovakia: motorway 130 for
 | 3 | `speed_context` on every motor edge of the routing tiles | #357 | merged |
 | 4 | the app reads dictionary `f1abaa00` and still reads `e97d6ec6` archives; `RoutingCost` takes the limit from the regulations | skifahrer/rikimaps#2490 | merged |
 | 5 | the regulations reach the phone: `roadsigns.sh` already checks traffic-signs out, it copies `regulations/<country>.json` into the package beside the signs | here | to do |
-| 6 | the same context on the roads layer: `transport/speed.py` writes it on each way of the roads' PBF | #358 | PR |
-| 7 | computed sign points where the context changes along a road, layer `computed_sign`; the app draws them | #358, then the app | pipeline in PR; app to do |
+| 6 | the same context on the roads layer: `transport/speed.py` writes it on each way of the roads' PBF | #358 | merged |
+| 7 | computed sign points where the context changes along a road, layer `computed_sign`; style layer `road-sign-computed` asks for image `computed.<country>.<context>`, which the app draws with the law's number for a car | #358, ticket 2499 here and in the app | points merged; drawing in PR |
 | 7b | `traffic_sign=city_limit` nodes as the stronger evidence for a village's start and end | here | to do |
 | 8 | the other dictionary countries' regulations (CZ, AT, HU, PL, DE, UA, SI, CH, HR, RO), each from its law's text | skifahrer/traffic-signs | to do |
 

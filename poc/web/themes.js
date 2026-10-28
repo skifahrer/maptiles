@@ -5454,6 +5454,26 @@ export function buildStyle({
         ["popisky", "Dopravné značky", "point", {}]
       );
     }
+    // a speed sign where a road's default limit changes; the app draws `computed.sk.urban`
+    if (transportUrl) {
+      add(
+        {
+          id: "road-sign-computed",
+          type: "symbol",
+          source: "transport",
+          "source-layer": "computed_sign",
+          minzoom: 16,
+          filter: ["==", ["get", "kind"], "speed"],
+          layout: {
+            "icon-image": ["concat", "computed.", ["downcase", ["get", "country"]], ".",
+                           ["get", "speed_context"]],
+            "icon-size": zl([[16, 0.75], [18, 1], [20, 1.4]]),
+            "icon-padding": 1
+          }
+        },
+        ["popisky", "Dopravné značky", "point", {}]
+      );
+    }
   }
 
   add(
