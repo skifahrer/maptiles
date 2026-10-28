@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="hand">
+  <node id="1" version="1" lat="48.2020" lon="17.0800"/>
+  <node id="2" version="1" lat="48.2020" lon="17.1000"><tag k="traffic_sign" v="city_limit"/><tag k="name" v="Dolná Ves"/></node>
+  <node id="3" version="1" lat="48.2020" lon="17.1200"/>
+  <node id="11" version="1" lat="48.2000" lon="17.1000"/>
+  <node id="12" version="1" lat="48.2000" lon="17.1250"/>
+  <node id="13" version="1" lat="48.2050" lon="17.1250"/>
+  <node id="14" version="1" lat="48.2050" lon="17.1000"/>
+  <way id="300" version="1">
+    <nd ref="1"/><nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="primary"/><tag k="ref" v="2"/>
+  </way>
+  <way id="900" version="1">
+    <nd ref="11"/><nd ref="12"/><nd ref="13"/><nd ref="14"/><nd ref="11"/>
+    <tag k="landuse" v="residential"/>
+  </way>
+</osm>

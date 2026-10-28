@@ -14,6 +14,13 @@ import context                                                    # noqa: E402
 # how far past the junction the sign stands, so it doesn't sit on the crossing
 SIGN_M = 15
 RADIUS_M = 6371000.0
+# a town sign is better evidence than a junction this near it
+NEAR_TOWN_M = 250
+# how much of each side of a town sign is measured against built-up land
+SIDE_M = 300
+# a village side needs this much more built-up land than the other
+SIDE_MARGIN = 0.2
+SIGN_KEYS = ("traffic_sign", "traffic_sign:forward", "traffic_sign:backward")
 
 
 def continues(a, b):
@@ -87,14 +94,88 @@ def signs(ways, contexts):
     return out
 
 
+def town_sign(tags):
+    """`(begin|end, facing)` of a village's town sign, else None; facing is `forward`, `backward` or None."""
+    if not any("city_limit" in tags.get(k, "").split(";") for k in SIGN_KEYS):
+        return None
+    facing = tags.get("traffic_sign:direction") or tags.get("direction")
+    for side in ("forward", "backward"):
+        if not facing and tags.get(f"traffic_sign:{side}"):
+            facing = side
+    kind = "end" if tags.get("city_limit") == "end" else "begin"
+    return kind, facing if facing in ("forward", "backward") else None
+
+
+def clip(line, metres):
+    """The first `metres` of a line."""
+    out, walked = [line[0]], 0.0
+    for a, b in zip(line, line[1:]):
+        if walked >= metres:
+            break
+        out.append(b)
+        walked += _metres(a, b)
+    return out
+
+
+def village_side(town, sides, built_up):
+    """`forward` or `backward`: the sign's facing says it, else the side with clearly more built-up land."""
+    kind, facing = town
+    if facing:
+        # a begin sign faces the traffic entering the village, an end sign the traffic leaving it
+        return facing if kind == "begin" else {"forward": "backward", "backward": "forward"}[facing]
+    if len(sides) < 2:
+        return None
+    ahead, behind = built_up.shares([clip(sides["forward"], SIDE_M), clip(sides["backward"], SIDE_M)])
+    if abs(ahead - behind) < SIDE_MARGIN:
+        return None
+    return "forward" if ahead > behind else "backward"
+
+
+def town_signs(ways, contexts, towns, built_up):
+    """A sign each way from a town sign on a road: the village's context in, the open road's out."""
+    out = []
+    for wid, way in ways.items():
+        kind = way["road"][0]
+        if wid not in contexts or kind not in ("road", "motorroad") or "maxspeed" in way["tags"]:
+            continue
+        for i, ref in enumerate(way["refs"]):
+            if ref not in towns:
+                continue
+            sides = {"forward": way["line"][i:], "backward": way["line"][:i + 1][::-1]}
+            sides = {k: v for k, v in sides.items() if len(v) > 1}
+            village = village_side(towns[ref], sides, built_up)
+            if village is None:
+                continue
+            for side, line in sides.items():
+                if not enterable(way["tags"], side == "forward"):
+                    continue
+                length = sum(_metres(a, b) for a, b in zip(line, line[1:]))
+                point, heading = along(line, min(SIGN_M, length / 2))
+                out.append({"way": wid, "point": point, "direction": heading,
+                            "context": context.name(kind, side == village)})
+    return out
+
+
+def merged(junction, town):
+    """The town signs, and the junction signs no town sign stands near."""
+    return town + [s for s in junction
+                   if all(_metres(s["point"], t["point"]) > NEAR_TOWN_M for t in town)]
+
+
 def read(pbf):
-    """Motor ways: tags, node refs and the line, as `{id: way}`."""
+    """Motor ways as `{id: way}` with tags, node refs and the line, and town signs as `{node: sign}`."""
     import osmium
 
     class Ways(osmium.SimpleHandler):
         def __init__(self):
             super().__init__()
             self.ways = {}
+            self.towns = {}
+
+        def node(self, n):
+            found = town_sign(dict(n.tags))
+            if found:
+                self.towns[n.id] = found
 
         def way(self, w):
             tags = dict(w.tags)
@@ -110,7 +191,7 @@ def read(pbf):
 
     h = Ways()
     h.apply_file(pbf, locations=True, idx="flex_mem")
-    return h.ways
+    return h.ways, h.towns
 
 
 def classify(ways, built_up):
@@ -167,16 +248,18 @@ def main():
     ap.add_argument("--country", default="", help="the region's ISO code, which the app's law is read by")
     a = ap.parse_args()
 
-    ways = read(a.pbf)
-    contexts = classify(ways, context.BuiltUp(context.built_up_areas(a.pbf)))
+    ways, towns = read(a.pbf)
+    built_up = context.BuiltUp(context.built_up_areas(a.pbf))
+    contexts = classify(ways, built_up)
     rewrite(a.pbf, a.out, contexts)
-    found = signs(ways, contexts)
+    found = merged(signs(ways, contexts), town_signs(ways, contexts, towns, built_up))
     # Planetiler's GeoJSON reader dies on an empty `features` list, not on an empty file
     Path(a.signs).write_text(json.dumps(geojson(found, a.country.upper())) if found else "",
                              encoding="utf-8")
     counted = Counter(contexts.values())
     print(f"Speed context: {len(contexts)} ways ("
-          + ", ".join(f"{k}×{n}" for k, n in counted.most_common()) + f"), {len(found)} computed signs")
+          + ", ".join(f"{k}×{n}" for k, n in counted.most_common())
+          + f"), {len(found)} computed signs, {len(towns)} town signs")
 
 
 if __name__ == "__main__":

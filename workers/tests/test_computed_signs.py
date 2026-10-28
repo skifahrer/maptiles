@@ -61,6 +61,58 @@ class Transitions(unittest.TestCase):
         self.assertFalse(speed.continues({"highway": "primary", "ref": "2"}, {"highway": "residential"}))
 
 
+@needs("shapely", "numpy")
+class TownSigns(unittest.TestCase):
+    """Road 2 through a town sign at 17.10; the village lies east."""
+
+    def setUp(self):
+        import shapely
+        import context
+        self.context = context
+        self.ways = {300: way([1, 2, 3], [(17.08, 48.2), (17.10, 48.2), (17.12, 48.2)],
+                              highway="primary", ref="2")}
+        self.ways[300]["road"] = ("road", None)
+        self.contexts = {300: "urban"}
+        self.east = context.BuiltUp([shapely.box(17.10, 48.19, 17.13, 48.21)])
+        self.nowhere = context.BuiltUp([])
+
+    def found(self, towns, built_up=None):
+        return sorted((s["context"], s["direction"]) for s in
+                      speed.town_signs(self.ways, self.contexts, towns, built_up or self.east))
+
+    def test_built_up_land_says_where_the_village_is(self):
+        self.assertEqual(self.found({2: ("begin", None)}), [("rural", 270), ("urban", 90)])
+
+    def test_the_sign_facing_wins_over_the_land(self):
+        self.assertEqual(self.found({2: ("begin", "backward")}), [("rural", 90), ("urban", 270)])
+        self.assertEqual(self.found({2: ("end", "forward")}, self.nowhere), [("rural", 90), ("urban", 270)])
+
+    def test_no_evidence_no_sign(self):
+        self.assertEqual(self.found({2: ("begin", None)}, self.nowhere), [])
+
+    def test_signed_or_one_way(self):
+        self.ways[300]["tags"]["oneway"] = "yes"
+        self.assertEqual(self.found({2: ("begin", None)}), [("urban", 90)])
+        self.ways[300]["tags"]["maxspeed"] = "50"
+        self.assertEqual(self.found({2: ("begin", None)}), [])
+
+    def test_a_motor_road_keeps_its_kind(self):
+        self.ways[300]["road"] = ("motorroad", None)
+        self.assertEqual(self.found({2: ("begin", None)}), [("motorroad", 270), ("urban_motorroad", 90)])
+
+    def test_town_sign_tags(self):
+        self.assertEqual(speed.town_sign({"traffic_sign": "city_limit"}), ("begin", None))
+        self.assertEqual(speed.town_sign({"traffic_sign": "city_limit", "city_limit": "end",
+                                          "direction": "forward"}), ("end", "forward"))
+        self.assertEqual(speed.town_sign({"traffic_sign:backward": "city_limit"}), ("begin", "backward"))
+        self.assertIsNone(speed.town_sign({"traffic_sign": "SK:253[50]"}))
+
+    def test_junction_signs_near_a_town_sign_give_way(self):
+        town = [{"point": (17.10, 48.2)}]
+        near, far = {"point": (17.101, 48.2)}, {"point": (17.2, 48.2)}
+        self.assertEqual(speed.merged([near, far], town), town + [far])
+
+
 @needs("osmium", "shapely", "numpy")
 class Region(unittest.TestCase):
     def test_ways_tagged_and_signs_written(self):
@@ -79,6 +131,18 @@ class Region(unittest.TestCase):
         self.assertEqual(sorted((f["properties"]["osm_way"], f["properties"]["direction"]) for f in features),
                          [(200, 270), (201, 90), (201, 270), (202, 90)])
         self.assertEqual({f["properties"]["country"] for f in features}, {"SK"})
+
+    def test_a_mapped_town_sign_places_both_signs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            geo = os.path.join(tmp, "signs.geojson")
+            subprocess.run([sys.executable, os.path.join(WORKERS, "transport", "speed.py"),
+                            "--pbf", os.path.join(FIXTURES, "speed-town-sign.osm"),
+                            "--out", os.path.join(tmp, "out.osm.pbf"), "--signs", geo, "--country", "sk"],
+                           check=True, capture_output=True)
+            with open(geo, encoding="utf-8") as f:
+                features = json.load(f)["features"]
+        self.assertEqual(sorted((f["properties"]["speed_context"], f["properties"]["direction"])
+                                for f in features), [("rural", 270), ("urban", 90)])
 
     def test_no_sign_is_an_empty_file(self):
         with tempfile.TemporaryDirectory() as tmp:
