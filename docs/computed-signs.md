@@ -33,12 +33,22 @@ The number is never baked: limits differ per vehicle (Slovakia: motorway 130 for
 |---|---|---|---|
 | 1 | `regulations.schema.json` | skifahrer/schemas#25 | PR |
 | 2 | `regulations/sk.json` from Zákon 8/2009 § 16, § 59 | skifahrer/traffic-signs#53 | PR |
-| 3 | `speed_context` on every motor edge of the routing tiles | this repo | PR |
-| 4 | the app reads dictionary `f1abaa00` and still reads `e97d6ec6` archives; `RoutingCost` takes the limit from the regulations | skifahrer/rikimaps#2490 | to do, **before 3 merges** |
+| 3 | `speed_context` on every motor edge of the routing tiles | #357 | merged |
+| 4 | the app reads dictionary `f1abaa00` and still reads `e97d6ec6` archives; `RoutingCost` takes the limit from the regulations | skifahrer/rikimaps#2490 | merged |
 | 5 | the regulations reach the phone: `roadsigns.sh` already checks traffic-signs out, it copies `regulations/<country>.json` into the package beside the signs | here | to do |
-| 6 | the same context on the roads layer (`transport.yml`): `context.py` writes it into the PBF as a tag, so Planetiler and the routing tiles read one answer | here | to do |
-| 7 | computed sign points where the context changes along a road; `traffic_sign=city_limit` nodes as the stronger evidence for a village's start and end | here and the app | to do |
+| 6 | the same context on the roads layer: `transport/speed.py` writes it on each way of the roads' PBF | #358 | PR |
+| 7 | computed sign points where the context changes along a road, layer `computed_sign`; the app draws them | #358, then the app | pipeline in PR; app to do |
+| 7b | `traffic_sign=city_limit` nodes as the stronger evidence for a village's start and end | here | to do |
 | 8 | the other dictionary countries' regulations (CZ, AT, HU, PL, DE, UA, SI, CH, HR, RO), each from its law's text | skifahrer/traffic-signs | to do |
+
+## Computed signs (`computed_sign` in the roads package)
+
+A point stands 15 m past the junction where a road carries on (same `ref`, `name` or
+class) into a stretch of another context, and faces the traffic entering it: `direction`
+in degrees, `speed_context` and `country` to look the limit up by, `osm_way` of the
+stretch. None where the stretch is signed (`maxspeed`), against a one-way, or on a side
+street. The roads layer is per way, so a way running out of a village is one context
+until 7b splits it.
 
 ## Rollout: the app first
 

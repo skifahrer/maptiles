@@ -13,6 +13,10 @@ sources:
   osm:
     type: osm
     local_path: data/transport.osm.pbf
+  # `speed.py`: where a road's speed context changes; the app reads the limit by country
+  computed:
+    type: geojson
+    local_path: data/computed-signs.geojson
 
 # `layer` and `lanes` are integers; sizes and speed keep their unit as strings
 tag_mappings:
@@ -59,6 +63,8 @@ definitions:
     - key: width
     - key: lanes
     - key: incline
+    # `urban`, `rural`, `motorway`…: which default limit applies, from `speed.py`
+    - key: speed_context
     - key: osm_id
       value: '${ feature.id }'
       type: long
@@ -153,6 +159,21 @@ layers:
             value: '${ feature.id }'
             type: long
 
+  # computed signs: where a road's default limit changes, facing the traffic that enters
+  - id: computed_sign
+    features:
+      - source: computed
+        geometry: point
+        min_zoom: 14
+        attributes:
+          - key: kind
+          - key: speed_context
+          - key: country
+          - key: direction
+            type: integer
+          - key: osm_way
+            type: long
+
   # addresses: street and house number, to search offline
   - id: addresses
     features:
@@ -186,6 +207,45 @@ layers:
 
 # testy: `java -jar planetiler.jar verify workers/transport/transport.yml`
 examples:
+  - name: A road keeps the speed context `speed.py` gave it
+    input:
+      source: osm
+      geometry: line
+      tags:
+        highway: primary
+        ref: "2"
+        speed_context: urban
+    output:
+      - layer: transport
+        geometry: line
+        min_zoom: 6
+        tags:
+          class: primary
+          family: highway
+          ref: "2"
+          speed_context: urban
+
+  - name: A computed sign is a point with its context and the way it faces
+    input:
+      source: computed
+      geometry: point
+      tags:
+        kind: speed
+        speed_context: urban
+        country: SK
+        direction: 90
+        osm_way: 100
+    output:
+      - layer: computed_sign
+        geometry: point
+        min_zoom: 14
+        tags:
+          kind: speed
+          speed_context: urban
+          country: SK
+          direction: 90
+          osm_way: 100
+
   - name: A motorway is in the network from z6 with its number
     input:
       source: osm
