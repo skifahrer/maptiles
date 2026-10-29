@@ -1160,6 +1160,13 @@ export const TRAIL_JOIN = { "line-join": "miter", "line-miter-limit": 2 };
 /** Metrov na pixel pri z0 v strede Slovenska (48,7° s. š.). */
 export const METRES_PER_PX_Z0 = 156543.03 * Math.cos((48.7 * Math.PI) / 180);
 
+/** Šírka v pixeloch, ktorú má na zemi `metres` – dlaždice majú 512 px. */
+export const realWidthPx = (metres, z) => (metres * 2 ** z) / (METRES_PER_PX_Z0 / 2);
+
+/** Skutočná šírka chodníkov a poľných ciest v metroch, od ktorej sa kreslí ich pás. */
+export const PATH_GROUND_M = { track: 3, steps: 2, cycleway: 2.5, footway: 2, path: 1.2 };
+export const PATH_GROUND_MIN_Z = 16;
+
 /** Referenčný zoom, v ktorom sa odstupy zadávajú aj ladia. */
 export const TRAIL_GAP_ZOOM = 16;
 const atZoom = (stops, z) => (stops.find(([sz]) => sz === z) || [, 0])[1];
@@ -4210,6 +4217,36 @@ export function buildStyle({
       ["in", str("subclass"), ["literal", ["path", "bridleway", ""]]]],
       "path", [[11, 0.4], [13, 0.9], [16, 2.2], [20, 8]], [2, 2], 11]
   ];
+  const pathFilter = (filter) => [
+    "all",
+    ["in", str("class"), ["literal", ["path", "track"]]],
+    filter,
+    ["!=", ["get", "brunnel"], "tunnel"]
+  ];
+  // zblízka má cesta šírku, akú má na zemi: pás pod prerušovanou čiarou
+  for (const [id, label, filter] of pathDefs) {
+    const metres = PATH_GROUND_M[id];
+    add(
+      {
+        id: `road-${id}__ground`,
+        type: "line",
+        "source-layer": "transportation",
+        minzoom: PATH_GROUND_MIN_Z,
+        filter: pathFilter(filter),
+        layout: { "line-cap": "butt", "line-join": "round" },
+        paint: {
+          "line-color": c.pedestrian,
+          "line-opacity": zl([[PATH_GROUND_MIN_Z, 0], [PATH_GROUND_MIN_Z + 1, 0.9]]),
+          "line-width": ["interpolate", ["exponential", 2], ["zoom"],
+            PATH_GROUND_MIN_Z, realWidthPx(metres, PATH_GROUND_MIN_Z),
+            MAX_DISPLAY_Z + 2, realWidthPx(metres, MAX_DISPLAY_Z + 2)]
+        }
+      },
+      ["chodniky", `${label} – šírka`, "line", { "line-color": "pedestrian" },
+       null, null, `road-${id}`]
+    );
+    L[L.length - 1].metadata["frico:derived"] = `road-${id}`;
+  }
   for (const [id, label, filter, paletteKey, stops, dash, mz] of pathDefs) {
     add(
       {
@@ -4217,12 +4254,7 @@ export function buildStyle({
         type: "line",
         "source-layer": "transportation",
         minzoom: mz,
-        filter: [
-          "all",
-          ["in", str("class"), ["literal", ["path", "track"]]],
-          filter,
-          ["!=", ["get", "brunnel"], "tunnel"]
-        ],
+        filter: pathFilter(filter),
         layout: { "line-cap": "butt", "line-join": "round" },
         paint: { "line-color": c[paletteKey], "line-width": zw(stops), "line-dasharray": dash }
       },
