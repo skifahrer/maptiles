@@ -52,6 +52,12 @@ if [ -d _site/styles ]; then
 fi
 echo "3D terrain in the style: $TERRAIN_3D (exaggeration $TERRAIN_EXAG×)"
 
+# the app leaves the plane out where it cuts or merges two regions' heights
+DEM_PLANE=null
+TERRAIN_FILE="_site/tiles/${REGION_KEY}-terrain.pmtiles"
+[ -s "$TERRAIN_FILE" ] && DEM_PLANE=$(python3 workers/terrain/plane.py "$TERRAIN_FILE")
+echo "Height model's plane outside the region: $DEM_PLANE m"
+
 jq -n \
   --arg region "$REGION_KEY" \
   --arg outline "$OUTLINE" \
@@ -98,6 +104,7 @@ jq -n \
   --arg demsource "$CONTOURS_DEM_SOURCE" \
   --arg dem "$DEM_URL" \
   --argjson demmaxzoom "$DEM_MAXZOOM" \
+  --argjson demplane "$DEM_PLANE" \
   --arg demtilessource "$DEM_TILES_SOURCE" \
   --argjson terrain3d "$TERRAIN_3D" \
   --argjson terrainexag "$TERRAIN_EXAG" \
@@ -113,6 +120,7 @@ jq -n \
     default_icons: $icons,
     dem: $dem,
     dem_maxzoom: $demmaxzoom,
+    dem_plane: $demplane,
     # height tiles are shared, so their model sits at `dem`, maybe not the one of the contours
     dem_source: $demtilessource,
     # exaggeration from the style, so the client never invents another

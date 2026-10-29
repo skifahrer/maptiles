@@ -503,7 +503,10 @@ jobs:
 
       # what the packer and the catalog read: bbox, zooms, models
       - name: The range's manifest
-        run: python3 workers/mountain/manifest.py _site
+        run: |
+          python3 -c 'import pmtiles, PIL' 2>/dev/null \
+            || python3 -m pip install --quiet --break-system-packages pmtiles pillow
+          python3 workers/mountain/manifest.py _site
 
       - name: Publish the packages to Drive and write maps.json
         id: publish

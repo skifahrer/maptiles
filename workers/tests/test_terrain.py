@@ -184,5 +184,50 @@ class TerrainTiles(unittest.TestCase):
         self.assertTrue((back == arr).all())
 
 
+@needs("PIL", "pmtiles")
+class TerrainPlane(unittest.TestCase):
+    """The plane's height, which the app leaves out where it cuts or merges heights."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.p = worker("terrain/plane.py")
+
+    def tile(self, plane_share):
+        from PIL import Image
+        image = Image.new("RGB", (256, 256), (131, 229, 0))  # 997 m
+        hill = int(256 * (1 - plane_share) ** 0.5)
+        for x in range(hill):
+            for y in range(hill):
+                image.putpixel((x, y), (131, (x * 7 + y) % 256, x % 256))
+        out = io.BytesIO()
+        image.save(out, "WEBP", lossless=True)
+        return out.getvalue()
+
+    def test_the_commonest_height_is_the_plane(self):
+        self.assertEqual(self.p.plane_of(self.tile(0.9)), 997)
+
+    def test_ground_alone_has_no_plane(self):
+        self.assertIsNone(self.p.plane_of(self.tile(0.1)))
+
+    def test_read_from_the_archive(self):
+        import tempfile
+        from pmtiles.tile import Compression, TileType, zxy_to_tileid
+        from pmtiles.writer import Writer
+        folder = tempfile.mkdtemp()
+        path = os.path.join(folder, "r-terrain.pmtiles")
+        z, x, y = 5, 17, 10
+        with open(path, "wb") as f:
+            writer = Writer(f)
+            writer.write_tile(zxy_to_tileid(z, x, y), self.tile(0.9))
+            writer.finalize({"tile_type": TileType.WEBP, "tile_compression": Compression.NONE,
+                             "min_zoom": z, "max_zoom": z,
+                             "min_lon_e7": int(19.0e7), "min_lat_e7": int(49.0e7),
+                             "max_lon_e7": int(20.0e7), "max_lat_e7": int(49.5e7),
+                             "center_zoom": z, "center_lon_e7": int(19.5e7),
+                             "center_lat_e7": int(49.25e7)}, {})
+        self.assertEqual(self.p.plane(path), 997)
+        self.assertIsNone(self.p.plane(os.path.join(folder, "none.pmtiles")))
+
+
 if __name__ == "__main__":
     unittest.main()
