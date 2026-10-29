@@ -99,5 +99,16 @@ class Network(unittest.TestCase):
         self.assertEqual(sum(self.net.contexts.values()), 11)
 
 
+@needs("osmium", "shapely", "numpy")
+class RailNetwork(unittest.TestCase):
+    def test_a_tram_on_a_street_gets_no_speed_context(self):
+        n = worker("routing/network.py")
+        rail = worker("routing/tags.py", name="tags").dictionary(
+            os.path.join(WORKERS, "data", "rail-routing-tags.json"))
+        net = n.load(os.path.join(FIXTURES, "tram-street.osm"), rail)
+        self.assertEqual(len(net.edges), 2)
+        self.assertFalse([e for e in net.edges if "speed_context" in e["tags"] or "road" in e])
+
+
 if __name__ == "__main__":
     unittest.main()
