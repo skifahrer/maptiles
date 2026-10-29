@@ -129,10 +129,14 @@ if __name__ == "__main__":
 
 class EveryLimit(unittest.TestCase):
     def test_a_region_carries_every_limit_its_country_has(self):
-        used = sp.with_every_limit("sk", {"sk.ts.maxspeed-40": 3, "sk.ts.stop": 1})
+        used = sp.with_computed("sk", {"sk.ts.maxspeed-40": 3, "sk.ts.stop": 1})
         self.assertEqual(used["sk.ts.maxspeed-40"], 3)
         self.assertEqual(used["sk.ts.stop"], 1)
         for kph in (30, 50, 90, 130):
             self.assertIn(f"sk.ts.maxspeed-{kph}", used)
         self.assertFalse([n for n in used if n.endswith("_end") and n not in ("sk.ts.stop",)])
         self.assertTrue(set(sp.needed("sk", used)) >= {"sk.ts.maxspeed-30", "sk.ts.maxspeed-130"})
+
+    def test_and_the_dead_end_sign(self):
+        used = sp.with_computed("sk", {})
+        self.assertEqual(sp.needed("sk", used).get("sk.ts.dead-end"), "information/dead-end")

@@ -159,7 +159,7 @@ layers:
             value: '${ feature.id }'
             type: long
 
-  # computed signs: where a road's default limit changes, facing the traffic that enters
+  # computed signs: where a road's default limit changes or a street ends, facing the traffic that enters
   - id: computed_sign
     features:
       - source: computed
@@ -245,6 +245,25 @@ examples:
           country: SK
           direction: 90
           osm_way: 100
+
+  - name: A computed dead-end sign has no speed context
+    input:
+      source: computed
+      geometry: point
+      tags:
+        kind: dead-end
+        country: SK
+        direction: 0
+        osm_way: 501
+    output:
+      - layer: computed_sign
+        geometry: point
+        min_zoom: 14
+        tags:
+          kind: dead-end
+          country: SK
+          direction: 0
+          osm_way: 501
 
   - name: A motorway is in the network from z6 with its number
     input:

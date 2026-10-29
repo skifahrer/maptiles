@@ -5454,7 +5454,7 @@ export function buildStyle({
         ["popisky", "Dopravné značky", "point", {}]
       );
     }
-    // a speed sign where a road's default limit changes; the app draws `computed.sk.urban`
+    // the app draws a speed sign as `computed.sk.urban`; a dead end is the sheet's `sk.ts.dead-end`
     if (transportUrl) {
       add(
         {
@@ -5463,10 +5463,12 @@ export function buildStyle({
           source: "transport",
           "source-layer": "computed_sign",
           minzoom: 16,
-          filter: ["==", ["get", "kind"], "speed"],
+          filter: ["match", ["get", "kind"], ["speed", "dead-end"], true, false],
           layout: {
-            "icon-image": ["concat", "computed.", ["downcase", ["get", "country"]], ".",
-                           ["get", "speed_context"]],
+            "icon-image": ["match", ["get", "kind"],
+              "speed", ["concat", "computed.", ["downcase", ["get", "country"]], ".",
+                        ["get", "speed_context"]],
+              ["concat", ["downcase", ["get", "country"]], ".ts.", ["get", "kind"]]],
             "icon-size": zl([[16, 0.75], [18, 1], [20, 1.4]]),
             "icon-padding": 1
           }

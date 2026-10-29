@@ -52,7 +52,7 @@ SPEED_COUNTRY=$(node --input-type=module -e \
   "$REGION_KEY" || true)
 if python3 workers/transport/speed.py --pbf=data/transport.osm.pbf \
      --out=data/transport-speed.osm.pbf --signs=data/computed-signs.geojson \
-     --country="$SPEED_COUNTRY"; then
+     --country="$SPEED_COUNTRY" --outline=data/region.geojson; then
   mv data/transport-speed.osm.pbf data/transport.osm.pbf
 else
   echo "::warning::Speed context wasn't computed – roads go without it and without computed signs."
