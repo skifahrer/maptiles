@@ -97,8 +97,8 @@ kraja (manuálne, jeden kraj) aby sa prestavala mapa:
                                workflow, aký nad nimi púšťa build mapy
 
 Mapa · Build wiki            objekty regiónu s `wikipedia`/`wikidata`
-(ručne, alebo z Build map)   ─► články (NDJSON, dávky po 50)
-                             ─► {región}-wikipedia.zip na Drive
+(ručne, alebo ho spustí      ─► články (NDJSON, dávky po 50)
+Build map ako vlastný beh)   ─► {región}-wikipedia.zip na Drive
                              ▲ na Pages NEJDE – do `_site` z toho nič
                              ▲ vlastná pipeline: iná sieť, iná životnosť
                              ▲ týždenne v celej krajine: „Mapa · Wiki state"
@@ -2510,8 +2510,9 @@ Balík aj zápis do `maps.json` robí ďalej `publish-map.py`, len s
 namiesto aby ju prepísal – inak by zmazal odkazy na mapu, o ktorej nič nevie.
 Druhý packer by bol druhá pravda o tom istom.
 
-**Build map (kraj aj celá krajina) ho volá sám** (`workflow_call`, job `wiki`)
-so `skip_cached`: región, ktorý má články v cache **aj** balík `wikipedia`
+**Build map (kraj aj celá krajina) ho spúšťa sám ako vlastný beh**
+(`workflow_dispatch` z jobu `wiki`), takže build regiónu na články nečaká a ich
+chyba ho nezhodí – štafeta krajiny ide hneď na ďalší kraj. So `skip_cached`: región, ktorý má články v cache **aj** balík `wikipedia`
 v `maps.json`, sa preskočí (job `need`, `workers/wiki/need.sh`). Keď jedno
 chýba, články sa stiahnu. Nanovo ich stiahne `rebuild: clanky` (alebo
 `vsetko`), vypnú sa voľbou `options: wikipedia=false`, rýchly test ich neťahá.

@@ -5,7 +5,7 @@ run-name: "${{ github.workflow }} · ${{ inputs.region }}"
 # A plain-text article (English and the country language) for every object with
 # `wikipedia`/`wikidata`, packed as `<region>-wikipedia.zip` and `.aar` onto Drive
 # and linked in `maps.json`. The app reads only the `.aar`, so it can't be turned off.
-# Build map calls it too (`workflow_call`) with `skip_cached`.
+# Build map region starts it as a run of its own, with `skip_cached`.
 
 on:
   workflow_call:
@@ -108,6 +108,16 @@ on:
           - tirol
           - vorarlberg
           - wien
+      region_key:
+        description: "Region key from Build map region's plan (for the cache check)"
+        required: false
+        default: ""
+        type: string
+      skip_cached:
+        description: "Skip a region whose articles are cached and catalogued"
+        required: false
+        default: false
+        type: boolean
       wiki_langs:
         description: "EXTRA languages, comma separated (en and the country language always)"
         required: false

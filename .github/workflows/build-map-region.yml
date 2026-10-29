@@ -286,24 +286,32 @@ jobs:
       budget_rocks_pct: ${{ needs.plan.outputs.budget_rocks_pct }}
       budget_terrain_pct: ${{ needs.plan.outputs.budget_terrain_pct }}
 
-  # articles only where neither cache nor catalog has them; a test doesn't fetch them
+  # a run of its own: the region neither waits for its articles nor fails with them
   wiki:
-    name: Wikipedia articles
+    name: Wikipedia articles (own run)
     needs: plan
     if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.opt_wikipedia == 'true' && needs.plan.outputs.test_km2 == '0' }}
-    uses: ./.github/workflows/wiki.yml
-    secrets: inherit
+    runs-on: ubuntu-latest
     permissions:
-      contents: write
-      actions: read
-    with:
-      region: ${{ inputs.region }}
-      region_key: ${{ needs.plan.outputs.key }}
-      rebuild: ${{ needs.plan.outputs.opt_wiki_rebuild == 'true' }}
-      skip_cached: true
-      publish: ${{ needs.plan.outputs.opt_publish == 'true' }}
-      custom_pbf_url: ${{ needs.plan.outputs.opt_custom_pbf_url }}
-      custom_name: ${{ needs.plan.outputs.opt_custom_name }}
+      actions: write
+    steps:
+      - name: Start Map · Build wiki
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.ref_name }}
+          REGION: ${{ inputs.region }}
+          REGION_KEY: ${{ needs.plan.outputs.key }}
+          REBUILD: ${{ needs.plan.outputs.opt_wiki_rebuild == 'true' }}
+          PUBLISH: ${{ needs.plan.outputs.opt_publish == 'true' }}
+          CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
+          CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
+        run: |
+          set -euo pipefail
+          gh workflow run wiki.yml --repo "$GITHUB_REPOSITORY" --ref "$REF" \
+            -f region="$REGION" -f region_key="$REGION_KEY" -f skip_cached=true \
+            -f rebuild="$REBUILD" -f publish="$PUBLISH" \
+            -f custom_pbf_url="$CUSTOM_PBF_URL" -f custom_name="$CUSTOM_NAME"
+          echo "Wikipedia articles for \`$REGION_KEY\` build in their own run: [Map · Build wiki]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/wiki.yml)" >> "$GITHUB_STEP_SUMMARY"
 
   # a short job finding everything the others need, and downloading the PBF
   plan:
