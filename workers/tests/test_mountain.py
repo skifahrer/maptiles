@@ -191,6 +191,7 @@ class Manifest(unittest.TestCase):
         with open(os.path.join(site, "tiles", "vysoke_tatry-aerial_summer.pmtiles"), "wb") as f:
             f.write(b"PMTiles\x03" + bytes(92) + bytes([8, 17]))
         open(os.path.join(site, "tiles", "vysoke_tatry-roadsigns.png"), "wb").close()
+        open(os.path.join(site, "tiles", "vysoke_tatry-regulations.json"), "wb").close()
         for kind in ("trails", "water", "points"):
             open(os.path.join(site, "tiles", f"vysoke_tatry-{kind}.pmtiles"), "wb").close()
         with env(REGION_KEY="vysoke_tatry", AREA_BBOX="1,2,3,4", TRANSPORT_MAXZOOM="14",
@@ -203,6 +204,7 @@ class Manifest(unittest.TestCase):
         self.assertEqual((reg["transport"], reg["paths_maxzoom"]),
                          ("tiles/vysoke_tatry-transport.pmtiles", 14))
         self.assertEqual(reg["road_sign_sprite"], ["tiles/vysoke_tatry-roadsigns.png"])
+        self.assertEqual(reg["regulations"], "tiles/vysoke_tatry-regulations.json")
         self.assertEqual((reg["aerial_summer"], reg["aerial_summer_maxzoom"]),
                          ("tiles/vysoke_tatry-aerial_summer.pmtiles", 17))
         self.assertNotIn("aerial_winter", reg)

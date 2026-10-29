@@ -4,7 +4,7 @@
 Checked: the viewer and glyphs are left out (Pages link, relative link, no
 manifest); `site.sh` builds the glyph address from `$BASE`; the world style
 links an address; search, trails and routing stay in the base map, sized;
-routing rides in `roads` too; no package is alive and retired at once.
+routing and the regulations ride in `roads` too; no package is alive and retired at once.
 """
 import importlib.util
 import json
@@ -47,6 +47,7 @@ def fill(site):
                 "tiles/region-history.pmtiles",
                 "tiles/region-buildings.pmtiles",
                 "tiles/region-routing.pmtiles",
+                "tiles/region-regulations.json",
                 "tiles/search-index.db"):
         path = os.path.join(site, rel)
         os.makedirs(os.path.dirname(path) or site, exist_ok=True)
@@ -171,6 +172,14 @@ if packages and "tiles/region-routing.pmtiles" not in roads_zip:
         f"{PUBLISH}: `tiles/region-routing.pmtiles` isn't in `-roads.zip`. Who "
         f"takes only the networks must get the one routes are computed on – the "
         f"registry gives it to `roads` from the manifest under `routing`.")
+# the country's default speeds ride in both, as the road signs do
+for kind, zipped in (("base", base_zip), ("roads", roads_zip)):
+    if packages and "tiles/region-regulations.json" not in zipped:
+        bad.append(
+            f"{PUBLISH}: `tiles/region-regulations.json` isn't in package `{kind}`. "
+            f"Without it the phone keeps the limits its build knew, and a change of "
+            f"law reaches nobody who took only that package.")
+
 if packages and "routing" in packages:
     bad.append(
         f"{PUBLISH}: a `-routing.zip` package was made. Routing rides in the map "
