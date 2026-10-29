@@ -2207,7 +2207,7 @@ o veľkosť sťahovania:
 
 | balík | čo v ňom je | z ktorých `.pmtiles` |
 |---|---|---|
-| `roads` | cesty, kam vojde auto – od diaľnice po poľnú cestu, aj trajekty – **s obmedzeniami na ceste** (výška podjazdu, šírka, hmotnosť, rýchlosť, pruhy, stúpanie) a dopravnými značkami | `-transport` (+ sprite `-roadsigns`, aj v základnej mape) |
+| `roads` | cesty, kam vojde auto – od diaľnice po poľnú cestu, aj trajekty – **s obmedzeniami na ceste** (výška podjazdu, šírka, hmotnosť, rýchlosť, pruhy, stúpanie) a dopravnými značkami | `-transport` (+ sprite `-roadsigns` a `-regulations.json`, oboje aj v základnej mape) |
 | `paths` | kam auto nevojde: chodníky, cestičky, cyklotrasy, schody, pešie zóny, ferraty a lanovky – s povrchom, prístupom a náročnosťou (`sac_scale`) | `-paths` |
 | `body` | pramene, jaskyne, rozhľadne, pamiatky, banské dedičstvo, geodetické body | `-points` |
 | `hranice` | štát, kraj, okres a obec ako plochy aj čiary, s menom a úrovňou, plus body sídel | `-boundaries` |
@@ -2293,6 +2293,14 @@ v `packages.json`): kraj bez značky alebo bez obrázka ide bez
 kľúč hlási varovaním. Štýl ich kreslí ako
 `road-sign` od z16, na cestnej mape od z15, na turistickej, lyžiarskej
 a historickej nie.
+**Predpisy krajiny** – rýchlosť podľa kontextu cesty (obec, mimo obce,
+diaľnica…) a vozidla – berie [`regulations.sh`](transport/regulations.sh)
+zo zbierky `regulations/<krajina>.json` a dáva ich ako
+`<kraj>-regulations.json` do balíka `roads` aj do základnej mapy (časť
+`regulations`, kľúč manifestu `regulations`). Zmena zákona tak príde do
+telefónu s ďalším buildom kraja, nie s vydaním aplikácie. Krajina bez súboru
+ide bez neho (`"optional"`); súbor inej krajiny alebo bez celých čísel
+build odmietne ([`regulations.py`](transport/regulations.py)).
 **Značka na ceste, kam auto nevojde** – uzol chodníka, cestičky, cyklotrasy
 či schodov a žiadnej cesty pre autá – má `way: path` (`signs.py` to zistí
 z ciest, na ktorých uzol leží) a kreslí ju `road-sign-paths` zo základnej mapy;

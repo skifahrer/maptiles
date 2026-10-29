@@ -85,6 +85,8 @@ def manifest(site):
                     for p in glob.glob(os.path.join(tiles, f"{key}-roadsigns*")))
     if has["transport"] and sprite:
         region["road_sign_sprite"] = sprite
+    if has["transport"] and os.path.exists(os.path.join(tiles, f"{key}-regulations.json")):
+        region["regulations"] = f"tiles/{key}-regulations.json"
     for kind in ("aerial_summer", "aerial_winter"):
         zooms = has[kind] and pmtiles_zooms(os.path.join(tiles, f"{key}-{kind}.pmtiles"))
         if zooms:

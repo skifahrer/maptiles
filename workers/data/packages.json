@@ -112,10 +112,10 @@
       "app_detail": "Roads, tracks and ferries, for search and routing",
       "description": "the OSM roads a car can drive – motorways to tracks, and ferries – with road limits, traffic signs and their images, house-numbered addresses, the signed routing network the phone routes on, and the base map's roads, their names and house numbers (.pmtiles)",
       "sources": ["osm"],
-      "manifest": ["transport", "routing", "road_sign_sprite", "omt_roads"],
+      "manifest": ["transport", "routing", "road_sign_sprite", "regulations", "omt_roads"],
       "suffixes": ["-transport.pmtiles", "-routing.pmtiles", "-roadsigns.json", "-roadsigns.png",
-                   "-roadsigns@2x.json", "-roadsigns@2x.png", "-omt-roads.pmtiles"],
-      "optional": ["road_sign_sprite"],
+                   "-roadsigns@2x.json", "-roadsigns@2x.png", "-regulations.json", "-omt-roads.pmtiles"],
+      "optional": ["road_sign_sprite", "regulations"],
       "origin": "site",
       "regenerate": "roads",
       "legacy": ["cesty"]
