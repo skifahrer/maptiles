@@ -49,8 +49,11 @@ Mapa · Build map region      deväť jobov, tie dlhé bežia súbežne:
                                         rozreže dlaždice základnej mapy po
                                         balíkoch (`tiles/cut.py`) ─► nový
                                         balík `landscape` a `-omt-<balík>`
-                                        v ostatných; `paths` nesie aj štýly,
-                                        sprity, trasy a manifest
+                                        v ostatných; štýly rozdelí tiež
+                                        (`styles/split.mjs`) ─► každý balík
+                                        nesie len svoje vrstvy a svoje ikonky
+                                        vo `fragments/<balík>/`; `paths` nesie
+                                        aj trasy a manifest
                                apple-archive  balíky ešte raz ako .aar
                                         (macOS runner – nástroj `aa`)
 
@@ -239,10 +242,10 @@ Mapa · úpravy štýlu          style-overrides.json z developer módu
   lyžiarska, cestná, historická** a základná („všetko"). Typ mapy hovorí, *čo*
   mapa ukazuje; téma len to, *ako* to vyzerá. Viď
   [Typy máp](#typy-máp--čo-ktorá-mapa-ukazuje).
-- **Mapy balíkov:** [poc/web/packages.js](../poc/web/packages.js) – výber
-  „Mapa" na Pages ukáže okrem základnej mapy aj každý balík regiónu zvlášť
-  (cesty, chodníky, železnice a lanovky, armáda a história, hranice, vodstvo,
-  sídla, body) tak, ako ho kreslí aplikácia. Typ mapy patrí len základnej.
+- **Balíky základnej mapy:** [poc/web/packages.js](../poc/web/packages.js) –
+  na Pages sa upravuje vždy celá mapa a každý jej balík (krajina, cesty,
+  chodníky, železnice a lanovky, body, hranice, vodstvo, sídla) sa dá vypnúť
+  a zapnúť; všetky zapnuté sú základná mapa.
 - **Témy a štýlovanie:** [poc/web/themes.js](../poc/web/themes.js) – 4 farebné
   témy (Svetlá, Tmavá, Outdoor, Retro/Pastel), ~140 vrstiev pokrývajúcich celú
   OpenMapTiles schému: krajinná pokrývka, využitie územia, voda a vodné toky,

@@ -104,20 +104,25 @@ class Site(unittest.TestCase):
         self.assertEqual(files.missing({}, roads), [], "no manifest, nothing to tell")
 
     def test_paths_carry_the_rest_and_the_base_map_stays_whole(self):
-        for rel in ("tiles/r-omt-roads.pmtiles", "tiles/r-features.pmtiles", "region.geojson"):
+        for rel in ("tiles/r-omt-roads.pmtiles", "tiles/r-features.pmtiles", "region.geojson",
+                    "fragments/roads/r-svetla.json", "fragments/roads/sprites/roads-osm-liberty.png"):
             touch(self.site, rel)
         man = {"default_region": "r", "regions": {"r": {"pmtiles": "tiles/r.pmtiles"}}}
         own = files.layer_packages(self.site, man)
         drawn = [f for p, fs in own if p["key"] != "trails" for f in fs]
         out, _ = files.outside_packages(self.site, man)
         rest = self.rel(files.rest_files(self.site, man, drawn + out))
-        self.assertEqual(rest, ["region.geojson", "sprites/osm-liberty.json", "styles/r-svetla.json",
-                                "tiles/manifest.json", "tiles/r-trails.pmtiles"])
+        self.assertEqual(rest, ["region.geojson", "tiles/manifest.json", "tiles/r-trails.pmtiles"])
+        roads = self.rel(dict((p["key"], fs) for p, fs in own)["roads"])
+        self.assertIn("fragments/roads/r-svetla.json", roads)
+        self.assertIn("fragments/roads/sprites/roads-osm-liberty.png", roads)
         keep = [f for _k, _d, fs in files.base_parts(self.site, man) for f in fs]
         base = self.rel(files.base_files(self.site, [f for _p, fs in own for f in fs] + out, keep))
         self.assertIn("tiles/r.pmtiles", base)
         self.assertIn("tiles/r-features.pmtiles", base)
         self.assertNotIn("tiles/r-omt-roads.pmtiles", base)
+        self.assertIn("styles/r-svetla.json", base)
+        self.assertNotIn("fragments/roads/r-svetla.json", base)
 
     def test_viewer_and_glyphs_stay_out(self):
         with redirect_stdout(io.StringIO()):
