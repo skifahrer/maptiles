@@ -166,6 +166,7 @@ class Manifest(unittest.TestCase):
         self.assertEqual((got["dem"], got["dem_maxzoom"], got["terrain_3d"]),
                          ("tiles/vysoke_tatry-terrain.pmtiles", 16, True))
         self.assertEqual(catalog.tiles_paths(got, reg)["terrain"], "tiles/vysoke_tatry-terrain.pmtiles")
+        self.assertIsNone(got["dem_plane"], "an empty archive has no plane")
 
     def test_borders_and_nature_are_the_boundaries_package(self):
         site = self.site("range-boundaries")

@@ -1195,7 +1195,11 @@ jobs:
           TRAILS_COUNT: ${{ needs.trails.outputs.count || '0' }}
           TRAILS_ENABLED: ${{ needs.trails.outputs.enabled || 'false' }}
           TRAILS_MAXZOOM: ${{ needs.trails.outputs.maxzoom || '14' }}
-        run: workers/deploy/site.sh
+        # `plane.py` reads the height model's coarsest tile
+        run: |
+          python3 -c 'import pmtiles, PIL' 2>/dev/null \
+            || python3 -m pip install --quiet --break-system-packages pmtiles pillow
+          workers/deploy/site.sh
 
       - name: Check the style points only at existing files
         id: check

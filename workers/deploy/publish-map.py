@@ -110,6 +110,7 @@ def contents(kind, man, fmt="zip", parts=None):
         "run_id": env("GITHUB_RUN_ID"),
         "manifest": {"dem": man.get("dem"),
                      "dem_maxzoom": man.get("dem_maxzoom"),
+                     "dem_plane": man.get("dem_plane"),
                      "dem_source": man.get("dem_source"),
                      # tiles may be there with 3D off, so `dem` alone doesn't say
                      "terrain_3d": man.get("terrain_3d"),

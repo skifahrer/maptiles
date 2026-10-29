@@ -9,6 +9,9 @@ import os
 import sys
 import time
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "terrain"))
+from plane import plane  # noqa: E402
+
 # the style's own number (`poc/web/themes.js`), so the client never invents another
 TERRAIN_EXAGGERATION = 1.3
 OUTLINES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -98,6 +101,7 @@ def manifest(site):
     if has["terrain"]:
         out.update(dem=f"tiles/{key}-terrain.pmtiles",
                    dem_maxzoom=int(env("TERRAIN_MAXZOOM", "16")),
+                   dem_plane=plane(os.path.join(tiles, f"{key}-terrain.pmtiles")),
                    dem_source=env("TERRAIN_SOURCE", "dmr5"),
                    terrain_3d=True,
                    terrain_exaggeration=TERRAIN_EXAGGERATION)
