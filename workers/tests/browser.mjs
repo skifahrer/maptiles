@@ -208,29 +208,38 @@ async function main() {
     }
   }
 
-  // each package as a map of its own; the base map last, for the checks below
-  const packages = await p.evaluate(() => [...document.getElementById("package").options].map((o) => o.value));
-  if (packages.length < 2) problems.push(`the map picker offers only ${packages.join(", ")}`);
-  for (const id of [...packages.slice(1), packages[0]]) {
+  // each package switched on alone; all of them last, the base map, for the checks below
+  const packages = await p.evaluate(() =>
+    [...document.querySelectorAll("#packages input")].map((box) => box.id.replace(/^package-/, "")));
+  if (packages.length < 2) problems.push(`the package switches offer only ${packages.join(", ")}`);
+  for (const id of [...packages, null]) {
     for (const theme of Object.keys(THEMES)) {
-      await p.evaluate(([pk, th]) => {
-        for (const [el, v] of [["package", pk], ["theme", th]]) {
-          const select = document.getElementById(el);
-          if (select.value === v) continue;
+      await p.evaluate(([only, th]) => {
+        const theme = document.getElementById("theme");
+        if (theme.value !== th) {
           window.__t.idle = false;
-          select.value = v;
-          select.dispatchEvent(new Event("change"));
+          theme.value = th;
+          theme.dispatchEvent(new Event("change"));
+        }
+        for (const box of [...document.querySelectorAll("#packages input")]) {
+          const on = only === null || box.id === `package-${only}`;
+          const live = document.getElementById(box.id);
+          if (live.checked === on) continue;
+          window.__t.idle = false;
+          live.checked = on;
+          live.dispatchEvent(new Event("change"));
         }
       }, [id, theme]);
       try {
         await p.waitForFunction(() => window.__t.idle, null, { timeout: 30000 });
       } catch {
-        problems.push(`map ${id} / ${theme}: the map never reached idle`);
+        problems.push(`map ${id || "all"} / ${theme}: the map never reached idle`);
       }
-      const drawn = await p.evaluate(() => window.__t.maps.at(-1).getStyle().layers.filter((l) => l.source).length);
-      if (!drawn) problems.push(`map ${id} / ${theme}: draws no layer`);
-      await report(p, console_, `map ${id} / ${theme}`);
-      console.log(`  map ${id} / ${theme}`);
+      const drawn = await p.evaluate(() => window.__t.maps.at(-1).getStyle().layers
+        .filter((l) => l.source && l.layout?.visibility !== "none").length);
+      if (!drawn) problems.push(`map ${id || "all"} / ${theme}: draws no layer`);
+      await report(p, console_, `map ${id || "all"} / ${theme}`);
+      console.log(`  map ${id || "all"} / ${theme}`);
     }
   }
 
@@ -267,7 +276,7 @@ async function main() {
   await browser.close();
   server.close();
   for (const pr of [...new Set(problems)]) console.log(`::error::${pr}`);
-  console.log(`Viewer: ${(MAP_TYPE_IDS.length + packages.length) * Object.keys(THEMES).length} styles, ${new Set(problems).size} problems`);
+  console.log(`Viewer: ${(MAP_TYPE_IDS.length + packages.length + 1) * Object.keys(THEMES).length} styles, ${new Set(problems).size} problems`);
   process.exit(problems.length ? 1 : 0);
 }
 
