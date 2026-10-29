@@ -11,6 +11,9 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 from signs import MAPPING, folders, generic  # noqa: E402
 
+# `speed.py`'s dead-end sign, drawn as the country's `<cc>.ts.dead-end`
+DEAD_END = "information/dead-end"
+
 # side of the box a sign fits in, at 1x
 SIDE = 24
 ROW = 32
@@ -32,12 +35,13 @@ def needed(country, used, mapping=MAPPING):
     return {n: known[n] for n in sorted(used) if n in known}
 
 
-def with_every_limit(country, used, mapping=MAPPING):
-    """`used` plus each speed-limit sign the country has: the app draws limits no sign names."""
+def with_computed(country, used, mapping=MAPPING):
+    """`used` plus each speed limit and the dead-end sign: the map draws computed signs no node names."""
     out = dict(used)
     for name in supported(country, mapping):
         if ".ts.maxspeed-" in name and not name.endswith("_end"):
             out.setdefault(name, 0)
+    out.setdefault(generic(country, DEAD_END), 0)
     return out
 
 
@@ -155,7 +159,7 @@ def main():
     ap.add_argument("--out", help="base name, without .json/.png")
     a = ap.parse_args()
     country = a.country.lower()
-    used = with_every_limit(country, read_used(a.used))
+    used = with_computed(country, read_used(a.used))
     if a.folders:
         print("\n".join(sorted(set(needed(country, used).values()))))
         return

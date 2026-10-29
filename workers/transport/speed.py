@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ways get `speed_context`; where it changes along a road, a computed sign point goes to GeoJSON."""
+"""Ways get `speed_context`; where it changes and where a street ends, a computed sign goes to GeoJSON."""
 import argparse
 import json
 import math
@@ -8,8 +8,11 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "routing"))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "routing"))
+sys.path.insert(0, _HERE)
 import context                                                    # noqa: E402
+import signs as sign_names                                        # noqa: E402
 
 # how far past the junction the sign stands, so it doesn't sit on the crossing
 SIGN_M = 15
@@ -21,6 +24,13 @@ SIDE_M = 300
 # a village side needs this much more built-up land than the other
 SIDE_MARGIN = 0.2
 SIGN_KEYS = ("traffic_sign", "traffic_sign:forward", "traffic_sign:backward")
+DEAD_END_SIGN_M = 5
+DEAD_END_MIN_M = 50
+# a through road ends without a sign
+STREETS = {"residential", "living_street", "unclassified", "road"}
+# a driveway or a field track neither makes a junction nor gets a sign
+MINOR = {"service", "track"}
+SETTLED = ("urban", "living_street")
 
 
 def continues(a, b):
@@ -94,6 +104,75 @@ def signs(ways, contexts):
     return out
 
 
+def dead_ends(ways, contexts, signed=frozenset(), in_region=None):
+    """A sign just past the junction of each settlement street that leads only to its own end."""
+    every = defaultdict(set)
+    roads = defaultdict(set)
+    step = {}
+    at = {}
+    for wid, way in ways.items():
+        is_road = way["tags"].get("highway") not in MINOR
+        for (a, b), pa, pb in zip(zip(way["refs"], way["refs"][1:]), way["line"], way["line"][1:]):
+            if a == b:
+                continue
+            at[a], at[b] = pa, pb
+            every[a].add(b)
+            every[b].add(a)
+            if is_road:
+                roads[a].add(b)
+                roads[b].add(a)
+                step[a, b], step[b, a] = (wid, True), (wid, False)
+    out = []
+    for end, near in every.items():
+        if len(near) != 1 or len(roads[end]) != 1:
+            continue
+        # a way across the border ends where the extract does, not the street
+        if in_region and not in_region(at[end]):
+            continue
+        chain, prev, cur = [end], end, next(iter(roads[end]))
+        while len(roads[cur]) == 2 and cur not in chain:
+            chain.append(cur)
+            prev, cur = cur, next(n for n in roads[cur] if n != prev)
+        if len(roads[cur]) < 3 or cur in chain:
+            continue
+        chain.append(cur)
+        chain.reverse()
+        wid, forward = step[chain[0], chain[1]]
+        way = ways[wid]
+        if (way["tags"].get("highway") not in STREETS or contexts.get(wid) not in SETTLED
+                or not enterable(way["tags"], forward) or signed.intersection(chain)):
+            continue
+        line = [at[n] for n in chain]
+        if sum(_metres(a, b) for a, b in zip(line, line[1:])) <= DEAD_END_MIN_M:
+            continue
+        point, heading = along(line, DEAD_END_SIGN_M)
+        out.append({"way": wid, "point": point, "direction": heading, "kind": "dead-end"})
+    return out
+
+
+def region_test(path):
+    """`(lon, lat) → bool` of the region's outline, or None without one."""
+    if not path or not os.path.exists(path):
+        return None
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "region_mask", os.path.join(os.path.dirname(_HERE), "lib", "region-mask.py"))
+    mask = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mask)
+    rings = mask.rings_from_geojson(path)
+    return (lambda p: mask.inside(rings, *p)) if rings else None
+
+
+def dead_end_sign(tags, by_country):
+    """Whether a node's mapped sign is a dead-end one."""
+    for key in SIGN_KEYS:
+        name = sign_names.sign_name(tags.get(key), "")
+        if name and (by_country.get(name.split(".", 1)[0]) or {}).get(name, "").startswith(
+                "information/dead-end"):
+            return True
+    return False
+
+
 def town_sign(tags):
     """`(begin|end, facing)` of a village's town sign, else None; facing is `forward`, `backward` or None."""
     if not any("city_limit" in tags.get(k, "").split(";") for k in SIGN_KEYS):
@@ -163,7 +242,7 @@ def merged(junction, town):
 
 
 def read(pbf):
-    """Motor ways as `{id: way}` with tags, node refs and the line, and town signs as `{node: sign}`."""
+    """Motor ways as `{id: way}`, town signs as `{node: sign}` and the nodes of mapped dead-end signs."""
     import osmium
 
     class Ways(osmium.SimpleHandler):
@@ -171,11 +250,16 @@ def read(pbf):
             super().__init__()
             self.ways = {}
             self.towns = {}
+            self.dead_end_signs = set()
+            self.by_country = sign_names.folders()
 
         def node(self, n):
-            found = town_sign(dict(n.tags))
+            tags = dict(n.tags)
+            found = town_sign(tags)
             if found:
                 self.towns[n.id] = found
+            if dead_end_sign(tags, self.by_country):
+                self.dead_end_signs.add(n.id)
 
         def way(self, w):
             tags = dict(w.tags)
@@ -191,7 +275,7 @@ def read(pbf):
 
     h = Ways()
     h.apply_file(pbf, locations=True, idx="flex_mem")
-    return h.ways, h.towns
+    return h.ways, h.towns, h.dead_end_signs
 
 
 def classify(ways, built_up):
@@ -231,12 +315,19 @@ def rewrite(pbf, out, contexts):
         writer.close()
 
 
+def properties(s, country):
+    out = {"kind": s.get("kind", "speed"), "country": country, "direction": s["direction"],
+           "osm_way": s["way"]}
+    if "context" in s:
+        out["speed_context"] = s["context"]
+    return out
+
+
 def geojson(found, country):
     return {"type": "FeatureCollection", "features": [
         {"type": "Feature",
          "geometry": {"type": "Point", "coordinates": [round(s["point"][0], 7), round(s["point"][1], 7)]},
-         "properties": {"kind": "speed", "speed_context": s["context"], "country": country,
-                        "direction": s["direction"], "osm_way": s["way"]}}
+         "properties": properties(s, country)}
         for s in found]}
 
 
@@ -246,20 +337,22 @@ def main():
     ap.add_argument("--out", required=True, help="the same PBF, motor ways with `speed_context`")
     ap.add_argument("--signs", required=True, help="GeoJSON of the computed sign points")
     ap.add_argument("--country", default="", help="the region's ISO code, which the app's law is read by")
+    ap.add_argument("--outline", default="", help="the region's GeoJSON, where streets really end")
     a = ap.parse_args()
 
-    ways, towns = read(a.pbf)
+    ways, towns, signed = read(a.pbf)
     built_up = context.BuiltUp(context.built_up_areas(a.pbf))
     contexts = classify(ways, built_up)
     rewrite(a.pbf, a.out, contexts)
     found = merged(signs(ways, contexts), town_signs(ways, contexts, towns, built_up))
+    ends = dead_ends(ways, contexts, signed, region_test(a.outline))
     # Planetiler's GeoJSON reader dies on an empty `features` list, not on an empty file
-    Path(a.signs).write_text(json.dumps(geojson(found, a.country.upper())) if found else "",
+    Path(a.signs).write_text(json.dumps(geojson(found + ends, a.country.upper())) if found + ends else "",
                              encoding="utf-8")
     counted = Counter(contexts.values())
     print(f"Speed context: {len(contexts)} ways ("
           + ", ".join(f"{k}×{n}" for k, n in counted.most_common())
-          + f"), {len(found)} computed signs, {len(towns)} town signs")
+          + f"), {len(found)} computed signs, {len(ends)} dead ends, {len(towns)} town signs")
 
 
 if __name__ == "__main__":

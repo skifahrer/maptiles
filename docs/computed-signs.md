@@ -40,6 +40,7 @@ The number is never baked: limits differ per vehicle (Slovakia: motorway 130 for
 | 6 | the same context on the roads layer: `transport/speed.py` writes it on each way of the roads' PBF | #358 | merged |
 | 7 | computed sign points where the context changes along a road, layer `computed_sign`; style layer `road-sign-computed` asks for image `computed.<country>.<context>`, which the app draws with the law's number for a car | #358, #359, rikimaps#2499 | merged |
 | 7b | `traffic_sign=city_limit` nodes as the stronger evidence for a village's start and end | #360 | PR |
+| 7c | a dead-end sign on a settlement street that leads only to its own end | #370 | PR |
 | 8 | the other dictionary countries' regulations (CZ, AT, HU, PL, DE, UA, SI, CH, HR, RO), each from its law's text | skifahrer/traffic-signs | to do |
 
 ## Computed signs (`computed_sign` in the roads package)
@@ -55,6 +56,16 @@ Where a town sign (`traffic_sign=city_limit`) stands on a road, its signs win: o
 is the one the sign faces (a begin sign faces the traffic entering, `city_limit=end` the
 traffic leaving), else the side with clearly more built-up land in its first 300 m; with
 neither, no sign. Junction signs within 250 m of a town sign are dropped.
+
+A dead end (`kind=dead-end`, no `speed_context`) stands 5 m into a street that leads from its
+junction only to its own end, facing the traffic turning in. The street is `residential`,
+`living_street`, `unclassified` or `road`, its way at the junction is in a settlement (context
+`urban` or `living_street`), and junction to end is over 50 m. A driveway (`service`) or a
+field track off it makes no junction; one going on from its end means it isn't a dead end.
+None against a one-way, where a mapped dead-end sign stands on it, or where its end lies
+outside the region's outline (`--outline`): a way across the border ends where the extract
+does. The style draws it as the country's `<cc>.ts.dead-end` from the road sign sheet, which
+always carries it.
 
 ## Rollout: the app first
 
