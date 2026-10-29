@@ -1,7 +1,10 @@
 import io
+import socket
 import unittest
+import urllib.error
 from contextlib import redirect_stdout
 from types import SimpleNamespace
+from unittest import mock
 
 from load import worker
 
@@ -137,6 +140,42 @@ class FetchTexts(unittest.TestCase):
         api = FakeApi({"Alfa": 1})
         done, failed, _ = self.fetch(api, {})
         self.assertEqual((sorted(done), failed), (["Alfa"], ["Beta"]))
+
+
+class NetworkHiccup(unittest.TestCase):
+    """Run 410 (Středočeský kraj): a runner's DNS was gone longer than the retries lasted."""
+
+    def test_a_dns_outage_of_a_minute_is_waited_out(self):
+        dns = urllib.error.URLError(socket.gaierror(-2, "Name or service not known"))
+        body = io.BytesIO(b'{"ok": 1}')
+        answers = [dns] * 4 + [body]
+
+        def urlopen(*_a, **_k):
+            answer = answers.pop(0)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        waits = []
+        with mock.patch.object(articles.urllib.request, "urlopen", urlopen), \
+                mock.patch.object(articles.time, "sleep", waits.append), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(articles.Api().json("https://cs.wikipedia.org/w/api.php"), {"ok": 1})
+        self.assertGreaterEqual(sum(waits), 60)
+
+    def test_a_language_still_unreachable_is_left_out_not_the_region(self):
+        class Api:
+            def json(self, url):
+                if url.startswith("https://de."):
+                    raise urllib.error.URLError("Name or service not known")
+                return {"query": {"pages": [{"title": "Brod", "langlinks": [
+                    {"lang": "en", "title": "Brod (town)"}]}]}}
+
+        out = io.StringIO()
+        with redirect_stdout(out):
+            linked = articles.other_langs(Api(), {"cs": ["Brod"], "de": ["Burg"]}, {"cs", "de", "en"})
+        self.assertEqual(linked[("cs", "Brod")]["en"], "Brod (town)")
+        self.assertIn("::warning::", out.getvalue())
 
 
 if __name__ == "__main__":

@@ -26,6 +26,8 @@ MS_PER_ARTICLE_BATCHED = 20
 # politeness, not a limit
 PAUSE_S = 0.2
 TRIES = 4
+# a runner's DNS can be gone for a minute; run 410 failed after 12 s
+NETWORK_WAITS_S = (5, 15, 45, 90, 180)
 # rather be refused than add to lagging replicas
 MAXLAG = 5
 
@@ -47,7 +49,9 @@ class Api:
         self.waited = 0.0
 
     def get(self, url):
-        for attempt in range(1, TRIES + 1):
+        network_failures = 0
+        attempt = 1
+        while True:
             req = urllib.request.Request(url, headers={
                 "User-Agent": UA, "Accept-Encoding": "identity"})
             try:
@@ -65,18 +69,22 @@ class Api:
                         f"{wait:.0f} s ({attempt} of {TRIES})")
                     self.waited += wait
                     time.sleep(wait)
+                    attempt += 1
                     continue
                 if exc.code == 404:
                     return None
                 if attempt >= TRIES:
                     raise
+                attempt += 1
             except (urllib.error.URLError, TimeoutError) as exc:
-                if attempt >= TRIES:
+                if network_failures >= len(NETWORK_WAITS_S):
                     raise
-                log(f"  network failed ({exc}), retrying "
-                    f"({attempt} of {TRIES})")
-                time.sleep(2 * attempt)
-        return None
+                wait = NETWORK_WAITS_S[network_failures]
+                network_failures += 1
+                log(f"  network failed ({exc}), retrying in {wait} s "
+                    f"({network_failures} of {len(NETWORK_WAITS_S)})")
+                self.waited += wait
+                time.sleep(wait)
 
     def json(self, url):
         body = self.get(url)
@@ -127,7 +135,13 @@ def other_langs(api, known, wanted):
                    "&format=json&formatversion=2&redirects=1&prop=langlinks"
                    f"&lllimit=500&lllang={urllib.parse.quote('|'.join(targets))}"
                    "&titles=" + urllib.parse.quote("|".join(batch)))
-            data = api.json(url) or {}
+            try:
+                data = api.json(url) or {}
+            except (urllib.error.URLError, TimeoutError) as exc:
+                # other languages only add titles; the articles go out without them
+                log(f"::warning::{lang}.wikipedia.org didn't answer ({exc}) – "
+                    f"its articles go without their names in other languages.")
+                break
             query = data.get("query") or {}
             # the answer is under the redirect target, the tag has the asked name: store both
             where = resolve(query)
