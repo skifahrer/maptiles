@@ -113,6 +113,8 @@ class _Edges(osmium.SimpleHandler):
         self.dictionary = dictionary
         self.junctions = junctions
         self.network = network
+        # the rail dictionary has no speed context, so a tram on a street gets none
+        self.contexts = dictionary.index("speed_context") is not None
 
     def way(self, w):
         t = {tag.k: tag.v for tag in w.tags}
@@ -129,7 +131,7 @@ class _Edges(osmium.SimpleHandler):
             return
 
         direction = _direction(picked)
-        road = context.road(t)
+        road = context.road(t) if self.contexts else None
         start = 0
         for i in range(1, len(points)):
             if points[i][0] not in self.junctions and i != len(points) - 1:
@@ -267,5 +269,6 @@ def load(pbf, dictionary=None):
     edges = _Edges(dictionary, junctions, network)
     edges.apply_file(pbf, locations=True, idx="flex_mem")
     _resolve_restrictions(network, rs.restrictions)
-    context.assign(network, context.BuiltUp(context.built_up_areas(pbf)))
+    if edges.contexts:
+        context.assign(network, context.BuiltUp(context.built_up_areas(pbf)))
     return network
