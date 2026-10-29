@@ -1238,12 +1238,13 @@ jobs:
         run: workers/deploy/smoke-test.sh
 
       # after Pages: the cut doubles the base tiles, more than the page budget holds
-      - name: Cut the base map's tiles into its packages
+      - name: Cut the base map's tiles and styles into its packages
         id: cut
         if: ${{ always() && steps.check.outcome == 'success' }}
         run: |
           python3 -m pip install --quiet pmtiles
           python3 workers/tiles/cut.py --site=_site
+          node workers/styles/split.mjs --site=_site
 
       - name: Keep the cut tiles for later jobs
         if: ${{ always() && steps.cut.outcome == 'success' }}

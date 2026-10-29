@@ -112,6 +112,36 @@ export function layerOwners(layer) {
   return SOURCE_OWNERS[source] || (source === "dem" ? [] : [BASE_PACKAGE]);
 }
 
+// packages that carry a source of their own; the base map's leftovers are the land
+const CARRIERS = { contours: "contours", rocks: "rocks", dem: "terrain", trails: "paths" };
+
+/** Fragments of the packages at hand as one style, every layer back in its place. */
+export function composeFragments(fragments) {
+  const [first] = fragments;
+  if (!first) return null;
+  const { layers: _l, sources: _s, sprite: _p, terrain: _t, ...frame } = first;
+  const style = { ...frame, sources: {}, layers: [] };
+  const sprites = [];
+  for (const fragment of fragments) {
+    Object.assign(style.sources, fragment.sources);
+    style.layers.push(...fragment.layers);
+    sprites.push(...(fragment.sprite || []));
+    if (fragment.terrain) style.terrain = fragment.terrain;
+  }
+  style.layers.sort((a, b) => a.metadata["riki:z"] - b.metadata["riki:z"]);
+  if (sprites.length) style.sprite = sprites;
+  style.metadata = { ...(style.metadata || {}) };
+  delete style.metadata["riki:package"];
+  return style;
+}
+
+/** The one package whose style fragment carries the layer. */
+export function packageOf(layer) {
+  if (!layer.source) return "landscape";
+  if (CARRIERS[layer.source]) return CARRIERS[layer.source];
+  return layerOwners(layer).find((owner) => owner !== BASE_PACKAGE) || "landscape";
+}
+
 const INK = {
   railCasing: ["#5C5650", "#B8B2AA"],
   railGround: ["#FFFFFF", "#1C1C1E"],

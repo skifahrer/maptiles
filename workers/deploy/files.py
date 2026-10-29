@@ -65,8 +65,19 @@ def has_suffix(name, suffixes):
 
 def layer_packages(site, man):
     """`[(package, files)]` for everything with its own package in `_site`, counted once."""
-    return [(p, package_files(site, man, p)) for p in packages.listing()
+    return [(p, package_files(site, man, p) + fragment_files(site, p["key"]))
+            for p in packages.listing()
             if p["key"] != "base" and p.get("origin", "site") == "site"]
+
+
+# `workers/styles/split.mjs` writes each package's part of the styles here
+FRAGMENTS = "fragments"
+
+
+def fragment_files(site, key):
+    """A package's part of the styles and its icon sheet."""
+    root = os.path.join(site, FRAGMENTS, key)
+    return sorted(all_files(root)) if os.path.isdir(root) else []
 
 
 def trails_files(site, man):
@@ -172,11 +183,16 @@ def base_parts(site, man):
     ]
 
 
+# whole styles and their sheets stay with the base map; packages carry their fragments
+WHOLE_STYLE_DIRS = ("styles", "sprites")
+
+
 def rest_files(site, man, exclude):
-    """What no package but the base map carries, its uncut tiles left out – for `rest`."""
+    """What no package but the base map carries, uncut tiles and whole styles left out."""
     uncut = catalog.region_entry(man).get("pmtiles")
     skip = {os.path.abspath(os.path.join(site, uncut))} if uncut else set()
-    return [f for f in base_files(site, exclude) if os.path.abspath(f) not in skip]
+    return [f for f in base_files(site, exclude) if os.path.abspath(f) not in skip
+            and os.path.relpath(f, site).split(os.sep)[0] not in WHOLE_STYLE_DIRS]
 
 
 def part_sizes(parts):
