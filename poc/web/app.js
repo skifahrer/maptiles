@@ -24,7 +24,7 @@ import { labelLanguages, localName } from "./languages.js";
 import { parsePatternName, renderPattern } from "./patterns.js";
 import { ROAD_SIGN_IMAGE, loadSheet, addSign } from "./road-signs.js";
 import { ICON_SOURCES, DEFAULT_ICON_SOURCE, customIconSources } from "./icon-sources.js";
-import { BASE_PACKAGE, packagesOf, packageDef, normalizePackage, packageStyle } from "./packages.js";
+import { partsOf, withoutPackages } from "./packages.js";
 
 // Základná URL stránky (funguje na GitHub Pages aj lokálne).
 const baseUrl = new URL(".", location.href).href.replace(/\/$/, "");
@@ -41,7 +41,7 @@ maplibregl
 const $ = (id) => document.getElementById(id);
 const themeSelect = $("theme");
 const mapTypeSelect = $("maptype");
-const packageSelect = $("package");
+const packagesEl = $("packages");
 const regionSelect = $("region");
 const contoursCheck = $("contours");
 const rocksCheck = $("rocks");
@@ -77,11 +77,20 @@ mapTypeSelect.value = (() => {
   }
 })();
 
-function storedPackage() {
+/** Packages switched off, remembered per browser; none off is the base map. */
+const offPackages = new Set((() => {
   try {
-    return localStorage.getItem("fricomaps.package");
+    return JSON.parse(localStorage.getItem("fricomaps.packagesOff") || "[]");
   } catch {
-    return BASE_PACKAGE;
+    return [];
+  }
+})());
+
+function rememberOffPackages() {
+  try {
+    localStorage.setItem("fricomaps.packagesOff", JSON.stringify([...offPackages]));
+  } catch {
+    /* private mode – the switches are simply not remembered */
   }
 }
 
@@ -194,11 +203,8 @@ function currentIconSet() {
   return iconSets.find((s) => s.id === id) || iconSets[0] || null;
 }
 
-/** A package map draws every archive its package needs, whatever the switches say. */
-const inPackage = () => packageSelect.value !== BASE_PACKAGE;
-const archiveOn = (check) => inPackage() || check.checked;
-/** A package map takes no profile; the profile trims the base map. */
-const effectiveMapType = () => (inPackage() ? "zakladna" : mapTypeSelect.value);
+const archiveOn = (check) => check.checked;
+const effectiveMapType = () => mapTypeSelect.value;
 
 function styleFor(manifest) {
   const region = manifest.regions[regionSelect.value];
@@ -296,14 +302,7 @@ function styleFor(manifest) {
     overrides,
     name: `FricoMaps – ${region.name}`
   });
-  return packageStyle(style, packageSelect.value, {
-    dark: themeSelect.value === "tmava",
-    fonts: manifest.fonts || {},
-    railUrl: region.rail ? `pmtiles://${baseUrl}/${region.rail}` : null,
-    railMaxzoom: region.rail_maxzoom || 15,
-    historyUrl: region.history ? `pmtiles://${baseUrl}/${region.history}` : null,
-    historyMaxzoom: region.history_maxzoom || 14
-  });
+  return withoutPackages(style, offPackages);
 }
 
 // Kam mapu otvoriť. Bežne na celý región – ale pri rýchlom teste (switch
@@ -341,8 +340,7 @@ function applyStyle(manifest) {
   document.body.classList.toggle("dark", themeKey === "tmava");
   hillshadeCheck.checked = overrides.hillshade === true;
 
-  const baseMap = !inPackage();
-  const kind = baseMap ? mapTypeDef(mapTypeSelect.value) : packageDef(packageSelect.value);
+  const kind = mapTypeDef(mapTypeSelect.value);
 
   metaEl.innerHTML =
     `Región: <b>${region.name}</b><br>` +
@@ -355,25 +353,25 @@ function applyStyle(manifest) {
       : "") +
     `Mapa: <b>${kind.label}</b> – ${kind.note}<br>` +
     `Dlaždice do z${tileZ}, zobrazenie do z${MAX_DISPLAY_Z} (overzoom)<br>` +
-    (baseMap && region.contours
+    (region.contours
       ? `Vrstevnice po ${region.contour_interval || 10} m, od z${TERRAIN_MIN_Z}<br>`
       : "") +
-    (baseMap && region.rocks
+    (region.rocks
       ? `Skalné plochy od z${TERRAIN_MIN_Z} do z${region.rocks_maxzoom || 16}` +
         (region.rock_slope ? `, od ${region.rock_slope}°` : "") +
         (region.rock_source ? ` (${region.rock_source})` : "") +
         "<br>"
       : "") +
-    (baseMap && (region.contours || region.rocks)
+    ((region.contours || region.rocks)
       ? `Výšky: ${
           (DEM_SOURCES[region.dem_source] || DEM_SOURCES[DEFAULT_DEM_SOURCE]).label
         }<br>`
       : "") +
-    (baseMap && region.trails
+    (region.trails
       ? `Značené trasy: ${region.trail_count || "?"} ` +
         `(pásiky vedľa cesty, farba podľa značky)<br>`
       : "") +
-    (baseMap && region.features
+    (region.features
       ? `Krajinné prvky do z${region.features_maxzoom || 15} ` +
         `(násypy, múry, vedenia, pramene, zjazdovky)<br>`
       : "") +
@@ -646,20 +644,15 @@ async function main() {
 
   const syncControls = () => {
     const region = manifest.regions[regionSelect.value];
-    const wanted = packageSelect.value || storedPackage();
-    packageSelect.replaceChildren(...packagesOf(region).map((p) => new Option(p.label, p.id)));
-    packageSelect.value = normalizePackage(wanted, region);
-    // the archive switches and the profile are the base map's
-    const base = !inPackage();
-    $("row-maptype").hidden = !base;
-    $("row-contours").hidden = !base || !region.contours;
-    $("row-rocks").hidden = !base || !region.rocks;
-    $("row-trails").hidden = !base || !region.trails;
-    $("row-features").hidden = !base || !region.features;
-    $("row-roads").hidden = !base || !region.transport;
-    $("row-boundaries").hidden = !base || !region.boundaries;
-    $("row-water").hidden = !base || !region.water;
-    $("row-buildings").hidden = !base || !region.buildings;
+    renderPackageSwitches(region);
+    $("row-contours").hidden = !region.contours;
+    $("row-rocks").hidden = !region.rocks;
+    $("row-trails").hidden = !region.trails;
+    $("row-features").hidden = !region.features;
+    $("row-roads").hidden = !region.transport;
+    $("row-boundaries").hidden = !region.boundaries;
+    $("row-water").hidden = !region.water;
+    $("row-buildings").hidden = !region.buildings;
     $("row-terrain").hidden = manifest.dem === null;
     $("row-hillshade").hidden = manifest.dem === null;
   };
@@ -669,16 +662,48 @@ async function main() {
     applyStyle(manifest);
     dev?.refresh();
   });
-  packageSelect.addEventListener("change", () => {
-    try {
-      localStorage.setItem("fricomaps.package", packageSelect.value);
-    } catch {
-      /* private mode – the map is simply not remembered */
-    }
-    syncControls();
+  /** One switch per package of the base map, and all of them at once. */
+  function renderPackageSwitches(region) {
+    const parts = partsOf(region);
+    const all = document.createElement("button");
+    all.type = "button";
+    all.id = "packages-all";
+    const allOn = () => parts.every((p) => !offPackages.has(p.id));
+    all.textContent = allOn() ? "Vypnúť všetky" : "Zapnúť všetky";
+    all.addEventListener("click", () => {
+      const on = !allOn();
+      for (const p of parts) (on ? offPackages.delete(p.id) : offPackages.add(p.id));
+      packagesChanged(region);
+    });
+    const rows = parts.map((p) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.id = `package-${p.id}`;
+      box.checked = !offPackages.has(p.id);
+      box.addEventListener("change", () => {
+        (box.checked ? offPackages.delete(p.id) : offPackages.add(p.id));
+        packagesChanged(region);
+      });
+      const label = document.createElement("label");
+      label.htmlFor = box.id;
+      label.style.margin = "0";
+      label.title = p.note;
+      label.textContent = p.label;
+      row.append(box, label);
+      return row;
+    });
+    packagesEl.replaceChildren(all, ...rows);
+  }
+
+  function packagesChanged(region) {
+    rememberOffPackages();
+    renderPackageSwitches(region);
     applyStyle(manifest);
     dev?.refresh();
-  });
+  }
+
   mapTypeSelect.addEventListener("change", () => {
     try {
       localStorage.setItem("fricomaps.maptype", mapTypeSelect.value);

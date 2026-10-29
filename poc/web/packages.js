@@ -115,6 +115,25 @@ export function layerOwners(layer) {
 // packages that carry a source of their own; the base map's leftovers are the land
 const CARRIERS = { contours: "contours", rocks: "rocks", dem: "terrain", trails: "paths" };
 
+/** The base map's packages, in the order they are switched. */
+export const BASE_PARTS = ["landscape", "roads", "paths", "railways", "points", "boundaries",
+  "water", "settlements"];
+
+/** The packages of the base map a region publishes. */
+export function partsOf(region) {
+  const offered = new Set(packagesOf(region).map((p) => p.id));
+  return BASE_PARTS.filter((id) => offered.has(id)).map(packageDef);
+}
+
+/** The whole style, layers of the packages in `off` hidden; the paper always stays. */
+export function withoutPackages(style, off) {
+  if (!off.size) return style;
+  const layers = style.layers.map((layer) => (layer.source && off.has(packageOf(layer))
+    ? { ...layer, layout: { ...(layer.layout || {}), visibility: "none" } }
+    : layer));
+  return { ...style, layers };
+}
+
 /** Fragments of the packages at hand as one style, every layer back in its place. */
 export function composeFragments(fragments) {
   const [first] = fragments;

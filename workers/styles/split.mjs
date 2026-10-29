@@ -19,12 +19,14 @@ function literals(expression, out = new Set()) {
   return out;
 }
 
-/** Sheet images an expression can give: its strings, and the names a `"mark-"` begins. */
+/** Sheet images an expression can give: its strings, names a `"mark-"` begins or `"_11"` ends. */
 export function iconsOf(expression, sheet) {
-  const words = literals(expression);
-  const families = [...words].filter((w) => /[-:_]$/.test(w) && w.length > 2);
-  return new Set(sheet.filter((name) => words.has(name)
-    || families.some((family) => name.startsWith(family))));
+  const words = [...literals(expression)].filter((w) => w.length > 2);
+  const heads = words.filter((w) => /[-:_]$/.test(w));
+  const tails = words.filter((w) => /^[-:_]/.test(w));
+  const exact = new Set(words);
+  return new Set(sheet.filter((name) => exact.has(name)
+    || heads.some((head) => name.startsWith(head)) || tails.some((tail) => name.endsWith(tail))));
 }
 
 /** The expression with its own images named `<package>:`, anything else as it was. */

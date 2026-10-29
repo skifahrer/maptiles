@@ -42,6 +42,7 @@
       font-size: 12px; color: #555; margin-top: 10px;
     }
     #panel .row[hidden] { display: none; }
+    #packages-all { font-size: 12px; margin-bottom: 2px; }
     #meta { font-size: 11px; color: #777; margin-top: 10px; line-height: 1.5; }
 
     /* Nenápadný ukazovateľ zoomu – neprekáža v mape. */
@@ -567,8 +568,8 @@
           aria-controls="panel">⚙</button>
 
   <div id="panel" hidden>
-    <label for="package">Mapa</label>
-    <select id="package"></select>
+    <label for="packages">Balíky základnej mapy</label>
+    <div id="packages"></div>
     <div id="row-maptype">
       <label for="maptype">Typ mapy</label>
       <select id="maptype"></select>

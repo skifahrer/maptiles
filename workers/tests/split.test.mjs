@@ -60,6 +60,7 @@ test("each package names only its own icons, and the rest stay as they were", ()
   assert.equal(prefixed("cafe", new Set(["cafe"]), "points"), "points:cafe");
   assert.equal(prefixed("arrow-triangle", new Set(["cafe"]), "roads"), "arrow-triangle");
   assert.deepEqual([...iconsOf(["concat", "mark-", ["get", "bg"]], SHEET)], ["mark-white-red-bar"]);
+  assert.deepEqual([...iconsOf(["concat", ["get", "class"], "_11"], SHEET)], ["mountain_11", "volcano_11"]);
 });
 
 test("fragments and their sum pass the style spec", { skip: !spec && NEEDS_SPEC }, () => {
@@ -83,6 +84,6 @@ test("a site's styles become fragments and one sheet a package", () => {
   writeFileSync(join(site, "sprites", "osm-liberty.png"), encodePng({ width: SHEET.length * 2, height: 2, data }));
   assert.ok(splitSite(site) > 0);
   const points = JSON.parse(readFileSync(join(site, "fragments", "points", "sprites", "points-osm-liberty.json")));
-  assert.deepEqual(Object.keys(points).sort(), ["bank", "cafe"]);
+  assert.ok(points.bank && points.cafe && !points["mark-white-red-bar"] && !points["nobody-draws-me"]);
   assert.ok(readdirSync(join(site, "fragments", "roads")).includes("r-zakladna-svetla.json"));
 });
