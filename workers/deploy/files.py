@@ -121,8 +121,22 @@ def road_signs_files(site, man):
 
 ROAD_SIGNS_SUFFIXES = ("-roadsigns.json", "-roadsigns.png", "-roadsigns@2x.json",
                        "-roadsigns@2x.png")
+
+
+def regulations_files(site, man):
+    """Part `regulations` – the country's default speeds, in the base map and in `roads`."""
+    rel = catalog.region_entry(man).get("regulations")
+    rel = [rel] if rel else []
+    if not rel:
+        base = os.path.join(site, "tiles")
+        rel = [os.path.join("tiles", n) for n in sorted(os.listdir(base))
+               if has_suffix(n, ("-regulations.json",))] if os.path.isdir(base) else []
+    return [os.path.join(site, f) for f in rel
+            if os.path.exists(os.path.join(site, f))]
+
+
 # base map parts a region may go without
-OPTIONAL_PARTS = ("roadsigns",)
+OPTIONAL_PARTS = ("roadsigns", "regulations")
 
 
 def missing(man, p):
@@ -145,6 +159,8 @@ def base_parts(site, man):
          signs_files(site, man)),
         ("roadsigns", "images of the traffic signs in its `traffic_sign` layer (sprite)",
          road_signs_files(site, man)),
+        ("regulations", "the country's default speed per road context (.json)",
+         regulations_files(site, man)),
     ]
 
 

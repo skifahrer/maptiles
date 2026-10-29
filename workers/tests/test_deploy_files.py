@@ -29,7 +29,7 @@ class Site(unittest.TestCase):
             "tiles/r-rail.pmtiles", "tiles/r-rail-routing.pmtiles", "tiles/r-signs.json",
             "tiles/r-signs.png", "tiles/r-water.pmtiles", "tiles/r-terrain.pmtiles",
             "tiles/r-transport.pmtiles", "tiles/r-roadsigns.json",
-            "tiles/r-roadsigns.png",
+            "tiles/r-roadsigns.png", "tiles/r-regulations.json",
             "sprites/osm-liberty.json", "styles/r-svetla.json"]
 
     def setUp(self):
@@ -60,7 +60,8 @@ class Site(unittest.TestCase):
         parts = {k: self.rel(f) for k, _, f in files.base_parts(self.site, self.man)}
         self.assertEqual(parts, {"trails": ["tiles/r-trails.pmtiles"], "routing": ["tiles/r-routing.pmtiles"],
                                  "signs": ["tiles/r-signs.json", "tiles/r-signs.png"],
-                                 "roadsigns": ["tiles/r-roadsigns.json", "tiles/r-roadsigns.png"]})
+                                 "roadsigns": ["tiles/r-roadsigns.json", "tiles/r-roadsigns.png"],
+                                 "regulations": ["tiles/r-regulations.json"]})
         sizes = files.part_sizes(files.base_parts(self.site, self.man))
         self.assertEqual(sizes["signs"]["files"], 2)
         self.assertEqual(sizes["signs"]["raw_size"], 2)
@@ -76,6 +77,20 @@ class Site(unittest.TestCase):
         base = self.rel(files.base_files(self.site, roads_files, keep=[f for p in parts for f in p]))
         self.assertIn("tiles/r-roadsigns.png", base)
         self.assertNotIn("tiles/r-transport.pmtiles", base)
+
+    def test_regulations_ride_with_roads_and_in_the_base_map(self):
+        roads = packages.package("roads")
+        roads_files = files.package_files(self.site, {}, roads)
+        self.assertIn("tiles/r-regulations.json", self.rel(roads_files))
+        parts = [f for k, _, f in files.base_parts(self.site, self.man)]
+        base = self.rel(files.base_files(self.site, roads_files, keep=[f for p in parts for f in p]))
+        self.assertIn("tiles/r-regulations.json", base)
+
+    def test_the_manifest_names_the_regulations(self):
+        man = {"default_region": "r", "regions": {"r": {"regulations": "tiles/r-regulations.json"}}}
+        parts = {k: self.rel(f) for k, _, f in files.base_parts(self.site, man)}
+        self.assertEqual(parts["regulations"], ["tiles/r-regulations.json"])
+        self.assertIn("regulations", files.OPTIONAL_PARTS)
 
     def test_a_region_without_signs_lacks_nothing(self):
         roads = packages.package("roads")

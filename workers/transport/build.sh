@@ -72,6 +72,17 @@ compgen -G "_site/tiles/${REGION_KEY}-roadsigns*.json" >/dev/null && ROADSIGNS=t
 printf '%s\t%s\t%s\t%s\n' "61.5" "Road signs and their images" "$(( $(date +%s) - T_RS ))" \
   "$ROADSIGNS" >> steps-out/transport.tsv
 
+# the country's default speeds, so a change of law reaches the phone with the next build
+T_RG=$(date +%s)
+workers/transport/regulations.sh || {
+  echo "::warning::Traffic regulations weren't copied – the app keeps the limits it was built with."
+  rm -f _site/tiles/"${REGION_KEY}"-regulations.json
+}
+REGULATIONS=false
+[ -f "_site/tiles/${REGION_KEY}-regulations.json" ] && REGULATIONS=true
+printf '%s\t%s\t%s\t%s\n' "61.6" "Traffic regulations" "$(( $(date +%s) - T_RG ))" \
+  "$REGULATIONS" >> steps-out/transport.tsv
+
 T_PM=$(date +%s)
 OUT="_site/tiles/${REGION_KEY}-transport.pmtiles"
 PATHS_OUT="_site/tiles/${REGION_KEY}-paths.pmtiles"

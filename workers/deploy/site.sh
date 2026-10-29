@@ -83,6 +83,7 @@ jq -n \
   --argjson bldmaxzoom "${BUILDINGS_MAXZOOM:-14}" \
   --argjson railsigns "$(find _site/tiles -maxdepth 1 -name "${REGION_KEY}-signs*" 2>/dev/null | sed 's|^_site/||' | sort | jq -R . | jq -s .)" \
   --argjson roadsignsprite "$(find _site/tiles -maxdepth 1 -name "${REGION_KEY}-roadsigns*" 2>/dev/null | sed 's|^_site/||' | sort | jq -R . | jq -s .)" \
+  --argjson regulations "$([ -f "_site/tiles/${REGION_KEY}-regulations.json" ] && echo true || echo false)" \
   --argjson transport "$TRANSPORT_ENABLED" \
   --argjson trmaxzoom "$TRANSPORT_MAXZOOM" \
   --argjson paths "${PATHS_ENABLED:-false}" \
@@ -188,6 +189,8 @@ jq -n \
       + (if $railsigns != [] then { rail_signs: $railsigns } else {} end)
       # images of the `traffic_sign` layer in the roads
       + (if $roadsignsprite != [] then { road_sign_sprite: $roadsignsprite } else {} end)
+      # default speeds per road context, from traffic-signs
+      + (if $regulations then { regulations: ("tiles/" + $region + "-regulations.json") } else {} end)
       # the manifest lists what the map holds (files.py packs by it), not what the style asks
       + (if $transport then {
         transport: ("tiles/" + $region + "-transport.pmtiles"),
