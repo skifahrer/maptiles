@@ -1204,20 +1204,6 @@ jobs:
           REGION_KEY: ${{ needs.plan.outputs.key }}
           LIMIT_MB: ${{ needs.plan.outputs.opt_size_limit_mb }}
         run: workers/deploy/check.sh
-      # styles, viewer, `manifest.json` and the baked sprite – what `_site` got
-      # only here, so not in `site-*` (see `workers/deploy/apple-archive.sh`)
-      - name: Keep the assembled site part for later jobs
-        if: ${{ always() && steps.check.outcome == 'success' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: deploy-site
-          path: |
-            _site
-            !_site/fonts
-            !_site/tiles/*.pmtiles
-          retention-days: 1
-          compression-level: 0
-
       # `publish_pages=false` only turns the deploy off; Drive is its own lever
       - name: Upload Pages artifact
         if: ${{ needs.plan.outputs.opt_publish_pages == 'true' }}
@@ -1250,6 +1236,37 @@ jobs:
           BUILDINGS: ${{ needs.settlements.outputs.enabled }}
           PAGES_BUILD_TYPE: ${{ needs.plan.outputs.pages_build_type }}
         run: workers/deploy/smoke-test.sh
+
+      # after Pages: the cut doubles the base tiles, more than the page budget holds
+      - name: Cut the base map's tiles into its packages
+        id: cut
+        if: ${{ always() && steps.check.outcome == 'success' }}
+        run: |
+          python3 -m pip install --quiet pmtiles
+          python3 workers/tiles/cut.py --site=_site
+
+      - name: Keep the cut tiles for later jobs
+        if: ${{ always() && steps.cut.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: cuts
+          path: _site/tiles/*-omt-*.pmtiles
+          retention-days: 1
+          compression-level: 0
+
+      # styles, viewer, the cut's `manifest.json` and the baked sprite – what `_site` got
+      # only here, so not in `site-*` (see `workers/deploy/apple-archive.sh`)
+      - name: Keep the assembled site part for later jobs
+        if: ${{ always() && steps.check.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: deploy-site
+          path: |
+            _site
+            !_site/fonts
+            !_site/tiles/*.pmtiles
+          retention-days: 1
+          compression-level: 0
 
       - name: Publish the map to Drive
         id: publish
@@ -1358,6 +1375,12 @@ jobs:
         with:
           name: deploy-site
           path: _site
+      - name: Collect the cut tiles
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: cuts
+          path: _site/tiles
       - name: Pack and upload .aar to Drive
         id: publish
         env:

@@ -81,6 +81,12 @@ def trails_files(site, man):
             if os.path.exists(os.path.join(site, f))]
 
 
+def features_files(site, man):
+    """Part `features` – landscape lines, areas and pistes, also in `landscape`."""
+    return package_files(site, man, {"manifest": ["features"],
+                                      "suffixes": ["-features.pmtiles"]})
+
+
 def routing_files(site, man):
     """Part `routing` – the signed routing network (`-routing.pmtiles`), also in `roads`."""
     reg = catalog.region_entry(man)
@@ -139,6 +145,8 @@ def base_parts(site, man):
     return [
         ("trails", "waymarked routes from OSM relations (.pmtiles)",
          trails_files(site, man)),
+        ("features", "landscape lines, areas and pistes (.pmtiles)",
+         features_files(site, man)),
         ("routing", "signed routing network (.pmtiles)",
          routing_files(site, man)),
         ("signs", "the country's rail and road signs (sprite)",
@@ -146,6 +154,13 @@ def base_parts(site, man):
         ("roadsigns", "images of the traffic signs in its `traffic_sign` layer (sprite)",
          road_signs_files(site, man)),
     ]
+
+
+def rest_files(site, man, exclude):
+    """What no package but the base map carries, its uncut tiles left out – for `rest`."""
+    uncut = catalog.region_entry(man).get("pmtiles")
+    skip = {os.path.abspath(os.path.join(site, uncut))} if uncut else set()
+    return [f for f in base_files(site, exclude) if os.path.abspath(f) not in skip]
 
 
 def part_sizes(parts):
