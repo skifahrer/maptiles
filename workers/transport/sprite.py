@@ -32,6 +32,15 @@ def needed(country, used, mapping=MAPPING):
     return {n: known[n] for n in sorted(used) if n in known}
 
 
+def with_every_limit(country, used, mapping=MAPPING):
+    """`used` plus each speed-limit sign the country has: the app draws limits no sign names."""
+    out = dict(used)
+    for name in supported(country, mapping):
+        if ".ts.maxspeed-" in name and not name.endswith("_end"):
+            out.setdefault(name, 0)
+    return out
+
+
 def entries(root, country, used, mapping=MAPPING):
     """`{image file: {"names": [...], "sign": folder, "uses": n}}`, `uses` the region's count."""
     out = {}
@@ -146,7 +155,7 @@ def main():
     ap.add_argument("--out", help="base name, without .json/.png")
     a = ap.parse_args()
     country = a.country.lower()
-    used = read_used(a.used)
+    used = with_every_limit(country, read_used(a.used))
     if a.folders:
         print("\n".join(sorted(set(needed(country, used).values()))))
         return
