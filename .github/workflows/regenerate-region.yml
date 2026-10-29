@@ -653,6 +653,21 @@ jobs:
           echo "points=${{ needs.points.result }}, roads and paths=${{ needs.transport.result }}, boundaries=${{ needs.boundaries.result }}, water=${{ needs.water.result }}, railways=${{ needs.railways.result }}, history=${{ needs.history.result }}, settlements=${{ needs.settlements.result }}, routing=${{ needs.routing.result }}, DEM layers=${{ needs.dem.result }} (contours=${{ needs.dem.outputs.res_contours }}, hillshading=${{ needs.dem.outputs.res_terrain }})"
           find _site -type f -printf '%10s  %p\n' 2>/dev/null || true
 
+      # the package's cut of the base map, style fragments and (Paths) the region's files
+      - name: Carry over what the run didn't rebuild
+        env:
+          REGION_KEY: ${{ needs.plan.outputs.key }}
+          AREA_KEY: whole
+          TEST_KM2: ${{ needs.plan.outputs.opt_test_km2 }}
+          CUSTOM_PBF_URL: ${{ needs.plan.outputs.opt_custom_pbf_url }}
+          CUSTOM_NAME: ${{ needs.plan.outputs.opt_custom_name }}
+          AREA_BBOX: ${{ needs.plan.outputs.area_bbox }}
+        run: |
+          set -euo pipefail
+          python3 workers/deploy/carry-over.py \
+            --package='${{ needs.plan.outputs.package }}' \
+            --site=_site --maps=maps.json
+
       # the build's packer and catalog write, with `--only`: one package, the entry added to
       - name: Publish the package to Drive and write maps.json
         id: publish
