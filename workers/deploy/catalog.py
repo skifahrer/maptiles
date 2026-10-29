@@ -80,7 +80,9 @@ def region_entry(man):
 
 TILE_LAYERS = ("pmtiles", "contours", "rocks", "trails", "features", "points",
                "transport", "paths", "boundaries", "water", "rail", "rail_routing",
-               "history", "buildings", "aerial_summer", "aerial_winter")
+               "history", "buildings", "aerial_summer", "aerial_winter",
+               "omt_landscape", "omt_points", "omt_roads", "omt_paths", "omt_railways",
+               "omt_water", "omt_boundaries", "omt_settlements")
 
 
 def tiles_paths(man, reg):

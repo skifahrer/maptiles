@@ -87,6 +87,16 @@ test("the base map is the style as built", () => {
   });
   assert.equal(packageStyle(style, BASE_PACKAGE, OWN), style);
 });
+test("landscape takes the land, points the shops, settlements the places", () => {
+  const land = ids(packageMap("landscape"));
+  assert.ok(land.includes("landcover-wood") && land.includes("park") && land.includes("piste-line"));
+  assert.ok(land.includes("mountain-peak") && land.includes("aeroway-runway"));
+  assert.ok(!land.includes("road-motorway") && !land.includes("poi-major"));
+  assert.ok(!land.includes("feature-aerialway-disused"));
+  assert.ok(ids(packageMap("points")).includes("poi-major"));
+  assert.ok(ids(packageMap("settlements")).includes("place-town"));
+  assert.ok(ids(packageMap("roads")).includes("housenumber"));
+});
 
 test("a region offers only the packages it has", () => {
   const bare = packagesOf({}).map((p) => p.id);

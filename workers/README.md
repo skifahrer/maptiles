@@ -45,7 +45,12 @@ Mapa · Build map region      deväť jobov, tie dlhé bežia súbežne:
                                navigacia smerovacia sieť so značkami ─►
                                         v mape aj v balíku `cesty`
                                assets   SDF sprity a glyfy
-                               deploy   zloží _site ─► GitHub Pages
+                               deploy   zloží _site ─► GitHub Pages; potom
+                                        rozreže dlaždice základnej mapy po
+                                        balíkoch (`tiles/cut.py`) ─► nový
+                                        balík `landscape` a `-omt-<balík>`
+                                        v ostatných; `paths` nesie aj štýly,
+                                        sprity, trasy a manifest
                                apple-archive  balíky ešte raz ako .aar
                                         (macOS runner – nástroj `aa`)
 

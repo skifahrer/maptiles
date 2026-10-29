@@ -10,6 +10,11 @@ export const PACKAGES = [
     note: "Celá kartografia; čo z nej ukáže, určuje typ mapy."
   },
   {
+    id: "landscape",
+    label: "Krajina",
+    note: "Pôda, parky, vrcholy, línie v krajine, zjazdovky a letiská."
+  },
+  {
     id: "roads",
     label: "Cesty",
     note: "Cesty, kam vojde auto, s obmedzeniami na ceste a značkami."
@@ -79,8 +84,13 @@ const BASE_PATHS = new Set([
 ]);
 const BASE_CLAIMS = {
   transportation: "roads", transportation_name: "roads", traffic_sign: "roads",
+  housenumber: "roads",
   water: "water", water_name: "water", waterway: "water",
-  boundary: "boundaries"
+  boundary: "boundaries",
+  landcover: "landscape", landuse: "landscape", park: "landscape", mountain_peak: "landscape",
+  aeroway: "landscape", aerodrome_label: "landscape",
+  poi: "points",
+  building: "settlements", place: "settlements"
 };
 const SOURCE_OWNERS = {
   transport: ["roads"], paths: ["paths"], points: ["points"], boundaries: ["boundaries"],
@@ -98,7 +108,7 @@ export function layerOwners(layer) {
     if (BASE_PATHS.has(id) || id.startsWith("road-pedestrian")) return ["paths"];
     return [BASE_CLAIMS[layer["source-layer"]] || BASE_PACKAGE];
   }
-  if (source === "features") return [FEATURE_LIFTS.has(id) ? "railways" : BASE_PACKAGE];
+  if (source === "features") return [FEATURE_LIFTS.has(id) ? "railways" : "landscape"];
   return SOURCE_OWNERS[source] || (source === "dem" ? [] : [BASE_PACKAGE]);
 }
 

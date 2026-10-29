@@ -42,6 +42,7 @@ part_sizes = files.part_sizes
 all_files = files.all_files
 contents_sha = files.contents_sha
 base_files = files.base_files
+rest_files = files.rest_files
 names = load("deploy_names", "names.py")
 strip_test = names.strip_test
 drive_path = names.drive_path
@@ -211,6 +212,11 @@ def main():
                 f"doesn't list it and the registry doesn't call it optional.")
     # out of the base map: files of own packages + what doesn't belong there
     exclude = [f for _p, fs in own_packages for f in fs] + out_files
+    if not args.only and not mountain:
+        # a region's trails have no package of their own, so they are rest too
+        drawn = [f for p, fs in own_packages if p["key"] not in names.MOUNTAIN_ONLY for f in fs]
+        rest = rest_files(args.site, man, drawn + out_files)
+        own_packages = [(p, fs + rest if p.get("rest") else fs) for p, fs in own_packages]
     batch = [
         ("", "base map – the whole OSM cartography with waymarked trails, "
              "routing network and search; without layers that have their own "

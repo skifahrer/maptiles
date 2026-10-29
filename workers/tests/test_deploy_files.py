@@ -58,7 +58,8 @@ class Site(unittest.TestCase):
 
     def test_parts_of_the_base_map(self):
         parts = {k: self.rel(f) for k, _, f in files.base_parts(self.site, self.man)}
-        self.assertEqual(parts, {"trails": ["tiles/r-trails.pmtiles"], "routing": ["tiles/r-routing.pmtiles"],
+        self.assertEqual(parts, {"trails": ["tiles/r-trails.pmtiles"], "features": [],
+                                 "routing": ["tiles/r-routing.pmtiles"],
                                  "signs": ["tiles/r-signs.json", "tiles/r-signs.png"],
                                  "roadsigns": ["tiles/r-roadsigns.json", "tiles/r-roadsigns.png"],
                                  "regulations": ["tiles/r-regulations.json"]})
@@ -95,11 +96,28 @@ class Site(unittest.TestCase):
     def test_a_region_without_signs_lacks_nothing(self):
         roads = packages.package("roads")
         man = {"default_region": "r", "regions": {"r": {"transport": "tiles/r-transport.pmtiles",
-                                                        "routing": "tiles/r-routing.pmtiles"}}}
+                                                        "routing": "tiles/r-routing.pmtiles",
+                                                        "omt_roads": "tiles/r-omt-roads.pmtiles"}}}
         self.assertEqual(files.missing(man, roads), [])
         del man["regions"]["r"]["routing"]
         self.assertEqual(files.missing(man, roads), ["routing"])
         self.assertEqual(files.missing({}, roads), [], "no manifest, nothing to tell")
+
+    def test_paths_carry_the_rest_and_the_base_map_stays_whole(self):
+        for rel in ("tiles/r-omt-roads.pmtiles", "tiles/r-features.pmtiles", "region.geojson"):
+            touch(self.site, rel)
+        man = {"default_region": "r", "regions": {"r": {"pmtiles": "tiles/r.pmtiles"}}}
+        own = files.layer_packages(self.site, man)
+        drawn = [f for p, fs in own if p["key"] != "trails" for f in fs]
+        out, _ = files.outside_packages(self.site, man)
+        rest = self.rel(files.rest_files(self.site, man, drawn + out))
+        self.assertEqual(rest, ["region.geojson", "sprites/osm-liberty.json", "styles/r-svetla.json",
+                                "tiles/manifest.json", "tiles/r-trails.pmtiles"])
+        keep = [f for _k, _d, fs in files.base_parts(self.site, man) for f in fs]
+        base = self.rel(files.base_files(self.site, [f for _p, fs in own for f in fs] + out, keep))
+        self.assertIn("tiles/r.pmtiles", base)
+        self.assertIn("tiles/r-features.pmtiles", base)
+        self.assertNotIn("tiles/r-omt-roads.pmtiles", base)
 
     def test_viewer_and_glyphs_stay_out(self):
         with redirect_stdout(io.StringIO()):
