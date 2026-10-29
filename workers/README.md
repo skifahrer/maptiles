@@ -4105,6 +4105,11 @@ nad krajom nespúšťa celý build, ale to jedno, čo si vyberieš (`co`):
 Nad krajom to **vždy** robí „Mapa · Pregeneruj vrstvu kraja" – aj pri vrstvách
 z výškového modelu. Prepíše sa preto vždy len ten jeden balík.
 
+Čo beh nestavia – výrez základnej mapy (`-omt-<balík>.pmtiles`), časti štýlov
+(`fragments/<balík>/`) a pri Chodníkoch súbory celého kraja – si balík pred
+zabalením vezme z jeho poslednej verzie na Drive (`workers/deploy/carry-over.py`).
+Vrstvu, ktorú beh postavil, nikdy: čo z nej tentoraz nevzniklo, v balíku nebude.
+
 **Zoznam je číselník, nie `case` v skripte**: ktoré balíky sú, drží
 `workers/data/packages.json` (kľúč `regeneruj` hovorí, čo sa dá postaviť bez
 celého buildu mapy) a `workers/state/jobs.py` k tomu dopĺňa len to, čo je vec

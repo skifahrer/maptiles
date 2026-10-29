@@ -212,7 +212,9 @@ def main():
                 f"doesn't list it and the registry doesn't call it optional.")
     # out of the base map: files of own packages + what doesn't belong there
     exclude = [f for _p, fs in own_packages for f in fs] + out_files
-    if not args.only and not mountain:
+    # a regenerated `rest` package takes the region's files the run carried over
+    rest_only = args.only in registry.keys() and registry.package(args.only).get("rest")
+    if not mountain and (not args.only or rest_only):
         # a region's trails have no package of their own, so they are rest too
         drawn = [f for p, fs in own_packages if p["key"] not in names.MOUNTAIN_ONLY for f in fs]
         rest = rest_files(args.site, man, drawn + out_files)

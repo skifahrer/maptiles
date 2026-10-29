@@ -72,6 +72,18 @@ def write_base(path):
     return f"{path}.base"
 
 
+def node_at(data, cat):
+    """The catalog's node at `cat` as `catalog_path` names it, or {} – read, never made."""
+    if len(cat) > 1 and cat[0] == names.MOUNTAINS:
+        return ((data.get(names.MOUNTAINS) or {}).get(names.RANGES) or {}).get(cat[1]) or {}
+    node = data.get(cat[0]) or {}
+    if len(cat) > 1:
+        node = (node.get("regions") or {}).get(cat[1]) or {}
+    if len(cat) > 2:
+        node = (node.get("subregions") or {}).get(cat[2]) or {}
+    return node
+
+
 def region_entry(man):
     """The region's entry in `manifest.json` – zooms, bbox, height sources."""
     key = man.get("default_region")
