@@ -158,6 +158,15 @@ class Publishing(unittest.TestCase):
         self.assertEqual(cloud.calls.count("modify"), 3)
 
 
+    def test_a_record_cloudkit_would_refuse_stops_the_publish(self):
+        cloud = FakeCloud()
+        huge = catalog()
+        huge["slovensko"]["regions"]["kosicky"]["translations"] = {"x": "a" * 1_000_000}
+        with self.assertRaisesRegex(ValueError, "slovakia-kosicky"):
+            quiet(cloudkit.publish, huge, cloud, now=100)
+        self.assertEqual(cloud.records, {})
+
+
 class NewCountries(unittest.TestCase):
     def test_a_new_country_starts_on_dev_only(self):
         cloud = FakeCloud()

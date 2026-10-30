@@ -22,6 +22,8 @@ CHILDREN = ("regions", "subregions", "ranges", "mountains")
 LOOKUP_BATCH = 200
 WRITE_OPS = 200
 WRITE_BYTES = 1_500_000
+# CloudKit refuses a record over 1 MB; the rest is the request's own fields
+RECORD_BYTES = 950_000
 TRIES = 3
 FEATURES = ("features-beta", "features-prod")
 COUNTRY_KEY = "country:"
@@ -118,6 +120,9 @@ def plan(tree, published, now, force=False):
                   "children": json.dumps(kids, ensure_ascii=False), "version": node["version"],
                   "subtreeTs": subtree[node_id], "digest": digest[node_id]}
         writes.append((node_id, fields, (published.get(node_id) or {}).get("tag")))
+    too_big = [n for n, fields, _ in writes if len(json.dumps(fields).encode()) > RECORD_BYTES]
+    if too_big:
+        raise ValueError(f"over CloudKit's 1 MB per record, nothing written: {', '.join(too_big)}")
     return writes, subtree
 
 
