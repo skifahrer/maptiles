@@ -180,9 +180,10 @@ class Cloud:
                 with urllib.request.urlopen(request, timeout=120) as response:
                     return json.load(response)
             except urllib.error.HTTPError as error:
-                said = error.read().decode()[:500]
+                said = error.read().decode(errors="replace")[:2000]
                 if error.code not in (429, 503) or attempt == TRIES - 1:
-                    raise RuntimeError(f"{operation}: HTTP {error.code} {said}") from error
+                    raise RuntimeError(f"{operation} {subpath}: HTTP {error.code} {error.reason} – "
+                                       f"{said or 'no body'} (try {attempt + 1} of {TRIES})") from error
                 time.sleep(int(error.headers.get("Retry-After") or 2 ** (attempt + 2)))
         raise RuntimeError(f"{operation}: no answer")
 
@@ -237,15 +238,38 @@ def batches(operations):
         yield batch
 
 
+REFUSALS_LISTED = 10
+
+
+def refusal(refused, batch):
+    """Every record CloudKit refused in a batch, counted by code, the first ones by name."""
+    kinds = {op["record"]["recordName"]: op["operationType"] for op in batch}
+    codes = {}
+    for record in refused:
+        codes[record["serverErrorCode"]] = codes.get(record["serverErrorCode"], 0) + 1
+    lines = [f"modify: CloudKit refused {len(refused)} of {len(batch)} records – "
+             + ", ".join(f"{code} ×{n}" for code, n in codes.items())]
+    for record in refused[:REFUSALS_LISTED]:
+        name = record.get("recordName")
+        lines.append(f"  {name} ({kinds.get(name, '?')}): {record['serverErrorCode']} {record.get('reason', '')}"
+                     .rstrip())
+    if len(refused) > REFUSALS_LISTED:
+        lines.append(f"  … and {len(refused) - REFUSALS_LISTED} more")
+    return "\n".join(lines)
+
+
 def modify(call, operations):
     for batch in batches(operations):
         answer = call("modify", {"operations": batch, "atomic": False})
+        refused = []
         for record in answer.get("records", []):
             code = record.get("serverErrorCode")
             if code == "CONFLICT":
                 raise Conflict(record.get("recordName"))
             if code and code != "NOT_FOUND":
-                raise RuntimeError(f"modify {record.get('recordName')}: {code} {record.get('reason', '')}")
+                refused.append(record)
+        if refused:
+            raise RuntimeError(refusal(refused, batch))
 
 
 def write_operation(node_id, fields, tag):
@@ -327,6 +351,28 @@ def key_file(environment):
     return path
 
 
+# what to check in the CloudKit Console when Apple refuses the key
+HINTS = {
+    "AUTHENTICATION_FAILED": "the key ID and public key registered in {env} › Tokens & Keys don't match this key",
+    "ACCESS_DENIED": "the account that created the {env} key isn't in the Admin role of {env} › Users",
+}
+
+
+def public_key(path):
+    """The key's public half, as pasted into the CloudKit Console."""
+    pem = subprocess.run(["openssl", "ec", "-in", path, "-pubout"], capture_output=True, text=True)
+    if pem.returncode:
+        return f"unreadable ({pem.stderr.strip()})"
+    return "".join(line for line in pem.stdout.splitlines() if not line.startswith("-----"))
+
+
+def start_line(environment, key_id, path, args):
+    suffix = environment.upper()
+    flags = "".join(f", {flag}" for flag, on in (("force", args.force), ("dry run", args.dry_run)) if on)
+    return (f"CloudKit {environment}: container {CONTAINER}, key CLOUDKIT_KEY_ID_{suffix} …{key_id[-8:]}, "
+            f"public key {public_key(path)}, catalog {args.catalog}{flags}")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("catalog", nargs="?", default="maps.json")
@@ -347,7 +393,14 @@ def main(argv=None):
         return 0
     with open(args.catalog, encoding="utf-8") as handle:
         catalog = json.load(handle)
-    publish(catalog, Cloud(key_id, path, environment), force=args.force, dry_run=args.dry_run)
+    log(start_line(environment, key_id, path, args))
+    try:
+        publish(catalog, Cloud(key_id, path, environment), force=args.force, dry_run=args.dry_run)
+    except RuntimeError as error:
+        hint = next((h for code, h in HINTS.items() if code in str(error)), None)
+        if hint:
+            log(f"::error::CloudKit {environment}: {hint.format(env=environment.capitalize())}")
+        raise
     log(f"CloudKit {environment} has {args.catalog} ✓")
     return 0
 
