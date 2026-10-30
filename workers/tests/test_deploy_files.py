@@ -2,13 +2,15 @@ import io
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
 from contextlib import redirect_stdout
 from unittest import mock
 
-from load import worker
+from load import WORKERS, worker
 
 files = worker("deploy/files.py")
 pack = worker("deploy/pack.py")
@@ -156,6 +158,41 @@ class Site(unittest.TestCase):
             self.assertEqual(names[0], f"r/{pack.CONTENTS}")
             self.assertEqual(sorted(names[1:]), ["r/styles/r-svetla.json", "r/tiles/r.pmtiles"])
             self.assertEqual(json.loads(z.read(names[0])), {"package": "base"})
+
+
+class PublishBaseRetired(unittest.TestCase):
+    SITE = ["tiles/manifest.json", "tiles/r.pmtiles", "tiles/r-trails.pmtiles",
+            "tiles/r-routing.pmtiles", "tiles/search-index.db", "styles/r-svetla.json",
+            "tiles/r-omt-paths.pmtiles", "tiles/r-omt-roads.pmtiles"]
+
+    def packed(self, extra):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        site, out = os.path.join(tmp, "_site"), os.path.join(tmp, "out")
+        os.makedirs(out)
+        for rel in self.SITE + extra:
+            touch(site, rel)
+        env = dict(os.environ, REGION_KEY="r", AREA_KEY="whole", TEST_KM2="0", TILES_MAXZOOM="16")
+        run = subprocess.run([sys.executable, os.path.join(WORKERS, "deploy/publish-map.py"),
+                              f"--site={site}", f"--out={out}", "--zip-only", "--maps="],
+                             env=env, capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        got = {}
+        for name in os.listdir(out):
+            with zipfile.ZipFile(os.path.join(out, name)) as z:
+                got[name] = {n.split("/", 1)[1] for n in z.namelist() if "/" in n}
+        return got
+
+    def test_a_region_with_landscape_publishes_no_base_map(self):
+        got = self.packed(["tiles/r-omt-landscape.pmtiles"])
+        self.assertNotIn("r.zip", got)
+        paths = got["r-paths.zip"]
+        self.assertIn("tiles/search-index.db", paths)
+        self.assertIn("tiles/r-trails.pmtiles", paths)
+        self.assertIn("tiles/r-routing.pmtiles", got["r-roads.zip"])
+
+    def test_a_region_without_landscape_keeps_its_base_map(self):
+        self.assertIn("tiles/r.pmtiles", self.packed([])["r.zip"])
 
 
 class PublishContents(unittest.TestCase):

@@ -183,6 +183,11 @@ def base_parts(site, man):
     ]
 
 
+def base_retired(own):
+    """True when this build cut the base map into packages, Landscape among them."""
+    return any(p["key"] == "landscape" and fs for p, fs in own)
+
+
 # whole styles and their sheets stay with the base map; packages carry their fragments
 WHOLE_STYLE_DIRS = ("styles", "sprites")
 
