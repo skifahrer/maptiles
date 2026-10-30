@@ -66,6 +66,10 @@ on:
         required: false
       DRIVE_REFRESH:
         required: false
+      CLOUDKIT_KEY_ID:
+        required: false
+      CLOUDKIT_PRIVATE_KEY:
+        required: false
   workflow_dispatch:
     inputs:
       region:
