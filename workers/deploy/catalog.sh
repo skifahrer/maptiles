@@ -38,6 +38,12 @@ merge_with_branch() {
     --theirs="$THEIRS" --out="$MAPS_JSON" || cp "$MINE" "$MAPS_JSON"
 }
 
+# the app reads it from CloudKit too; a failure there leaves the commit as it is
+publish_cloudkit() {
+  python3 workers/deploy/cloudkit.py "$MAPS_JSON" \
+    || echo "::warning::CloudKit didn't take $MAPS_JSON – it is committed, and the next build publishes it."
+}
+
 # a branch rule's rejection is no race: the next build wouldn't pass either
 push_output=""
 rejected_for_good() {
@@ -65,6 +71,7 @@ for i in $(seq 1 "$TRIES"); do
   if git ls-files --error-unmatch -- "$MAPS_JSON" >/dev/null 2>&1; then
     if git diff --quiet -- "$MAPS_JSON"; then
       echo "$MAPS_JSON didn't change (the same map with the same links) – no commit."
+      publish_cloudkit
       exit 0
     fi
   else
@@ -79,6 +86,7 @@ for i in $(seq 1 "$TRIES"); do
   if push_output=$(git push origin "HEAD:$BRANCH" 2>&1); then
     printf '%s\n' "$push_output"
     echo "$MAPS_JSON is in branch $BRANCH ✓"
+    publish_cloudkit
     exit 0
   fi
   printf '%s\n' "$push_output"

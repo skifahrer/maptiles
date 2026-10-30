@@ -301,6 +301,9 @@ jobs:
           MAPS_JSON: ${{ steps.publish.outputs.maps_file || 'maps.json' }}
           BRANCH: ${{ github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CLOUDKIT_KEY_ID: ${{ secrets.CLOUDKIT_KEY_ID }}
+          CLOUDKIT_PRIVATE_KEY: ${{ secrets.CLOUDKIT_PRIVATE_KEY }}
+          CLOUDKIT_ENV: ${{ vars.CLOUDKIT_ENV }}
         run: workers/deploy/catalog.sh
 
       - name: Keep the articles for Apple Archive
@@ -381,4 +384,7 @@ jobs:
           MAPS_JSON: ${{ steps.publish.outputs.maps_file || 'maps.json' }}
           BRANCH: ${{ github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CLOUDKIT_KEY_ID: ${{ secrets.CLOUDKIT_KEY_ID }}
+          CLOUDKIT_PRIVATE_KEY: ${{ secrets.CLOUDKIT_PRIVATE_KEY }}
+          CLOUDKIT_ENV: ${{ vars.CLOUDKIT_ENV }}
         run: workers/deploy/catalog.sh

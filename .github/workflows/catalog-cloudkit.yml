@@ -1,0 +1,37 @@
+name: Publish · catalog to CloudKit
+
+# Every build publishes its own write in `catalog.sh`; this catches up or starts over.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "CloudKit environment"
+        type: choice
+        options: [development, production]
+        default: development
+      force:
+        description: "write every node again"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: catalog-cloudkit-${{ inputs.environment }}
+
+jobs:
+  publish:
+    name: maps.json into CloudKit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Publish
+        env:
+          CLOUDKIT_KEY_ID: ${{ secrets.CLOUDKIT_KEY_ID }}
+          CLOUDKIT_PRIVATE_KEY: ${{ secrets.CLOUDKIT_PRIVATE_KEY }}
+          CLOUDKIT_ENV: ${{ inputs.environment }}
+        run: python3 workers/deploy/cloudkit.py maps.json ${{ inputs.force && '--force' || '' }}
