@@ -22,7 +22,8 @@ CHILDREN = ("regions", "subregions", "ranges", "mountains")
 LOOKUP_BATCH = 200
 WRITE_OPS = 200
 WRITE_BYTES = 1_500_000
-# CloudKit refuses a record over 1 MB; the rest is the request's own fields
+# a record's fields stop at 1 MB; a body past this goes up as the asset `bodyFile`
+BODY_INLINE = 500_000
 RECORD_BYTES = 950_000
 TRIES = 3
 FEATURES = ("features-beta", "features-prod")
@@ -120,10 +121,22 @@ def plan(tree, published, now, force=False):
                   "children": json.dumps(kids, ensure_ascii=False), "version": node["version"],
                   "subtreeTs": subtree[node_id], "digest": digest[node_id]}
         writes.append((node_id, fields, (published.get(node_id) or {}).get("tag")))
-    too_big = [n for n, fields, _ in writes if len(json.dumps(fields).encode()) > RECORD_BYTES]
+    too_big = [n for n, fields, _ in writes
+               if len(json.dumps(dict(fields, body="")).encode()) > RECORD_BYTES]
     if too_big:
-        raise ValueError(f"over CloudKit's 1 MB per record, nothing written: {', '.join(too_big)}")
+        raise ValueError(f"children past CloudKit's 1 MB per record, nothing written: {', '.join(too_big)}")
     return writes, subtree
+
+
+def with_assets(call, writes):
+    """A body too big for the record's fields is uploaded and named by `bodyFile`."""
+    out = []
+    for node_id, fields, tag in writes:
+        body = fields["body"].encode()
+        if len(body) > BODY_INLINE:
+            fields = dict(fields, body="", bodyFile=call.upload(node_id, body))
+        out.append((node_id, fields, tag))
+    return out
 
 
 def signed(subpath, body, key_id, key_file, date=None):
@@ -144,8 +157,17 @@ class Cloud:
     def __init__(self, key_id, key_file, environment):
         self.key_id, self.key_file, self.environment = key_id, key_file, environment
 
-    def __call__(self, operation, payload):
-        subpath = f"/database/1/{CONTAINER}/{self.environment}/public/records/{operation}"
+    def upload(self, record_name, data):
+        """Apple's two steps: a signed request for an upload URL, then the bytes to it."""
+        tokens = self("upload", {"tokens": [{"recordName": record_name, "recordType": TYPE,
+                                             "fieldName": "bodyFile"}]}, kind="assets")["tokens"]
+        request = urllib.request.Request(tokens[0]["url"], data=data,
+                                         headers={"Content-Type": "application/octet-stream"})
+        with urllib.request.urlopen(request, timeout=300) as response:
+            return json.load(response)["singleFile"]
+
+    def __call__(self, operation, payload, kind="records"):
+        subpath = f"/database/1/{CONTAINER}/{self.environment}/public/{kind}/{operation}"
         body = json.dumps(payload).encode()
         request = urllib.request.Request(HOST + subpath, data=body,
                                          headers=signed(subpath, body, self.key_id, self.key_file))
@@ -264,7 +286,7 @@ def publish(catalog, call, now=None, force=False, dry_run=False):
         if dry_run:
             return writes, deletes
         try:
-            modify(call, [write_operation(*w) for w in writes])
+            modify(call, [write_operation(*w) for w in with_assets(call, writes)])
             modify(call, [{"operationType": "forceDelete", "record": {"recordName": n}} for n in deletes])
             switch_off(call, new_countries)
             return writes, deletes
