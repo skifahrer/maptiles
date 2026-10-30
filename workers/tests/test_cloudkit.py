@@ -234,6 +234,33 @@ class Signing(unittest.TestCase):
             self.assertEqual(verified.returncode, 0, verified.stdout)
 
 
+    def test_a_key_the_secret_mangled_still_signs(self):
+        with tempfile.TemporaryDirectory() as folder:
+            sec1 = os.path.join(folder, "k.pem")
+            subprocess.run(["openssl", "ecparam", "-name", "prime256v1", "-genkey", "-out", sec1],
+                           check=True, capture_output=True)
+            pkcs8 = subprocess.run(["openssl", "pkcs8", "-topk8", "-nocrypt", "-in", sec1],
+                                   check=True, capture_output=True).stdout.decode()
+            with open(sec1) as handle:
+                sec1 = handle.read()
+            bare = lambda pem: "".join(ln for ln in pem.splitlines() if "-----" not in ln and ln)
+            for secret in (sec1.replace("\n", "\\n"), sec1.replace("\n", " "), sec1.replace("\n", "\r\n"),
+                           f'"{pkcs8}"', bare(pkcs8), bare(sec1.split("-----END EC PARAMETERS-----")[1])):
+                with mock.patch.dict(os.environ, {"CLOUDKIT_PRIVATE_KEY": secret, "CLOUDKIT_KEY_FILE": ""}):
+                    path = cloudkit.key_file()
+                try:
+                    cloudkit.signed("/p", b"{}", "kid", path)
+                finally:
+                    os.remove(path)
+
+    def test_a_key_openssl_refuses_says_why(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".pem") as broken:
+            broken.write("not a key\n")
+            broken.flush()
+            with self.assertRaisesRegex(RuntimeError, "openssl can't sign with the CloudKit key: .+"):
+                cloudkit.signed("/p", b"{}", "kid", broken.name)
+
+
 class Main(unittest.TestCase):
     def test_without_a_key_nothing_is_published(self):
         with mock.patch.dict(os.environ, {"CLOUDKIT_KEY_ID": "", "CLOUDKIT_PRIVATE_KEY": "",

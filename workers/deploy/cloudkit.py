@@ -6,9 +6,11 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import urllib.error
 import urllib.request
@@ -143,9 +145,11 @@ def signed(subpath, body, key_id, key_file, date=None):
     """Apple's server-to-server signature: ECDSA P-256 over date, body hash and path."""
     date = date or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     digest = base64.b64encode(hashlib.sha256(body).digest()).decode()
-    signature = subprocess.run(["openssl", "dgst", "-sha256", "-sign", key_file],
-                               input=f"{date}:{digest}:{subpath}".encode(),
-                               capture_output=True, check=True).stdout
+    signing = subprocess.run(["openssl", "dgst", "-sha256", "-sign", key_file],
+                             input=f"{date}:{digest}:{subpath}".encode(), capture_output=True)
+    if signing.returncode:
+        raise RuntimeError(f"openssl can't sign with the CloudKit key: {signing.stderr.decode().strip()}")
+    signature = signing.stdout
     return {"Content-Type": "application/json", "X-Apple-CloudKit-Request-KeyID": key_id,
             "X-Apple-CloudKit-Request-ISO8601Date": date,
             "X-Apple-CloudKit-Request-SignatureV1": base64.b64encode(signature).decode()}
@@ -295,6 +299,20 @@ def publish(catalog, call, now=None, force=False, dry_run=False):
     raise RuntimeError(f"CloudKit kept changing under {TRIES} tries")
 
 
+def pem_text(secret):
+    """The private key as openssl reads it, from however a secret field kept it."""
+    text = secret.strip().strip("\"'").replace("\\n", "\n").replace("\r", "")
+    blocks = re.findall(r"-----BEGIN ([A-Z ]+)-----(.*?)-----END \1-----", text, re.S)
+    label, body = next(((lb, b) for lb, b in blocks if "PRIVATE KEY" in lb), (None, text))
+    body = "".join(body.split())
+    if not label:
+        # SEC1 says version 1 right after the outer sequence, PKCS#8 says 0
+        der = base64.b64decode(body + "=" * (-len(body) % 4))
+        start = 2 + (der[1] & 0x7F if der[1] & 0x80 else 0)
+        label = "EC PRIVATE KEY" if der[start:start + 3] == b"\x02\x01\x01" else "PRIVATE KEY"
+    return f"-----BEGIN {label}-----\n" + "\n".join(textwrap.wrap(body, 64)) + f"\n-----END {label}-----\n"
+
+
 def key_file():
     """The key from the environment, as a file openssl reads."""
     if os.environ.get("CLOUDKIT_KEY_FILE"):
@@ -302,9 +320,10 @@ def key_file():
     pem = os.environ.get("CLOUDKIT_PRIVATE_KEY", "").strip()
     if not pem:
         return ""
+    pem = pem_text(pem)
     handle, path = tempfile.mkstemp(suffix=".pem")
     with os.fdopen(handle, "w") as out:
-        out.write(pem + "\n")
+        out.write(pem)
     return path
 
 
