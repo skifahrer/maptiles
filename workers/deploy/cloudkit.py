@@ -172,8 +172,9 @@ class Cloud:
 
     def __call__(self, operation, payload, kind="records"):
         subpath = f"/database/1/{CONTAINER}/{self.environment}/public/{kind}/{operation}"
-        body = json.dumps(payload).encode()
-        request = urllib.request.Request(HOST + subpath, data=body,
+        # a GET signs an empty body
+        body = b"" if payload is None else json.dumps(payload).encode()
+        request = urllib.request.Request(HOST + subpath, data=None if payload is None else body,
                                          headers=signed(subpath, body, self.key_id, self.key_file))
         for attempt in range(TRIES):
             try:
@@ -373,6 +374,15 @@ def start_line(environment, key_id, path, args):
             f"public key {public_key(path)}, catalog {args.catalog}{flags}")
 
 
+def caller_line(cloud):
+    """The iCloud user the key acts as: the one the Admin role has to hold."""
+    try:
+        user = cloud("caller", None, kind="users").get("userRecordName", "none in the answer")
+    except RuntimeError as error:
+        user = f"unknown – {error}"
+    return f"CloudKit {cloud.environment}: the key acts as iCloud user {user}"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("catalog", nargs="?", default="maps.json")
@@ -394,8 +404,10 @@ def main(argv=None):
     with open(args.catalog, encoding="utf-8") as handle:
         catalog = json.load(handle)
     log(start_line(environment, key_id, path, args))
+    cloud = Cloud(key_id, path, environment)
+    log(caller_line(cloud))
     try:
-        publish(catalog, Cloud(key_id, path, environment), force=args.force, dry_run=args.dry_run)
+        publish(catalog, cloud, force=args.force, dry_run=args.dry_run)
     except RuntimeError as error:
         hint = next((h for code, h in HINTS.items() if code in str(error)), None)
         if hint:
