@@ -39,6 +39,11 @@ class FakeCloud:
 
     def __init__(self):
         self.records, self.calls, self.tag, self.before_modify = {}, [], 0, None
+        self.files = {}
+
+    def upload(self, record_name, data):
+        self.files[record_name] = data
+        return {"receipt": f"r-{record_name}", "size": len(data), "fileChecksum": "x"}
 
     def __call__(self, operation, payload):
         self.calls.append(operation)
@@ -158,12 +163,23 @@ class Publishing(unittest.TestCase):
         self.assertEqual(cloud.calls.count("modify"), 3)
 
 
-    def test_a_record_cloudkit_would_refuse_stops_the_publish(self):
+    def test_a_body_past_the_record_limit_goes_up_as_an_asset(self):
         cloud = FakeCloud()
         huge = catalog()
-        huge["slovensko"]["regions"]["kosicky"]["translations"] = {"x": "a" * 1_000_000}
-        with self.assertRaisesRegex(ValueError, "slovakia-kosicky"):
-            quiet(cloudkit.publish, huge, cloud, now=100)
+        huge["slovensko"]["regions"]["kosicky"]["translations"] = {"x": "a" * 2_000_000}
+        quiet(cloudkit.publish, huge, cloud, now=100)
+        self.assertEqual(cloud.field("slovakia-kosicky", "body"), "")
+        self.assertEqual(cloud.field("slovakia-kosicky", "bodyFile")["receipt"], "r-slovakia-kosicky")
+        body = json.loads(cloud.files["slovakia-kosicky"])
+        self.assertEqual((body["key"], len(body["translations"]["x"])), ("kosicky", 2_000_000))
+        self.assertNotIn("bodyFile", cloud.records["slovakia"]["fields"])
+
+    def test_children_past_the_record_limit_stop_the_publish(self):
+        cloud = FakeCloud()
+        wide = catalog()
+        wide["usa"]["regions"] = {f"r{i}": region("R" * 200, id=f"usa-r{i}") for i in range(4000)}
+        with self.assertRaisesRegex(ValueError, "usa"):
+            quiet(cloudkit.publish, wide, cloud, now=100)
         self.assertEqual(cloud.records, {})
 
 
