@@ -313,11 +313,11 @@ def pem_text(secret):
     return f"-----BEGIN {label}-----\n" + "\n".join(textwrap.wrap(body, 64)) + f"\n-----END {label}-----\n"
 
 
-def key_file():
-    """The key from the environment, as a file openssl reads."""
+def key_file(environment):
+    """The environment's key, as a file openssl reads."""
     if os.environ.get("CLOUDKIT_KEY_FILE"):
         return os.path.expanduser(os.environ["CLOUDKIT_KEY_FILE"])
-    pem = os.environ.get("CLOUDKIT_PRIVATE_KEY", "").strip()
+    pem = os.environ.get(f"CLOUDKIT_PRIVATE_KEY_{environment.upper()}", "").strip()
     if not pem:
         return ""
     pem = pem_text(pem)
@@ -336,11 +336,15 @@ def main(argv=None):
     if os.path.basename(args.catalog) != "maps.json":
         log(f"CloudKit: {args.catalog} is not the app's catalog – not published.")
         return 0
-    key_id, path = os.environ.get("CLOUDKIT_KEY_ID", "").strip(), key_file()
-    if not key_id or not path:
-        log("CloudKit: no CLOUDKIT_KEY_ID / CLOUDKIT_PRIVATE_KEY – not published.")
-        return 0
     environment = os.environ.get("CLOUDKIT_ENV", "").strip() or "development"
+    if environment not in ("development", "production"):
+        raise ValueError(f"CLOUDKIT_ENV is development or production, not {environment}")
+    suffix = environment.upper()
+    # CloudKit gives each environment its own server-to-server key
+    key_id, path = os.environ.get(f"CLOUDKIT_KEY_ID_{suffix}", "").strip(), key_file(environment)
+    if not key_id or not path:
+        log(f"CloudKit: no CLOUDKIT_KEY_ID_{suffix} / CLOUDKIT_PRIVATE_KEY_{suffix} – not published.")
+        return 0
     with open(args.catalog, encoding="utf-8") as handle:
         catalog = json.load(handle)
     publish(catalog, Cloud(key_id, path, environment), force=args.force, dry_run=args.dry_run)

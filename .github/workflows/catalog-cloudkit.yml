@@ -31,7 +31,9 @@ jobs:
         uses: actions/checkout@v7
       - name: Publish
         env:
-          CLOUDKIT_KEY_ID: ${{ secrets.CLOUDKIT_KEY_ID }}
-          CLOUDKIT_PRIVATE_KEY: ${{ secrets.CLOUDKIT_PRIVATE_KEY }}
+          CLOUDKIT_KEY_ID_DEVELOPMENT: ${{ secrets.CLOUDKIT_KEY_ID_DEVELOPMENT }}
+          CLOUDKIT_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.CLOUDKIT_PRIVATE_KEY_DEVELOPMENT }}
+          CLOUDKIT_KEY_ID_PRODUCTION: ${{ secrets.CLOUDKIT_KEY_ID_PRODUCTION }}
+          CLOUDKIT_PRIVATE_KEY_PRODUCTION: ${{ secrets.CLOUDKIT_PRIVATE_KEY_PRODUCTION }}
           CLOUDKIT_ENV: ${{ inputs.environment }}
         run: python3 workers/deploy/cloudkit.py maps.json ${{ inputs.force && '--force' || '' }}

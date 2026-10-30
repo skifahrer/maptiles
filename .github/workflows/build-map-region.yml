@@ -1324,8 +1324,10 @@ jobs:
           MAPS_JSON: ${{ steps.publish.outputs.maps_file || 'maps.json' }}
           BRANCH: ${{ github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          CLOUDKIT_KEY_ID: ${{ secrets.CLOUDKIT_KEY_ID }}
-          CLOUDKIT_PRIVATE_KEY: ${{ secrets.CLOUDKIT_PRIVATE_KEY }}
+          CLOUDKIT_KEY_ID_DEVELOPMENT: ${{ secrets.CLOUDKIT_KEY_ID_DEVELOPMENT }}
+          CLOUDKIT_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.CLOUDKIT_PRIVATE_KEY_DEVELOPMENT }}
+          CLOUDKIT_KEY_ID_PRODUCTION: ${{ secrets.CLOUDKIT_KEY_ID_PRODUCTION }}
+          CLOUDKIT_PRIVATE_KEY_PRODUCTION: ${{ secrets.CLOUDKIT_PRIVATE_KEY_PRODUCTION }}
           CLOUDKIT_ENV: ${{ vars.CLOUDKIT_ENV }}
         run: workers/deploy/catalog.sh
       # every job kept its lines in its `steps-*` artifact; merged and sorted here
@@ -1434,7 +1436,9 @@ jobs:
           MAPS_JSON: ${{ steps.publish.outputs.maps_file || 'maps.json' }}
           BRANCH: ${{ github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          CLOUDKIT_KEY_ID: ${{ secrets.CLOUDKIT_KEY_ID }}
-          CLOUDKIT_PRIVATE_KEY: ${{ secrets.CLOUDKIT_PRIVATE_KEY }}
+          CLOUDKIT_KEY_ID_DEVELOPMENT: ${{ secrets.CLOUDKIT_KEY_ID_DEVELOPMENT }}
+          CLOUDKIT_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.CLOUDKIT_PRIVATE_KEY_DEVELOPMENT }}
+          CLOUDKIT_KEY_ID_PRODUCTION: ${{ secrets.CLOUDKIT_KEY_ID_PRODUCTION }}
+          CLOUDKIT_PRIVATE_KEY_PRODUCTION: ${{ secrets.CLOUDKIT_PRIVATE_KEY_PRODUCTION }}
           CLOUDKIT_ENV: ${{ vars.CLOUDKIT_ENV }}
         run: workers/deploy/catalog.sh

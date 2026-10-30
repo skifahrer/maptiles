@@ -246,8 +246,8 @@ class Signing(unittest.TestCase):
             bare = lambda pem: "".join(ln for ln in pem.splitlines() if "-----" not in ln and ln)
             for secret in (sec1.replace("\n", "\\n"), sec1.replace("\n", " "), sec1.replace("\n", "\r\n"),
                            f'"{pkcs8}"', bare(pkcs8), bare(sec1.split("-----END EC PARAMETERS-----")[1])):
-                with mock.patch.dict(os.environ, {"CLOUDKIT_PRIVATE_KEY": secret, "CLOUDKIT_KEY_FILE": ""}):
-                    path = cloudkit.key_file()
+                with mock.patch.dict(os.environ, {"CLOUDKIT_PRIVATE_KEY_DEVELOPMENT": secret, "CLOUDKIT_KEY_FILE": ""}):
+                    path = cloudkit.key_file("development")
                 try:
                     cloudkit.signed("/p", b"{}", "kid", path)
                 finally:
@@ -263,12 +263,36 @@ class Signing(unittest.TestCase):
 
 class Main(unittest.TestCase):
     def test_without_a_key_nothing_is_published(self):
-        with mock.patch.dict(os.environ, {"CLOUDKIT_KEY_ID": "", "CLOUDKIT_PRIVATE_KEY": "",
-                                          "CLOUDKIT_KEY_FILE": ""}):
+        with mock.patch.dict(os.environ, {"CLOUDKIT_KEY_ID_DEVELOPMENT": "", "CLOUDKIT_PRIVATE_KEY_DEVELOPMENT": "",
+                                          "CLOUDKIT_KEY_FILE": "", "CLOUDKIT_ENV": ""}):
             out = io.StringIO()
             with redirect_stdout(out):
                 self.assertEqual(cloudkit.main(["maps.json"]), 0)
             self.assertIn("not published", out.getvalue())
+
+    def test_each_environment_signs_with_its_own_key(self):
+        keys = {"CLOUDKIT_KEY_ID_DEVELOPMENT": "dev-id", "CLOUDKIT_PRIVATE_KEY_DEVELOPMENT": "dev-key",
+                "CLOUDKIT_KEY_ID_PRODUCTION": "prod-id", "CLOUDKIT_PRIVATE_KEY_PRODUCTION": "prod-key",
+                "CLOUDKIT_KEY_FILE": ""}
+        for environment, key_id, pem in (("production", "prod-id", "prod-key"), ("", "dev-id", "dev-key")):
+            with mock.patch.dict(os.environ, dict(keys, CLOUDKIT_ENV=environment)), \
+                    mock.patch.object(cloudkit, "pem_text", side_effect=lambda text: text), \
+                    mock.patch.object(cloudkit, "publish") as publish, redirect_stdout(io.StringIO()):
+                self.assertEqual(cloudkit.main(["maps.json"]), 0)
+            cloud = publish.call_args.args[1]
+            self.assertEqual((cloud.environment or "development", cloud.key_id), (environment or "development", key_id))
+            with open(cloud.key_file) as handle:
+                self.assertEqual(handle.read(), pem)
+            os.remove(cloud.key_file)
+
+    def test_production_without_its_key_is_not_published(self):
+        with mock.patch.dict(os.environ, {"CLOUDKIT_ENV": "production", "CLOUDKIT_KEY_ID_DEVELOPMENT": "dev-id",
+                                          "CLOUDKIT_PRIVATE_KEY_DEVELOPMENT": "dev-key", "CLOUDKIT_KEY_FILE": "",
+                                          "CLOUDKIT_KEY_ID_PRODUCTION": "", "CLOUDKIT_PRIVATE_KEY_PRODUCTION": ""}):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                self.assertEqual(cloudkit.main(["maps.json"]), 0)
+            self.assertIn("no CLOUDKIT_KEY_ID_PRODUCTION", out.getvalue())
 
     def test_the_test_catalog_is_not_published(self):
         out = io.StringIO()
