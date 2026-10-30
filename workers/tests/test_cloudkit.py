@@ -7,6 +7,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+import urllib.error
 from contextlib import redirect_stdout
 from unittest import mock
 
@@ -174,6 +175,17 @@ class Publishing(unittest.TestCase):
         self.assertEqual((body["key"], len(body["translations"]["x"])), ("kosicky", 2_000_000))
         self.assertNotIn("bodyFile", cloud.records["slovakia"]["fields"])
 
+    def test_every_refused_record_is_named_with_its_reason(self):
+        refuse = {"serverErrorCode": "ACCESS_DENIED", "reason": "CREATE operation not permitted"}
+        operations = [cloudkit.write_operation(f"n{i}", {"body": "{}"}, None) for i in range(12)]
+        answer = {"records": [dict(refuse, recordName=f"n{i}") for i in range(12)]}
+        with self.assertRaises(RuntimeError) as raised:
+            cloudkit.modify(lambda operation, payload: answer, operations)
+        lines = str(raised.exception).splitlines()
+        self.assertEqual(lines[0], "modify: CloudKit refused 12 of 12 records – ACCESS_DENIED ×12")
+        self.assertEqual(lines[1], "  n0 (create): ACCESS_DENIED CREATE operation not permitted")
+        self.assertEqual(lines[-1], "  … and 2 more")
+
     def test_children_past_the_record_limit_stop_the_publish(self):
         cloud = FakeCloud()
         wide = catalog()
@@ -208,6 +220,38 @@ class NewCountries(unittest.TestCase):
             cloudkit.switch_off(cloud, ["austria"])
         self.assertEqual(json.loads(cloud.field("features-beta", "switches")), {"country:austria": True})
         self.assertEqual(json.loads(cloud.field("features-prod", "switches")), {"country:austria": False})
+
+
+class Requests(unittest.TestCase):
+    def test_a_refused_request_says_where_it_went_and_what_apple_said(self):
+        said = b'{"uuid":"u-1","reason":"Authentication failed","serverErrorCode":"AUTHENTICATION_FAILED"}'
+        error = urllib.error.HTTPError("https://x", 401, "Unauthorized", {}, io.BytesIO(said))
+        cloud = cloudkit.Cloud("kid", "/k", "production")
+        with mock.patch.object(cloudkit, "signed", return_value={}), \
+                mock.patch.object(cloudkit.urllib.request, "urlopen", side_effect=error):
+            with self.assertRaises(RuntimeError) as raised:
+                cloud("lookup", {"records": []})
+        self.assertEqual(str(raised.exception),
+                         "lookup /database/1/iCloud.com.rikimaps.rikimaps.public/production/public/records/lookup: "
+                         f"HTTP 401 Unauthorized – {said.decode()} (try 1 of 3)")
+
+
+    def test_the_caller_is_a_signed_get(self):
+        cloud = cloudkit.Cloud("kid", "/k", "development")
+        answer = mock.MagicMock()
+        answer.__enter__.return_value = io.BytesIO(b'{"userRecordName": "_abc"}')
+        with mock.patch.object(cloudkit, "signed", return_value={}) as signed, \
+                mock.patch.object(cloudkit.urllib.request, "urlopen", return_value=answer) as urlopen:
+            self.assertEqual(cloudkit.caller_line(cloud), "CloudKit development: the key acts as iCloud user _abc")
+        request = urlopen.call_args.args[0]
+        self.assertEqual((request.get_method(), request.data), ("GET", None))
+        self.assertEqual(signed.call_args.args[:2],
+                         ("/database/1/iCloud.com.rikimaps.rikimaps.public/development/public/users/caller", b""))
+
+    def test_an_unknown_caller_doesnt_stop_the_publish(self):
+        cloud = mock.MagicMock(environment="production", side_effect=RuntimeError("caller: HTTP 401"))
+        self.assertEqual(cloudkit.caller_line(cloud),
+                         "CloudKit production: the key acts as iCloud user unknown – caller: HTTP 401")
 
 
 class Signing(unittest.TestCase):
@@ -277,6 +321,7 @@ class Main(unittest.TestCase):
         for environment, key_id, pem in (("production", "prod-id", "prod-key"), ("", "dev-id", "dev-key")):
             with mock.patch.dict(os.environ, dict(keys, CLOUDKIT_ENV=environment)), \
                     mock.patch.object(cloudkit, "pem_text", side_effect=lambda text: text), \
+                    mock.patch.object(cloudkit, "caller_line", return_value="caller"), \
                     mock.patch.object(cloudkit, "publish") as publish, redirect_stdout(io.StringIO()):
                 self.assertEqual(cloudkit.main(["maps.json"]), 0)
             cloud = publish.call_args.args[1]
@@ -284,6 +329,38 @@ class Main(unittest.TestCase):
             with open(cloud.key_file) as handle:
                 self.assertEqual(handle.read(), pem)
             os.remove(cloud.key_file)
+
+    def test_the_run_says_where_it_publishes_and_with_which_key(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pem = os.path.join(folder, "k.pem")
+            subprocess.run(["openssl", "ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", pem],
+                           check=True, capture_output=True)
+            public = subprocess.run(["openssl", "ec", "-in", pem, "-pubout"], check=True, capture_output=True,
+                                    text=True).stdout.splitlines()[1]
+            env = {"CLOUDKIT_ENV": "production", "CLOUDKIT_KEY_ID_PRODUCTION": "0123456789abcdef",
+                   "CLOUDKIT_KEY_FILE": pem}
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, env), mock.patch.object(cloudkit, "publish"), \
+                    mock.patch.object(cloudkit, "caller_line", return_value="caller"), redirect_stdout(out):
+                cloudkit.main(["maps.json", "--force"])
+        line = out.getvalue().splitlines()[0]
+        self.assertIn("CloudKit production: container iCloud.com.rikimaps.rikimaps.public", line)
+        self.assertIn("key CLOUDKIT_KEY_ID_PRODUCTION …89abcdef", line)
+        self.assertNotIn("01234567", line)
+        self.assertIn(public, line)
+        self.assertTrue(line.endswith("catalog maps.json, force"))
+
+    def test_a_refusal_names_the_environment_and_what_to_check(self):
+        env = {"CLOUDKIT_ENV": "production", "CLOUDKIT_KEY_ID_PRODUCTION": "kid", "CLOUDKIT_KEY_FILE": "/k"}
+        refused = RuntimeError("modify x: ACCESS_DENIED CREATE operation not permitted")
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, env), mock.patch.object(cloudkit, "public_key", return_value="pub"), \
+                mock.patch.object(cloudkit, "publish", side_effect=refused), \
+                mock.patch.object(cloudkit, "caller_line", return_value="caller"), redirect_stdout(out):
+            with self.assertRaises(RuntimeError):
+                cloudkit.main(["maps.json"])
+        self.assertIn("::error::CloudKit production: the account that created the Production key isn't in the "
+                      "Admin role of Production › Users", out.getvalue())
 
     def test_production_without_its_key_is_not_published(self):
         with mock.patch.dict(os.environ, {"CLOUDKIT_ENV": "production", "CLOUDKIT_KEY_ID_DEVELOPMENT": "dev-id",
