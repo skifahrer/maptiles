@@ -194,7 +194,12 @@ def main():
     pieces = base_parts(args.site, man)
     keep = [f for _k, _p, fs in pieces for f in fs]
     mountain = bool(names.mountain_country())
-    if args.only or mountain:
+    # the packages draw the whole region; base would be downloaded twice
+    retired = files.base_retired(own_packages)
+    if retired:
+        log("The base map isn't published: this build cut it into packages, "
+            "Landscape among them. Its old package is deleted.")
+    if args.only or mountain or retired:
         pieces = []
     # viewer and glyphs aren't packed; how much a package leaves out must show
     out_files, out_reasons = outside_packages(args.site, man)
@@ -224,7 +229,7 @@ def main():
         ("", "base map – the whole OSM cartography with waymarked trails, "
              "routing network and search; without layers that have their own "
              "package, glyphs or viewer",
-         args.site, base_files(args.site, exclude, keep)),
+         args.site, [] if retired else base_files(args.site, exclude, keep)),
     ] + [(p["key"], p["description"], args.site, fs)
          for p, fs in own_packages]
     if not mountain:
@@ -255,7 +260,7 @@ def main():
             raise SystemExit(
                 f"::error::Package `{args.only}` has no files – nothing to "
                 f"publish. (Did the step that makes it run?)")
-    elif not mountain and not batch[0][3]:
+    elif not mountain and not any(b[3] for b in batch):
         raise SystemExit(f"::error::{args.site} has no files – nothing to "
                          f"publish. (Did the `deploy` job get as far as "
                          f"assembling the site?)")
