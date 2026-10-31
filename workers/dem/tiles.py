@@ -51,9 +51,14 @@ def elevation_range(path, exact=False):
     """(min, max) of heights, or None without a valid pixel; sampled only proves "yes"."""
     try:
         b = gdalinfo(path, stats="exact" if exact else "approx")["bands"][0]
-        return b["minimum"], b["maximum"]
+        lo, hi = float(b["minimum"]), float(b["maximum"])
+        valid = float(b.get("metadata", {}).get("", {}).get("STATISTICS_VALID_PERCENT", 100))
     except Exception:
         return None
+    # newer GDAL reports min/max even when no pixel is valid
+    if valid <= 0 or not (math.isfinite(lo) and math.isfinite(hi)):
+        return None
+    return lo, hi
 
 
 def has_elevations(path):
@@ -151,30 +156,21 @@ def plan_tiles(bounds, window, dlon, dlat):
 
 def empty_tile(dst, lon, lat, dtype, nodata, px=EMPTY_PX):
     """An empty tile for a whole degree – "we looked and nothing is here". True when made."""
-    # a sourceless VRT (kilobytes), stamped and checked empty: zeros would be sea
+    # burnt with nodata: newer GDAL fills a sourceless VRT with zeros, and zero is sea
     nd = nodata if nodata is not None else (
         -9999.0 if dtype.startswith("Float") else -32768)
-    vrt = dst + ".vrt"
-    with open(vrt, "w") as f:
-        f.write(
-            f'<VRTDataset rasterXSize="{px}" rasterYSize="{px}">'
-            f'<SRS>EPSG:4326</SRS>'
-            f'<GeoTransform>{lon}, {1.0 / px}, 0, {lat + 1}, 0, {-1.0 / px}'
-            f'</GeoTransform>'
-            f'<VRTRasterBand dataType="{dtype}" band="1">'
-            f'<NoDataValue>{nd!r}</NoDataValue></VRTRasterBand></VRTDataset>')
     try:
         subprocess.run(
-            ["gdal_translate", "-q", "-of", "GTiff", "-a_nodata", repr(nd),
+            ["gdal_create", "-q", "-of", "GTiff", "-outsize", str(px), str(px),
+             "-bands", "1", "-ot", dtype, "-burn", repr(nd), "-a_nodata", repr(nd),
+             "-a_srs", "EPSG:4326", "-a_ullr", str(lon), str(lat + 1), str(lon + 1), str(lat),
              "-mo", f"{EMPTY_TAG}={EMPTY_CHECK}",
-             "-co", "COMPRESS=DEFLATE", vrt, dst],
+             "-co", "COMPRESS=DEFLATE", dst],
             check=True, env=NO_PAM)
     except subprocess.CalledProcessError as exc:
         print(f"::warning::Empty tile {os.path.basename(dst)} couldn't be made "
               f"({exc}) – the refill will ask for that degree again.")
         return False
-    finally:
-        os.remove(vrt)
     if elevation_range(dst, exact=True) is not None:
         os.remove(dst)
         print(f"::warning::Empty tile {os.path.basename(dst)} didn't come out "
