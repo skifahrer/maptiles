@@ -57,11 +57,12 @@ trap on_cancel INT TERM
 run_link() { echo "$SERVER/$REPO/actions/runs/$1"; }
 
 # GitHub ended the run with jobs that never got a runner, and none of ours failed
+NEVER_STARTED_JQ='.attempt == 1
+  and ([.jobs[] | select(.conclusion == "failure")] | length) == 0
+  and ([.jobs[] | select(.status != "completed"
+         or (.conclusion == "cancelled" and ((.steps // []) | length) == 0))] | length) > 0'
 never_started() {
-  gh run view "$1" --repo "$REPO" --json attempt,jobs --jq \
-    '.attempt == 1
-     and ([.jobs[] | select(.conclusion == "failure")] | length) == 0
-     and ([.jobs[] | select(.status != "completed")] | length) > 0' 2>/dev/null || true
+  gh run view "$1" --repo "$REPO" --json attempt,jobs --jq "$NEVER_STARTED_JQ" 2>/dev/null || true
 }
 
 # the whole picture in every leg, rebuilt from the baton
