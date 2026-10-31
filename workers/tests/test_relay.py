@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 
@@ -120,6 +121,38 @@ class Relay(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("didn't show", r.stdout)
         self.assertEqual(self.read("baton"), "")
+
+
+def ran(conclusion):
+    return {"status": "completed", "conclusion": conclusion, "steps": [{"name": "Checkout"}]}
+
+
+QUEUED_THEN_CANCELLED = {"status": "completed", "conclusion": "cancelled", "steps": []}
+
+
+@needs_cmd("bash", "jq")
+class NeverStarted(unittest.TestCase):
+    def ask(self, jobs, attempt=1):
+        src = "COUNTRY=x REPO=x REGION_WF=x . workers/state/relay-core.sh; printf %s \"$NEVER_STARTED_JQ\""
+        jq = subprocess.run(["bash", "-c", src], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+        run = json.dumps({"attempt": attempt, "jobs": jobs})
+        return subprocess.run(["jq", jq], input=run, capture_output=True, text=True, check=True).stdout.strip()
+
+    def test_a_job_cancelled_before_it_got_a_runner_never_started(self):
+        # fix 378: GitHub ends a queued job as completed/cancelled with no steps
+        self.assertEqual(self.ask([ran("success"), QUEUED_THEN_CANCELLED]), "true")
+
+    def test_a_job_still_queued_never_started(self):
+        self.assertEqual(self.ask([ran("success"), {"status": "queued", "conclusion": None}]), "true")
+
+    def test_a_failed_job_is_a_real_failure(self):
+        self.assertEqual(self.ask([ran("failure"), QUEUED_THEN_CANCELLED]), "false")
+
+    def test_a_job_cancelled_while_running_started(self):
+        self.assertEqual(self.ask([ran("success"), ran("cancelled")]), "false")
+
+    def test_only_the_first_attempt_is_rerun(self):
+        self.assertEqual(self.ask([QUEUED_THEN_CANCELLED], attempt=2), "false")
 
 
 if __name__ == "__main__":
