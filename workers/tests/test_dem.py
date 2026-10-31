@@ -130,7 +130,34 @@ class Coverage(unittest.TestCase):
                          ["N49E019.tif"])
 
 
-@needs_cmd("gdal_translate", "gdalinfo")
+class ElevationRange(unittest.TestCase):
+    def range_of(self, band):
+        real = tiles.gdalinfo
+        tiles.gdalinfo = lambda path, stats="": {"bands": [band]}
+        try:
+            return tiles.elevation_range("x.tif", exact=True)
+        finally:
+            tiles.gdalinfo = real
+
+    def test_no_valid_pixel_is_no_range_even_with_min_max(self):
+        # fix 379: GDAL on ubuntu 26.04 reports min/max for an all-nodata band
+        band = {"minimum": -9999.0, "maximum": -9999.0,
+                "metadata": {"": {"STATISTICS_VALID_PERCENT": "0"}}}
+        self.assertIsNone(self.range_of(band))
+
+    def test_nan_is_no_range(self):
+        self.assertIsNone(self.range_of({"minimum": float("nan"), "maximum": float("nan")}))
+
+    def test_missing_stats_is_no_range(self):
+        self.assertIsNone(self.range_of({"metadata": {"": {"STATISTICS_VALID_PERCENT": "0"}}}))
+
+    def test_heights_are_a_range(self):
+        band = {"minimum": 120.5, "maximum": 2654.0,
+                "metadata": {"": {"STATISTICS_VALID_PERCENT": "37.5"}}}
+        self.assertEqual(self.range_of(band), (120.5, 2654.0))
+
+
+@needs_cmd("gdal_create", "gdalinfo")
 class EmptyTile(unittest.TestCase):
     def test_signed_and_empty(self):
         with tempfile.TemporaryDirectory() as tmp:

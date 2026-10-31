@@ -30,7 +30,7 @@ if "--get" in sys.argv:
 BBOX = "19.2,49.2,20.8,49.8"
 
 
-@needs_cmd("gdalinfo", "gdal_translate", "gdalbuildvrt")
+@needs_cmd("gdalinfo", "gdal_translate", "gdalbuildvrt", "gdal_create")
 class Fetch(unittest.TestCase):
     def setUp(self):
         self.work = tempfile.mkdtemp()
